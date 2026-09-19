@@ -30,10 +30,14 @@ all classes header-only (nothing to implement yet), verified via a
 standalone `entity_smoke_test` target with zero SFML dependency. See
 `ARCHITECTURE_DECISIONS.md` → "Entity/Actor implementation."
 
-## ⏳ Prompt 4 — Turn scheduler
+## ✅ Prompt 4 — Turn scheduler
 Energy/speed-based turn scheduler (ToME4-style: actors accumulate energy,
 act when they cross a threshold). Standalone test printing turn order for
 actors with different speeds, verified before wiring to real gameplay.
+**Result:** `TurnScheduler` (energy tracked internally, not on `Actor`)
+verified via `turn_scheduler_test` — speed-50/100/200 actors produced an
+exact 4:1 act ratio between the slowest and fastest over 20 turns. See
+`ARCHITECTURE_DECISIONS.md` → "Turn scheduler."
 
 ## ⬜ Prompt 5 — Map and rendering
 Tile/Map class rendering to screen, hardcoded test map (no procgen yet).

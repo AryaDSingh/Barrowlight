@@ -50,6 +50,11 @@ set(ENTITY_HEADERS
     src/entities/Monster.hpp
 )
 
+set(CORE_HEADERS
+    src/core/Application.hpp
+    src/core/TurnScheduler.hpp
+)
+
 # ---------------------------------------------------------------------------
 # Executable
 # ---------------------------------------------------------------------------
@@ -58,6 +63,7 @@ add_executable(roguelike
     src/main.cpp
     src/core/Application.cpp
     ${ENTITY_HEADERS}
+    ${CORE_HEADERS}
 )
 
 target_include_directories(roguelike PRIVATE src)
@@ -80,5 +86,22 @@ add_executable(entity_smoke_test
 
 target_include_directories(entity_smoke_test PRIVATE src)
 target_compile_features(entity_smoke_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# Turn scheduler test
+# ---------------------------------------------------------------------------
+# Also console-only, no SFML -- TurnScheduler only touches Actor's public
+# interface (Stats::speed), never rendering. Same enforcement pattern as
+# entity_smoke_test above.
+
+add_executable(turn_scheduler_test
+    tests/turn_scheduler_test.cpp
+    src/core/TurnScheduler.cpp
+    ${ENTITY_HEADERS}
+    ${CORE_HEADERS}
+)
+
+target_include_directories(turn_scheduler_test PRIVATE src)
+target_compile_features(turn_scheduler_test PRIVATE cxx_std_17)
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT roguelike)

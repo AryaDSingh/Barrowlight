@@ -193,6 +193,36 @@ subfolders speculatively ahead of the system that needs them.
   scheduler) — expect more targets like this as non-rendering systems get
   built.
 
+## Turn scheduler (decided Prompt 4)
+
+- **Energy lives inside `TurnScheduler`, not on `Actor`/`Stats`.** A small
+  internal `Entry{Actor*, energy}` struct pairs each registered actor with
+  its own energy counter. `TurnScheduler` doesn't own the `Actor` — the
+  caller must `remove()` before destroying one, or risk a dangling
+  reference. Considered putting `energy` directly on `Stats` instead
+  (simpler lookup, travels with the actor automatically) but rejected it:
+  scheduling is simulation-level state, not an actor attribute, and
+  keeping it out of `Stats` means `Stats` stays purely "what combat math
+  will eventually read," not mixed with "how turn order currently works."
+- **Fixed threshold model** (`kActionThreshold = 1000`): every tick, every
+  actor's energy increases by `Stats::speed`; whoever crosses the
+  threshold acts, and the threshold (not the actor's full energy) is
+  subtracted — overflow carries over rather than being discarded, so a
+  much-faster actor doesn't lose banked energy. This is the standard
+  Angband/ToME energy model.
+- **`nextTurn()` deliberately only answers "whose turn is it."** It knows
+  nothing about `Action`, `Map`, or `AIBehavior` — what an actor *does*
+  once it's their turn is explicitly out of scope until Prompt 5+.
+- **Verified with `turn_scheduler_test`**, a third no-SFML console target
+  (same enforcement pattern as `entity_smoke_test` — see "Entity/Actor
+  implementation" above). Three monsters at speed 50/100/200, run for 20
+  turns: the slowest and fastest landed on an exact 4:1 act ratio,
+  confirming the speed→frequency relationship is correct rather than just
+  plausible-looking.
+- **Not wired into `Application`/`main.cpp` yet** — per the prompt's own
+  scope, that's deferred to Prompt 5, once there's a `Map` and real
+  gameplay for turn order to actually drive.
+
 ## Open items / things to revisit later
 
 - `SFML_BUILD_AUDIO` / `SFML_BUILD_NETWORK` are off — flip back on when

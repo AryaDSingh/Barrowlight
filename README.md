@@ -16,29 +16,31 @@ roguelike/
 ├── src/
 │   ├── main.cpp         # entry point -- deliberately trivial
 │   ├── core/
-│   │   ├── Application.hpp   # owns the window + loop shell
-│   │   └── Application.cpp   # the only files allowed to touch sf:: types
+│   │   ├── Application.hpp/.cpp    # owns the window + loop shell
+│   │   └── TurnScheduler.hpp/.cpp  # energy/speed-based turn order
 │   └── entities/         # Entity/Actor/Item/Feature hierarchy + components
 │       (Entity, Actor, Player, Monster, Item, Feature, Stats, AIBehavior,
 │        Inventory, TalentSet, StatusEffects -- all header-only so far)
 ├── tests/
-│   └── entity_smoke_test.cpp  # console-only sanity check, no SFML linked
+│   ├── entity_smoke_test.cpp        # entity hierarchy, no SFML linked
+│   └── turn_scheduler_test.cpp      # turn order by speed, no SFML linked
 ├── assets/              # textures, fonts (empty for now)
 └── data/                # data-driven definitions: monsters, talents, etc. (empty for now)
 ```
 
-`assets/` and `data/` are still placeholders for later prompts. `entities/`
-and `tests/` exist now because Prompt 3 actually needed them.
+`assets/` and `data/` are still placeholders for later prompts.
 
-There are two build targets: `roguelike` (the real game, links SFML) and
-`entity_smoke_test` (a standalone console program with zero SFML
-dependency, proving the entity hierarchy has no rendering-library coupling).
-Run the smoke test after building:
+There are three build targets: `roguelike` (the real game, links SFML),
+`entity_smoke_test`, and `turn_scheduler_test` (both standalone console
+programs with zero SFML dependency, each doubling as proof that its
+system has no coupling to the rendering library). Run them after building:
 
 ```bash
-./build/bin/entity_smoke_test          # Linux/macOS
-.\build\bin\Debug\entity_smoke_test.exe   # Windows (Visual Studio generator)
+./build/bin/entity_smoke_test
+./build/bin/turn_scheduler_test
 ```
+On Windows with the Visual Studio generator, substitute
+`.\build\bin\Debug\<name>.exe`.
 
 ## Building
 
