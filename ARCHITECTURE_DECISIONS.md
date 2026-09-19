@@ -270,6 +270,41 @@ subfolders speculatively ahead of the system that needs them.
   prompt (no `Map`/`TurnScheduler`-in-`Application` coupling reaches
   them) -- confirmed by rerunning both after the change.
 
+## Field of view (decided Prompt 6)
+
+- **`Tile` gained `transparent`** — the field explicitly deferred back in
+  Prompt 5 ("held off on `transparent` until Prompt 6 needs it"). Walls
+  are opaque, floor is transparent; correlates with `walkable` for now,
+  same reasoning as before for keeping them separate fields rather than
+  deriving one from the other.
+- **`computeFieldOfView(map, origin, radius)` is a pure function.**
+  Recursive shadowcasting (the standard octant-transform/slope-tracking
+  algorithm), no knowledge of players or entities, no mutation of `Map`,
+  no memory between calls. Given the same map/origin/radius it always
+  returns the same result — deliberately kept this way so it's testable
+  in complete isolation from everything else (see verification below).
+- **`ExploredMap` is a separate class** holding the *stateful* part —
+  Hidden/Remembered/Visible per tile, updated once per turn from a fresh
+  `computeFieldOfView()` result. Splitting "compute visibility" (pure,
+  stateless) from "remember what's been seen" (stateful, simple
+  bookkeeping) keeps both pieces small and independently reasoned about,
+  consistent with how `TurnScheduler` and `Map` are each scoped to one
+  job.
+- **Verified by printing an ASCII grid, not just by compiling.**
+  Shadow-casting bugs are exactly the kind that "look plausible" while
+  being subtly wrong (common failure: asymmetric shadows). `fov_test`
+  builds a room with a single wall pillar and prints the FOV result as
+  text; confirmed by eye: direct line-of-sight blocked behind the pillar,
+  correct top/bottom symmetry around the blocked row, and vision
+  correctly wrapping around the pillar's corners into the rows beyond it.
+- **Dimming is computed** (`dim()` scales RGB by a constant factor) rather
+  than hand-picked per tile color, so "remembered" always stays
+  programmatically tied to "visible," however many tile colors exist
+  later.
+- **Sight radius is a named constant (8 tiles),** not yet exposed as a
+  per-actor stat. Revisit once talents/equipment might plausibly modify
+  sight range (Prompt 9+).
+
 ## Open items / things to revisit later
 
 - No font or sprite/tile-atlas rendering yet -- flat colored rectangles
@@ -279,6 +314,8 @@ subfolders speculatively ahead of the system that needs them.
 - No camera/viewport/scrolling -- the test map is small enough to fit
   entirely on screen. Will matter once procedural levels (Prompt 8) are
   bigger than one screen.
+- Sight radius is a hardcoded constant, not a per-actor stat -- revisit
+  once anything (talents, equipment) might plausibly modify it.
 
 - `SFML_BUILD_AUDIO` / `SFML_BUILD_NETWORK` are off — flip back on when
   sound is wanted.

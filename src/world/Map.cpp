@@ -49,13 +49,13 @@ Map parseAsciiMap(const std::vector<std::string>& rows, Position& playerStart) {
             const char c = row[static_cast<std::size_t>(x)];
             switch (c) {
                 case '#':
-                    map.setTile(x, y, Tile{TileType::Wall, false});
+                    map.setTile(x, y, Tile{TileType::Wall, false, false});
                     break;
                 case '.':
-                    map.setTile(x, y, Tile{TileType::Floor, true});
+                    map.setTile(x, y, Tile{TileType::Floor, true, true});
                     break;
                 case '@':
-                    map.setTile(x, y, Tile{TileType::Floor, true});
+                    map.setTile(x, y, Tile{TileType::Floor, true, true});
                     playerStart = Position{x, y};
                     foundPlayerStart = true;
                     break;

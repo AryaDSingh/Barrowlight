@@ -17,28 +17,33 @@ roguelike/
 │   ├── main.cpp         # entry point -- deliberately trivial
 │   ├── core/
 │   │   ├── Position.hpp             # shared grid-coordinate type
-│   │   ├── Application.hpp/.cpp     # owns the window, map, player, scheduler
+│   │   ├── Application.hpp/.cpp     # owns the window, map, player, scheduler, FOV
 │   │   └── TurnScheduler.hpp/.cpp   # energy/speed-based turn order
 │   ├── entities/         # Entity/Actor/Item/Feature hierarchy + components
 │   │   (Entity, Actor, Player, Monster, Item, Feature, Stats, AIBehavior,
 │   │    Inventory, TalentSet, StatusEffects -- all header-only so far)
 │   └── world/
-│       ├── Tile.hpp       # a single grid cell (type + walkable)
-│       └── Map.hpp/.cpp   # grid of tiles + ASCII-art level parser
+│       ├── Tile.hpp                 # a single grid cell (type/walkable/transparent)
+│       ├── Map.hpp/.cpp             # grid of tiles + ASCII-art level parser
+│       ├── FieldOfView.hpp/.cpp     # recursive shadowcasting (pure function)
+│       └── ExploredMap.hpp/.cpp     # Hidden/Remembered/Visible tracking over time
 ├── tests/
 │   ├── entity_smoke_test.cpp        # entity hierarchy, no SFML linked
-│   └── turn_scheduler_test.cpp      # turn order by speed, no SFML linked
+│   ├── turn_scheduler_test.cpp      # turn order by speed, no SFML linked
+│   └── fov_test.cpp                 # prints an ASCII FOV grid, no SFML linked
 ├── assets/              # textures, fonts (still empty -- see Prompt 5 notes)
 └── data/                # data-driven definitions: monsters, talents, etc. (empty for now)
 ```
 
-There are three build targets: `roguelike` (the real game, links SFML),
-`entity_smoke_test`, and `turn_scheduler_test` (both standalone console
-programs with zero SFML dependency). Run them after building:
+There are four build targets: `roguelike` (the real game, links SFML),
+and three standalone console programs with zero SFML dependency:
+`entity_smoke_test`, `turn_scheduler_test`, `fov_test`. Run them after
+building:
 
 ```bash
 ./build/bin/entity_smoke_test
 ./build/bin/turn_scheduler_test
+./build/bin/fov_test
 ./build/bin/roguelike
 ```
 On Windows with the Visual Studio generator, substitute
@@ -49,6 +54,11 @@ room (walls/floor as colored tiles, no art assets yet -- see
 `ARCHITECTURE_DECISIONS.md`) with a player tile you can move using arrow
 keys or WASD. Movement is collision-checked against the map and routed
 through the real turn scheduler.
+
+As of Prompt 6, only tiles within the player's field of view are shown
+at full brightness; tiles seen before but not currently visible render
+dimmed; tiles never seen render as nothing (background shows through).
+Sight radius is 8 tiles, and the interior pillar casts a real shadow.
 
 ## Building
 

@@ -39,21 +39,32 @@ verified via `turn_scheduler_test` — speed-50/100/200 actors produced an
 exact 4:1 act ratio between the slowest and fastest over 20 turns. See
 `ARCHITECTURE_DECISIONS.md` → "Turn scheduler."
 
-## ⏳ Prompt 5 — Map and rendering
+## ✅ Prompt 5 — Map and rendering
 Tile/Map class rendering to screen, hardcoded test map (no procgen yet).
 Basic player movement via keyboard input, to confirm rendering + input +
 turn scheduler are integrated correctly. Tiles/player render as flat
 colored rectangles (no art assets yet), 20×10 ASCII-art test room, arrow
 keys/WASD move the player with wall collision, each move routed through
-the real `TurnScheduler`. Sandbox-verified: clean build, map parsed
-correctly (player start position matched the ASCII by eye), 5s crash-free
-run under a virtual display -- interactive movement/collision itself
-needs confirming on a real display, which the sandbox can't do. See
-`ARCHITECTURE_DECISIONS.md` → "Map, rendering, and input."
+the real `TurnScheduler`. **Confirmed on the person's machine:** window
+opens, grid + player render correctly, movement works, wall collision
+(border and interior pillar) actually stops the player rather than
+passing through. See `ARCHITECTURE_DECISIONS.md` → "Map, rendering, and
+input."
 
-## ⬜ Prompt 6 — FOV
+## ⏳ Prompt 6 — FOV
 Field-of-view (recursive shadowcasting or similar); dimmed "remembered but
-not visible" state for explored-but-out-of-sight tiles.
+not visible" state for explored-but-out-of-sight tiles. `Tile` gained the
+`transparent` flag deferred from Prompt 5. `computeFieldOfView()` is a
+pure function (no Map mutation, no player/entity knowledge); `ExploredMap`
+separately tracks Hidden/Remembered/Visible over time. Verified via a
+standalone `fov_test` printing an ASCII grid against a known wall pillar
+— confirmed correct shadow-casting behavior including top/bottom symmetry
+and vision wrapping around obstacle corners, not just "it compiled."
+Sandbox-verified in the real game too (clean build, 5s crash-free run,
+sight radius confirmed to actually leave the test room's corners dark
+rather than trivially lighting the whole room) -- visual confirmation on
+a real display is the person's to do. See `ARCHITECTURE_DECISIONS.md` →
+"Field of view."
 
 ## ⬜ Prompt 7 — Pathfinding
 A* pathfinding for monster movement; a Chaser AIBehavior strategy that uses

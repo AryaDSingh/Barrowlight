@@ -62,6 +62,8 @@ set(CORE_HEADERS
 set(WORLD_HEADERS
     src/world/Tile.hpp
     src/world/Map.hpp
+    src/world/FieldOfView.hpp
+    src/world/ExploredMap.hpp
 )
 
 # ---------------------------------------------------------------------------
@@ -76,6 +78,8 @@ add_executable(roguelike
     src/core/Application.cpp
     src/core/TurnScheduler.cpp
     src/world/Map.cpp
+    src/world/FieldOfView.cpp
+    src/world/ExploredMap.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
     ${CORE_HEADERS}
@@ -121,5 +125,22 @@ add_executable(turn_scheduler_test
 
 target_include_directories(turn_scheduler_test PRIVATE src)
 target_compile_features(turn_scheduler_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# FOV test
+# ---------------------------------------------------------------------------
+# Also console-only, no SFML -- shadowcasting only touches Map/Tile, never
+# rendering. Same enforcement pattern as the other two test targets above.
+
+add_executable(fov_test
+    tests/fov_test.cpp
+    src/world/Map.cpp
+    src/world/FieldOfView.cpp
+    ${COMMON_HEADERS}
+    ${WORLD_HEADERS}
+)
+
+target_include_directories(fov_test PRIVATE src)
+target_compile_features(fov_test PRIVATE cxx_std_17)
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT roguelike)

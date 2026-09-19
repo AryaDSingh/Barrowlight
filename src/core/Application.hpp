@@ -4,6 +4,7 @@
 
 #include "core/TurnScheduler.hpp"
 #include "entities/Player.hpp"
+#include "world/ExploredMap.hpp"
 #include "world/Map.hpp"
 
 namespace engine {
@@ -23,6 +24,8 @@ namespace engine {
 // be pulled out into a dedicated "game state" concept once there's enough
 // state to justify separating "what's being simulated" from "the window"
 // (multiple monsters, level transitions -- probably around Prompt 7/8).
+// As of Prompt 6, it also owns an ExploredMap, recomputed from the real
+// FOV algorithm after every player move.
 class Application {
 public:
     Application();
@@ -40,10 +43,16 @@ private:
     // roguelike behavior. Returns whether the move actually happened.
     bool tryMovePlayer(int dx, int dy);
 
+    // Recomputes FOV from the player's current position and folds it
+    // into exploredMap_. Called once at startup and again after every
+    // successful move.
+    void updateFieldOfView();
+
     sf::RenderWindow window_;
     Map map_;
     Player player_;
     TurnScheduler scheduler_;
+    ExploredMap exploredMap_;
 
     // Whose turn it currently is, per the scheduler. Only ever the player
     // right now (nothing else is registered), but routed through the real
