@@ -1,0 +1,206 @@
+# Architecture Decisions — Roguelike Engine
+
+Living record of what's been decided on this project, why, and what to check
+before contradicting it. Claude doesn't retain memory between separate
+conversations — paste this whole file at the start of a fresh session to
+restore context, and ask for it to be updated as new decisions get made.
+
+Last updated: 2026-09-19 (through completion of Prompt 2).
+
+---
+
+## Project scope (locked in Prompt 0)
+
+- Portfolio piece: a **custom** C++ roguelike engine — not a game built on
+  top of an existing engine (see "Rejected: Godot" below).
+- Architecture style: **composition over inheritance**. `Actor` holds
+  component-style members — `Stats`, `AIBehavior`, `Inventory`, `TalentSet`,
+  `StatusEffects` — not a deep inheritance tree.
+- **Data-driven where reasonable**: monster/talent definitions live
+  separately from logic. Not implemented yet — `data/` is currently an
+  empty placeholder.
+- **C++17 minimum.**
+- Vertical-slice target: 1 playable class, 3–5 procedural levels, 5–8 enemy
+  types with distinct AI, 1 boss.
+- Explicit priority: the person wants to **understand every system**, not
+  just receive code — decisions get explained, not just shipped.
+- Scope discipline: flag anything that risks creep beyond the vertical
+  slice, and flag anything that conflicts with a decision already made here.
+
+## Base class hierarchy: Entity/Actor/Item/Feature (decided pre-Prompt-0)
+
+Decided during initial architecture planning, before the Project's custom
+instructions were even written:
+
+```
+Entity (base)
+├── position, sprite/tile, name
+├── Actor (extends Entity) — anything that takes turns
+│   ├── Player
+│   └── Monster
+├── Item (extends Entity) — things sitting on the ground / in inventory
+└── Feature (extends Entity) — doors, stairs, traps (non-actor, non-item)
+```
+
+Composition still governs `Actor` specifically (see "Project scope" above).
+The principle behind the hierarchy: a monster variant is data + which
+behavior objects get plugged in, not a new subclass. E.g. a "fast
+poisonous flying goblin" is a `Monster` with a speed-tuned `Stats`, a
+poison-on-hit status effect, and an `AIBehavior` of `FlyingChaser` — not
+`FastPoisonousFlyingGoblin extends Goblin extends Monster`.
+
+See `ROADMAP.md` for the full planned module breakdown this hierarchy sits
+within, and the full sequence of prompts this project is following.
+
+## Rendering/windowing library: SFML 3 (decided Prompt 1)
+
+**Decision:** SFML 3.1.0, not SDL3 or raylib.
+
+**Why:** SFML's C++-native RAII types (`sf::Texture`, `sf::Sprite`,
+`sf::RenderWindow`) match a composition-based, exception-safe architecture
+without hand-writing wrapper classes around C handles first. SFML 3 requires
+C++17 itself, matching the project constraint exactly, and its
+`std::variant`-based event API rewards idiomatic modern C++. None of the
+three candidates impose a scene graph/ECS/game loop, so that wasn't the
+deciding factor — paradigm fit was.
+
+**Explicitly considered and rejected:** SDL3 (larger community/tutorial
+base, but C API — would've meant writing our own RAII layer first). raylib
+(fastest to prototype in, but its global-context C-API style actively
+works against the composition/encapsulation story this project is telling).
+
+**Guardrail this implies:** `sf::` types must never leak into `Actor` or
+component headers — wrap SFML behind a thin interface instead. (See
+`Application`, below, for where this is actually implemented.) Explicitly
+decided *against* building a full swappable multi-backend renderer
+abstraction — that's scope creep for a single-library vertical slice.
+
+**Revisit if:** tutorial/ecosystem breadth becomes more important than
+paradigm fit, or a concrete reason to prefer SDL/raylib shows up later.
+
+## Rejected: Godot
+
+**Considered:** switching the whole project to the Godot engine instead of
+a custom C++ engine, partly prompted by Windows toolchain setup friction.
+
+**Decision:** stayed with the custom C++ engine.
+
+**Why:** Godot is a complete engine with its own architecture (Node/scene
+tree) and its own renderer — using it would mean *inheriting* an
+architecture rather than *designing* one, which directly undercuts the
+stated portfolio goal (demonstrating systems/architecture ability). A
+middle ground exists (GDExtension: native C++ game logic hosted by Godot's
+editor/renderer) but wasn't adopted, since it doesn't actually solve
+toolchain friction and only partially preserves the "I designed this"
+story.
+
+**Don't re-propose this** unless the underlying goal changes — e.g. shifts
+from "demonstrate architecture/systems skill" toward "ship a finished,
+playable game as fast as possible."
+
+## Build system: CMake + FetchContent (decided Prompt 2)
+
+- `cmake_minimum_required(VERSION 3.28)` — needed for the modern
+  `FetchContent` `EXCLUDE_FROM_ALL SYSTEM` syntax.
+- SFML fetched via `FetchContent`, pinned to git tag `3.1.0` (not tracking
+  `master`) — reproducible builds.
+- `SFML_BUILD_AUDIO` and `SFML_BUILD_NETWORK` are **OFF**. **Revisit this
+  when sound or networking is actually needed** — flip the cache vars back
+  on rather than reinventing that wiring.
+- Only `SFML::Graphics` is linked (pulls in `Window` + `System`
+  transitively).
+- **Platform-specific output path quirk:** Visual Studio is a multi-config
+  generator → binary lands at `build/bin/<Config>/roguelike.exe` (e.g.
+  `build/bin/Debug/roguelike.exe`). Ninja/Makefiles (single-config, typical
+  on Linux/macOS CLI) → `build/bin/roguelike` directly. This is correct
+  CMake behavior, not a bug — do **not** "fix" it by collapsing configs into
+  one output folder; that would make Debug and Release silently overwrite
+  each other.
+
+## Folder layout (decided Prompt 2)
+
+```
+roguelike/
+├── CMakeLists.txt
+├── README.md
+├── .gitignore
+├── assets/        <- placeholder, empty (textures/fonts land here later)
+├── data/          <- placeholder, empty (data-driven monster/talent defs)
+└── src/
+    ├── main.cpp
+    └── core/
+        ├── Application.hpp
+        └── Application.cpp
+```
+
+Deliberately shallow: `entities/`, `ai/`, `world/`, etc. were **not**
+pre-created, since those systems haven't been designed yet. Don't add
+subfolders speculatively ahead of the system that needs them.
+
+## Engine boundary: `engine::Application` (decided Prompt 2)
+
+- `src/core/Application.{hpp,cpp}` is the **only** code allowed to
+  `#include <SFML/...>` or reference `sf::` types.
+- Owns the `sf::RenderWindow` and the loop shell: `run()` →
+  `processEvents()` / `update()` / `render()`.
+- `update()` is currently an empty stub, reserved for the turn/tick loop
+  once there's actual game state to advance.
+- Game logic (`Actor` and its components, once built) will depend on
+  `Application`'s own interface, never on `sf::` directly.
+- This is the concrete implementation of the SFML decision's guardrail
+  above. **Any future prompt that has game logic reaching for `sf::`
+  directly conflicts with this and should be flagged.**
+
+## Verified working (Prompt 2 completion)
+
+- Compiles clean with GCC 13 (Linux, Ninja generator) — sandbox-verified.
+- Compiles clean with MSVC 19.38 / VS 17 2022 (Windows, Visual Studio
+  generator) — verified on the person's actual machine.
+- Window opens: 1280×720, titled "Roguelike Engine - Dev Window", 60fps cap.
+- Closes cleanly on the X button and on Escape — confirmed on the person's
+  machine.
+- No game logic yet, as intended for this step.
+
+## Entity/Actor implementation (decided Prompt 3)
+
+- All of `Entity`, `Item`, `Feature`, `Stats`, `AIBehavior`, `Inventory`,
+  `TalentSet`, `StatusEffects`, `Actor`, `Player`, `Monster` are
+  **header-only** for now. Not a style preference — every one of them is
+  genuinely trivial at this stage (no logic beyond constructors and
+  getters), so a `.cpp` file would hold nothing. **Expect real `.cpp`
+  files to appear as actual behavior gets added** (Prompt 4 onward);
+  don't read header-only as a permanent pattern for this codebase.
+- `TalentSet` and `StatusEffects` are throwaway placeholders (`empty()`
+  always returns `true`) — real design is Prompts 9 and 10 respectively.
+  **Expect these to be replaced wholesale, not incrementally extended.**
+- `AIBehavior` is currently a concrete (non-abstract) empty class — just a
+  virtual destructor, no pure virtual methods. It'll gain a
+  `decideAction()`-style pure virtual once `Action`/`Map` exist (Prompt
+  5/7), at which point it becomes a true abstract base and concrete
+  strategies (Chaser, Kiter, ...) get built against it.
+- `Entity` uses a plain `char` glyph as a placeholder visual identity
+  (roguelike ASCII-tile convention), not a texture ID or sprite handle —
+  deferring that decision to Prompt 5 rather than guessing at a tile/sprite
+  system now.
+- **New verification pattern established:** `entity_smoke_test` is a
+  second CMake executable target, console-only, that links no SFML at
+  all. It exists to (a) prove the entity/component classes actually
+  compile and compose correctly, and (b) enforce the "no `sf::` outside
+  `Application`" boundary mechanically — if this target ever fails to
+  compile because an entity header pulled in `<SFML/...>`, that's the
+  boundary being broken, caught immediately. This matches the standalone
+  console-test pattern the roadmap already calls for at Prompt 4 (turn
+  scheduler) — expect more targets like this as non-rendering systems get
+  built.
+
+## Open items / things to revisit later
+
+- `SFML_BUILD_AUDIO` / `SFML_BUILD_NETWORK` are off — flip back on when
+  sound is wanted.
+- No tile-rendering abstraction yet — `Application` currently just clears
+  and displays. Tile rendering is a future prompt.
+- `entities/`, `ai/`, `world/` folders intentionally don't exist yet.
+- The person's home PC lacked `winget`/App Installer for unclear reasons
+  (not a locked-down machine) — CMake was installed via portable ZIP
+  instead of an installer. Not a project decision, just an environment
+  note in case install friction resurfaces.
