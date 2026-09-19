@@ -16,31 +16,39 @@ roguelike/
 ├── src/
 │   ├── main.cpp         # entry point -- deliberately trivial
 │   ├── core/
-│   │   ├── Application.hpp/.cpp    # owns the window + loop shell
-│   │   └── TurnScheduler.hpp/.cpp  # energy/speed-based turn order
-│   └── entities/         # Entity/Actor/Item/Feature hierarchy + components
-│       (Entity, Actor, Player, Monster, Item, Feature, Stats, AIBehavior,
-│        Inventory, TalentSet, StatusEffects -- all header-only so far)
+│   │   ├── Position.hpp             # shared grid-coordinate type
+│   │   ├── Application.hpp/.cpp     # owns the window, map, player, scheduler
+│   │   └── TurnScheduler.hpp/.cpp   # energy/speed-based turn order
+│   ├── entities/         # Entity/Actor/Item/Feature hierarchy + components
+│   │   (Entity, Actor, Player, Monster, Item, Feature, Stats, AIBehavior,
+│   │    Inventory, TalentSet, StatusEffects -- all header-only so far)
+│   └── world/
+│       ├── Tile.hpp       # a single grid cell (type + walkable)
+│       └── Map.hpp/.cpp   # grid of tiles + ASCII-art level parser
 ├── tests/
 │   ├── entity_smoke_test.cpp        # entity hierarchy, no SFML linked
 │   └── turn_scheduler_test.cpp      # turn order by speed, no SFML linked
-├── assets/              # textures, fonts (empty for now)
+├── assets/              # textures, fonts (still empty -- see Prompt 5 notes)
 └── data/                # data-driven definitions: monsters, talents, etc. (empty for now)
 ```
 
-`assets/` and `data/` are still placeholders for later prompts.
-
 There are three build targets: `roguelike` (the real game, links SFML),
 `entity_smoke_test`, and `turn_scheduler_test` (both standalone console
-programs with zero SFML dependency, each doubling as proof that its
-system has no coupling to the rendering library). Run them after building:
+programs with zero SFML dependency). Run them after building:
 
 ```bash
 ./build/bin/entity_smoke_test
 ./build/bin/turn_scheduler_test
+./build/bin/roguelike
 ```
 On Windows with the Visual Studio generator, substitute
 `.\build\bin\Debug\<name>.exe`.
+
+As of Prompt 5, `roguelike` opens a window showing a small hardcoded test
+room (walls/floor as colored tiles, no art assets yet -- see
+`ARCHITECTURE_DECISIONS.md`) with a player tile you can move using arrow
+keys or WASD. Movement is collision-checked against the map and routed
+through the real turn scheduler.
 
 ## Building
 

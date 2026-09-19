@@ -36,6 +36,10 @@ FetchContent_MakeAvailable(SFML)
 # #include-d) so they show up as real files in IDEs like Visual Studio's
 # Solution Explorer instead of being invisible until referenced.
 
+set(COMMON_HEADERS
+    src/core/Position.hpp
+)
+
 set(ENTITY_HEADERS
     src/entities/Entity.hpp
     src/entities/Item.hpp
@@ -55,15 +59,27 @@ set(CORE_HEADERS
     src/core/TurnScheduler.hpp
 )
 
+set(WORLD_HEADERS
+    src/world/Tile.hpp
+    src/world/Map.hpp
+)
+
 # ---------------------------------------------------------------------------
 # Executable
 # ---------------------------------------------------------------------------
+# Prompt 5 is the first point where the game actually uses TurnScheduler and
+# Map for real (previously TurnScheduler.cpp only compiled into its own
+# test), so both now compile into the roguelike target too.
 
 add_executable(roguelike
     src/main.cpp
     src/core/Application.cpp
+    src/core/TurnScheduler.cpp
+    src/world/Map.cpp
+    ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
     ${CORE_HEADERS}
+    ${WORLD_HEADERS}
 )
 
 target_include_directories(roguelike PRIVATE src)
@@ -81,6 +97,7 @@ target_link_libraries(roguelike PRIVATE SFML::Graphics)
 
 add_executable(entity_smoke_test
     tests/entity_smoke_test.cpp
+    ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
 )
 
@@ -97,6 +114,7 @@ target_compile_features(entity_smoke_test PRIVATE cxx_std_17)
 add_executable(turn_scheduler_test
     tests/turn_scheduler_test.cpp
     src/core/TurnScheduler.cpp
+    ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
     ${CORE_HEADERS}
 )

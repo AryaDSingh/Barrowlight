@@ -223,7 +223,62 @@ subfolders speculatively ahead of the system that needs them.
   scope, that's deferred to Prompt 5, once there's a `Map` and real
   gameplay for turn order to actually drive.
 
+## Map, rendering, and input (decided Prompt 5)
+
+- **Rendering is flat colored rectangles, not glyphs or sprites.** No font
+  or texture assets exist yet, and building either pipeline (font
+  loading + monospace layout, or a sprite/tile-atlas system) is real
+  design work on its own -- arguably deserving its own future prompt once
+  actual art exists. Walls/floor/player are distinguished by color alone.
+  This is a fully self-contained choice inside `Application::render()`;
+  swapping in glyphs or sprites later touches nothing in `Map` or
+  `Entity`, since neither has any idea how it's drawn.
+- **The hardcoded test level is a source-literal ASCII array, not a
+  `data/` file.** Loading from `data/` would fit the project's
+  data-driven preference well, but introduces file I/O and path
+  resolution on top of the Windows path friction already hit earlier in
+  this project, right when the goal is a clean verification of three
+  *other* systems integrating. Data-driven level loading is a natural fit
+  once real levels need authoring outside code -- likely Prompt 8.
+- **`Position` moved out of `Entity.hpp` into `core/Position.hpp`.** Once
+  `world/` also needed a coordinate type, leaving it homed inside
+  `entities/` would have made `world/` depend on `entities/` for
+  something both modules need equally. It's foundational/shared, so it
+  now lives in `core/`.
+- **`Map` gained a default constructor** (`Map() = default`, empty 0×0)
+  specifically so `Application` can hold `Map map_;` as a plain member
+  and assign its real content in the constructor body, rather than
+  contorting member-initializer-list ordering to make the ASCII parse
+  happen in one expression. Slightly less clever, deliberately: order-
+  dependent initializer lists are a well-known C++ footgun, and this
+  avoids the whole category of bug for a one-constructor cost.
+- **`Application` now directly owns `Map`, `Player`, and `TurnScheduler`.**
+  This is the simplest wiring that proves rendering + input + turn
+  scheduling actually integrate. Expect a dedicated "game state" concept
+  to get pulled out once there's enough state to justify separating
+  "what's being simulated" from "the window" -- multiple monsters, level
+  transitions -- probably around Prompt 7/8. Not built now on purpose;
+  nothing yet needs it.
+- **Movement is turn-gated, not real-time.** A keypress attempts a move;
+  if the target tile is walkable, the player moves and `nextTurn()` is
+  called again. Bumping a wall consumes no turn (standard roguelike
+  behavior). With only the player registered, `nextTurn()` trivially
+  always returns the player right now -- but it's routed through the real
+  scheduler API rather than skipped, so adding monsters (Prompt 7) means
+  extending `tryMovePlayer`'s aftermath, not restructuring the loop.
+- **`entity_smoke_test` and `turn_scheduler_test` are unaffected** by this
+  prompt (no `Map`/`TurnScheduler`-in-`Application` coupling reaches
+  them) -- confirmed by rerunning both after the change.
+
 ## Open items / things to revisit later
+
+- No font or sprite/tile-atlas rendering yet -- flat colored rectangles
+  stand in until real art (or a chosen font) exists.
+- Level data is still a source-literal ASCII array, not loaded from
+  `data/` -- revisit once real levels need authoring outside code.
+- No camera/viewport/scrolling -- the test map is small enough to fit
+  entirely on screen. Will matter once procedural levels (Prompt 8) are
+  bigger than one screen.
 
 - `SFML_BUILD_AUDIO` / `SFML_BUILD_NETWORK` are off — flip back on when
   sound is wanted.

@@ -2,15 +2,9 @@
 
 #include <string>
 
-namespace engine {
+#include "core/Position.hpp"
 
-// Grid coordinates. Deliberately not sf::Vector2i -- Entity has no
-// dependency on SFML (see ARCHITECTURE_DECISIONS.md), and a plain struct
-// costs nothing to convert to/from whatever the renderer wants later.
-struct Position {
-    int x = 0;
-    int y = 0;
-};
+namespace engine {
 
 // Anything that exists in the world at a grid position: actors, items,
 // features. Deliberately minimal -- no rendering, no SFML, no behavior.

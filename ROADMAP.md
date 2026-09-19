@@ -39,10 +39,17 @@ verified via `turn_scheduler_test` — speed-50/100/200 actors produced an
 exact 4:1 act ratio between the slowest and fastest over 20 turns. See
 `ARCHITECTURE_DECISIONS.md` → "Turn scheduler."
 
-## ⬜ Prompt 5 — Map and rendering
+## ⏳ Prompt 5 — Map and rendering
 Tile/Map class rendering to screen, hardcoded test map (no procgen yet).
 Basic player movement via keyboard input, to confirm rendering + input +
-turn scheduler are integrated correctly.
+turn scheduler are integrated correctly. Tiles/player render as flat
+colored rectangles (no art assets yet), 20×10 ASCII-art test room, arrow
+keys/WASD move the player with wall collision, each move routed through
+the real `TurnScheduler`. Sandbox-verified: clean build, map parsed
+correctly (player start position matched the ASCII by eye), 5s crash-free
+run under a virtual display -- interactive movement/collision itself
+needs confirming on a real display, which the sandbox can't do. See
+`ARCHITECTURE_DECISIONS.md` → "Map, rendering, and input."
 
 ## ⬜ Prompt 6 — FOV
 Field-of-view (recursive shadowcasting or similar); dimmed "remembered but
