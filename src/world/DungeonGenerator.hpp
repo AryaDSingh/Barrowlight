@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "core/Position.hpp"
 #include "world/Map.hpp"
 
@@ -15,8 +17,10 @@ struct DungeonGenerationParams {
 
 struct GeneratedDungeon {
     Map map;
-    Position playerStart;
-    Position monsterStart;
+    Position playerStart;         // room 0's center
+    std::vector<Position> otherRoomCenters; // every other room's center, in placement order --
+                                             // lets the caller populate multiple rooms with
+                                             // different monsters (Prompt 10), not just one
     int roomCount = 0;
 };
 

@@ -52,6 +52,9 @@ set(ENTITY_HEADERS
     src/entities/TalentEffects.hpp
     src/entities/SpellbladeTalents.hpp
     src/entities/StatusEffects.hpp
+    src/entities/StatusEffectLogic.hpp
+    src/entities/MonsterAttackProfile.hpp
+    src/entities/MonsterFactory.hpp
     src/entities/Actor.hpp
     src/entities/Player.hpp
     src/entities/Monster.hpp
@@ -74,6 +77,9 @@ set(WORLD_HEADERS
 set(AI_HEADERS
     src/ai/NullAIBehavior.hpp
     src/ai/Chaser.hpp
+    src/ai/Kiter.hpp
+    src/ai/Support.hpp
+    src/ai/AoEBomber.hpp
 )
 
 # ---------------------------------------------------------------------------
@@ -93,9 +99,15 @@ add_executable(roguelike
     src/world/Pathfinder.cpp
     src/world/DungeonGenerator.cpp
     src/ai/Chaser.cpp
+    src/ai/Kiter.cpp
+    src/ai/Support.cpp
+    src/ai/AoEBomber.cpp
     src/entities/TalentSet.cpp
     src/entities/TalentEffects.cpp
     src/entities/SpellbladeTalents.cpp
+    src/entities/StatusEffects.cpp
+    src/entities/StatusEffectLogic.cpp
+    src/entities/MonsterFactory.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
     ${CORE_HEADERS}
@@ -120,6 +132,7 @@ add_executable(entity_smoke_test
     tests/entity_smoke_test.cpp
     src/entities/TalentSet.cpp
     src/entities/SpellbladeTalents.cpp
+    src/entities/StatusEffects.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
     ${AI_HEADERS}
@@ -138,6 +151,7 @@ target_compile_features(entity_smoke_test PRIVATE cxx_std_17)
 add_executable(turn_scheduler_test
     tests/turn_scheduler_test.cpp
     src/core/TurnScheduler.cpp
+    src/entities/StatusEffects.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
     ${CORE_HEADERS}
@@ -195,6 +209,9 @@ add_executable(chaser_test
     src/world/FieldOfView.cpp
     src/world/Pathfinder.cpp
     src/ai/Chaser.cpp
+    src/entities/TalentSet.cpp
+    src/entities/SpellbladeTalents.cpp
+    src/entities/StatusEffects.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
     ${WORLD_HEADERS}
@@ -240,5 +257,34 @@ add_executable(talent_test
 
 target_include_directories(talent_test PRIVATE src)
 target_compile_features(talent_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# Monster AI test
+# ---------------------------------------------------------------------------
+# Also console-only, no SFML -- tests StatusEffects/tickStatusEffects and
+# the Kiter/Support/AoEBomber decision logic directly against
+# hand-computed expected values.
+
+add_executable(monster_ai_test
+    tests/monster_ai_test.cpp
+    src/world/Map.cpp
+    src/world/FieldOfView.cpp
+    src/world/Pathfinder.cpp
+    src/ai/Kiter.cpp
+    src/ai/Support.cpp
+    src/ai/AoEBomber.cpp
+    src/entities/TalentSet.cpp
+    src/entities/TalentEffects.cpp
+    src/entities/SpellbladeTalents.cpp
+    src/entities/StatusEffects.cpp
+    src/entities/StatusEffectLogic.cpp
+    ${COMMON_HEADERS}
+    ${ENTITY_HEADERS}
+    ${WORLD_HEADERS}
+    ${AI_HEADERS}
+)
+
+target_include_directories(monster_ai_test PRIVATE src)
+target_compile_features(monster_ai_test PRIVATE cxx_std_17)
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT roguelike)

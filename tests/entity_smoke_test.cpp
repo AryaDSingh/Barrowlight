@@ -69,7 +69,7 @@ int main() {
     std::cout << std::boolalpha;
     std::cout << "Player talents empty: " << player.talents().empty() << '\n';
     std::cout << "Player status effects empty: "
-              << player.statusEffects().empty() << '\n';
+              << player.statusEffects().active().empty() << '\n';
 
     std::cout << "\nAll good -- hierarchy compiles and composes correctly.\n";
     return 0;

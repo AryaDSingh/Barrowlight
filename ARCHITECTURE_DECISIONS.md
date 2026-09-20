@@ -493,31 +493,153 @@ subfolders speculatively ahead of the system that needs them.
   and confirmed stability afterward (dead target correctly unattackable,
   no crash).
 
+## Enemy roster and status effects (decided Prompt 10)
+
+- **4 `AIBehavior` classes produce 6 enemy types, not 6 classes.**
+  `Chaser` (extended with an attack + optional on-hit status effect,
+  parameterized via `MonsterAttackProfile`) powers Goblin, Spider, and
+  Ogre. New `Kiter`, `Support`, and `AoEBomber` cover the remaining
+  archetypes. This is the project's founding philosophy from Prompt 0 --
+  "a monster variant is data + which behavior objects get plugged in,
+  not a new subclass" -- finally proven out with a real roster instead
+  of a single example.
+- **`AIBehavior` gained its second verb.** `decideMove()` (Prompt 7)
+  became `decideAction()`, returning an `AIDecision` (Move / Attack /
+  UseAbility / Wait) instead of just an optional position. This is
+  exactly the moment flagged repeatedly since Prompt 7/9: enemies could
+  only ever move, never attack, until now. `AIDecision` carries the
+  *already-resolved* outcome (attack power, any on-hit effect, already
+  rolled) rather than Application reaching back into a behavior's private
+  state to figure out what an Attack meant.
+- **Simple attackers use `MonsterAttackProfile` (flat damage + optional
+  on-hit effect), not the full `Talent`/`TalentSet` machinery.** A
+  monster with exactly one repeatable move doesn't need cooldown
+  tracking. Only `Support` and `AoEBomber` -- which genuinely need "one
+  special move on a cooldown" -- reuse `TalentSet`, and only for its
+  cooldown bookkeeping; the buff/blast magnitude are the behavior's own
+  constructor parameters, not stored in the `Talent` entry (whose other
+  fields are damage-application-oriented, not buff-oriented).
+- **Monster abilities reuse the *existing* `TalentSet` from Prompt 9,
+  not a parallel system.** Nothing about `TalentSet`/`Talent` was ever
+  player-specific -- this is exactly the kind of reuse that composition
+  over duplication is supposed to buy later, paying off two prompts
+  later than expected.
+- **`StatusEffects` fully replaced its Prompt-3 stub** with 3 types:
+  Poison (damage/turn), Stun (skip a turn), Empowered (flat damage bonus
+  for Support to grant). Deliberately **not** a speed buff (Haste) --
+  that would mean modifying `TurnScheduler`'s effective-speed
+  calculation, touching already-tested Prompt-4 code; a damage buff only
+  touches the monster-attack code being written fresh this prompt
+  anyway.
+- **`tickStatusEffects` is a separate free function** (`StatusEffectLogic.hpp`),
+  mirroring `TalentEffects`' split from `TalentSet`: `StatusEffects`
+  itself is pure bookkeeping (which effects, how long), the tick function
+  is the one place poison damage/stun-detection/expiry actually happens.
+  Called once per turn for *every* actor (player included) -- a stunned
+  player doesn't get to act either, handled by a new
+  `advanceTurnsUntilPlayerCanAct()` that skips forward (still consuming
+  turns, still ticking effects) until the player genuinely has a turn to
+  spend on input.
+- **This prompt forced the "game state" refactor flagged as overdue
+  since Prompt 5.** `Application` now owns
+  `std::vector<std::unique_ptr<Monster>> monsters_` instead of one
+  hardcoded `goblin_` -- there was no way to support a 6-enemy roster
+  without it. Still not a full extraction into a dedicated class (window
+  vs. simulation state stays combined) -- that remains deliberately
+  deferred; nothing here demanded going further than this.
+- **`DungeonGenerator` now exposes every room's center**
+  (`otherRoomCenters`, replacing the old singular `monsterStart`), so
+  `Application` can populate up to 6 rooms with different monster types
+  -- deterministic given the seed, one type per room in roster order,
+  gracefully partial if a layout has fewer non-player rooms than 6.
+- **Real AoE, not faked.** Prompt 9's Fireball/Immolate only ever had one
+  possible target to hit (the single goblin); `actorsWithinRadius()` now
+  genuinely scans every living monster, so a player's AoE talent (or the
+  Bomber's blast) can hit multiple actors at once for the first time.
+  This was flagged explicitly in Prompt 9 as "will visibly matter once
+  Prompt 10 adds more enemies" -- confirmed live (see verification below).
+- **Player death is handled, but minimally.** hp <= 0 prints a message
+  and calls `window_.close()` -- the same clean-exit path as pressing
+  Escape. No game-over screen, no restart flow; building either is
+  explicitly Prompt 11/12 territory ("integration pass," "final polish"),
+  not something to improvise here.
+- **Targeting for the player's own talents now searches the whole
+  roster**, not a single hardcoded monster: `findAdjacentEnemy()` (first
+  match; adjacency is binary, order doesn't matter) and
+  `findNearestVisibleEnemy()` (genuine nearest-distance search, since
+  multiple visible enemies at different ranges is now a real scenario).
+  No targeting-cursor UI -- flagged explicitly as a real simplification,
+  not hidden.
+- **Monster AoE (Bomber) targets the player only, not other monsters.**
+  No faction/friendly-fire system exists. A fuller implementation might
+  have a Bomber's blast threaten its own allies too, relying on its
+  positioning to avoid that -- more than this roster needs to demonstrate
+  the archetype.
+- **Verified with real rigor, including catching bugs in the test itself,
+  not just the code under test:** `monster_ai_test` (17 checks) covers
+  `tickStatusEffects` and the three new behaviors against hand-computed
+  values. Two checks initially failed -- not because `Kiter`/`AoEBomber`
+  were wrong, but because the test's "target too far" distance
+  accidentally exceeded the *default sight radius* as well as the
+  intended attack range, so the correct answer (can't see it, Wait) was
+  being checked against the wrong expectation (should approach). Fixed
+  by correcting the test's distances, not the behavior code -- worth
+  recording as an example of validating the test's assumptions, not just
+  trusting a first failure means the implementation is wrong.
+- **Live verification went further than any prior prompt's:** real
+  A*-computed walks (reusing `findPath`, already verified in Prompt 7) to
+  multiple different enemies, played back via `xdotool` against the
+  actual running window. Results: the Goblin's own `Chaser` AI closed
+  distance and attacked *before* the player initiated combat (bidirectional
+  combat confirmed, not just claimed); every damage number across two
+  separate encounters matched `MonsterFactory`'s data exactly; Poison
+  correctly applied, dealt its exact magnitude, and refreshed (not
+  stacked) on repeated hits; a genuine multi-enemy encounter (Goblin +
+  Spider simultaneously) killed the player, with the death correctly
+  detected at exactly 0 hp; and the process was confirmed to exit on its
+  own afterward, without needing to be killed, proving `window_.close()`
+  actually fires rather than just compiling.
+
 ## Open items / things to revisit later
 
 - No font or sprite/tile-atlas rendering yet -- flat colored rectangles
   and simple HUD bars stand in until real art (or a chosen font) exists.
-  Now genuinely limiting (talent names/tooltips/cooldowns are
-  console-only, not shown in the game window) rather than just cosmetic.
+  Now genuinely limiting (talent/monster names, damage, status effects
+  are all console-only, not shown in the game window) rather than just
+  cosmetic.
 - No camera/viewport/scrolling. Not urgent yet (the generated dungeon
   still fits the window), but this is now the clear next sharp edge, not
   a vague someday -- a real dungeon will exceed one screen eventually.
-- Talent content is now real data (`SpellbladeTalents`'s table), but
-  still a C++ table, not loaded from `data/` -- revisit once real content
-  needs authoring outside code (same reasoning as the ASCII test maps).
-  Monster stat blocks are still not data at all -- Prompt 10.
+- Talent and monster content are both real data now (`SpellbladeTalents`,
+  `MonsterFactory`), but both are still C++ tables, not loaded from
+  `data/` -- revisit once real content needs authoring outside code
+  (same reasoning as the ASCII test maps).
 - Sight radius is a hardcoded constant, not a per-actor stat -- revisit
   once anything (talents, equipment) might plausibly modify it.
 - No general combat formula system (armor, resistances, damage types) --
-  talents carry their own flat damage as data. `AIBehavior` still only
-  decides movement; enemies still can't attack. Revisit once Prompt 10
-  builds real two-way combat.
-- No duration-based buffs/debuffs -- all 8 Spellblade talents are instant
-  effects. `StatusEffects` is still a stub; Prompt 10's job.
-- `Application` owns `map_`/`player_`/`goblin_`/`scheduler_`/
-  `exploredMap_` directly, and now resolves talent targeting too.
-  Flagged repeatedly as approaching the point where a dedicated "game
-  state" concept earns its keep -- still holding as of Prompt 9, but a
-  second monster (Prompt 10) is a reasonable line to finally do it.
+  every attack/talent/ability still carries its own flat damage as data.
+  Two-way combat itself now exists (Prompt 10); a real damage-resolution
+  formula is a different, larger thing, only worth building if the
+  numbers-as-data approach stops feeling sufficient.
+- No speed-altering status effect (Haste) -- deliberately avoided in
+  Prompt 10 specifically to not touch `TurnScheduler`'s effective-speed
+  calculation. Empowered (damage buff) covers "support/buffer" instead.
+  Revisit if a real reason to modify turn frequency shows up.
+- No targeting-cursor UI. Player talent targeting uses simple heuristics
+  (nearest visible enemy for ranged, first adjacent for melee) rather
+  than letting the person choose among multiple valid targets. Fine for
+  the current roster size; would matter more with denser encounters.
+- No faction/friendly-fire system -- Bomber's AoE only ever targets the
+  player, never other monsters, even ones standing in the blast area.
+- No game-over screen or restart flow -- player death currently just
+  closes the window cleanly (same path as Escape). Building either is
+  explicitly Prompt 11/12 territory ("integration pass," "final polish").
+- `Application` owns `map_`/`player_`/`monsters_`/`scheduler_`/
+  `exploredMap_` directly, and resolves targeting/combat for all of them.
+  The monster-collection part of the long-flagged "game state" refactor
+  happened this prompt (single `goblin_` → `vector<unique_ptr<Monster>>`),
+  but the fuller extraction (window vs. simulation state as genuinely
+  separate classes) still hasn't -- still not forced by anything built so
+  far.
 - `SFML_BUILD_AUDIO` / `SFML_BUILD_NETWORK` are off -- flip back on when
   sound is wanted.

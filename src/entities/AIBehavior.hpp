@@ -1,45 +1,64 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
+#include <vector>
 
 #include "core/Position.hpp"
+#include "entities/StatusEffects.hpp"
 
 namespace engine {
 
 class Actor;
 class Map;
 
+enum class AIActionType {
+    Move,
+    Attack,      // a basic, uncooldowned attack (see MonsterAttackProfile)
+    UseAbility,  // a cooldown-gated special move, from the actor's own TalentSet
+    Wait,
+};
+
+// What an AIBehavior decided to do this turn. Application executes this
+// -- AIBehavior only decides, it never mutates anything itself, matching
+// how the player's input handling works (Application applies moves/
+// talent effects, not the input code). For Attack, the behavior packages
+// the actual damage/on-hit-effect outcome itself (including rolling any
+// on-hit chance) rather than Application reaching back into the
+// behavior's private MonsterAttackProfile to figure out what happened.
+struct AIDecision {
+    AIActionType type = AIActionType::Wait;
+    Position movePosition{};    // for Move
+    Actor* target = nullptr;    // for Attack (always the player today) / UseAbility
+                                 // (an ally for Support, the player for AoEBomber)
+    std::size_t abilityIndex = 0;   // for UseAbility, which of the actor's own talents
+    int attackPower = 0;             // for Attack, already resolved
+    std::optional<StatusEffectInstance> effectToApply; // for Attack (on-hit proc) or UseAbility (a buff)
+                                                       // (unset if nothing applies)
+};
+
 // Strategy-pattern interface for monster decision-making. A Player holds
 // no AIBehavior (nullptr, see Player.hpp); a Monster is always given a
-// concrete strategy object -- what makes 8 enemy types feel distinct is
-// which Stats and which AIBehavior get plugged into an otherwise identical
-// Monster, not 8 separate classes (see ARCHITECTURE_DECISIONS.md).
+// concrete strategy object -- what makes enemy types feel distinct is
+// which Stats, which on-hit effects, and which AIBehavior (parameterized
+// with its own numbers) get plugged into an otherwise identical Monster,
+// not one class per enemy type (see ARCHITECTURE_DECISIONS.md).
 //
-// Now a true abstract base (Prompt 7): decideMove() is pure virtual, so
-// AIBehavior itself can no longer be instantiated directly. See
-// NullAIBehavior for a trivial concrete "never moves" stand-in used by
-// tests that need a valid AIBehavior but don't care about AI specifics.
-//
-// `self` and `map` are only forward-declared here, not #included --
-// deliberately, to avoid a circular include (Actor.hpp already includes
-// this header to declare its ai_ member).
+// `self`, `map`, `player`, and `Actor` are only forward-declared here,
+// not #included -- deliberately, to avoid a circular include (Actor.hpp
+// already includes this header to declare its ai_ member).
 class AIBehavior {
 public:
     virtual ~AIBehavior() = default;
 
-    // Decides where `self` wants to move this turn. The parameter is
-    // named `targetPosition`, not "playerPosition" -- nothing here
-    // hard-codes the target as being specifically the player, so future
-    // behaviors (monster-vs-monster targeting, guarding a fixed point)
-    // aren't fighting the interface's naming.
-    //
-    // Returns the tile to move into, or std::nullopt to not move -- e.g.
-    // target out of range/sight, or already adjacent (there's no attack
-    // action yet to choose instead, so "adjacent" currently just means
-    // "stay put").
-    virtual std::optional<Position> decideMove(const Actor& self, const Map& map,
-                                                 Position targetPosition) = 0;
+    // `allies` is every other Monster currently in the level (not
+    // including self) -- only Support actually uses it (to find someone
+    // to buff); everyone else ignores it. `player` is non-const because
+    // a returned AIDecision may need to reference it as a mutable
+    // Attack/UseAbility target for Application to act on later; this
+    // function itself doesn't mutate anything.
+    virtual AIDecision decideAction(const Actor& self, const Map& map, Actor& player,
+                                     const std::vector<Actor*>& allies) = 0;
 };
 
 } // namespace engine
-

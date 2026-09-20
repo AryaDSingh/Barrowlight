@@ -17,19 +17,26 @@ roguelike/
 │   ├── main.cpp         # entry point -- deliberately trivial
 │   ├── core/
 │   │   ├── Position.hpp             # shared grid-coordinate type
-│   │   ├── Application.hpp/.cpp     # owns window, map, actors, scheduler, FOV, talents
+│   │   ├── Application.hpp/.cpp     # owns window, map, roster, scheduler, FOV, combat
 │   │   └── TurnScheduler.hpp/.cpp   # energy/speed-based turn order
 │   ├── entities/         # Entity/Actor/Item/Feature hierarchy + components
 │   │   ├── (Entity, Actor, Player, Monster, Item, Feature, Stats,
-│   │   │    Inventory, StatusEffects -- header-only)
-│   │   ├── AIBehavior.hpp           # abstract interface; see ai/ for implementations
-│   │   ├── Talent.hpp                # a talent's data (cost, cooldown, effect shape)
-│   │   ├── TalentSet.hpp/.cpp        # known talents + per-talent cooldown tracking
-│   │   ├── TalentEffects.hpp/.cpp    # generic damage application
-│   │   └── SpellbladeTalents.hpp/.cpp  # the Spellblade's 8-talent kit, as data
+│   │   │    Inventory -- header-only)
+│   │   ├── AIBehavior.hpp                # abstract interface + AIDecision; see ai/
+│   │   ├── Talent.hpp                    # a talent/ability's data
+│   │   ├── TalentSet.hpp/.cpp            # known talents + per-talent cooldown tracking
+│   │   ├── TalentEffects.hpp/.cpp        # generic damage application
+│   │   ├── SpellbladeTalents.hpp/.cpp    # the Spellblade's 8-talent kit, as data
+│   │   ├── StatusEffects.hpp/.cpp        # Poison/Stun/Empowered bookkeeping
+│   │   ├── StatusEffectLogic.hpp/.cpp    # the tick function (damage, stun-detection, expiry)
+│   │   ├── MonsterAttackProfile.hpp      # flat-damage attack data for simple attackers
+│   │   └── MonsterFactory.hpp/.cpp       # the 6-enemy-type roster, as data
 │   ├── ai/
-│   │   ├── NullAIBehavior.hpp   # never moves -- a real behavior, and a test placeholder
-│   │   └── Chaser.hpp/.cpp      # A*-pathfinds toward a target within its own sight
+│   │   ├── NullAIBehavior.hpp    # never acts -- a real behavior, and a test placeholder
+│   │   ├── Chaser.hpp/.cpp       # melee rusher + attack -- Goblin, Spider, Ogre
+│   │   ├── Kiter.hpp/.cpp        # ranged, maintains distance -- Archer
+│   │   ├── Support.hpp/.cpp      # buffs allies, never attacks -- Shaman
+│   │   └── AoEBomber.hpp/.cpp    # ranged AoE on a cooldown -- Bomber
 │   └── world/
 │       ├── Tile.hpp                 # a single grid cell (type/walkable/transparent)
 │       ├── Map.hpp/.cpp             # grid of tiles + ASCII-art level parser (test maps)
@@ -44,13 +51,14 @@ roguelike/
 │   ├── pathfinder_test.cpp          # prints an ASCII path around a forced detour
 │   ├── chaser_test.cpp              # traces Chaser's own decisions turn by turn
 │   ├── dungeon_test.cpp             # verifies connectivity across 10 seeds + prints a layout
-│   └── talent_test.cpp              # hand-computed damage/cooldown/conditional values
+│   ├── talent_test.cpp              # hand-computed damage/cooldown/conditional values
+│   └── monster_ai_test.cpp          # StatusEffects tick logic + Kiter/Support/AoEBomber
 ├── assets/              # textures, fonts (still empty -- see Prompt 5 notes)
-└── data/                # data-driven content: monster definitions, etc. (empty for now)
+└── data/                # data-driven content (empty -- see Prompt 9/10 notes)
 ```
 
-There are eight build targets: `roguelike` (the real game, links SFML),
-and seven standalone console programs with zero SFML dependency. Run
+There are nine build targets: `roguelike` (the real game, links SFML),
+and eight standalone console programs with zero SFML dependency. Run
 them after building:
 
 ```bash
@@ -61,39 +69,49 @@ them after building:
 ./build/bin/chaser_test
 ./build/bin/dungeon_test
 ./build/bin/talent_test
+./build/bin/monster_ai_test
 ./build/bin/roguelike
 ```
 On Windows with the Visual Studio generator, substitute
 `.\build\bin\Debug\<name>.exe`.
 
 **Controls:** arrow keys / WASD to move, **R** to regenerate the level,
-**1-8** to use talents (1-4 are the Blade tree: melee, must be adjacent;
-5-8 are the Flame tree: ranged/AoE/utility). There's no text rendering
-yet, so talent feedback (damage dealt, cooldowns, why a cast failed)
-prints to the console rather than the game window -- watch the terminal
-you launched it from, not just the window.
+**1-8** to use talents (1-4 Blade: melee, must be adjacent; 5-8 Flame:
+ranged/AoE/utility). No text rendering exists yet, so combat feedback
+(damage, status effects, deaths, why a cast failed) prints to the
+**console**, not the game window.
 
 As of Prompt 5, `roguelike` opens a window with a player tile you can
-move using arrow keys or WASD, collision-checked against the map and
-routed through the real turn scheduler.
+move using arrow keys or WASD, routed through the real turn scheduler.
 
 As of Prompt 6, only tiles within the player's field of view are shown
-at full brightness; tiles seen before but not currently visible render
-dimmed; tiles never seen render as nothing. Sight radius is 8 tiles.
+at full brightness; seen-before-but-not-visible tiles render dimmed;
+never-seen tiles render as nothing. Sight radius is 8 tiles.
 
-As of Prompt 7, a red goblin monster (A*-pathfinding `Chaser` AI) shares
-the level. It only shows up once you can see it, and once it can see
-you, paths toward you and stops when adjacent.
+As of Prompt 7, monsters can path toward the player via A*, gated by
+their own line of sight.
 
-As of Prompt 8, the level is a procedurally generated dungeon instead of
-a fixed room -- different every time you press R.
+As of Prompt 8, the level is a procedurally generated dungeon -- new
+layout every time you press R.
 
 As of Prompt 9, the player is a **Spellblade** with a full 8-talent kit
-(see `ARCHITECTURE_DECISIONS.md` → "Talent system" for the design). You
-can now actually fight the goblin: hp/mana bars in the top-left corner,
-a floating hp bar over the goblin when it's visible, and it can die --
-at which point it stops being drawn, stops taking turns, and can no
-longer be targeted. It still can't attack back (Prompt 10).
+(hp/mana bars, top-left corner).
+
+As of Prompt 10, the dungeon is populated with a **6-enemy roster**
+(color-coded, each with a floating hp bar when visible):
+
+| Enemy | Color | Behavior |
+|---|---|---|
+| Goblin | red | `Chaser` -- plain melee |
+| Spider | green | `Chaser` -- melee, applies Poison on hit |
+| Ogre | brown | `Chaser` -- melee, chance to Stun on hit |
+| Archer | tan | `Kiter` -- keeps its distance, shoots from range |
+| Shaman | purple | `Support` -- never attacks; buffs a nearby ally instead |
+| Bomber | orange | `AoEBomber` -- ranged area attack on a cooldown |
+
+Combat is now genuinely two-way: enemies can hurt (and kill) the player,
+not just the other way around. There's no game-over screen yet -- on
+death, the window just closes (Prompt 11/12 territory).
 
 ## Building
 

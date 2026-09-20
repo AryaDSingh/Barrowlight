@@ -107,7 +107,7 @@ test room's size (38x20 vs 20x10) but still fits the current window
 without scrolling -- camera/viewport is flagged as the next real gap.
 See `ARCHITECTURE_DECISIONS.md` → "Dungeon generation."
 
-## ⏳ Prompt 9 — One playable class + talents
+## ✅ Prompt 9 — One playable class + talents
 Design + implement one playable class, 6–8 talents across 2 talent trees,
 with real trade-offs (cooldown vs damage, AoE vs single-target, risk vs
 reward) rather than flat power increases. Talent/TalentSet system first,
@@ -132,13 +132,43 @@ three different talents in sequence -- damage numbers (6, then 16, then a
 correctly-triggered 3x execute for 30) matched the talent data exactly,
 followed by a correct death message and confirmed post-death behavior
 (dead target correctly unattackable by both melee and ranged talents,
-game stable afterward). See `ARCHITECTURE_DECISIONS.md` → "Talent
+game stable afterward). **Confirmed on the person's machine:** the kit
+feels right in actual play. See `ARCHITECTURE_DECISIONS.md` → "Talent
 system."
 
-## ⬜ Prompt 10 — Enemy roster + status effects
+## ⏳ Prompt 10 — Enemy roster + status effects
 5–8 enemy types with genuinely distinct AI (ranged kiter, melee rusher,
 support/buffer, AoE threat) via the AIBehavior strategy pattern. Whatever
-StatusEffect types their kits need (poison, stun, etc).
+StatusEffect types their kits need (poison, stun, etc). **Result:** 6
+enemy types from just 4 `AIBehavior` classes (`Chaser` extended with
+attack + on-hit effects → Goblin/Spider/Ogre; new `Kiter` → Archer; new
+`Support` → Shaman; new `AoEBomber` → Bomber) -- the founding "data +
+which behavior gets plugged in, not a new subclass" philosophy from
+Prompt 0, finally proven with a real roster. `StatusEffects` fully
+replaced its Prompt-3 stub: Poison, Stun, Empowered, applied via a new
+`tickStatusEffects` free function mirroring `TalentEffects`' separation.
+`AIBehavior` gained its long-anticipated second verb (`decideAction`
+returning `AIDecision`, not just a move) -- monsters can finally attack.
+This forced the "game state" refactor flagged as overdue since Prompt 5:
+`Application` now owns a `vector<unique_ptr<Monster>>`, not one
+hardcoded goblin. `DungeonGenerator` now exposes every room's center so
+the roster can populate a level (deterministic given seed, one enemy
+type per room, up to 6). Player death is now handled (message + clean
+window close; no game-over screen yet -- Prompt 11/12). Monster
+abilities reuse the *existing* `Talent`/`TalentSet` from Prompt 9 rather
+than a parallel system. Verified with real rigor: `monster_ai_test`
+(17 checks) covers `tickStatusEffects` (poison damage/expiry, stun
+detection) and Kiter/Support/AoEBomber decision logic against
+hand-computed values -- all passed, including catching and fixing two
+bugs in the *test's own* distance assumptions, not the code under test.
+Live end-to-end via `xdotool`: real A*-computed walks to multiple
+enemies produced a full two-way combat exchange with every damage number
+matching the data exactly (including the Goblin's own AI closing
+distance and attacking *before* the player did), correct Poison
+application/refresh-not-stack behavior, a genuine multi-enemy encounter
+that killed the player, and confirmed the window closes itself cleanly
+on death. See `ARCHITECTURE_DECISIONS.md` → "Enemy roster and status
+effects."
 
 ## ⬜ Prompt 11 — Boss + integration pass
 One boss encounter as a set-piece finale. Full playthrough start to finish,

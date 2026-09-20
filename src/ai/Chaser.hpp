@@ -1,24 +1,30 @@
 #pragma once
 
 #include "entities/AIBehavior.hpp"
+#include "entities/MonsterAttackProfile.hpp"
 
 namespace engine {
 
-// Moves toward its target one A*-computed step at a time, but only when
-// the target is within its own line of sight -- reusing
-// computeFieldOfView(), the same function that lights the player's view
-// (Prompt 6), so a Chaser can't "see" a target through walls. Stateless:
-// nothing is stored between turns beyond its own sight radius, everything
-// else needed is passed into decideMove() each call.
+// Melee rusher: paths toward its target via A* while it's out of sight
+// or out of reach, and attacks once adjacent, using its own
+// MonsterAttackProfile. Prompt 7's Chaser only ever moved; Prompt 10
+// adds the attack -- this is exactly the "adjacent currently just means
+// stay put" limitation flagged back then.
+//
+// Powers Goblin (plain profile), Spider (Poison on-hit), and Ogre (Stun
+// on-hit, lower chance) via different construction arguments -- one
+// class, three enemy types, per the project's founding "data + which
+// behavior gets plugged in, not a new subclass" philosophy.
 class Chaser : public AIBehavior {
 public:
-    explicit Chaser(int sightRadius = kDefaultSightRadius);
+    explicit Chaser(MonsterAttackProfile attackProfile, int sightRadius = kDefaultSightRadius);
 
-    std::optional<Position> decideMove(const Actor& self, const Map& map,
-                                         Position targetPosition) override;
+    AIDecision decideAction(const Actor& self, const Map& map, Actor& player,
+                             const std::vector<Actor*>& allies) override;
 
 private:
     static constexpr int kDefaultSightRadius = 8;
+    MonsterAttackProfile attackProfile_;
     int sightRadius_;
 };
 

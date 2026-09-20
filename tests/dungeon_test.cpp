@@ -59,12 +59,21 @@ int countTotalFloorTiles(const Map& map) {
     return count;
 }
 
-void printDungeon(const Map& map, Position playerStart, Position monsterStart) {
+void printDungeon(const Map& map, Position playerStart, const std::vector<Position>& otherRoomCenters) {
+    auto isOtherRoomCenter = [&](Position p) {
+        for (const Position& c : otherRoomCenters) {
+            if (c.x == p.x && c.y == p.y) {
+                return true;
+            }
+        }
+        return false;
+    };
+
     for (int y = 0; y < map.height(); ++y) {
         for (int x = 0; x < map.width(); ++x) {
             if (x == playerStart.x && y == playerStart.y) {
                 std::cout << '@';
-            } else if (x == monsterStart.x && y == monsterStart.y) {
+            } else if (isOtherRoomCenter(Position{x, y})) {
                 std::cout << 'g';
             } else {
                 std::cout << (map.tileAt(x, y).type == TileType::Wall ? '#' : '.');
@@ -100,8 +109,9 @@ int main() {
               << "\n\n";
 
     const GeneratedDungeon example = generateDungeon(params, /*seed=*/42);
-    std::cout << "Example layout (seed 42), @ = player start, g = monster start:\n\n";
-    printDungeon(example.map, example.playerStart, example.monsterStart);
+    std::cout << "Example layout (seed 42), @ = player start, g = other room centers "
+                 "(where Prompt 10's monster roster gets placed):\n\n";
+    printDungeon(example.map, example.playerStart, example.otherRoomCenters);
 
     return allConnected ? 0 : 1;
 }

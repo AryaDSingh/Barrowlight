@@ -110,7 +110,9 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     GeneratedDungeon result;
     result.map = std::move(map);
     result.playerStart = rooms.front().center();
-    result.monsterStart = rooms.back().center();
+    for (std::size_t i = 1; i < rooms.size(); ++i) {
+        result.otherRoomCenters.push_back(rooms[i].center());
+    }
     result.roomCount = static_cast<int>(rooms.size());
     return result;
 }

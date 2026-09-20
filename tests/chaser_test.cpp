@@ -1,19 +1,30 @@
-// Standalone sanity check for Chaser specifically -- findPath and
-// computeFieldOfView each have their own tests (pathfinder_test,
-// fov_test), but Chaser's own logic (visibility gate -> pathfind ->
-// stop-when-adjacent) combining them hasn't been tested in isolation
-// until now, and it's the actual named deliverable of this prompt. No
-// SFML, no window -- same pattern as the other tests.
+// Standalone sanity check for Chaser. No SFML, no window -- same pattern
+// as the other tests. Updated for Prompt 10's interface (decideAction
+// instead of decideMove) -- and the expected behavior genuinely changed,
+// not just the syntax: Chaser now Attacks once adjacent instead of just
+// stopping (Prompt 7's "adjacent currently just means stay put"
+// limitation is exactly what this prompt resolves).
 
 #include <iostream>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "ai/Chaser.hpp"
 #include "entities/Monster.hpp"
+#include "entities/Player.hpp"
 #include "world/Map.hpp"
 
 using namespace engine;
+
+namespace {
+bool g_allOk = true;
+
+void check(bool condition, const std::string& description) {
+    g_allOk &= condition;
+    std::cout << (condition ? "[ok] " : "[FAIL] ") << description << '\n';
+}
+} // namespace
 
 int main() {
     const std::vector<std::string> rows = {
@@ -24,68 +35,55 @@ int main() {
         "#.........#",
         "###########",
     };
-    Position unused; // parseAsciiMap needs the '@' above; the resulting
-                      // position isn't otherwise used in this test.
+    Position unused; // parseAsciiMap needs the '@'; not otherwise used here
     Map map = parseAsciiMap(rows, unused);
 
-    bool allOk = true;
+    MonsterAttackProfile profile;
+    profile.power = 5;
 
-    // Case 1: target well outside sight radius -- expect no move at all.
+    // Case 1: target well outside sight radius -- expect Wait.
     {
-        Monster goblin("Goblin", 'g', Position{1, 1}, Stats{}, std::make_unique<Chaser>(5));
-        const Position farTarget{9, 3}; // distance ~8.25, beyond radius 5
-        const std::optional<Position> move = goblin.ai()->decideMove(goblin, map, farTarget);
-        const bool ok = !move.has_value();
-        allOk &= ok;
-        std::cout << (ok ? "[ok] " : "[FAIL] ")
-                  << "target beyond sight radius -> stays put\n";
+        Monster goblin("Goblin", 'g', Position{1, 1}, Stats{},
+                        std::make_unique<Chaser>(profile, /*sightRadius=*/5));
+        Player farTarget(Position{9, 3}, Stats{}); // distance ~8.25, beyond radius 5
+        const AIDecision decision = goblin.ai()->decideAction(goblin, map, farTarget, {});
+        check(decision.type == AIActionType::Wait, "target beyond sight radius -> Wait");
     }
 
     // Case 2: target in a straight line, within sight -- goblin should
-    // step toward it one tile per call, then stop once adjacent rather
-    // than stepping onto the target's own tile (no attack action exists
-    // yet -- see ARCHITECTURE_DECISIONS.md).
+    // step toward it one tile per call, then Attack once adjacent rather
+    // than trying to move onto the target's own tile.
     {
-        Monster goblin("Goblin", 'g', Position{1, 1}, Stats{}, std::make_unique<Chaser>(5));
-        const Position target{5, 1};
-        // Hand-computed expected path: (1,1)->(2,1)->(3,1)->(4,1), then
-        // stop (adjacent to (5,1), one tile away).
+        Monster goblin("Goblin", 'g', Position{1, 1}, Stats{},
+                        std::make_unique<Chaser>(profile, /*sightRadius=*/5));
+        Player target(Position{5, 1}, Stats{});
         const std::vector<Position> expectedSteps = {{2, 1}, {3, 1}, {4, 1}};
 
-        std::cout << "\nChasing target (" << target.x << ',' << target.y << ") from ("
-                  << goblin.position().x << ',' << goblin.position().y << "):\n";
+        std::cout << "\nChasing target (" << target.position().x << ',' << target.position().y
+                   << ") from (" << goblin.position().x << ',' << goblin.position().y << "):\n";
 
         for (std::size_t i = 0; i < expectedSteps.size(); ++i) {
-            const std::optional<Position> move = goblin.ai()->decideMove(goblin, map, target);
-            const bool moved = move.has_value();
-            const bool matchesExpected =
-                moved && move->x == expectedSteps[i].x && move->y == expectedSteps[i].y;
-            allOk &= matchesExpected;
-
-            std::cout << "  step " << i << ": "
-                      << (moved ? "moved to (" + std::to_string(move->x) + "," +
-                                       std::to_string(move->y) + ")"
-                                : "stayed put")
-                      << (matchesExpected ? " [ok]" : " [FAIL]") << '\n';
-
+            const AIDecision decision = goblin.ai()->decideAction(goblin, map, target, {});
+            const bool moved = decision.type == AIActionType::Move;
+            const bool matchesExpected = moved &&
+                                          decision.movePosition.x == expectedSteps[i].x &&
+                                          decision.movePosition.y == expectedSteps[i].y;
+            check(matchesExpected,
+                  "step " + std::to_string(i) + " moves toward target as expected");
             if (moved) {
-                goblin.setPosition(*move);
+                goblin.setPosition(decision.movePosition);
             }
         }
 
-        // One more call: should now be adjacent and stay put rather than
-        // stepping onto the target's tile.
-        const std::optional<Position> finalMove = goblin.ai()->decideMove(goblin, map, target);
-        const bool staysPutWhenAdjacent = !finalMove.has_value();
-        allOk &= staysPutWhenAdjacent;
-        std::cout << "  final (adjacent): "
-                  << (staysPutWhenAdjacent ? "[ok] stayed put, did not step onto target's tile"
-                                            : "[FAIL] tried to move onto the target's tile")
-                  << '\n';
+        const AIDecision finalDecision = goblin.ai()->decideAction(goblin, map, target, {});
+        const bool attacksWhenAdjacent = finalDecision.type == AIActionType::Attack &&
+                                          finalDecision.target == &target &&
+                                          finalDecision.attackPower == 5;
+        check(attacksWhenAdjacent,
+              "attacks (doesn't move onto the target's tile) once adjacent, using the profile's power");
     }
 
-    std::cout << "\n" << (allOk ? "All Chaser checks passed." : "Some Chaser checks FAILED.")
-              << '\n';
-
-    return allOk ? 0 : 1;
+    std::cout << "\n" << (g_allOk ? "All Chaser checks passed." : "Some Chaser checks FAILED.")
+               << '\n';
+    return g_allOk ? 0 : 1;
 }
