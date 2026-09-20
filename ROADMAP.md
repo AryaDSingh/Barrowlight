@@ -107,11 +107,33 @@ test room's size (38x20 vs 20x10) but still fits the current window
 without scrolling -- camera/viewport is flagged as the next real gap.
 See `ARCHITECTURE_DECISIONS.md` → "Dungeon generation."
 
-## ⬜ Prompt 9 — One playable class + talents
+## ⏳ Prompt 9 — One playable class + talents
 Design + implement one playable class, 6–8 talents across 2 talent trees,
 with real trade-offs (cooldown vs damage, AoE vs single-target, risk vs
 reward) rather than flat power increases. Talent/TalentSet system first,
-then this class's talents as data.
+then this class's talents as data. **Result:** the **Spellblade** -- 8
+talents across Blade (melee, must be adjacent, cheap/efficient) and Flame
+(ranged/AoE, mana-hungry) trees. `TalentSet` fully replaced its Prompt-3
+stub. `AIBehavior`, `Talent`, `TalentSet`, and `TalentEffects` each stay
+focused on one job (interface / data / cooldown bookkeeping / damage
+application); Application resolves targeting since it's the one thing
+that knows about every Actor in the level. One deliberate scope
+extension, flagged explicitly: added minimal flat-damage application (not
+a general combat formula system) so talents are actually testable in the
+live game, not just inert data -- goblin now has real hp (25) and can
+die. All 8 talents are instant-effect only; no ongoing buffs/debuffs
+(`StatusEffects` stays a stub, still Prompt 10's job). Talent data is a
+C++ table, not an external file -- same file-I/O-risk reasoning as the
+ASCII test maps. Verified with real rigor: `talent_test` hand-computed
+damage/cooldown/conditional-multiplier values, all matched exactly. Full
+live end-to-end test via `xdotool`: computed a genuine A*-pathfound route
+to the goblin for the fixed seed, walked it in the real window, and cast
+three different talents in sequence -- damage numbers (6, then 16, then a
+correctly-triggered 3x execute for 30) matched the talent data exactly,
+followed by a correct death message and confirmed post-death behavior
+(dead target correctly unattackable by both melee and ranged talents,
+game stable afterward). See `ARCHITECTURE_DECISIONS.md` → "Talent
+system."
 
 ## ⬜ Prompt 10 — Enemy roster + status effects
 5–8 enemy types with genuinely distinct AI (ranged kiter, melee rusher,

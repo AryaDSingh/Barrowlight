@@ -47,7 +47,10 @@ set(ENTITY_HEADERS
     src/entities/Stats.hpp
     src/entities/AIBehavior.hpp
     src/entities/Inventory.hpp
+    src/entities/Talent.hpp
     src/entities/TalentSet.hpp
+    src/entities/TalentEffects.hpp
+    src/entities/SpellbladeTalents.hpp
     src/entities/StatusEffects.hpp
     src/entities/Actor.hpp
     src/entities/Player.hpp
@@ -90,6 +93,9 @@ add_executable(roguelike
     src/world/Pathfinder.cpp
     src/world/DungeonGenerator.cpp
     src/ai/Chaser.cpp
+    src/entities/TalentSet.cpp
+    src/entities/TalentEffects.cpp
+    src/entities/SpellbladeTalents.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
     ${CORE_HEADERS}
@@ -112,6 +118,8 @@ target_link_libraries(roguelike PRIVATE SFML::Graphics)
 
 add_executable(entity_smoke_test
     tests/entity_smoke_test.cpp
+    src/entities/TalentSet.cpp
+    src/entities/SpellbladeTalents.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
     ${AI_HEADERS}
@@ -213,5 +221,24 @@ add_executable(dungeon_test
 
 target_include_directories(dungeon_test PRIVATE src)
 target_compile_features(dungeon_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# Talent test
+# ---------------------------------------------------------------------------
+# Also console-only, no SFML -- tests Talent/TalentSet/applyTalentDamage
+# directly against hand-computed expected values.
+
+add_executable(talent_test
+    tests/talent_test.cpp
+    src/entities/TalentSet.cpp
+    src/entities/TalentEffects.cpp
+    src/entities/SpellbladeTalents.cpp
+    ${COMMON_HEADERS}
+    ${ENTITY_HEADERS}
+    ${AI_HEADERS}
+)
+
+target_include_directories(talent_test PRIVATE src)
+target_compile_features(talent_test PRIVATE cxx_std_17)
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT roguelike)

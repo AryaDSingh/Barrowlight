@@ -17,12 +17,16 @@ roguelike/
 │   ├── main.cpp         # entry point -- deliberately trivial
 │   ├── core/
 │   │   ├── Position.hpp             # shared grid-coordinate type
-│   │   ├── Application.hpp/.cpp     # owns window, map, player, goblin, scheduler, FOV
+│   │   ├── Application.hpp/.cpp     # owns window, map, actors, scheduler, FOV, talents
 │   │   └── TurnScheduler.hpp/.cpp   # energy/speed-based turn order
 │   ├── entities/         # Entity/Actor/Item/Feature hierarchy + components
-│   │   (Entity, Actor, Player, Monster, Item, Feature, Stats, Inventory,
-│   │    TalentSet, StatusEffects -- header-only; AIBehavior is now a
-│   │    true abstract interface, see ai/ for implementations)
+│   │   ├── (Entity, Actor, Player, Monster, Item, Feature, Stats,
+│   │   │    Inventory, StatusEffects -- header-only)
+│   │   ├── AIBehavior.hpp           # abstract interface; see ai/ for implementations
+│   │   ├── Talent.hpp                # a talent's data (cost, cooldown, effect shape)
+│   │   ├── TalentSet.hpp/.cpp        # known talents + per-talent cooldown tracking
+│   │   ├── TalentEffects.hpp/.cpp    # generic damage application
+│   │   └── SpellbladeTalents.hpp/.cpp  # the Spellblade's 8-talent kit, as data
 │   ├── ai/
 │   │   ├── NullAIBehavior.hpp   # never moves -- a real behavior, and a test placeholder
 │   │   └── Chaser.hpp/.cpp      # A*-pathfinds toward a target within its own sight
@@ -39,14 +43,15 @@ roguelike/
 │   ├── fov_test.cpp                 # prints an ASCII FOV grid, no SFML linked
 │   ├── pathfinder_test.cpp          # prints an ASCII path around a forced detour
 │   ├── chaser_test.cpp              # traces Chaser's own decisions turn by turn
-│   └── dungeon_test.cpp             # verifies connectivity across 10 seeds + prints a layout
+│   ├── dungeon_test.cpp             # verifies connectivity across 10 seeds + prints a layout
+│   └── talent_test.cpp              # hand-computed damage/cooldown/conditional values
 ├── assets/              # textures, fonts (still empty -- see Prompt 5 notes)
-└── data/                # data-driven definitions: monsters, talents, etc. (empty for now)
+└── data/                # data-driven content: monster definitions, etc. (empty for now)
 ```
 
-There are seven build targets: `roguelike` (the real game, links SFML),
-and six standalone console programs with zero SFML dependency. Run them
-after building:
+There are eight build targets: `roguelike` (the real game, links SFML),
+and seven standalone console programs with zero SFML dependency. Run
+them after building:
 
 ```bash
 ./build/bin/entity_smoke_test
@@ -55,10 +60,18 @@ after building:
 ./build/bin/pathfinder_test
 ./build/bin/chaser_test
 ./build/bin/dungeon_test
+./build/bin/talent_test
 ./build/bin/roguelike
 ```
 On Windows with the Visual Studio generator, substitute
 `.\build\bin\Debug\<name>.exe`.
+
+**Controls:** arrow keys / WASD to move, **R** to regenerate the level,
+**1-8** to use talents (1-4 are the Blade tree: melee, must be adjacent;
+5-8 are the Flame tree: ranged/AoE/utility). There's no text rendering
+yet, so talent feedback (damage dealt, cooldowns, why a cast failed)
+prints to the console rather than the game window -- watch the terminal
+you launched it from, not just the window.
 
 As of Prompt 5, `roguelike` opens a window with a player tile you can
 move using arrow keys or WASD, collision-checked against the map and
@@ -70,15 +83,17 @@ dimmed; tiles never seen render as nothing. Sight radius is 8 tiles.
 
 As of Prompt 7, a red goblin monster (A*-pathfinding `Chaser` AI) shares
 the level. It only shows up once you can see it, and once it can see
-you, paths toward you and stops when adjacent (no attack exists yet).
+you, paths toward you and stops when adjacent.
 
-As of Prompt 8, the level is a procedurally generated dungeon (random
-rooms connected by corridors) instead of a fixed hand-made room --
-different every time you press **R**, which regenerates the whole level
-(new map, new player/goblin start positions, fresh FOV) for quickly
-eyeballing different layouts. The very first layout on launch is always
-the same (a fixed seed), so repeated test runs start identically; R
-after that gives you a genuinely new random one each time.
+As of Prompt 8, the level is a procedurally generated dungeon instead of
+a fixed room -- different every time you press R.
+
+As of Prompt 9, the player is a **Spellblade** with a full 8-talent kit
+(see `ARCHITECTURE_DECISIONS.md` → "Talent system" for the design). You
+can now actually fight the goblin: hp/mana bars in the top-left corner,
+a floating hp bar over the goblin when it's visible, and it can die --
+at which point it stops being drawn, stops taking turns, and can no
+longer be targeted. It still can't attack back (Prompt 10).
 
 ## Building
 

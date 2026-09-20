@@ -21,10 +21,11 @@ namespace engine {
 class Actor : public Entity {
 public:
     Actor(std::string name, char glyph, Position position, Stats stats,
-          std::unique_ptr<AIBehavior> ai = nullptr)
+          std::unique_ptr<AIBehavior> ai = nullptr, TalentSet talents = TalentSet{})
         : Entity(std::move(name), glyph, position),
           stats_(stats),
-          ai_(std::move(ai)) {}
+          ai_(std::move(ai)),
+          talents_(std::move(talents)) {}
 
     Stats& stats() { return stats_; }
     const Stats& stats() const { return stats_; }

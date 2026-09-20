@@ -407,25 +407,117 @@ subfolders speculatively ahead of the system that needs them.
   producing genuinely different seeds/layouts across two consecutive
   presses -- not just trusting that the code path compiles.
 
+## Talent system (decided Prompt 9)
+
+- **Class concept: Spellblade**, two trees that differ in *delivery
+  mechanism*, not just numbers -- Blade (melee, must be adjacent,
+  positional risk, cheap/efficient) and Flame (ranged/AoE, mana-hungry,
+  safer positioning but costlier). Chosen specifically because it doesn't
+  need any control/crowd-control mechanics (which would require
+  `StatusEffects`, still a stub) to feel distinct.
+- **All 8 talents are instant effects only -- no ongoing buffs/debuffs.**
+  `StatusEffects` staying a stub is a Prompt 3 decision that still holds;
+  building duration-tracking now to serve one class's kit would be
+  exactly the premature infrastructure this project has repeatedly
+  avoided. Revisit when Prompt 10 actually designs `StatusEffect` types.
+- **Talents carry their own flat damage numbers; there's still no general
+  combat formula system.** `Stats` staying mathless (no methods, just
+  data) was a deliberate Prompt 3 decision -- this doesn't walk it back.
+  A talent's `power` field is data the talent itself declares, not a
+  formula involving strength/defense/resistances. That kind of general
+  damage-resolution system is legitimately Prompt 10's territory, once
+  there's a real enemy roster to justify a consistent formula across many
+  attackers.
+- **Talent.hpp / TalentSet.hpp / TalentEffects.hpp / SpellbladeTalents.hpp
+  each stay focused on one job:** `Talent` is pure data (no behavior),
+  `TalentSet` is per-actor cooldown bookkeeping (no effect logic),
+  `TalentEffects::applyTalentDamage` is the one place damage actually
+  gets applied (doesn't touch cooldowns/costs/targeting), and
+  `SpellbladeTalents` is just the data table. Mirrors the same
+  separation-of-concerns pattern used throughout (`Map`/`FieldOfView`/
+  `Pathfinder` each doing one thing).
+- **Application resolves talent targeting (who's affected), not
+  Talent/TalentEffects.** Application is the one thing that currently
+  knows about every Actor in the level, so "who's in this AoE" has to be
+  answered there. For `AreaAroundTarget`/`AreaAroundSelf`, the mechanism
+  is genuinely area-based (not special-cased for exactly one monster) --
+  it just can't currently *add* anyone beyond the anchor target, since
+  there's only one monster to find. This will visibly matter once Prompt
+  10 adds more enemies; it's not faked to look right today.
+- **Deliberate scope extension, flagged explicitly:** added a minimal
+  damage-application mechanism (`applyTalentDamage`, `Stats::hp -=
+  damage`) so talents are genuinely testable in the live game rather than
+  inert data nobody can observe working. The goblin's hp was bumped from
+  the Prompt-7 default (10) to 25 specifically so a fight has some real
+  duration/decisions rather than dying to any single talent instantly.
+  Explicitly **not** built: enemy attacks (goblin still can't hurt the
+  player -- Chaser only moves), armor/resistances, damage types, critical
+  hits. Two-way combat is Prompt 10's job.
+- **Talent data is a C++ table, not an external file** (same reasoning as
+  the ASCII test maps in `Map.cpp`): a JSON/data-file pipeline would need
+  a new parsing dependency and introduces the same file-path-resolution
+  risk already hit with Windows earlier in this project, for a prompt
+  whose actual focus is talent design and trade-offs, not a content
+  pipeline. "Data-driven" here means logic (`TalentEffects`,
+  `TalentSet`) is fully separated from data (`SpellbladeTalents`' table)
+  -- the table is trivially swappable for a file loader later without
+  touching any resolution logic, but no such loader exists yet.
+- **Blink's direction comes from the player's last move**
+  (`lastMoveDirection_`, a new `Application` member), not a separate
+  aiming/targeting-cursor system -- avoids building real UI/input
+  machinery for one talent's sake. It stops at the last walkable tile
+  before an obstacle rather than requiring the full distance to be clear.
+- **No text rendering exists, so talent feedback is console output**
+  (what got cast, damage dealt, why a cast failed, cooldown/mana
+  messages) plus simple HP/mana bars using the same rectangle-drawing
+  already in place for tiles -- not a UI system. Consistent with how
+  dungeon generation already reports to the console.
+- **`std::cout << std::unitbuf;`** added at the top of `Application`'s
+  constructor -- auto-flushes every `cout` insertion from then on. Fixes
+  the same stdout-buffering gap hit back in Prompt 5 (output invisible if
+  the process is interrupted rather than exiting normally) for all
+  current and future diagnostic lines at once, rather than remembering
+  `std::endl` on each one individually.
+- **Verified with real rigor:** `talent_test` hand-computes exact
+  expected damage (including the Execution conditional multiplier) and
+  cooldown-tick sequences against the actual code, not just plausible
+  numbers. The live integration test went further than any prior
+  prompt's: rather than hoping simulated keypresses would land near a
+  monster, `findPath` (already verified in Prompt 7) was reused to
+  compute a genuine walkable route from the fixed seed's player start to
+  the goblin, that exact route was played back via `xdotool` against the
+  real running window, and three different talents were cast in sequence
+  -- the resulting damage numbers (6, then 16, then a correctly-triggered
+  30 from Execution's 3x multiplier at 12% target hp) matched
+  `SpellbladeTalents`' data exactly, followed by correct death handling
+  and confirmed stability afterward (dead target correctly unattackable,
+  no crash).
+
 ## Open items / things to revisit later
 
 - No font or sprite/tile-atlas rendering yet -- flat colored rectangles
-  stand in until real art (or a chosen font) exists.
+  and simple HUD bars stand in until real art (or a chosen font) exists.
+  Now genuinely limiting (talent names/tooltips/cooldowns are
+  console-only, not shown in the game window) rather than just cosmetic.
 - No camera/viewport/scrolling. Not urgent yet (the generated dungeon
   still fits the window), but this is now the clear next sharp edge, not
   a vague someday -- a real dungeon will exceed one screen eventually.
-- No data-driven *content* -- monster and talent definitions don't exist
-  as data yet (level *geometry* is procedurally generated as of Prompt 8,
-  which is a different thing). Revisit once Prompt 9/10 need to define
-  actual talents and monster stat blocks.
+- Talent content is now real data (`SpellbladeTalents`'s table), but
+  still a C++ table, not loaded from `data/` -- revisit once real content
+  needs authoring outside code (same reasoning as the ASCII test maps).
+  Monster stat blocks are still not data at all -- Prompt 10.
 - Sight radius is a hardcoded constant, not a per-actor stat -- revisit
   once anything (talents, equipment) might plausibly modify it.
-- No `Action` type -- `AIBehavior` only decides movement. Revisit once
-  combat exists and there's a second verb to decide between (Prompt 10+).
+- No general combat formula system (armor, resistances, damage types) --
+  talents carry their own flat damage as data. `AIBehavior` still only
+  decides movement; enemies still can't attack. Revisit once Prompt 10
+  builds real two-way combat.
+- No duration-based buffs/debuffs -- all 8 Spellblade talents are instant
+  effects. `StatusEffects` is still a stub; Prompt 10's job.
 - `Application` owns `map_`/`player_`/`goblin_`/`scheduler_`/
-  `exploredMap_` directly. Flagged repeatedly as approaching the point
-  where a dedicated "game state" concept earns its keep -- still holding
-  as of Prompt 8, but a second monster (Prompt 10) is a reasonable line
-  to finally do it.
+  `exploredMap_` directly, and now resolves talent targeting too.
+  Flagged repeatedly as approaching the point where a dedicated "game
+  state" concept earns its keep -- still holding as of Prompt 9, but a
+  second monster (Prompt 10) is a reasonable line to finally do it.
 - `SFML_BUILD_AUDIO` / `SFML_BUILD_NETWORK` are off -- flip back on when
   sound is wanted.
