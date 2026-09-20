@@ -9,6 +9,7 @@
 
 #include "core/TurnScheduler.hpp"
 #include "entities/Monster.hpp"
+#include "ai/NullAIBehavior.hpp"
 
 int main() {
     using namespace engine;
@@ -16,17 +17,17 @@ int main() {
     Stats slowStats;
     slowStats.speed = 50;
     Monster slowpoke("Slowpoke", 's', Position{0, 0}, slowStats,
-                      std::make_unique<AIBehavior>());
+                      std::make_unique<NullAIBehavior>());
 
     Stats normalStats;
     normalStats.speed = 100;
     Monster normal("Normal", 'n', Position{1, 0}, normalStats,
-                    std::make_unique<AIBehavior>());
+                    std::make_unique<NullAIBehavior>());
 
     Stats fastStats;
     fastStats.speed = 200;
     Monster zippy("Zippy", 'z', Position{2, 0}, fastStats,
-                   std::make_unique<AIBehavior>());
+                   std::make_unique<NullAIBehavior>());
 
     TurnScheduler scheduler;
     scheduler.add(slowpoke);

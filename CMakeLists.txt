@@ -64,6 +64,13 @@ set(WORLD_HEADERS
     src/world/Map.hpp
     src/world/FieldOfView.hpp
     src/world/ExploredMap.hpp
+    src/world/Pathfinder.hpp
+    src/world/DungeonGenerator.hpp
+)
+
+set(AI_HEADERS
+    src/ai/NullAIBehavior.hpp
+    src/ai/Chaser.hpp
 )
 
 # ---------------------------------------------------------------------------
@@ -80,10 +87,14 @@ add_executable(roguelike
     src/world/Map.cpp
     src/world/FieldOfView.cpp
     src/world/ExploredMap.cpp
+    src/world/Pathfinder.cpp
+    src/world/DungeonGenerator.cpp
+    src/ai/Chaser.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
     ${CORE_HEADERS}
     ${WORLD_HEADERS}
+    ${AI_HEADERS}
 )
 
 target_include_directories(roguelike PRIVATE src)
@@ -103,6 +114,7 @@ add_executable(entity_smoke_test
     tests/entity_smoke_test.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
+    ${AI_HEADERS}
 )
 
 target_include_directories(entity_smoke_test PRIVATE src)
@@ -121,6 +133,7 @@ add_executable(turn_scheduler_test
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
     ${CORE_HEADERS}
+    ${AI_HEADERS}
 )
 
 target_include_directories(turn_scheduler_test PRIVATE src)
@@ -142,5 +155,63 @@ add_executable(fov_test
 
 target_include_directories(fov_test PRIVATE src)
 target_compile_features(fov_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# Pathfinder test
+# ---------------------------------------------------------------------------
+# Also console-only, no SFML -- A* only touches Map/Tile, never rendering.
+# Same enforcement pattern as the other test targets above.
+
+add_executable(pathfinder_test
+    tests/pathfinder_test.cpp
+    src/world/Map.cpp
+    src/world/Pathfinder.cpp
+    ${COMMON_HEADERS}
+    ${WORLD_HEADERS}
+)
+
+target_include_directories(pathfinder_test PRIVATE src)
+target_compile_features(pathfinder_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# Chaser test
+# ---------------------------------------------------------------------------
+# Also console-only, no SFML -- tests Chaser's own visibility-gate/
+# pathfind/stop-when-adjacent logic directly, on top of its two
+# dependencies (computeFieldOfView, findPath) which each have their own
+# test above.
+
+add_executable(chaser_test
+    tests/chaser_test.cpp
+    src/world/Map.cpp
+    src/world/FieldOfView.cpp
+    src/world/Pathfinder.cpp
+    src/ai/Chaser.cpp
+    ${COMMON_HEADERS}
+    ${ENTITY_HEADERS}
+    ${WORLD_HEADERS}
+    ${AI_HEADERS}
+)
+
+target_include_directories(chaser_test PRIVATE src)
+target_compile_features(chaser_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# Dungeon generator test
+# ---------------------------------------------------------------------------
+# Also console-only, no SFML -- verifies connectivity (the one property
+# that actually matters for "a connected, playable Map") across multiple
+# seeds via flood-fill, plus prints one example layout.
+
+add_executable(dungeon_test
+    tests/dungeon_test.cpp
+    src/world/Map.cpp
+    src/world/DungeonGenerator.cpp
+    ${COMMON_HEADERS}
+    ${WORLD_HEADERS}
+)
+
+target_include_directories(dungeon_test PRIVATE src)
+target_compile_features(dungeon_test PRIVATE cxx_std_17)
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT roguelike)

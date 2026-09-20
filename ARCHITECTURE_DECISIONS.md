@@ -305,24 +305,127 @@ subfolders speculatively ahead of the system that needs them.
   per-actor stat. Revisit once talents/equipment might plausibly modify
   sight range (Prompt 9+).
 
+## Pathfinding and Chaser AI (decided Prompt 7)
+
+- **`AIBehavior::decideMove()` returns `std::optional<Position>`, not a
+  full `Action` type.** There's exactly one verb that exists in this game
+  right now (move) -- a polymorphic Action/Command hierarchy for a single
+  implementation would be the premature abstraction the "keep me scoped"
+  instruction warns against. Revisit once combat exists (Prompt 10+) and
+  there's an actual second verb (attack) to decide between.
+- **`AIBehavior` is now a true abstract class** (`decideMove()` pure
+  virtual) -- the exact moment flagged in Prompt 3. Broke both earlier
+  tests that did `std::make_unique<AIBehavior>()`; fixed by introducing
+  `NullAIBehavior` (a trivial concrete "never moves" class) rather than
+  coupling those entity/scheduler tests to `Chaser` just to satisfy the
+  abstract base. `NullAIBehavior` is also a legitimate "dormant"/"guard"
+  behavior in its own right, not purely a test artifact.
+- **`AIBehavior.hpp` only forward-declares `Actor` and `Map`**, doesn't
+  `#include` them -- `Actor.hpp` already includes `AIBehavior.hpp` to
+  declare its `ai_` member, so including `Actor.hpp` back would be
+  circular. Reference parameters in a pure-virtual declaration don't need
+  the full type, only the `.cpp` files that actually call methods on them
+  do.
+- **`findPath()` is 4-directional**, matching how player movement already
+  works (no diagonals wired anywhere). A monster that could cut corners
+  the player can't would be an inconsistent rule the player has no way to
+  see coming.
+- **`Chaser` reuses `computeFieldOfView()`** to decide whether it can see
+  its target, rather than a raw distance check -- a direct payoff of
+  Prompt 6 deliberately not hard-coding FOV to "the player." A `Chaser`
+  now can't "see" through walls just because a target is within radius
+  distance.
+- **The `targetPosition` parameter isn't named "playerPosition"** even
+  though it's always the player for now -- nothing in the interface
+  should hard-code that, so monster-vs-monster targeting or guarding a
+  fixed point (later) aren't fighting the interface's naming.
+- **Monster rendering checks `Visibility::Visible` specifically, not
+  `Remembered`.** Unlike static terrain, a monster that has moved away
+  from a tile the player once saw shouldn't still appear to be standing
+  there -- "remembered" makes sense for a wall, not for something that
+  moves on its own.
+- **Scope extension beyond the bare prompt text:** actually spawned a
+  goblin in `Application` rather than stopping at standalone tests.
+  Prompt 5 had explicitly left this exact hook ("once monsters exist,
+  this is the spot that needs to branch"), and watching a monster
+  actually chase across the window is a much stronger integration check
+  than trusting a console-printed path alone.
+- **Verified with more rigor than usual**, given three interacting
+  non-trivial algorithms landed in one prompt: a standalone
+  `pathfinder_test` (hand-traced a forced 21-tile detour around a wall --
+  matched exactly) and a standalone `chaser_test` (hand-computed the
+  exact step-by-step chase sequence including the stop-at-adjacency case
+  -- matched exactly), on top of the existing `fov_test` that `Chaser`
+  now depends on.
+- **`Application` is getting close to the "game state" extraction point**
+  flagged as a future refactor back in Prompt 5 -- now owns `map_`,
+  `player_`, `goblin_`, `scheduler_`, `exploredMap_`. Still deliberately
+  not done: this is one more monster, not yet enough state to force the
+  issue. Likely due by Prompt 8 or once a second monster exists (Prompt
+  10).
+
+## Dungeon generation (decided Prompt 8)
+
+- **Random rooms + corridors, connected in placement order**, not BSP.
+  Each new room connects to the *previous* room by an L-shaped corridor
+  -- this guarantees the whole dungeon is one connected component by
+  construction, the same way a linked list is, without needing a
+  separate graph/connectivity pass afterward. BSP would guarantee this
+  too, but at more implementation/explanation complexity for no real
+  gain here.
+- **Deterministic given a seed** (`std::mt19937`, explicit seed
+  parameter). Same seed always produces the same layout. This is what
+  makes `dungeon_test`'s checks reproducible, and it's also literally how
+  the in-game regenerate key works: a new seed, not a different
+  algorithm or any special-cased "randomize" path.
+- **`parseAsciiMap` was deliberately kept, not replaced.** It's no longer
+  used for the *live* game's map, but `fov_test`, `pathfinder_test`, and
+  `chaser_test` all still build deterministic, hand-crafted test maps
+  with it -- procedural generation would undermine those tests' whole
+  point (verifying known geometry by hand). Two tools for two different
+  jobs: `parseAsciiMap` for "I need this exact known layout to check
+  against," `generateDungeon` for "give me a real playable level."
+- **The dungeon stays within the current window's size (38×20 tiles,
+  1216×640px in a 1280×720 window) rather than being genuinely
+  screen-exceeding.** A "real" dungeon arguably should be bigger for
+  actual exploration gameplay, but adding camera/viewport scrolling in
+  the same prompt as dungeon generation would be answering a question
+  this prompt didn't ask. Flagged repeatedly as an open item since Prompt
+  5 -- this is now clearly the next sharp edge, not a vague someday.
+- **Monster spawns in the last room placed, player in the first.** A
+  simple heuristic (not true graph-distance-based placement) that
+  reliably keeps them apart given how rooms chain together. Revisit if
+  it ever produces awkwardly-close spawns, or once multiple monsters
+  (Prompt 10) need smarter placement.
+- **Verified with real rigor, not just one eyeballed layout:**
+  `dungeon_test` flood-fills from player start across 10 different seeds
+  and confirms 100% floor-tile reachability in every one -- the actual
+  property "a connected, playable Map" requires, checked programmatically
+  rather than trusted because the carving logic looks simple. The
+  regenerate key itself was verified by installing `xdotool` and sending
+  real key events to the live SFML window under a virtual display,
+  producing genuinely different seeds/layouts across two consecutive
+  presses -- not just trusting that the code path compiles.
+
 ## Open items / things to revisit later
 
 - No font or sprite/tile-atlas rendering yet -- flat colored rectangles
   stand in until real art (or a chosen font) exists.
-- Level data is still a source-literal ASCII array, not loaded from
-  `data/` -- revisit once real levels need authoring outside code.
-- No camera/viewport/scrolling -- the test map is small enough to fit
-  entirely on screen. Will matter once procedural levels (Prompt 8) are
-  bigger than one screen.
+- No camera/viewport/scrolling. Not urgent yet (the generated dungeon
+  still fits the window), but this is now the clear next sharp edge, not
+  a vague someday -- a real dungeon will exceed one screen eventually.
+- No data-driven *content* -- monster and talent definitions don't exist
+  as data yet (level *geometry* is procedurally generated as of Prompt 8,
+  which is a different thing). Revisit once Prompt 9/10 need to define
+  actual talents and monster stat blocks.
 - Sight radius is a hardcoded constant, not a per-actor stat -- revisit
   once anything (talents, equipment) might plausibly modify it.
-
-- `SFML_BUILD_AUDIO` / `SFML_BUILD_NETWORK` are off — flip back on when
+- No `Action` type -- `AIBehavior` only decides movement. Revisit once
+  combat exists and there's a second verb to decide between (Prompt 10+).
+- `Application` owns `map_`/`player_`/`goblin_`/`scheduler_`/
+  `exploredMap_` directly. Flagged repeatedly as approaching the point
+  where a dedicated "game state" concept earns its keep -- still holding
+  as of Prompt 8, but a second monster (Prompt 10) is a reasonable line
+  to finally do it.
+- `SFML_BUILD_AUDIO` / `SFML_BUILD_NETWORK` are off -- flip back on when
   sound is wanted.
-- No tile-rendering abstraction yet — `Application` currently just clears
-  and displays. Tile rendering is a future prompt.
-- `entities/`, `ai/`, `world/` folders intentionally don't exist yet.
-- The person's home PC lacked `winget`/App Installer for unclear reasons
-  (not a locked-down machine) — CMake was installed via portable ZIP
-  instead of an installer. Not a project decision, just an environment
-  note in case install friction resurfaces.

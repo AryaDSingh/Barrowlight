@@ -3,6 +3,7 @@
 #include <SFML/Graphics.hpp>
 
 #include "core/TurnScheduler.hpp"
+#include "entities/Monster.hpp"
 #include "entities/Player.hpp"
 #include "world/ExploredMap.hpp"
 #include "world/Map.hpp"
@@ -20,12 +21,14 @@ namespace engine {
 //
 // As of Prompt 5, Application also directly owns the Map, the Player, and
 // the TurnScheduler -- the simplest wiring that proves those three
-// systems (plus rendering and input) actually integrate. Expect this to
-// be pulled out into a dedicated "game state" concept once there's enough
+// systems (plus rendering and input) actually integrate. As of Prompt 6,
+// it also owns an ExploredMap, recomputed from the real FOV algorithm
+// after every player move. As of Prompt 7, it owns one Monster too, and
+// drives its AI turn after each player move. Expect all of this to be
+// pulled out into a dedicated "game state" concept once there's enough
 // state to justify separating "what's being simulated" from "the window"
-// (multiple monsters, level transitions -- probably around Prompt 7/8).
-// As of Prompt 6, it also owns an ExploredMap, recomputed from the real
-// FOV algorithm after every player move.
+// -- getting closer with each prompt, likely due by Prompt 8 or once a
+// second monster shows up in Prompt 10.
 class Application {
 public:
     Application();
@@ -48,16 +51,28 @@ private:
     // successful move.
     void updateFieldOfView();
 
+    // Generates a fresh dungeon from the given seed and resets map_,
+    // player_, goblin_, the scheduler, and exploredMap_ to match it.
+    // Called once at startup (with a fixed seed, so every launch starts
+    // identically) and again on the regenerate key (with a fresh random
+    // seed) -- this is the "quickly inspect generated layouts" feature
+    // Prompt 8 asked for.
+    void regenerateLevel(unsigned int seed);
+
+    // Runs AI turns until it's the player's turn again. With only one
+    // monster registered, this typically runs 0 or 1 times per player
+    // move, but is written as a loop so it naturally scales once more
+    // monsters exist (Prompt 10) without restructuring.
+    void processMonsterTurns();
+
     sf::RenderWindow window_;
     Map map_;
     Player player_;
+    Monster goblin_;
     TurnScheduler scheduler_;
     ExploredMap exploredMap_;
 
-    // Whose turn it currently is, per the scheduler. Only ever the player
-    // right now (nothing else is registered), but routed through the real
-    // scheduler API rather than skipped, so this doesn't need restructuring
-    // once monsters exist (Prompt 7+).
+    // Whose turn it currently is, per the scheduler.
     Actor* currentActor_ = nullptr;
 };
 

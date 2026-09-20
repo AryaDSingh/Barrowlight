@@ -3,9 +3,12 @@
 #include <cstdint>
 #include <iostream>
 #include <optional>
+#include <random>
 #include <string>
 #include <vector>
 
+#include "ai/Chaser.hpp"
+#include "world/DungeonGenerator.hpp"
 #include "world/FieldOfView.hpp"
 
 namespace engine {
@@ -17,23 +20,9 @@ constexpr char kWindowTitle[] = "Roguelike Engine - Dev Window";
 constexpr float kTileSize = 32.f;
 constexpr int kSightRadius = 8;
 
-// Hardcoded test level (see ARCHITECTURE_DECISIONS.md for why this is a
-// source literal, not a data/ file, at this stage). '#' = wall, '.' =
-// floor, '@' = player start (parsed as floor). All rows must be the same
-// length -- parseAsciiMap() throws immediately at startup if they aren't,
-// which is exactly the safety net a hand-typed grid like this needs.
-const std::vector<std::string> kTestMapRows = {
-    "####################",
-    "#..................#",
-    "#..................#",
-    "#..................#",
-    "#........@.........#",
-    "#......####........#",
-    "#......####........#",
-    "#..................#",
-    "#..................#",
-    "####################",
-};
+// Fixed so every fresh launch starts from the same layout (useful for
+// consistent debugging); press R in-game for a new random one.
+constexpr unsigned int kInitialSeed = 1337;
 
 // Scales an sf::Color's RGB down for "remembered but not currently
 // visible" tiles. A free function rather than duplicated hand-picked
@@ -49,21 +38,10 @@ sf::Color dim(sf::Color c) {
 
 Application::Application()
     : window_(sf::VideoMode({kWindowWidth, kWindowHeight}), kWindowTitle),
-      player_(Position{0, 0}, Stats{}) {
+      player_(Position{0, 0}, Stats{}),
+      goblin_("Goblin", 'g', Position{0, 0}, Stats{}, std::make_unique<Chaser>()) {
     window_.setFramerateLimit(60);
-
-    Position playerStart;
-    map_ = parseAsciiMap(kTestMapRows, playerStart);
-    player_.setPosition(playerStart);
-    exploredMap_ = ExploredMap(map_);
-
-    std::cout << "Loaded test map " << map_.width() << 'x' << map_.height()
-              << ", player start (" << playerStart.x << ',' << playerStart.y
-              << ")" << std::endl;
-
-    scheduler_.add(player_);
-    currentActor_ = &scheduler_.nextTurn();
-    updateFieldOfView();
+    regenerateLevel(kInitialSeed);
 }
 
 void Application::run() {
@@ -101,6 +79,9 @@ void Application::processEvents() {
                 case sf::Keyboard::Key::D:
                     tryMovePlayer(1, 0);
                     break;
+                case sf::Keyboard::Key::R:
+                    regenerateLevel(std::random_device{}());
+                    break;
                 default:
                     break;
             }
@@ -119,18 +100,64 @@ bool Application::tryMovePlayer(int dx, int dy) {
     player_.setPosition(target);
     updateFieldOfView();
 
-    // currentActor_ will always be &player_ right now (nothing else is
-    // registered with the scheduler). Once monsters exist (Prompt 7+),
-    // this is the spot that needs to branch: if nextTurn() returns
-    // something other than the player, consult its AIBehavior instead of
-    // waiting for another key press.
     currentActor_ = &scheduler_.nextTurn();
+    processMonsterTurns();
     return true;
+}
+
+void Application::processMonsterTurns() {
+    // Runs AI turns until it's the player's turn again. With only one
+    // monster registered this typically runs 0 or 1 times per player
+    // move, but is written as a loop so it scales once more monsters
+    // exist (Prompt 10) without restructuring.
+    while (currentActor_ != &player_) {
+        AIBehavior* ai = currentActor_->ai();
+        if (ai != nullptr) {
+            const std::optional<Position> move =
+                ai->decideMove(*currentActor_, map_, player_.position());
+            // Defensive walkability check, same philosophy as
+            // tryMovePlayer -- Chaser's own moves are always walkable by
+            // construction (they come from findPath), but Application
+            // shouldn't blindly trust arbitrary AIBehavior output.
+            if (move && map_.isWalkable(move->x, move->y)) {
+                currentActor_->setPosition(*move);
+            }
+        }
+        currentActor_ = &scheduler_.nextTurn();
+    }
 }
 
 void Application::updateFieldOfView() {
     std::vector<Position> visible = computeFieldOfView(map_, player_.position(), kSightRadius);
     exploredMap_.update(visible);
+}
+
+void Application::regenerateLevel(unsigned int seed) {
+    const DungeonGenerationParams params; // defaults
+    const GeneratedDungeon dungeon = generateDungeon(params, seed);
+
+    map_ = dungeon.map;
+    player_.setPosition(dungeon.playerStart);
+    goblin_.setPosition(dungeon.monsterStart);
+
+    exploredMap_ = ExploredMap(map_);
+
+    // Fresh scheduler rather than trying to reset the existing one --
+    // TurnScheduler has no clear() method (no prior need for one), and a
+    // plain reassignment is simpler than adding API surface just for
+    // this. TurnScheduler's own default constructor is already implicit
+    // (its only member is a vector), so this needs no changes there.
+    scheduler_ = TurnScheduler{};
+    scheduler_.add(player_);
+    scheduler_.add(goblin_);
+    currentActor_ = &scheduler_.nextTurn();
+    processMonsterTurns();
+    updateFieldOfView();
+
+    std::cout << "Generated dungeon (seed " << seed << "): " << map_.width() << 'x'
+              << map_.height() << ", " << dungeon.roomCount << " rooms, player start ("
+              << dungeon.playerStart.x << ',' << dungeon.playerStart.y << "), goblin start ("
+              << dungeon.monsterStart.x << ',' << dungeon.monsterStart.y << ")" << std::endl;
 }
 
 void Application::update() {
@@ -159,6 +186,19 @@ void Application::render() {
             tileShape.setFillColor(vis == Visibility::Visible ? baseColor : dim(baseColor));
             window_.draw(tileShape);
         }
+    }
+
+    // Monster rendering respects the player's FOV -- only draw the
+    // goblin when the player can currently see it. Deliberately checks
+    // Visible, not Remembered: unlike static terrain, a monster that
+    // moved away from a remembered tile shouldn't still appear to be
+    // standing there.
+    if (exploredMap_.at(goblin_.position().x, goblin_.position().y) == Visibility::Visible) {
+        sf::RectangleShape monsterShape({kTileSize - 1.f, kTileSize - 1.f});
+        monsterShape.setPosition({static_cast<float>(goblin_.position().x) * kTileSize,
+                                   static_cast<float>(goblin_.position().y) * kTileSize});
+        monsterShape.setFillColor(sf::Color(200, 60, 60));
+        window_.draw(monsterShape);
     }
 
     // The player's own tile is always Visibility::Visible (computeFieldOfView

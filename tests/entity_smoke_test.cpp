@@ -19,6 +19,7 @@
 #include "entities/Item.hpp"
 #include "entities/Monster.hpp"
 #include "entities/Player.hpp"
+#include "ai/NullAIBehavior.hpp"
 
 int main() {
     using namespace engine;
@@ -33,7 +34,7 @@ int main() {
     goblinStats.hp = 8;
     goblinStats.speed = 120; // faster than the 100 baseline
     Monster goblin("Goblin", 'g', Position{8, 5}, goblinStats,
-                    std::make_unique<AIBehavior>());
+                    std::make_unique<NullAIBehavior>());
 
     Item potion("Healing Potion", '!', Position{5, 6});
     Feature door("Door", '+', Position{6, 5});
