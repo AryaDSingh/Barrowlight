@@ -22,6 +22,12 @@ void TalentSet::startCooldown(std::size_t index) {
     }
 }
 
+void TalentSet::setCooldownRemaining(std::size_t index, int turns) {
+    if (index < cooldownsRemaining_.size()) {
+        cooldownsRemaining_[index] = turns;
+    }
+}
+
 void TalentSet::tickCooldowns() {
     for (int& remaining : cooldownsRemaining_) {
         remaining = std::max(0, remaining - 1);

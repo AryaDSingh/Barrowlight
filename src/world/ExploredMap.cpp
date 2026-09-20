@@ -27,6 +27,10 @@ void ExploredMap::update(const std::vector<Position>& visible) {
     }
 }
 
+void ExploredMap::restoreAll(std::vector<Visibility> values) {
+    visibility_ = std::move(values);
+}
+
 Visibility ExploredMap::at(int x, int y) const {
     if (x < 0 || y < 0 || x >= width_ || y >= height_) {
         return Visibility::Hidden;

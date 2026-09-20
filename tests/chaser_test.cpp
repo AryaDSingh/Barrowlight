@@ -43,7 +43,7 @@ int main() {
 
     // Case 1: target well outside sight radius -- expect Wait.
     {
-        Monster goblin("Goblin", 'g', Position{1, 1}, Stats{},
+        Monster goblin(MonsterType::Goblin, "Goblin", 'g', Position{1, 1}, Stats{},
                         std::make_unique<Chaser>(profile, /*sightRadius=*/5));
         Player farTarget(Position{9, 3}, Stats{}); // distance ~8.25, beyond radius 5
         const AIDecision decision = goblin.ai()->decideAction(goblin, map, farTarget, {});
@@ -54,7 +54,7 @@ int main() {
     // step toward it one tile per call, then Attack once adjacent rather
     // than trying to move onto the target's own tile.
     {
-        Monster goblin("Goblin", 'g', Position{1, 1}, Stats{},
+        Monster goblin(MonsterType::Goblin, "Goblin", 'g', Position{1, 1}, Stats{},
                         std::make_unique<Chaser>(profile, /*sightRadius=*/5));
         Player target(Position{5, 1}, Stats{});
         const std::vector<Position> expectedSteps = {{2, 1}, {3, 1}, {4, 1}};

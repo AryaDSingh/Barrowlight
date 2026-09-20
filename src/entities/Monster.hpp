@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "entities/Actor.hpp"
+#include "entities/MonsterType.hpp"
 
 namespace engine {
 
@@ -17,11 +18,21 @@ namespace engine {
 // cooldown tracking); Shaman and Bomber do, reusing the same TalentSet
 // the player uses for exactly the same reason: it's already generic,
 // nothing about it is player-specific.
+//
+// Remembers its own `type_` (Prompt 12) purely so save/load can
+// reconstruct a matching Monster via MonsterFactory::createMonster() --
+// nothing about normal gameplay reads it.
 class Monster : public Actor {
 public:
-    Monster(std::string name, char glyph, Position position, Stats stats,
+    Monster(MonsterType type, std::string name, char glyph, Position position, Stats stats,
             std::unique_ptr<AIBehavior> ai, TalentSet talents = TalentSet{})
-        : Actor(std::move(name), glyph, position, stats, std::move(ai), std::move(talents)) {}
+        : Actor(std::move(name), glyph, position, stats, std::move(ai), std::move(talents)),
+          type_(type) {}
+
+    MonsterType type() const { return type_; }
+
+private:
+    MonsterType type_;
 };
 
 } // namespace engine

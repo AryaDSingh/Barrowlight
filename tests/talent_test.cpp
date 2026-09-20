@@ -48,7 +48,8 @@ int main() {
     Stats dummyStats;
     dummyStats.hp = 20;
     dummyStats.maxHp = 20;
-    Monster dummy("Dummy", 'd', Position{0, 0}, dummyStats, std::make_unique<NullAIBehavior>());
+    Monster dummy(MonsterType::Goblin, "Dummy", 'd', Position{0, 0}, dummyStats,
+                  std::make_unique<NullAIBehavior>());
 
     applyTalentDamage(talents[kQuickStrike], dummy);
     check(dummy.stats().hp == 14, "Quick Strike deals exactly 6 damage (20 -> 14)");
@@ -78,7 +79,7 @@ int main() {
     Stats healthyStats;
     healthyStats.hp = 20;
     healthyStats.maxHp = 20; // 100% hp -- above the threshold
-    Monster healthyTarget("Healthy", 'h', Position{0, 0}, healthyStats,
+    Monster healthyTarget(MonsterType::Goblin, "Healthy", 'h', Position{0, 0}, healthyStats,
                            std::make_unique<NullAIBehavior>());
     applyTalentDamage(talents[kExecution], healthyTarget);
     check(healthyTarget.stats().hp == 10,
@@ -87,7 +88,7 @@ int main() {
     Stats lowHpStats;
     lowHpStats.hp = 5;
     lowHpStats.maxHp = 20; // 25% hp -- at/below the 30% threshold
-    Monster lowHpTarget("Weakened", 'w', Position{0, 0}, lowHpStats,
+    Monster lowHpTarget(MonsterType::Goblin, "Weakened", 'w', Position{0, 0}, lowHpStats,
                          std::make_unique<NullAIBehavior>());
     applyTalentDamage(talents[kExecution], lowHpTarget);
     check(lowHpTarget.stats().hp == 5 - 30,

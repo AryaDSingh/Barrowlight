@@ -600,7 +600,180 @@ subfolders speculatively ahead of the system that needs them.
   own afterward, without needing to be killed, proving `window_.close()`
   actually fires rather than just compiling.
 
+## Boss encounter and integration pass (decided Prompt 11)
+
+- **Goblin Warlord: 3 phases, built from one new `BossBehavior` class,
+  reusing existing mechanisms rather than inventing new ones.** Phase 1
+  (>60% hp): aggressive melee, same shape as `Chaser`. Phase 2 (30-60%):
+  a cooldown-gated AoE blast while trying to keep distance, reusing
+  `TalentSet` exactly the way `AoEBomber`/`Support` already do. Phase 3
+  (<30%): a *one-time* self-Empower (the same status effect Shaman
+  already grants allies, from Prompt 10) before an all-in enraged final
+  stand -- the "hits harder while enraged" story comes entirely from
+  Empowered's existing damage-bonus mechanic in `executeAIDecision`, not
+  a separate phase-3 power number.
+- **Phase is always re-derived from current hp fraction, not tracked as
+  state.** The only deliberate exceptions: `enraged_` (has the one-time
+  buff trigger fired yet) and `announcedPhase_` (so transition flavor
+  text prints once, not every turn in a phase) -- narrow, single-purpose
+  state, not a departure from the stateless-by-default pattern the rest
+  of the roster follows.
+- **`AIDecision` gained `SelfBuff` and an optional `announcement`
+  string.** `SelfBuff` applies `effectToApply` to the acting actor
+  itself (using the `Actor&` `executeAIDecision` already receives, not a
+  new mutable-self parameter on the `AIBehavior` interface -- considered
+  changing `decideAction`'s `self` from `const Actor&` to `Actor&`
+  instead, rejected as a broader, less-necessary signature change across
+  every existing behavior for the same result). `announcement` is
+  deliberately generic (any behavior could set it), not boss-specific --
+  `Application` prints it without knowing or caring which behaviors are
+  "bosses."
+- **Boss room placement needed real empirical tuning, not just
+  implementation.** The first design (max 7 regular rooms, boss sized
+  9-12) found space for the boss only ~6% of the time across 100 seeds --
+  discovered by testing, not assumed. Swept several room-count/size
+  combinations empirically and landed on max 6 regular rooms sized 3-5,
+  boss sized 7-9: ~97-98% success across 300 seeds, while still averaging
+  5 of the 6 roster types per dungeon. Reusing `dungeon_test`'s
+  established pattern (measure a property across many seeds, don't trust
+  one layout looking right) is exactly what caught this before it shipped
+  as a mostly-broken feature.
+- **The boss room is placed *last*, after all regular rooms, connected to
+  whichever regular room ended up last** -- not first (which would place
+  it right next to the player's own starting room). This was a genuine
+  design tension: placing it first would have had a far higher success
+  rate (much more free space available), but would contradict "a
+  set-piece at the end of the level sequence." Reliability was tuned
+  through room size/count instead of through placement order, to keep the
+  topology correct.
+- **The room-placement logic was refactored into a shared `tryPlaceRoom`
+  helper**, used by both the main loop and the boss-room attempt with
+  different size ranges -- this is a pure refactor (verified: `dungeon_test`
+  passed unchanged before and after), not new logic, done specifically
+  so the boss room didn't need to duplicate the overlap/carve/connect
+  logic a second time.
+- **The integration-pass audit found a real, previously-unnoticed bug:**
+  both `tryMovePlayer` and monster movement (in `executeAIDecision`) only
+  ever checked `map_.isWalkable()` -- terrain -- never whether another
+  actor already stood on the destination tile. Nothing in earlier testing
+  caught this because every scripted verification (Prompts 9-10) computed
+  a path to a tile *adjacent* to a target and stopped there, by design --
+  never actually attempting to step onto an occupied tile. A real player
+  moving freely, or two monsters converging from different angles, could
+  trigger it. Fixed with a new `isOccupied()` check, applied consistently
+  to player movement, monster movement, and Blink's destination
+  resolution (which needed converting from a free function to a private
+  `Application` method specifically to get access to actor positions).
+- **Three duplicated geometry helpers (`isAdjacent`, `distanceSquared`,
+  `sign`) were extracted into `ai/AIUtils.hpp`** once `BossBehavior`
+  needed a third independent copy of logic already present in `Chaser`
+  and `Kiter`/`AoEBomber` -- the "rule of three" that makes deduplication
+  worth doing rather than premature. Verified behavior-preserving:
+  `chaser_test` and `monster_ai_test` passed identically before and after
+  the refactor.
+- **Verified with real rigor, and one genuine surprise mid-verification:**
+  `boss_test` (10 checks) hand-computes every phase threshold,
+  transition-announced-once behavior, and per-phase decision, all
+  matching exactly. Live testing via `xdotool` first confirmed the
+  occupancy fix directly -- a scripted approach toward the Spider got
+  physically blocked partway, and an immediate attack found a Goblin
+  (not the intended target) adjacent, proving a real actor blocked the
+  path, not a wall. A second live test then hit an unexplained block much
+  further down the same corridor; rather than guessing, a fresh path was
+  computed from the player's actual stuck position, which reported the
+  route as clear -- meaning something *had moved into it*. Investigating
+  properly (a ranged attack, safer than melee at low hp) revealed the
+  Goblin Warlord itself had proactively closed distance once the player
+  came within its sight radius, confirming Phase 1 is genuinely wired
+  end-to-end in live play: Ember Bolt's 7 damage and the boss's 9-damage
+  counter-attack both matched `MonsterFactory`'s configured numbers
+  exactly, ending in an honest player death (already critically wounded
+  from the earlier fight, not a bug) with the window closing cleanly.
+  Phase 2/3 weren't observed live this session (would need a
+  full-health playthrough reaching the boss), but are hand-verified via
+  `boss_test`, and Phase 1's live confirmation exercises the same
+  already-proven execution paths (attack/ability/self-buff handling)
+  Phase 2/3 also use.
+
+## Save/load (decided Prompt 12)
+
+- **A hand-rolled, human-readable text format, not JSON or binary.**
+  Consistent with every other format decision in this project (talent
+  data, monster data, the ASCII test maps): this code is the only reader
+  or writer of its own format, so a general-purpose serialization
+  library would be new build complexity for no real benefit. Uses plain
+  `operator>>` extraction throughout, including for the map and
+  fog-of-war grids -- each row is a contiguous, whitespace-free string of
+  characters, so `>>` reads a whole row as one token without needing
+  manual line-splitting.
+- **`SaveGameState` and the `saveGame`/`loadGame` free functions live in
+  their own module (`core/SaveGame.hpp/.cpp`), entirely independent of
+  `Application`/SFML.** This is what makes `savegame_test` possible at
+  all -- constructing a `SaveGameState` by hand, round-tripping it, and
+  checking every field, without needing a window. `Application` only
+  gathers state into the struct and applies a loaded one back; it doesn't
+  know anything about the file format itself.
+- **Deliberately does not save `TurnScheduler`'s exact energy levels or
+  any `AIBehavior`-internal state** (the boss's one-time enrage trigger,
+  phase-announcement tracking). Both are designed to be self-correcting:
+  turn order re-settles within a few turns regardless of exact energy
+  values, and `BossBehavior`'s phase is re-derived from hp fraction on
+  every single `decideAction()` call, never trusted as stored state. At
+  worst, a loaded boss already past a phase threshold re-announces that
+  phase and re-applies its one-time buff once more -- harmless, since
+  `StatusEffects::apply()` refreshes rather than stacks. Serializing
+  either would be real complexity for a difference nobody would notice
+  in play.
+- **`MonsterType` moved out of `MonsterFactory.hpp` into its own header.**
+  `Monster` needed to remember its own type (so a loaded monster can be
+  reconstructed via `MonsterFactory::createMonster()` rather than
+  needing its own parallel deserialization path for every `AIBehavior`
+  subclass), but `MonsterFactory.hpp` already includes `Monster.hpp` --
+  defining the enum there would have made `Monster.hpp` need it back,
+  a circular include. A monster's hp/maxHp/status effects are saved and
+  restored as explicit values *after* reconstruction, not re-derived from
+  `MonsterFactory`'s current defaults -- so a later rebalance of, say,
+  Goblin's max hp doesn't retroactively change what an old save file
+  means.
+- **Loading does *not* run the same
+  `processMonsterTurns()`/`advanceTurnsUntilPlayerCanAct()` step
+  `regenerateLevel()` runs after setup.** Initially it did, copying that
+  pattern directly -- caught via live testing that this silently applied
+  an extra, unintended status-effect tick to an already-poisoned loaded
+  player (a freshly *generated* player never has any status effects yet,
+  so the same step is harmless there). Fixed by having `loadGame()` just
+  resolve whose turn it is and stop -- any monster whose turn is
+  technically still pending gets caught up naturally the moment the
+  player next moves or casts, the same mechanism (`tryMovePlayer`/
+  `tryUseTalent` already call `processMonsterTurns()` themselves) that
+  handles it in ordinary play, not a special case invented for loading.
+- **Saves to a single fixed relative path** (`savegame.txt`, wherever the
+  executable is launched from) -- same reasoning as avoiding `data/` file
+  loading elsewhere in this project: resolving the executable's own
+  directory needs platform-specific APIs this project has deliberately
+  avoided needing so far. One save slot, not a save-file browser/manager
+  -- not asked for, and would be real scope beyond "save/load for game
+  state."
+- **Verified with real rigor, including a bug caught by live testing that
+  static reasoning alone hadn't surfaced:** `savegame_test`'s 15 checks
+  confirm exact round-trip fidelity for every field in isolation. Live
+  verification went further -- saved a real in-progress fight (a landed
+  Power Strike, real hp loss, an active poison effect) in one process,
+  loaded it in a completely separate fresh process, and confirmed hp and
+  cooldown state matched exactly, catching the extra-tick bug in the
+  process rather than after the fact.
+
 ## Open items / things to revisit later
+
+- Save/load has a single fixed slot (`savegame.txt`), not multiple slots
+  or a save browser -- not asked for; real scope beyond "save/load for
+  game state" if ever wanted.
+- No autosave -- save/load is entirely manual (F5/F9). Reasonable for a
+  vertical slice; would matter more with real playtime at stake.
+- Save files aren't versioned beyond a single format-version tag that
+  currently only guards against loading a completely incompatible
+  format (mismatched version number is rejected outright, not migrated).
+  No real concern yet with one format version ever having existed.
 
 - No font or sprite/tile-atlas rendering yet -- flat colored rectangles
   and simple HUD bars stand in until real art (or a chosen font) exists.
@@ -631,15 +804,36 @@ subfolders speculatively ahead of the system that needs them.
   the current roster size; would matter more with denser encounters.
 - No faction/friendly-fire system -- Bomber's AoE only ever targets the
   player, never other monsters, even ones standing in the blast area.
-- No game-over screen or restart flow -- player death currently just
-  closes the window cleanly (same path as Escape). Building either is
-  explicitly Prompt 11/12 territory ("integration pass," "final polish").
-- `Application` owns `map_`/`player_`/`monsters_`/`scheduler_`/
-  `exploredMap_` directly, and resolves targeting/combat for all of them.
-  The monster-collection part of the long-flagged "game state" refactor
-  happened this prompt (single `goblin_` → `vector<unique_ptr<Monster>>`),
-  but the fuller extraction (window vs. simulation state as genuinely
-  separate classes) still hasn't -- still not forced by anything built so
-  far.
+- No game-over screen or restart flow -- player death (and victory
+  against the boss) currently just leave the window as-is (death closes
+  it, victory doesn't). Building a proper screen/flow is explicitly
+  Prompt 12 territory ("final polish").
+- No indication in the game window of *which* phase the boss is in
+  beyond the console announcement and its health bar's fill level -- no
+  visual phase-change effect (a flash, a color shift). Minor, but a
+  natural target once any rendering polish pass happens.
+- Boss room placement isn't guaranteed (~97-98% of seeds, not 100%) --
+  pressing R again resolves it if a given layout happens to lack one.
+  Could be made fully guaranteed with a smarter placement strategy
+  (reserving a spatial region before placing regular rooms) if ever
+  worth the added complexity.
+- `Application` owns `map_`/`player_`/`monsters_`/`boss_`/`scheduler_`/
+  `exploredMap_` directly, and resolves targeting/combat/occupancy for
+  all of them. The monster-collection part of the long-flagged "game
+  state" refactor happened in Prompt 10 (single `goblin_` →
+  `vector<unique_ptr<Monster>>`), and this prompt added `boss_` as a
+  tracked pointer into that same collection rather than pulling anything
+  further out -- the fuller extraction (window vs. simulation state as
+  genuinely separate classes) still hasn't happened, still not forced by
+  anything built so far.
+- Pathfinding (`findPath`) is still not actor-aware -- it computes routes
+  based on terrain only. Combined with the new occupancy check at
+  move-commit time, this means a monster (or the player's Blink) can
+  occasionally have its computed next step blocked by another actor that
+  moved into it since the path was computed, resulting in a "wasted"
+  turn that self-resolves the next turn once that actor moves. A known,
+  accepted minor rough edge, not a crash or incorrect state -- making
+  `findPath` itself occupancy-aware would be a larger, separate change to
+  already well-tested Prompt 7 code.
 - `SFML_BUILD_AUDIO` / `SFML_BUILD_NETWORK` are off -- flip back on when
   sound is wanted.

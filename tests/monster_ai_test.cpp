@@ -84,7 +84,7 @@ int main() {
         profile.power = 4;
         Kiter kiter(profile, /*attackRange=*/6, /*tooCloseRange=*/2);
 
-        Monster self("Archer", 'a', Position{2, 2}, Stats{}, std::make_unique<NullAIBehavior>());
+        Monster self(MonsterType::Archer, "Archer", 'a', Position{2, 2}, Stats{}, std::make_unique<NullAIBehavior>());
 
         Player farTarget(Position{9, 2}, Stats{}); // distance 7 -- beyond attackRange(6), within sight(8)
         AIDecision decision = kiter.decideAction(self, map, farTarget, {});
@@ -116,9 +116,9 @@ int main() {
         Map map = makeOpenRoom();
         Player irrelevantPlayer(Position{0, 0}, Stats{});
 
-        Monster self("Shaman", 'h', Position{5, 2}, Stats{}, std::make_unique<NullAIBehavior>(),
+        Monster self(MonsterType::Shaman, "Shaman", 'h', Position{5, 2}, Stats{}, std::make_unique<NullAIBehavior>(),
                      TalentSet(abilities));
-        Monster unbuffedAlly("Goblin", 'g', Position{6, 2}, Stats{},
+        Monster unbuffedAlly(MonsterType::Goblin, "Goblin", 'g', Position{6, 2}, Stats{},
                               std::make_unique<NullAIBehavior>());
 
         std::vector<Actor*> allies{&unbuffedAlly};
@@ -139,7 +139,7 @@ int main() {
     {
         Map map = makeOpenRoom();
         AoEBomber bomber(/*blastPower=*/10, /*blastRange=*/4, /*tooCloseRange=*/2);
-        Monster self("Bomber", 'b', Position{2, 2}, Stats{}, std::make_unique<NullAIBehavior>(),
+        Monster self(MonsterType::Bomber, "Bomber", 'b', Position{2, 2}, Stats{}, std::make_unique<NullAIBehavior>(),
                      TalentSet(std::vector<Talent>{Talent{"Blast", "", TalentTree::Blade,
                                                             TargetingMode::Self,
                                                             EffectShape::SingleTarget, 0, 0, 5}}));

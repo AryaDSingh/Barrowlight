@@ -59,7 +59,8 @@ int countTotalFloorTiles(const Map& map) {
     return count;
 }
 
-void printDungeon(const Map& map, Position playerStart, const std::vector<Position>& otherRoomCenters) {
+void printDungeon(const Map& map, Position playerStart, const std::vector<Position>& otherRoomCenters,
+                   bool hasBossRoom, Position bossRoomCenter) {
     auto isOtherRoomCenter = [&](Position p) {
         for (const Position& c : otherRoomCenters) {
             if (c.x == p.x && c.y == p.y) {
@@ -73,6 +74,8 @@ void printDungeon(const Map& map, Position playerStart, const std::vector<Positi
         for (int x = 0; x < map.width(); ++x) {
             if (x == playerStart.x && y == playerStart.y) {
                 std::cout << '@';
+            } else if (hasBossRoom && x == bossRoomCenter.x && y == bossRoomCenter.y) {
+                std::cout << 'B';
             } else if (isOtherRoomCenter(Position{x, y})) {
                 std::cout << 'g';
             } else {
@@ -99,8 +102,9 @@ int main() {
         const bool connected = reachable == total;
         allConnected &= connected;
 
-        std::cout << "seed " << seed << ": " << dungeon.roomCount << " rooms, " << reachable
-                  << "/" << total << " floor tiles reachable from player start "
+        std::cout << "seed " << seed << ": " << dungeon.roomCount << " rooms"
+                  << (dungeon.hasBossRoom ? " (incl. boss room)" : " (NO boss room)") << ", "
+                  << reachable << "/" << total << " floor tiles reachable from player start "
                   << (connected ? "[ok]" : "[FAIL]") << '\n';
     }
 
@@ -108,10 +112,27 @@ int main() {
               << (allConnected ? "All seeds fully connected." : "Some seeds FAILED connectivity.")
               << "\n\n";
 
+    // Boss room placement isn't guaranteed to succeed (it's the last,
+    // largest room attempted, on an already-partially-filled map) --
+    // measured across a larger sample rather than assumed reliable from
+    // a handful of seeds.
+    constexpr int kBossRoomSampleSize = 50;
+    int bossRoomSuccesses = 0;
+    for (unsigned int seed = 100; seed < 100 + kBossRoomSampleSize; ++seed) {
+        if (generateDungeon(params, seed).hasBossRoom) {
+            ++bossRoomSuccesses;
+        }
+    }
+    const double bossRoomRate =
+        100.0 * static_cast<double>(bossRoomSuccesses) / kBossRoomSampleSize;
+    std::cout << "Boss room placement succeeded in " << bossRoomSuccesses << "/"
+              << kBossRoomSampleSize << " seeds (" << bossRoomRate << "%)\n\n";
+
     const GeneratedDungeon example = generateDungeon(params, /*seed=*/42);
-    std::cout << "Example layout (seed 42), @ = player start, g = other room centers "
-                 "(where Prompt 10's monster roster gets placed):\n\n";
-    printDungeon(example.map, example.playerStart, example.otherRoomCenters);
+    std::cout << "Example layout (seed 42), @ = player start, g = other room centers, "
+                 "B = boss room:\n\n";
+    printDungeon(example.map, example.playerStart, example.otherRoomCenters, example.hasBossRoom,
+                 example.bossRoomCenter);
 
     return allConnected ? 0 : 1;
 }

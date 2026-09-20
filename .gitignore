@@ -3,6 +3,11 @@ build/
 out/
 cmake-build-*/
 
+# Runtime save files
+savegame.txt
+*_test_output.txt
+*_test_garbage.txt
+
 # IDE
 .vscode/
 .idea/

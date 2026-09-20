@@ -32,6 +32,12 @@ public:
     // with a fresh computeFieldOfView() result.
     void update(const std::vector<Position>& visible);
 
+    // Directly replaces every tile's visibility with `values` (row-major,
+    // same indexing as internal storage). Used only by save/load to
+    // restore exact fog-of-war state; normal gameplay uses update()
+    // instead, never this.
+    void restoreAll(std::vector<Visibility> values);
+
     Visibility at(int x, int y) const;
 
 private:

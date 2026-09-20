@@ -33,7 +33,7 @@ int main() {
     goblinStats.maxHp = 8;
     goblinStats.hp = 8;
     goblinStats.speed = 120; // faster than the 100 baseline
-    Monster goblin("Goblin", 'g', Position{8, 5}, goblinStats,
+    Monster goblin(MonsterType::Goblin, "Goblin", 'g', Position{8, 5}, goblinStats,
                     std::make_unique<NullAIBehavior>());
 
     Item potion("Healing Potion", '!', Position{5, 6});

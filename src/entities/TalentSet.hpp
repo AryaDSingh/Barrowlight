@@ -30,6 +30,11 @@ public:
     // successful activation.
     void startCooldown(std::size_t index);
 
+    // Directly sets talent `index`'s remaining cooldown to `turns`. Used
+    // only by save/load to restore exact cooldown state; normal gameplay
+    // uses startCooldown()/tickCooldowns() instead, never this.
+    void setCooldownRemaining(std::size_t index, int turns);
+
     // Decrements every talent's remaining cooldown by one (floored at
     // 0). Called once per turn the owning Actor takes -- including
     // turns spent moving, not just turns spent casting, since cooldowns

@@ -25,7 +25,11 @@ namespace engine {
 // vector -- the single hardcoded goblin_ member is gone) and resolves
 // everything about combat: player/monster targeting, AoE membership,
 // Empowered damage bonuses, status-effect ticking (including
-// stun-skipping turns), death for both sides. This is now genuinely the
+// stun-skipping turns), death for both sides. As of Prompt 11, it also
+// tracks a boss_ pointer into monsters_ (for the set-piece encounter and
+// victory detection) and enforces tile occupancy -- the integration-pass
+// audit found that movement only ever checked terrain walkability, never
+// whether another actor already stood there. This is still genuinely the
 // "game state" concern flagged as overdue since Prompt 5 -- still not
 // extracted into its own class (that refactor stays deliberately
 // deferred; nothing here demands it be done *this* prompt, just noted
@@ -43,20 +47,40 @@ private:
     void render();
 
     // Attempts to move the player by (dx, dy) in tiles. Bumping into a
-    // wall or the map edge does nothing and consumes no turn.
+    // wall, the map edge, or another actor's tile does nothing and
+    // consumes no turn.
     bool tryMovePlayer(int dx, int dy);
 
     // Attempts to activate the player's talent at `talentIndex` (0-7).
     // Validates cooldown/mana/hp/target before committing anything.
     bool tryUseTalent(std::size_t talentIndex);
 
+    // Walks up to `maxDistance` tiles from the player's position in
+    // `direction` for Blink, stopping just before a wall or an
+    // actor-occupied tile rather than requiring the full distance clear.
+    Position resolveBlinkDestination(Position direction, int maxDistance) const;
+
     // Recomputes FOV from the player's current position.
     void updateFieldOfView();
 
     // Generates a fresh dungeon from the given seed and resets
-    // everything (map, player, the full monster roster, scheduler,
-    // exploredMap_) to match it.
+    // everything (map, player, the full monster roster including the
+    // boss if the layout has room for one, scheduler, exploredMap_) to
+    // match it.
     void regenerateLevel(unsigned int seed);
+
+    // Gathers current map/player/monster/exploredMap_ state into a
+    // SaveGameState and writes it via engine::saveGame(). Prints whether
+    // it succeeded; never throws or crashes on I/O failure.
+    void saveGame();
+
+    // Reads a save file via engine::loadGame() and, if valid, replaces
+    // map_/player_/monsters_/boss_/exploredMap_/scheduler_ with the
+    // loaded state -- structurally the same "replace everything"
+    // approach regenerateLevel() uses, just from saved data instead of
+    // fresh generation. Prints a friendly message and changes nothing if
+    // no valid save exists.
+    void loadGame();
 
     // Runs turns (status-effect ticks, AI decisions) until it's the
     // player's turn again.
@@ -70,18 +94,29 @@ private:
     void advanceTurnsUntilPlayerCanAct();
 
     // Executes an AIDecision returned by some Actor's AIBehavior:
-    // applies the move/attack/ability, prints what happened, and checks
-    // for death. `actor` is whoever made the decision (never the
-    // player -- only monsters have an AIBehavior to execute here).
+    // applies the move/attack/ability/self-buff, prints what happened
+    // (including any announcement the behavior set, e.g. a boss phase
+    // transition), and checks for death. `actor` is whoever made the
+    // decision (never the player -- only monsters have an AIBehavior to
+    // execute here).
     void executeAIDecision(Actor& actor, const AIDecision& decision);
 
     // If `actor`'s hp has dropped to 0 or below, handles it: for the
     // player, prints a message and closes the window (no game-over
-    // screen exists yet -- Prompt 11/12 territory); for a monster,
-    // prints a message and removes it from the scheduler (the actual
-    // erase from monsters_ happens in a later cleanup pass, never
-    // mid-iteration).
+    // screen exists yet -- Prompt 12 territory); for the boss
+    // specifically, prints a victory message and clears boss_ (the
+    // window stays open -- unlike death, victory isn't a dead end, the
+    // person can keep exploring or press R for another run); for a
+    // regular monster, prints a message and removes it from the
+    // scheduler (the actual erase from monsters_ happens in a later
+    // cleanup pass, never mid-iteration).
     void checkAndHandleDeath(Actor& actor);
+
+    // True if `pos` is currently occupied by a living actor other than
+    // `exclude` (the player, or any living monster). The integration-pass
+    // bug this prompt fixed: movement previously only checked terrain,
+    // never this -- see ARCHITECTURE_DECISIONS.md.
+    bool isOccupied(Position pos, const Actor* exclude) const;
 
     // Every monster except `exclude`, still alive. Built fresh each time
     // an AIBehavior needs it (only Support actually uses it) rather than
@@ -105,6 +140,7 @@ private:
     Map map_;
     Player player_;
     std::vector<std::unique_ptr<Monster>> monsters_;
+    Monster* boss_ = nullptr; // non-owning pointer into monsters_, if the level has a boss room
     TurnScheduler scheduler_;
     ExploredMap exploredMap_;
 

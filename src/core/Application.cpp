@@ -1,5 +1,6 @@
 #include "core/Application.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -11,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "core/SaveGame.hpp"
 #include "entities/MonsterFactory.hpp"
 #include "entities/StatusEffectLogic.hpp"
 #include "entities/TalentEffects.hpp"
@@ -27,9 +29,16 @@ constexpr float kTileSize = 32.f;
 constexpr int kSightRadius = 8;
 constexpr unsigned int kInitialSeed = 1337;
 
-// The full roster, in the order rooms get populated (room 1 = kRoster[0],
-// room 2 = kRoster[1], ...). Fewer than 6 non-player rooms means a
-// partial roster, not a crash -- see regenerateLevel.
+// Relative to wherever the executable is launched from -- same
+// reasoning as avoiding data/ file loading elsewhere in this project
+// (see ARCHITECTURE_DECISIONS.md): resolving the executable's own
+// directory needs platform-specific APIs this project has deliberately
+// avoided needing so far.
+constexpr const char* kSaveFilePath = "savegame.txt";
+
+// The full regular roster, in the order rooms get populated. Fewer than
+// 6 non-player, non-boss rooms means a partial roster, not a crash --
+// see regenerateLevel.
 constexpr std::array<MonsterType, 6> kRoster = {
     MonsterType::Goblin, MonsterType::Spider, MonsterType::Ogre,
     MonsterType::Archer, MonsterType::Shaman, MonsterType::Bomber,
@@ -54,19 +63,6 @@ int distanceSquared(Position a, Position b) {
     return dx * dx + dy * dy;
 }
 
-Position resolveBlinkDestination(const Map& map, Position start, Position direction,
-                                  int maxDistance) {
-    Position current = start;
-    for (int i = 0; i < maxDistance; ++i) {
-        const Position next{current.x + direction.x, current.y + direction.y};
-        if (!map.isWalkable(next.x, next.y)) {
-            break;
-        }
-        current = next;
-    }
-    return current;
-}
-
 // No sprite/tile art exists yet (see ARCHITECTURE_DECISIONS.md) -- each
 // enemy type gets a distinct flat color so the roster is at least
 // visually distinguishable at a glance.
@@ -77,6 +73,7 @@ sf::Color monsterColor(const std::string& name) {
     if (name == "Archer") return sf::Color(210, 170, 60);
     if (name == "Shaman") return sf::Color(170, 70, 210);
     if (name == "Bomber") return sf::Color(230, 110, 30);
+    if (name == "Goblin Warlord") return sf::Color(255, 215, 0);
     return sf::Color(190, 190, 190);
 }
 } // namespace
@@ -164,11 +161,51 @@ void Application::processEvents() {
                 case sf::Keyboard::Key::Num8:
                     tryUseTalent(7);
                     break;
+                case sf::Keyboard::Key::F5:
+                    saveGame();
+                    break;
+                case sf::Keyboard::Key::F9:
+                    loadGame();
+                    break;
                 default:
                     break;
             }
         }
     }
+}
+
+bool Application::isOccupied(Position pos, const Actor* exclude) const {
+    // The integration-pass bug this prompt fixed: movement previously
+    // only checked map_.isWalkable() (terrain), never whether another
+    // actor already stood on the destination tile. Never surfaced in
+    // earlier testing because every scripted test walked to a tile
+    // *adjacent* to a target, never onto it -- but nothing stopped a
+    // real player (or two monsters converging from different angles)
+    // from sharing a tile.
+    if (&player_ != exclude && player_.position().x == pos.x && player_.position().y == pos.y) {
+        return true;
+    }
+    for (const auto& m : monsters_) {
+        if (m.get() == exclude || m->stats().hp <= 0) {
+            continue;
+        }
+        if (m->position().x == pos.x && m->position().y == pos.y) {
+            return true;
+        }
+    }
+    return false;
+}
+
+Position Application::resolveBlinkDestination(Position direction, int maxDistance) const {
+    Position current = player_.position();
+    for (int i = 0; i < maxDistance; ++i) {
+        const Position next{current.x + direction.x, current.y + direction.y};
+        if (!map_.isWalkable(next.x, next.y) || isOccupied(next, &player_)) {
+            break;
+        }
+        current = next;
+    }
+    return current;
 }
 
 bool Application::tryMovePlayer(int dx, int dy) {
@@ -179,8 +216,8 @@ bool Application::tryMovePlayer(int dx, int dy) {
     const Position current = player_.position();
     const Position target{current.x + dx, current.y + dy};
 
-    if (!map_.isWalkable(target.x, target.y)) {
-        return false; // bumped a wall or the map edge -- no turn consumed
+    if (!map_.isWalkable(target.x, target.y) || isOccupied(target, &player_)) {
+        return false; // wall, map edge, or another actor's tile -- no turn consumed
     }
 
     player_.setPosition(target);
@@ -224,8 +261,7 @@ bool Application::tryUseTalent(std::size_t talentIndex) {
     Position blinkDestination = player_.position();
 
     if (talent.shape == EffectShape::Movement) {
-        blinkDestination = resolveBlinkDestination(map_, player_.position(), lastMoveDirection_,
-                                                    talent.moveDistance);
+        blinkDestination = resolveBlinkDestination(lastMoveDirection_, talent.moveDistance);
         if (blinkDestination.x == player_.position().x &&
             blinkDestination.y == player_.position().y) {
             std::cout << talent.name << " has nowhere to go that direction\n";
@@ -234,7 +270,6 @@ bool Application::tryUseTalent(std::size_t talentIndex) {
     } else if (talent.shape == EffectShape::AreaAroundSelf) {
         affected = actorsWithinRadius(player_.position(), talent.areaRadius);
     } else {
-        // SingleTarget or AreaAroundTarget both need an anchor target first.
         Actor* anchor = nullptr;
         if (talent.targeting == TargetingMode::AdjacentEnemy) {
             anchor = findAdjacentEnemy();
@@ -244,8 +279,6 @@ bool Application::tryUseTalent(std::size_t talentIndex) {
 
         if (anchor != nullptr) {
             if (talent.shape == EffectShape::AreaAroundTarget) {
-                // Real AoE now that there's more than one monster to find
-                // -- Fireball can genuinely hit several enemies at once.
                 affected = actorsWithinRadius(anchor->position(), talent.areaRadius);
             } else {
                 affected.push_back(anchor);
@@ -340,9 +373,14 @@ void Application::advanceTurnsUntilPlayerCanAct() {
 }
 
 void Application::executeAIDecision(Actor& actor, const AIDecision& decision) {
+    if (!decision.announcement.empty()) {
+        std::cout << decision.announcement << '\n';
+    }
+
     switch (decision.type) {
         case AIActionType::Move:
-            if (map_.isWalkable(decision.movePosition.x, decision.movePosition.y)) {
+            if (map_.isWalkable(decision.movePosition.x, decision.movePosition.y) &&
+                !isOccupied(decision.movePosition, &actor)) {
                 actor.setPosition(decision.movePosition);
             }
             break;
@@ -381,6 +419,12 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision) {
             break;
         }
 
+        case AIActionType::SelfBuff:
+            if (decision.effectToApply.has_value()) {
+                actor.statusEffects().apply(*decision.effectToApply);
+            }
+            break;
+
         case AIActionType::Wait:
             break;
     }
@@ -393,10 +437,17 @@ void Application::checkAndHandleDeath(Actor& actor) {
 
     if (&actor == &player_) {
         std::cout << "You have died!\n";
-        // No game-over screen or restart flow exists yet (Prompt 11/12
+        // No game-over screen or restart flow exists yet (Prompt 12
         // territory) -- closing cleanly beats leaving the game running
         // in a broken, still-controllable-but-dead state.
         window_.close();
+        return;
+    }
+
+    if (&actor == boss_) {
+        std::cout << actor.name() << " falls! You have slain the Goblin Warlord!\n";
+        boss_ = nullptr; // must clear before removeDeadMonsters() erases the underlying object
+        scheduler_.remove(actor);
         return;
     }
 
@@ -479,9 +530,14 @@ void Application::regenerateLevel(unsigned int seed) {
     player_.stats().mana = player_.stats().maxMana;
     player_.talents().resetCooldowns();
 
+    boss_ = nullptr; // clear before repopulating -- see checkAndHandleDeath for why this matters
     monsters_.clear();
     for (std::size_t i = 0; i < dungeon.otherRoomCenters.size() && i < kRoster.size(); ++i) {
         monsters_.push_back(createMonster(kRoster[i], dungeon.otherRoomCenters[i]));
+    }
+    if (dungeon.hasBossRoom) {
+        monsters_.push_back(createMonster(MonsterType::GoblinWarlord, dungeon.bossRoomCenter));
+        boss_ = monsters_.back().get();
     }
 
     exploredMap_ = ExploredMap(map_);
@@ -499,8 +555,101 @@ void Application::regenerateLevel(unsigned int seed) {
 
     std::cout << "Generated dungeon (seed " << seed << "): " << map_.width() << 'x'
               << map_.height() << ", " << dungeon.roomCount << " rooms, " << monsters_.size()
-              << " monsters, player start (" << dungeon.playerStart.x << ','
-              << dungeon.playerStart.y << ")" << std::endl;
+              << " monsters" << (dungeon.hasBossRoom ? " (boss present)" : " (no boss this run)")
+              << ", player start (" << dungeon.playerStart.x << ',' << dungeon.playerStart.y
+              << ")" << std::endl;
+}
+
+void Application::saveGame() {
+    SaveGameState state;
+    state.map = map_;
+    state.exploredMap = exploredMap_;
+    state.playerPosition = player_.position();
+    state.playerStats = player_.stats();
+    state.lastMoveDirection = lastMoveDirection_;
+
+    const std::vector<Talent>& talents = player_.talents().knownTalents();
+    state.playerCooldowns.resize(talents.size());
+    for (std::size_t i = 0; i < talents.size(); ++i) {
+        state.playerCooldowns[i] = player_.talents().cooldownRemaining(i);
+    }
+    state.playerStatusEffects = player_.statusEffects().active();
+
+    for (auto& m : monsters_) {
+        SaveGameState::MonsterSaveData data;
+        data.type = m->type();
+        data.position = m->position();
+        data.hp = m->stats().hp;
+        data.maxHp = m->stats().maxHp;
+        data.isBoss = (m.get() == boss_);
+        data.statusEffects = m->statusEffects().active();
+        state.monsters.push_back(std::move(data));
+    }
+
+    if (engine::saveGame(state, kSaveFilePath)) {
+        std::cout << "Game saved.\n";
+    } else {
+        std::cout << "Failed to save game (could not write " << kSaveFilePath << ").\n";
+    }
+}
+
+void Application::loadGame() {
+    const std::optional<SaveGameState> loaded = engine::loadGame(kSaveFilePath);
+    if (!loaded.has_value()) {
+        std::cout << "No valid save file found (" << kSaveFilePath << ").\n";
+        return;
+    }
+    const SaveGameState& state = *loaded;
+
+    map_ = state.map;
+    exploredMap_ = state.exploredMap;
+
+    player_.setPosition(state.playerPosition);
+    player_.stats() = state.playerStats;
+    lastMoveDirection_ = state.lastMoveDirection;
+
+    for (std::size_t i = 0;
+         i < state.playerCooldowns.size() && i < player_.talents().knownTalents().size(); ++i) {
+        player_.talents().setCooldownRemaining(i, state.playerCooldowns[i]);
+    }
+    player_.statusEffects().active() = state.playerStatusEffects;
+
+    boss_ = nullptr;
+    monsters_.clear();
+    for (const SaveGameState::MonsterSaveData& m : state.monsters) {
+        std::unique_ptr<Monster> monster = createMonster(m.type, m.position);
+        monster->stats().hp = m.hp;
+        monster->stats().maxHp = m.maxHp;
+        monster->statusEffects().active() = m.statusEffects;
+        if (m.isBoss) {
+            boss_ = monster.get();
+        }
+        monsters_.push_back(std::move(monster));
+    }
+
+    scheduler_ = TurnScheduler{};
+    scheduler_.add(player_);
+    for (auto& m : monsters_) {
+        scheduler_.add(*m);
+    }
+
+    // Deliberately just this, unlike regenerateLevel() -- a freshly
+    // generated player never has status effects yet, so running
+    // processMonsterTurns()/advanceTurnsUntilPlayerCanAct() there is
+    // harmless. A *loaded* player might already be poisoned or stunned;
+    // doing the same here would immediately re-tick their status effects
+    // before they've taken any action since resuming, applying an extra
+    // tick beyond what was actually saved. Any monster whose turn is
+    // technically still pending gets caught up naturally the moment the
+    // player next moves or casts (tryMovePlayer/tryUseTalent already
+    // call processMonsterTurns() themselves) -- the same mechanism that
+    // handles it in ordinary play, not a special case for loading.
+    currentActor_ = &scheduler_.nextTurn();
+
+    std::cout << "Game loaded: " << monsters_.size() << " monsters"
+              << (boss_ != nullptr ? " (boss present)" : "") << ", player at ("
+              << player_.position().x << ',' << player_.position().y << "), "
+              << player_.stats().hp << '/' << player_.stats().maxHp << " hp." << std::endl;
 }
 
 void Application::update() {
@@ -592,6 +741,28 @@ void Application::render() {
     manaFront.setPosition({10.f, 28.f});
     manaFront.setFillColor(sf::Color(50, 90, 220));
     window_.draw(manaFront);
+
+    // A prominent, top-center boss bar -- distinct from the small
+    // floating per-monster bars -- only shown when the boss is alive AND
+    // currently visible, same consistency rule as everything else
+    // (Prompt 7's "only render what's currently visible").
+    if (boss_ != nullptr && boss_->stats().hp > 0 &&
+        exploredMap_.at(boss_->position().x, boss_->position().y) == Visibility::Visible) {
+        constexpr float kBossBarWidth = 500.f;
+        constexpr float kBossBarHeight = 20.f;
+        const float bossX = (static_cast<float>(kWindowWidth) - kBossBarWidth) / 2.f;
+
+        const float bossHpFraction =
+            static_cast<float>(boss_->stats().hp) / static_cast<float>(boss_->stats().maxHp);
+        sf::RectangleShape bossBack({kBossBarWidth, kBossBarHeight});
+        bossBack.setPosition({bossX, 10.f});
+        bossBack.setFillColor(sf::Color(35, 30, 10));
+        window_.draw(bossBack);
+        sf::RectangleShape bossFront({kBossBarWidth * bossHpFraction, kBossBarHeight});
+        bossFront.setPosition({bossX, 10.f});
+        bossFront.setFillColor(sf::Color(255, 215, 0));
+        window_.draw(bossFront);
+    }
 
     window_.display();
 }

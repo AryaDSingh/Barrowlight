@@ -18,7 +18,8 @@ roguelike/
 │   ├── core/
 │   │   ├── Position.hpp             # shared grid-coordinate type
 │   │   ├── Application.hpp/.cpp     # owns window, map, roster, scheduler, FOV, combat
-│   │   └── TurnScheduler.hpp/.cpp   # energy/speed-based turn order
+│   │   ├── TurnScheduler.hpp/.cpp   # energy/speed-based turn order
+│   │   └── SaveGame.hpp/.cpp        # save/load -- entirely SFML-independent
 │   ├── entities/         # Entity/Actor/Item/Feature hierarchy + components
 │   │   ├── (Entity, Actor, Player, Monster, Item, Feature, Stats,
 │   │   │    Inventory -- header-only)
@@ -30,36 +31,41 @@ roguelike/
 │   │   ├── StatusEffects.hpp/.cpp        # Poison/Stun/Empowered bookkeeping
 │   │   ├── StatusEffectLogic.hpp/.cpp    # the tick function (damage, stun-detection, expiry)
 │   │   ├── MonsterAttackProfile.hpp      # flat-damage attack data for simple attackers
-│   │   └── MonsterFactory.hpp/.cpp       # the 6-enemy-type roster, as data
+│   │   ├── MonsterType.hpp               # the roster enum (own file -- see Prompt 12 notes)
+│   │   └── MonsterFactory.hpp/.cpp       # the 6-enemy roster + boss, as data
 │   ├── ai/
-│   │   ├── NullAIBehavior.hpp    # never acts -- a real behavior, and a test placeholder
-│   │   ├── Chaser.hpp/.cpp       # melee rusher + attack -- Goblin, Spider, Ogre
-│   │   ├── Kiter.hpp/.cpp        # ranged, maintains distance -- Archer
-│   │   ├── Support.hpp/.cpp      # buffs allies, never attacks -- Shaman
-│   │   └── AoEBomber.hpp/.cpp    # ranged AoE on a cooldown -- Bomber
+│   │   ├── AIUtils.hpp            # shared geometry helpers (isAdjacent, distanceSquared, ...)
+│   │   ├── NullAIBehavior.hpp     # never acts -- a real behavior, and a test placeholder
+│   │   ├── Chaser.hpp/.cpp        # melee rusher + attack -- Goblin, Spider, Ogre
+│   │   ├── Kiter.hpp/.cpp         # ranged, maintains distance -- Archer
+│   │   ├── Support.hpp/.cpp       # buffs allies, never attacks -- Shaman
+│   │   ├── AoEBomber.hpp/.cpp     # ranged AoE on a cooldown -- Bomber
+│   │   └── BossBehavior.hpp/.cpp  # 3-phase set-piece fight -- Goblin Warlord
 │   └── world/
 │       ├── Tile.hpp                 # a single grid cell (type/walkable/transparent)
 │       ├── Map.hpp/.cpp             # grid of tiles + ASCII-art level parser (test maps)
 │       ├── FieldOfView.hpp/.cpp     # recursive shadowcasting (pure function)
 │       ├── ExploredMap.hpp/.cpp     # Hidden/Remembered/Visible tracking over time
 │       ├── Pathfinder.hpp/.cpp      # A*, 4-directional (pure function)
-│       └── DungeonGenerator.hpp/.cpp  # random rooms + corridors (pure function)
+│       └── DungeonGenerator.hpp/.cpp  # rooms + corridors + a boss room (pure function)
 ├── tests/
 │   ├── entity_smoke_test.cpp        # entity hierarchy, no SFML linked
 │   ├── turn_scheduler_test.cpp      # turn order by speed, no SFML linked
 │   ├── fov_test.cpp                 # prints an ASCII FOV grid, no SFML linked
 │   ├── pathfinder_test.cpp          # prints an ASCII path around a forced detour
 │   ├── chaser_test.cpp              # traces Chaser's own decisions turn by turn
-│   ├── dungeon_test.cpp             # verifies connectivity across 10 seeds + prints a layout
+│   ├── dungeon_test.cpp             # connectivity across 10 seeds + boss room success rate
 │   ├── talent_test.cpp              # hand-computed damage/cooldown/conditional values
-│   └── monster_ai_test.cpp          # StatusEffects tick logic + Kiter/Support/AoEBomber
+│   ├── monster_ai_test.cpp          # StatusEffects tick logic + Kiter/Support/AoEBomber
+│   ├── boss_test.cpp                # phase transitions + per-phase decisions, hand-computed
+│   └── savegame_test.cpp            # full round-trip, field by field, + error handling
 ├── assets/              # textures, fonts (still empty -- see Prompt 5 notes)
 └── data/                # data-driven content (empty -- see Prompt 9/10 notes)
 ```
 
-There are nine build targets: `roguelike` (the real game, links SFML),
-and eight standalone console programs with zero SFML dependency. Run
-them after building:
+There are eleven build targets: `roguelike` (the real game, links SFML),
+and ten standalone console programs with zero SFML dependency. Run them
+after building:
 
 ```bash
 ./build/bin/entity_smoke_test
@@ -70,6 +76,8 @@ them after building:
 ./build/bin/dungeon_test
 ./build/bin/talent_test
 ./build/bin/monster_ai_test
+./build/bin/boss_test
+./build/bin/savegame_test
 ./build/bin/roguelike
 ```
 On Windows with the Visual Studio generator, substitute
@@ -77,9 +85,9 @@ On Windows with the Visual Studio generator, substitute
 
 **Controls:** arrow keys / WASD to move, **R** to regenerate the level,
 **1-8** to use talents (1-4 Blade: melee, must be adjacent; 5-8 Flame:
-ranged/AoE/utility). No text rendering exists yet, so combat feedback
-(damage, status effects, deaths, why a cast failed) prints to the
-**console**, not the game window.
+ranged/AoE/utility), **F5** to save, **F9** to load. No text rendering
+exists yet, so all feedback prints to the **console**, not the game
+window.
 
 As of Prompt 5, `roguelike` opens a window with a player tile you can
 move using arrow keys or WASD, routed through the real turn scheduler.
@@ -97,8 +105,16 @@ layout every time you press R.
 As of Prompt 9, the player is a **Spellblade** with a full 8-talent kit
 (hp/mana bars, top-left corner).
 
-As of Prompt 10, the dungeon is populated with a **6-enemy roster**
-(color-coded, each with a floating hp bar when visible):
+As of Prompt 10, the dungeon is populated with a 6-enemy roster (see
+below), and combat is genuinely two-way.
+
+As of Prompt 11, a **set-piece boss room** holds the **Goblin Warlord**:
+a 3-phase fight, shown with its own prominent top-center health bar.
+
+As of Prompt 12, **F5 saves, F9 loads** -- map, fog-of-war, player state
+(position/stats/talent cooldowns/status effects), and the full monster
+roster (including the boss, if present) all round-trip exactly. Saves to
+`savegame.txt` next to wherever the game is run from.
 
 | Enemy | Color | Behavior |
 |---|---|---|
@@ -108,10 +124,7 @@ As of Prompt 10, the dungeon is populated with a **6-enemy roster**
 | Archer | tan | `Kiter` -- keeps its distance, shoots from range |
 | Shaman | purple | `Support` -- never attacks; buffs a nearby ally instead |
 | Bomber | orange | `AoEBomber` -- ranged area attack on a cooldown |
-
-Combat is now genuinely two-way: enemies can hurt (and kill) the player,
-not just the other way around. There's no game-over screen yet -- on
-death, the window just closes (Prompt 11/12 territory).
+| Goblin Warlord | gold | `BossBehavior` -- 3-phase set-piece fight |
 
 ## Building
 

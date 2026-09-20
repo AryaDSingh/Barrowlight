@@ -54,6 +54,7 @@ set(ENTITY_HEADERS
     src/entities/StatusEffects.hpp
     src/entities/StatusEffectLogic.hpp
     src/entities/MonsterAttackProfile.hpp
+    src/entities/MonsterType.hpp
     src/entities/MonsterFactory.hpp
     src/entities/Actor.hpp
     src/entities/Player.hpp
@@ -63,6 +64,7 @@ set(ENTITY_HEADERS
 set(CORE_HEADERS
     src/core/Application.hpp
     src/core/TurnScheduler.hpp
+    src/core/SaveGame.hpp
 )
 
 set(WORLD_HEADERS
@@ -76,10 +78,12 @@ set(WORLD_HEADERS
 
 set(AI_HEADERS
     src/ai/NullAIBehavior.hpp
+    src/ai/AIUtils.hpp
     src/ai/Chaser.hpp
     src/ai/Kiter.hpp
     src/ai/Support.hpp
     src/ai/AoEBomber.hpp
+    src/ai/BossBehavior.hpp
 )
 
 # ---------------------------------------------------------------------------
@@ -102,12 +106,14 @@ add_executable(roguelike
     src/ai/Kiter.cpp
     src/ai/Support.cpp
     src/ai/AoEBomber.cpp
+    src/ai/BossBehavior.cpp
     src/entities/TalentSet.cpp
     src/entities/TalentEffects.cpp
     src/entities/SpellbladeTalents.cpp
     src/entities/StatusEffects.cpp
     src/entities/StatusEffectLogic.cpp
     src/entities/MonsterFactory.cpp
+    src/core/SaveGame.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
     ${CORE_HEADERS}
@@ -286,5 +292,52 @@ add_executable(monster_ai_test
 
 target_include_directories(monster_ai_test PRIVATE src)
 target_compile_features(monster_ai_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# Boss test
+# ---------------------------------------------------------------------------
+# Also console-only, no SFML -- verifies BossBehavior's phase transitions
+# and per-phase decision logic against hand-computed expected values,
+# using MonsterFactory's real configured numbers.
+
+add_executable(boss_test
+    tests/boss_test.cpp
+    src/world/Map.cpp
+    src/world/FieldOfView.cpp
+    src/world/Pathfinder.cpp
+    src/ai/BossBehavior.cpp
+    src/entities/TalentSet.cpp
+    src/entities/TalentEffects.cpp
+    src/entities/SpellbladeTalents.cpp
+    src/entities/StatusEffects.cpp
+    ${COMMON_HEADERS}
+    ${ENTITY_HEADERS}
+    ${WORLD_HEADERS}
+    ${AI_HEADERS}
+)
+
+target_include_directories(boss_test PRIVATE src)
+target_compile_features(boss_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# Save/load test
+# ---------------------------------------------------------------------------
+# Also console-only, no SFML -- SaveGame is entirely SFML-independent by
+# design. Round-trips a hand-built SaveGameState and verifies every field
+# matches exactly, plus missing/corrupt file handling.
+
+add_executable(savegame_test
+    tests/savegame_test.cpp
+    src/world/Map.cpp
+    src/world/ExploredMap.cpp
+    src/core/SaveGame.cpp
+    ${COMMON_HEADERS}
+    ${ENTITY_HEADERS}
+    ${WORLD_HEADERS}
+    ${CORE_HEADERS}
+)
+
+target_include_directories(savegame_test PRIVATE src)
+target_compile_features(savegame_test PRIVATE cxx_std_17)
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT roguelike)

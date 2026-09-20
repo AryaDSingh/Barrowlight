@@ -4,17 +4,9 @@
 
 #include "core/Position.hpp"
 #include "entities/Monster.hpp"
+#include "entities/MonsterType.hpp"
 
 namespace engine {
-
-enum class MonsterType {
-    Goblin, // Chaser, plain melee
-    Spider, // Chaser, melee + Poison on-hit
-    Ogre,   // Chaser, melee + chance to Stun on-hit
-    Archer, // Kiter, ranged, maintains distance
-    Shaman, // Support, buffs allies, never attacks
-    Bomber, // AoEBomber, ranged AoE on a cooldown
-};
 
 // Constructs a fully-configured Monster of the given type at `position`
 // -- stats, glyph, and AIBehavior (parameterized with this type's own

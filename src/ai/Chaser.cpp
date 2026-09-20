@@ -3,20 +3,13 @@
 #include <algorithm>
 #include <random>
 
+#include "ai/AIUtils.hpp"
 #include "entities/Actor.hpp"
 #include "world/FieldOfView.hpp"
 #include "world/Map.hpp"
 #include "world/Pathfinder.hpp"
 
 namespace engine {
-
-namespace {
-bool isAdjacent(Position a, Position b) {
-    const int dx = std::abs(a.x - b.x);
-    const int dy = std::abs(a.y - b.y);
-    return (dx + dy) == 1;
-}
-} // namespace
 
 Chaser::Chaser(MonsterAttackProfile attackProfile, int sightRadius)
     : attackProfile_(attackProfile), sightRadius_(sightRadius) {}

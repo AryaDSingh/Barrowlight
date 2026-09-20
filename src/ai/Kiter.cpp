@@ -3,24 +3,13 @@
 #include <algorithm>
 #include <random>
 
+#include "ai/AIUtils.hpp"
 #include "entities/Actor.hpp"
 #include "world/FieldOfView.hpp"
 #include "world/Map.hpp"
 #include "world/Pathfinder.hpp"
 
 namespace engine {
-
-namespace {
-int distanceSquared(Position a, Position b) {
-    const int dx = a.x - b.x;
-    const int dy = a.y - b.y;
-    return dx * dx + dy * dy;
-}
-
-int sign(int v) {
-    return (v > 0) - (v < 0);
-}
-} // namespace
 
 Kiter::Kiter(MonsterAttackProfile attackProfile, int attackRange, int tooCloseRange,
              int sightRadius)
@@ -63,8 +52,7 @@ AIDecision Kiter::decideAction(const Actor& self, const Map& map, Actor& player,
 
     if (distSq <= tooCloseRange_ * tooCloseRange_) {
         // Too close -- retreat directly away from the player.
-        const Position retreat{selfPos.x + sign(selfPos.x - playerPos.x),
-                                selfPos.y + sign(selfPos.y - playerPos.y)};
+        const Position retreat = retreatStep(selfPos, playerPos);
         if (map.isWalkable(retreat.x, retreat.y)) {
             AIDecision decision;
             decision.type = AIActionType::Move;

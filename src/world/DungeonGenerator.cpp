@@ -1,6 +1,7 @@
 #include "world/DungeonGenerator.hpp"
 
 #include <algorithm>
+#include <optional>
 #include <random>
 #include <stdexcept>
 #include <vector>
@@ -40,6 +41,61 @@ void carveVerticalCorridor(Map& map, int y1, int y2, int x) {
     }
 }
 
+void carveCorridorBetween(Map& map, std::mt19937& rng, Position prevCenter, Position newCenter) {
+    std::uniform_int_distribution<int> coinFlip(0, 1);
+    // Randomly pick the corridor's elbow direction for visual variety,
+    // rather than always turning the same way.
+    if (coinFlip(rng) == 0) {
+        carveHorizontalCorridor(map, prevCenter.x, newCenter.x, prevCenter.y);
+        carveVerticalCorridor(map, prevCenter.y, newCenter.y, newCenter.x);
+    } else {
+        carveVerticalCorridor(map, prevCenter.y, newCenter.y, prevCenter.x);
+        carveHorizontalCorridor(map, prevCenter.x, newCenter.x, newCenter.y);
+    }
+}
+
+// Attempts to place one room with a size in [minSize, maxSize], avoiding
+// overlap with anything in `avoid`. On success, carves it, connects it
+// to `connectTo` (if provided) with an L-shaped corridor, and returns the
+// placed Room. Extracted once the boss room (Prompt 11) needed the exact
+// same placement logic as the main loop, just with a different size
+// range and connection target -- a second independent use is exactly
+// the "worth deduplicating" signal.
+std::optional<Room> tryPlaceRoom(Map& map, std::mt19937& rng, int minSize, int maxSize,
+                                  int mapWidth, int mapHeight, int padding,
+                                  const std::vector<Room>& avoid,
+                                  const Room* connectTo) {
+    std::uniform_int_distribution<int> sizeDist(minSize, maxSize);
+    const int w = sizeDist(rng);
+    const int h = sizeDist(rng);
+
+    // Leave a guaranteed 1-tile border of wall around the whole map.
+    const int maxX1 = mapWidth - w - 1;
+    const int maxY1 = mapHeight - h - 1;
+    if (maxX1 < 1 || maxY1 < 1) {
+        return std::nullopt;
+    }
+
+    std::uniform_int_distribution<int> xDist(1, maxX1);
+    std::uniform_int_distribution<int> yDist(1, maxY1);
+    const int x1 = xDist(rng);
+    const int y1 = yDist(rng);
+    const Room room{x1, y1, x1 + w, y1 + h};
+
+    const bool overlapsExisting = std::any_of(
+        avoid.begin(), avoid.end(),
+        [&](const Room& existing) { return room.overlaps(existing, padding); });
+    if (overlapsExisting) {
+        return std::nullopt;
+    }
+
+    carveRoom(map, room);
+    if (connectTo != nullptr) {
+        carveCorridorBetween(map, rng, connectTo->center(), room.center());
+    }
+    return room;
+}
+
 } // namespace
 
 GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned int seed) {
@@ -49,56 +105,21 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     // no separate "fill with walls" pass is needed.
 
     std::mt19937 rng(seed);
-    std::uniform_int_distribution<int> sizeDist(params.minRoomSize, params.maxRoomSize);
-    std::uniform_int_distribution<int> coinFlip(0, 1);
 
     std::vector<Room> rooms;
     constexpr int kPadding = 1; // minimum gap between rooms so they don't visually merge
     constexpr int kMaxAttempts = 200; // generous cap so this can't loop forever
+    constexpr int kBossRoomAttempts = 100; // generous too -- a failed boss room means no boss
 
     for (int attempt = 0;
          attempt < kMaxAttempts && static_cast<int>(rooms.size()) < params.maxRooms;
          ++attempt) {
-        const int w = sizeDist(rng);
-        const int h = sizeDist(rng);
-
-        // Leave a guaranteed 1-tile border of wall around the whole map.
-        const int maxX1 = params.width - w - 1;
-        const int maxY1 = params.height - h - 1;
-        if (maxX1 < 1 || maxY1 < 1) {
-            continue; // this room size doesn't fit at all -- skip and retry
+        const std::optional<Room> placed =
+            tryPlaceRoom(map, rng, params.minRoomSize, params.maxRoomSize, params.width,
+                         params.height, kPadding, rooms, rooms.empty() ? nullptr : &rooms.back());
+        if (placed.has_value()) {
+            rooms.push_back(*placed);
         }
-
-        std::uniform_int_distribution<int> xDist(1, maxX1);
-        std::uniform_int_distribution<int> yDist(1, maxY1);
-        const int x1 = xDist(rng);
-        const int y1 = yDist(rng);
-        const Room room{x1, y1, x1 + w, y1 + h};
-
-        const bool overlapsExisting =
-            std::any_of(rooms.begin(), rooms.end(),
-                        [&](const Room& existing) { return room.overlaps(existing, kPadding); });
-        if (overlapsExisting) {
-            continue;
-        }
-
-        carveRoom(map, room);
-
-        if (!rooms.empty()) {
-            const Position prevCenter = rooms.back().center();
-            const Position newCenter = room.center();
-            // Randomly pick the corridor's elbow direction for visual
-            // variety, rather than always turning the same way.
-            if (coinFlip(rng) == 0) {
-                carveHorizontalCorridor(map, prevCenter.x, newCenter.x, prevCenter.y);
-                carveVerticalCorridor(map, prevCenter.y, newCenter.y, newCenter.x);
-            } else {
-                carveVerticalCorridor(map, prevCenter.y, newCenter.y, prevCenter.x);
-                carveHorizontalCorridor(map, prevCenter.x, newCenter.x, newCenter.y);
-            }
-        }
-
-        rooms.push_back(room);
     }
 
     if (rooms.empty()) {
@@ -107,13 +128,30 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
             "room size parameters");
     }
 
+    // One more attempt, after all regular rooms: a deliberately larger
+    // boss room, connected to whichever regular room was placed last --
+    // topologically the far end of the level from the player's start.
+    // Tried last (not first) specifically so it ends up at the end of
+    // the room chain, matching "a set-piece at the end of the level
+    // sequence" -- trying it first would place it right next to the
+    // player's own starting room instead.
+    std::optional<Room> bossRoom;
+    for (int attempt = 0; attempt < kBossRoomAttempts && !bossRoom.has_value(); ++attempt) {
+        bossRoom = tryPlaceRoom(map, rng, params.bossRoomMinSize, params.bossRoomMaxSize,
+                                 params.width, params.height, kPadding, rooms, &rooms.back());
+    }
+
     GeneratedDungeon result;
     result.map = std::move(map);
     result.playerStart = rooms.front().center();
     for (std::size_t i = 1; i < rooms.size(); ++i) {
         result.otherRoomCenters.push_back(rooms[i].center());
     }
-    result.roomCount = static_cast<int>(rooms.size());
+    result.hasBossRoom = bossRoom.has_value();
+    if (bossRoom.has_value()) {
+        result.bossRoomCenter = bossRoom->center();
+    }
+    result.roomCount = static_cast<int>(rooms.size()) + (bossRoom.has_value() ? 1 : 0);
     return result;
 }
 

@@ -16,17 +16,17 @@ int main() {
 
     Stats slowStats;
     slowStats.speed = 50;
-    Monster slowpoke("Slowpoke", 's', Position{0, 0}, slowStats,
+    Monster slowpoke(MonsterType::Goblin, "Slowpoke", 's', Position{0, 0}, slowStats,
                       std::make_unique<NullAIBehavior>());
 
     Stats normalStats;
     normalStats.speed = 100;
-    Monster normal("Normal", 'n', Position{1, 0}, normalStats,
+    Monster normal(MonsterType::Goblin, "Normal", 'n', Position{1, 0}, normalStats,
                     std::make_unique<NullAIBehavior>());
 
     Stats fastStats;
     fastStats.speed = 200;
-    Monster zippy("Zippy", 'z', Position{2, 0}, fastStats,
+    Monster zippy(MonsterType::Goblin, "Zippy", 'z', Position{2, 0}, fastStats,
                    std::make_unique<NullAIBehavior>());
 
     TurnScheduler scheduler;

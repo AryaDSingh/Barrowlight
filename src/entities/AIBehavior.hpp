@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "core/Position.hpp"
@@ -16,6 +17,7 @@ enum class AIActionType {
     Move,
     Attack,      // a basic, uncooldowned attack (see MonsterAttackProfile)
     UseAbility,  // a cooldown-gated special move, from the actor's own TalentSet
+    SelfBuff,    // applies effectToApply directly to the acting actor itself
     Wait,
 };
 
@@ -32,9 +34,16 @@ struct AIDecision {
     Actor* target = nullptr;    // for Attack (always the player today) / UseAbility
                                  // (an ally for Support, the player for AoEBomber)
     std::size_t abilityIndex = 0;   // for UseAbility, which of the actor's own talents
-    int attackPower = 0;             // for Attack, already resolved
-    std::optional<StatusEffectInstance> effectToApply; // for Attack (on-hit proc) or UseAbility (a buff)
-                                                       // (unset if nothing applies)
+    int attackPower = 0;             // for Attack (or a damaging UseAbility), already resolved
+    std::optional<StatusEffectInstance> effectToApply; // for Attack (on-hit proc), UseAbility
+                                                          // (a buff), or SelfBuff
+                                                          // (unset if nothing applies)
+
+    // Optional flavor text Application should print verbatim (e.g. a
+    // boss announcing a phase transition). Empty means nothing to print.
+    // Kept generic rather than boss-specific, so Application doesn't
+    // need special-case knowledge of which behaviors are "bosses."
+    std::string announcement;
 };
 
 // Strategy-pattern interface for monster decision-making. A Player holds
