@@ -214,7 +214,7 @@ already-proven mechanisms (attack/ability/self-buff execution) carry
 through correctly. **Confirmed on the person's machine.** See
 `ARCHITECTURE_DECISIONS.md` → "Boss encounter and integration pass."
 
-## ⏳ Prompt 12 — Save/load + polish
+## ✅ Prompt 12 — Save/load + polish
 Save/load for game state. Final polish pass (UI, menus, distributable
 build) scoped to time remaining before publishing. **Save/load result:**
 a hand-rolled, human-readable text format (`SaveGame.hpp/.cpp`) --
@@ -236,10 +236,12 @@ freshly generated player, who never has any status effects yet -- not
 fine for a loaded one who might). Fixed, then confirmed live: hp restored
 as exactly 20/30 (not 18), and a cooldown showed exactly "3 turns left,"
 matching the established tick-immediately-after-start semantic from
-Prompt 9 precisely. **Polish-pass prioritization is still open** --
-genuinely needs to know how much time is available before publishing
-before it can be a useful answer rather than a guess; asked directly
-rather than assumed. See `ARCHITECTURE_DECISIONS.md` → "Save/load."
+Prompt 9 precisely. **Confirmed on the person's machine.**
+**Polish-pass prioritization:** no hard time limit before publishing, so
+this became a genuine "next steps" planning exercise rather than a
+scoped-down triage -- see "Phase 2" below, drafted and partly decided
+(class naming, symmetric dodge) rather than executed yet. See
+`ARCHITECTURE_DECISIONS.md` → "Save/load."
 
 ---
 
@@ -276,7 +278,7 @@ of the triangle (melee Blade tree + magic Flame tree -- what PoE calls a
 Templar). No need for a redundant second hybrid; the new classes should
 fill the other two corners.
 
-## ⬜ Prompt 13 — Text rendering + HUD upgrade
+## ✅ Prompt 13 — Text rendering + HUD upgrade
 Source and bundle a permissively-licensed monospace font (likely via
 apt's `fonts-dejavu-core` or similar, copied into `assets/`); build
 minimal SFML text-drawing capability -- a small helper, not a new
@@ -286,23 +288,127 @@ readable list instead of only console output, an on-screen combat log
 (last few messages) instead of console-only. No new gameplay, no new
 classes yet -- purely the infrastructure + presentation upgrade
 everything else in this phase depends on, matching the "prove the
-pipeline first" discipline of Prompts 2 and 5.
+pipeline first" discipline of Prompts 2 and 5. **Result:** DejaVu Sans
+Mono, sourced via apt (`fonts-dejavu-core`), copied into
+`assets/fonts/` with its license file -- confirmed via search first
+(Bitstream Vera-derived, explicitly permits bundling within a larger
+software package). Confirmed SFML 3's exact text API before writing
+code (`sf::Font::openFromFile`, not `loadFromFile`; `sf::Text` requires
+a font reference in its constructor, no default) -- matched on the
+first real build attempt. Every one of the 23 existing `std::cout` call
+sites scattered through `Application.cpp` now goes through one new
+`log()` template method instead, which both prints to console exactly
+as before (so every prior console-based verification technique in this
+project still works unchanged) and feeds a capped 6-message rolling
+on-screen log. New HUD: hp/mana as readable numbers next to their bars,
+a talent-list panel showing all 8 talents' live names and cooldown
+status (dimmed while on cooldown), the boss bar gained a name label.
+**New verification technique introduced this prompt**: used
+ImageMagick's `import` to screenshot the actual live SFML window under
+Xvfb and visually inspected the images directly -- the first time in
+this project's history that rendering correctness was confirmed by
+actually looking at it, rather than inferred from console output or
+hand-traced geometry. This caught a real (if minor) issue no amount of
+code review would have: the talent-list text initially had no visual
+separation from the dungeon tiles behind it -- legible, but genuinely
+unfinished-looking. Fixed with semi-transparent backing panels behind
+the talent list and combat log, then re-screenshotted to confirm the
+fix actually looked better, not just assumed it would. Screenshots also
+confirmed, precisely: hp/mana text tracked real combat state exactly
+(e.g. "15/30" hp, "11/20" mana matching the log), a talent correctly
+shown dimmed with its exact remaining cooldown while others showed
+`[Ready]`, the on-screen log's last 6 lines exactly matched the console
+tail in the right order, and a fresh game start showed no stray
+empty-log panel with every talent correctly `[Ready]`. **Confirmed on
+the person's machine.**
 
-## ⬜ Prompt 14 — Attribute-driven combat formulas
+Playing on the new HUD surfaced two real combat-pacing issues, fixed
+the same session, both **confirmed on the person's machine**: bumping
+into an adjacent monster was a silent no-op identical to bumping a
+wall, starving monsters of turns they were owed (see
+`ARCHITECTURE_DECISIONS.md` → "Combat pacing"); and the player had no
+mana regeneration at all, now +2 per turn, capped at max.
+
+## ✅ Prompt 14 — Attribute-driven combat formulas
 Add `Intelligence` to `Stats` (joining the existing `strength`/
 `dexterity`, both currently decorative). Design and implement real
 formulas connecting attributes to combat: Strength → bonus physical
-damage (+ some hp), Dexterity → dodge/evasion chance (a real chance to
-avoid an incoming hit entirely, rolled symmetrically for both the player
-and monsters), Intelligence → bonus magic damage + max mana scaling.
-Tag `Talent` with a `DamageType` (Physical/Magic) so the right bonus
-applies. Recalibrate the Spellblade's existing 8 talents' numbers under
-the new formula -- this changes established, tested balance, so it needs
-its own careful pass, not a silent side effect. Foundational systems
-work, not new content -- closes the long-flagged "no combat formula
-system" gap from Prompt 9.
+damage (+ some hp), Dexterity → dodge/evasion chance, Intelligence →
+bonus magic damage + max mana scaling. **Decided: dodge is symmetric --
+monsters roll it too, using the same formula, not just the player.**
+That only means something if monsters have real attributes behind it,
+so `MonsterFactory`'s stat blocks need genuine per-type Strength/
+Dexterity/Intelligence, not left at `Stats`' undifferentiated defaults
+(every monster currently has strength=10/dexterity=10, identical,
+regardless of type) -- e.g. a tanky Ogre leaning Strength-heavy/
+Dexterity-light (hits hard, rarely dodges), an Archer leaning Dexterity
+(dodges more, fitting an "hard to pin down" identity), Shaman/Bomber
+leaning Intelligence to match their already-magic-coded kits. Tag both
+`Talent` *and* `MonsterAttackProfile` with a `DamageType`
+(Physical/Magic) so the right attribute bonus applies on either side,
+not just the player's -- the same symmetry principle as dodge. Exact
+numbers for all of this aren't decided yet, on purpose (see below).
+Recalibrate the Spellblade's existing 8 talents' numbers under the new
+formula -- this changes established, tested balance, so it needs its
+own careful pass, not a silent side effect. Foundational systems work,
+not new content -- closes the long-flagged "no combat formula system"
+gap from Prompt 9.
 
-## ⬜ Prompt 15 — Multi-class system + Marauder (pure Strength)
+**Result:** a new `AttributeFormulas` module (pure, fully unit-tested):
+Strength/Intelligence each give ±1 damage per 2 points from a 10
+baseline (can go negative below baseline -- a genuinely weaker hit, not
+just "no bonus"); Dexterity gives +3% dodge per point, floored at 0%,
+capped at 30%; Intelligence gives +1 max mana per point, floored at 0.
+`physicalDamageBonus`/`magicDamageBonus`/`dodgeChance`/
+`manaBonusFromIntelligence` are all pure and exhaustively tested
+(`attribute_formulas_test`, 25 checks including boundary/cap behavior
+and a floating-point-comparison bug caught and fixed mid-session: a
+computed 0.3 isn't guaranteed bit-exact to the literal `0.30f`, unlike a
+value that hits the cap and gets clamped to that same literal). The
+actual dice roll (`rollDodge`) is deliberately not unit-tested in
+isolation -- same precedent as Chaser's `onHitChance` (Prompt 10),
+which was never isolated either; `didDodge`, the pure comparison it's
+built on, gets the exhaustive testing instead. **A real landmine caught
+before it shipped**: `SpellbladeTalents.cpp` constructs every `Talent`
+via positional aggregate initialization (the `/*name=*/`-style comments
+are just comments, not designated initializers), so inserting
+`damageType` in the natural spot mid-struct would have silently shifted
+`conditionalMultiplier` (an int) into `conditionalHpFraction`'s old
+slot -- compiles cleanly via an implicit int-to-float conversion, no
+error, just quietly wrong. Moved `damageType` to the very end of
+`Talent` instead, after confirming `MonsterAttackProfile` and
+`AIDecision` were safe (all their construction sites use named-member
+assignment or empty-brace init, never positional). **Every existing
+tuned damage number was recalibrated, not just left to drift**: each
+talent/attack's base `power` was reduced by exactly its new attribute
+bonus, so live damage output is bit-for-bit identical to what Prompts
+9-11 already tuned and tested -- confirmed directly, not assumed:
+`talent_test` uses an attacker with the Spellblade's real recalibrated
+stats (strength 14, intelligence 18) and asserts the *exact* original
+damage numbers (Quick Strike 6, Execution's tripled 30, Ember Bolt 7)
+still come out unchanged through the new formula, plus a second check
+using a baseline-attribute attacker to confirm the bonus genuinely
+scales rather than being a fixed pass-through. Live play confirmed the
+same thing end-to-end in real combat: every logged damage number
+(Power Strike 16, Ember Bolt 7, Quick Strike 6, Goblin's 5, Spider's 3)
+matched hand-computed expectations exactly. Player recalibrated to
+Strength 14 / Dexterity 10 / Intelligence 18 (the Str+Int hybrid corner
+of the triangle); `maxMana` is now computed from the real formula (12
+base + 8 from Intelligence) rather than hardcoded, landing on exactly
+20 -- confirmed via a live screenshot showing "20/20" at game start.
+Every monster type got genuine, thematically distinct attributes
+instead of universal defaults: Ogre (Str 18/Dex 6, hits hard, 0%
+dodge), Spider (Dex 16, 18% dodge) and Archer (Dex 18, 24% dodge, the
+roster's most evasive) leaning into evasion, Shaman/Bomber leaning
+Intelligence (18/16) to match their already-magic-coded kits, the boss
+balanced across both offense stats (Str 16/Int 14) for its melee and
+blast phases respectively. `monster_ai_test`/`boss_test` needed zero
+changes -- confirmed, not assumed, by building and running them
+unmodified -- since both construct their `AIBehavior`s directly with
+test-local parameters rather than through `MonsterFactory`. See
+`ARCHITECTURE_DECISIONS.md` → "Attribute-driven combat."
+
+## ⏳ Prompt 15 — Multi-class system + Marauder (pure Strength)
 `PlayerClass` enum + `PlayerClassFactory`, mirroring `MonsterFactory`'s
 already-proven pattern exactly. A class-selection screen (using Prompt
 13's text rendering) shown before the dungeon generates. **Marauder**:
@@ -315,6 +421,73 @@ Empowered status effect), a high-risk guaranteed-hit "Berserker's Fury"
 that costs hp for massive damage, and a no-cost spammable basic strike
 (cooldown-only, no resource at all -- a genuinely different economy from
 Spellblade's mana-juggling).
+
+**Result:** `PlayerClass` (Spellblade/Marauder) + `PlayerClassFactory`
+(`statsForClass`/`talentSetForClass`), the exact `MonsterFactory` shape
+applied to player classes. A real class-selection screen -- a plain text
+menu via Prompt 13's `drawText`, keys 1/2 -- shown on launch; the
+constructor no longer auto-starts as the Spellblade. **Marauder's
+4-talent kit**, deliberately smaller than the Spellblade's 9: Slam (0
+mana, 1-turn cooldown, spammable), Cleave (AreaAroundSelf, hits
+everything adjacent), Rallying Cry (SelfBuff -- applies Empowered, the
+same status effect the boss's own enrage already uses), Berserker's Fury
+(8 hp cost, 0 mana, the hardest single hit in either kit). Str 20 / Dex
+8 / Int 4, hand-tuned maxHp 45 (tankier than the Spellblade's 30 --
+Strength giving a dynamic hp bonus was deliberately deferred at Prompt
+14, so this is expressed as direct data instead), maxMana 10 from the
+real formula (10 base + 0 from Intelligence, floored).
+
+**A real `Talent` refactor**: the lone `bool isHeal` (Prompt 14's
+healing addition) became a proper `TalentEffectKind` enum (Damage/Heal/
+SelfBuff) once a third kind -- needed for Rallying Cry -- made
+generalizing worth it rather than bolting on a second flag, mirroring
+`AIDecision`'s own discriminated-by-enum shape.
+
+**Three real bugs this prompt, all found through live play, not code
+review:**
+
+1. **Rallying Cry granted Empowered correctly but did nothing to the
+   caster's own damage.** `executeAIDecision` (monster attacks) already
+   checked for Empowered; `applyTalentDamage` (every player attack)
+   never did. Every damage number in a live Marauder fight matched the
+   *un-buffed* formula exactly, which is what surfaced it -- not a
+   passing unit test, since no existing test exercised an attacker with
+   an active status effect. Fixed, then caught a second bug while
+   writing the regression test for the first: the test's own attacker
+   Stats had been left at default strength (10) instead of the
+   Marauder's real 20, which would have made the fix look wrong when it
+   wasn't -- traced by hand-checking the arithmetic before assuming the
+   code was broken.
+2. **`F9` (load) was only reachable once already in Playing mode** --
+   meaningless for a person who launches fresh and wants to continue a
+   previous run, since the game now starts at class selection instead of
+   auto-starting as the Spellblade. Fixed by handling `F9` before the
+   mode branch, reachable from either screen; `loadGame()` now sets
+   `mode_ = Playing` on success instead of assuming it already was.
+3. **`Stats::intelligence` (added Prompt 14) had never actually been
+   added to the save format** -- caught while touching save/load again
+   for `playerClass` persistence. A real latent gap, silently dropping
+   back to the default on every load until now.
+
+Save format bumped to version 2 for both fixes above (old saves rejected
+outright, not migrated -- see `ARCHITECTURE_DECISIONS.md`). Loading now
+reconstructs the saved player's class -- and therefore the *correct*
+talent list -- before applying saved cooldowns positionally, since a
+Marauder's cooldowns applied to a Spellblade's talent list (or vice
+versa) would silently land on the wrong talent. Verified live and
+precisely: saved a Marauder mid-fight with Cleave on a real cooldown,
+loaded into a completely separate fresh process, and confirmed the HUD
+showed exactly 4 Marauder talents (not 9 Spellblade ones) with Cleave
+correctly still on cooldown, hp/mana exactly matching the saved values.
+`talent_test`, `monster_ai_test`, and `boss_test` all needed real fixes
+too -- `Player`'s constructor no longer hardcodes the Spellblade
+internally (a real coupling this prompt had to break), so every
+test-local `Player` construction across the whole suite needed an
+explicit `TalentSet` argument; caught via a thorough repo-wide grep
+after an initial pass missed 14 sites across two files. New
+`marauder_test` (24 checks) mirrors `talent_test`'s rigor for the new
+kit, including a dedicated regression check for the Empowered bug. See
+`ARCHITECTURE_DECISIONS.md` → "Multi-class system and Marauder."
 
 ## ⬜ Prompt 16 — Shadow (Dexterity + Intelligence) + end-game screens
 Third class, completing the initial triangle. **Shadow**: agile
@@ -337,19 +510,20 @@ Ranger, Witch, Scion) once the 3-class pattern is proven. Packaging/
 distribution for actually publishing. Not sequenced precisely yet --
 revisit once Prompts 13-16 are done and it's clearer what matters most.
 
-## Open questions for discussion before starting Prompt 13
+## Decisions locked in before starting Prompt 13
 
-- **Naming:** keep "Spellblade" as its own name, or rename to "Templar"
-  to match PoE's convention now that there's a real triangle? Either
-  works mechanically -- pure naming/flavor preference.
-- **Exact attribute formula numbers** (Prompt 14) aren't drafted here on
-  purpose -- worth designing live when we get there, the same way
-  Spellblade's actual talent numbers were designed live in Prompt 9
+- **Naming: "Spellblade" stays** -- not renamed to "Templar." No
+  mechanical difference either way; this was purely a flavor question,
+  settled in favor of the name already established since Prompt 9.
+- **Dodge is symmetric, and monsters get real attributes because of
+  it** -- see Prompt 14 above. This was the one design choice in this
+  phase with a real trade-off (more consistent vs. swingier fights
+  against Dexterity-flavored content); decided in favor of consistency.
+- **Exact attribute formula numbers** (Prompt 14) still aren't drafted
+  here on purpose -- worth designing live when we get there, the same
+  way Spellblade's actual talent numbers were designed live in Prompt 9
   rather than pre-decided in the original `ROADMAP.md`.
-- **Dodge chance symmetry:** applying it to monsters too (not just the
-  player) is more consistent and reuses one mechanism for both sides,
-  but makes fights against Dexterity-flavored content swingier. Worth
-  confirming that's the intent before building it.
+- No other changes to the Prompt 13-17+ shape as drafted.
 
 ---
 

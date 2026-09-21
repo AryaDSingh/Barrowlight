@@ -6,6 +6,7 @@
 
 #include "core/Position.hpp"
 #include "entities/MonsterType.hpp"
+#include "entities/PlayerClass.hpp"
 #include "entities/Stats.hpp"
 #include "entities/StatusEffects.hpp"
 #include "world/ExploredMap.hpp"
@@ -31,8 +32,9 @@ struct SaveGameState {
     ExploredMap exploredMap;
 
     Position playerPosition;
+    PlayerClass playerClass = PlayerClass::Spellblade; // which kit playerCooldowns belongs to
     Stats playerStats;
-    std::vector<int> playerCooldowns; // parallel to the Spellblade's talent list
+    std::vector<int> playerCooldowns; // parallel to playerClass's own talent list
     std::vector<StatusEffectInstance> playerStatusEffects;
     Position lastMoveDirection; // needed for Blink to resume correctly
 

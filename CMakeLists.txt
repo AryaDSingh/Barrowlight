@@ -45,6 +45,8 @@ set(ENTITY_HEADERS
     src/entities/Item.hpp
     src/entities/Feature.hpp
     src/entities/Stats.hpp
+    src/entities/DamageType.hpp
+    src/entities/AttributeFormulas.hpp
     src/entities/AIBehavior.hpp
     src/entities/Inventory.hpp
     src/entities/Talent.hpp
@@ -56,6 +58,9 @@ set(ENTITY_HEADERS
     src/entities/MonsterAttackProfile.hpp
     src/entities/MonsterType.hpp
     src/entities/MonsterFactory.hpp
+    src/entities/PlayerClass.hpp
+    src/entities/PlayerClassFactory.hpp
+    src/entities/MarauderTalents.hpp
     src/entities/Actor.hpp
     src/entities/Player.hpp
     src/entities/Monster.hpp
@@ -109,7 +114,10 @@ add_executable(roguelike
     src/ai/BossBehavior.cpp
     src/entities/TalentSet.cpp
     src/entities/TalentEffects.cpp
+    src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
+    src/entities/MarauderTalents.cpp
+    src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
     src/entities/StatusEffectLogic.cpp
     src/entities/MonsterFactory.cpp
@@ -138,6 +146,9 @@ add_executable(entity_smoke_test
     tests/entity_smoke_test.cpp
     src/entities/TalentSet.cpp
     src/entities/SpellbladeTalents.cpp
+    src/entities/MarauderTalents.cpp
+    src/entities/PlayerClassFactory.cpp
+    src/entities/AttributeFormulas.cpp
     src/entities/StatusEffects.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
@@ -217,6 +228,9 @@ add_executable(chaser_test
     src/ai/Chaser.cpp
     src/entities/TalentSet.cpp
     src/entities/SpellbladeTalents.cpp
+    src/entities/MarauderTalents.cpp
+    src/entities/PlayerClassFactory.cpp
+    src/entities/AttributeFormulas.cpp
     src/entities/StatusEffects.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
@@ -255,7 +269,11 @@ add_executable(talent_test
     tests/talent_test.cpp
     src/entities/TalentSet.cpp
     src/entities/TalentEffects.cpp
+    src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
+    src/entities/MarauderTalents.cpp
+    src/entities/PlayerClassFactory.cpp
+    src/entities/StatusEffects.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
     ${AI_HEADERS}
@@ -263,6 +281,29 @@ add_executable(talent_test
 
 target_include_directories(talent_test PRIVATE src)
 target_compile_features(talent_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# Marauder test
+# ---------------------------------------------------------------------------
+# Mirrors talent_test.cpp's structure exactly, for the Marauder's kit
+# and PlayerClassFactory instead of the Spellblade's.
+
+add_executable(marauder_test
+    tests/marauder_test.cpp
+    src/entities/TalentSet.cpp
+    src/entities/TalentEffects.cpp
+    src/entities/AttributeFormulas.cpp
+    src/entities/SpellbladeTalents.cpp
+    src/entities/MarauderTalents.cpp
+    src/entities/PlayerClassFactory.cpp
+    src/entities/StatusEffects.cpp
+    ${COMMON_HEADERS}
+    ${ENTITY_HEADERS}
+    ${AI_HEADERS}
+)
+
+target_include_directories(marauder_test PRIVATE src)
+target_compile_features(marauder_test PRIVATE cxx_std_17)
 
 # ---------------------------------------------------------------------------
 # Monster AI test
@@ -281,7 +322,10 @@ add_executable(monster_ai_test
     src/ai/AoEBomber.cpp
     src/entities/TalentSet.cpp
     src/entities/TalentEffects.cpp
+    src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
+    src/entities/MarauderTalents.cpp
+    src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
     src/entities/StatusEffectLogic.cpp
     ${COMMON_HEADERS}
@@ -308,7 +352,10 @@ add_executable(boss_test
     src/ai/BossBehavior.cpp
     src/entities/TalentSet.cpp
     src/entities/TalentEffects.cpp
+    src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
+    src/entities/MarauderTalents.cpp
+    src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
@@ -339,5 +386,21 @@ add_executable(savegame_test
 
 target_include_directories(savegame_test PRIVATE src)
 target_compile_features(savegame_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# Attribute formulas test
+# ---------------------------------------------------------------------------
+# The lightest test target in the project -- AttributeFormulas has no
+# dependency on anything else (Actor, Talent, Monster, none of it), so
+# this needs nothing beyond the formulas module itself.
+
+add_executable(attribute_formulas_test
+    tests/attribute_formulas_test.cpp
+    src/entities/AttributeFormulas.cpp
+    ${ENTITY_HEADERS}
+)
+
+target_include_directories(attribute_formulas_test PRIVATE src)
+target_compile_features(attribute_formulas_test PRIVATE cxx_std_17)
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT roguelike)

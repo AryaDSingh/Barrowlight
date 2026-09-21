@@ -2,6 +2,7 @@
 
 #include <optional>
 
+#include "entities/DamageType.hpp"
 #include "entities/StatusEffects.hpp"
 
 namespace engine {
@@ -16,6 +17,15 @@ struct MonsterAttackProfile {
     int power = 0;
     std::optional<StatusEffectInstance> onHitEffect; // e.g. Poison, Stun
     float onHitChance = 1.f; // 1.0 = always applies onHitEffect when present
+
+    // Which attribute this attack's damage scales with (Prompt 14).
+    // Defaults to Physical -- every current MonsterAttackProfile-backed
+    // attack (Goblin/Spider/Ogre/Archer's basic hits, the boss's melee)
+    // is a physical strike; nothing currently needs Magic here (the
+    // roster's two magic-coded attacks, Bomber's Blast and the boss's
+    // Warlord's Fury, are both TalentSet-driven abilities, not
+    // MonsterAttackProfile-backed).
+    DamageType damageType = DamageType::Physical;
 };
 
 } // namespace engine

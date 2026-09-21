@@ -3,7 +3,6 @@
 #include <utility>
 
 #include "entities/Actor.hpp"
-#include "entities/SpellbladeTalents.hpp"
 
 namespace engine {
 
@@ -11,15 +10,20 @@ namespace engine {
 // come from input (a later prompt's InputHandler), never from a strategy
 // object.
 //
-// Knows the full Spellblade talent kit from the start (Prompt 9) --
-// there's no leveling/unlock system in this vertical slice, so gating
-// talent access behind character progression would be scope this project
+// As of Prompt 15, the talent kit is passed in rather than hardcoded --
+// previously this constructor built TalentSet(spellbladeTalents())
+// itself, coupling Player to one specific class. Which kit a given
+// Player actually knows is now PlayerClassFactory's job
+// (talentSetForClass), the same "factory decides, the class itself
+// stays generic" shape MonsterFactory already established for monsters.
+// There's still no leveling/unlock system in this vertical slice, so a
+// class's full kit is always known from the start -- gating talent
+// access behind character progression would be scope this project
 // hasn't asked for.
 class Player : public Actor {
 public:
-    Player(Position position, Stats stats)
-        : Actor("Player", '@', position, std::move(stats), nullptr,
-                TalentSet(spellbladeTalents())) {}
+    Player(Position position, Stats stats, TalentSet talents)
+        : Actor("Player", '@', position, std::move(stats), nullptr, std::move(talents)) {}
 };
 
 } // namespace engine

@@ -47,7 +47,7 @@ int main() {
         Stats stats;
         stats.hp = 20;
         stats.maxHp = 20;
-        Player dummy(Position{0, 0}, stats);
+        Player dummy(Position{0, 0}, stats, TalentSet{});
 
         dummy.statusEffects().apply(StatusEffectInstance{StatusEffectType::Poison, 2, 3});
 
@@ -69,7 +69,7 @@ int main() {
         Stats stats;
         stats.hp = 20;
         stats.maxHp = 20;
-        Player dummy(Position{0, 0}, stats);
+        Player dummy(Position{0, 0}, stats, TalentSet{});
         dummy.statusEffects().apply(StatusEffectInstance{StatusEffectType::Stun, 2, 0});
 
         check(tickStatusEffects(dummy), "stunned on tick 1 of 2");
@@ -86,18 +86,18 @@ int main() {
 
         Monster self(MonsterType::Archer, "Archer", 'a', Position{2, 2}, Stats{}, std::make_unique<NullAIBehavior>());
 
-        Player farTarget(Position{9, 2}, Stats{}); // distance 7 -- beyond attackRange(6), within sight(8)
+        Player farTarget(Position{9, 2}, Stats{}, TalentSet{}); // distance 7 -- beyond attackRange(6), within sight(8)
         AIDecision decision = kiter.decideAction(self, map, farTarget, {});
         check(decision.type == AIActionType::Move && decision.movePosition.x == 3 &&
                   decision.movePosition.y == 2,
               "Kiter approaches when target is beyond attack range");
 
-        Player midTarget(Position{6, 2}, Stats{}); // distance 4 -- within (2,6]
+        Player midTarget(Position{6, 2}, Stats{}, TalentSet{}); // distance 4 -- within (2,6]
         decision = kiter.decideAction(self, map, midTarget, {});
         check(decision.type == AIActionType::Attack && decision.attackPower == 4,
               "Kiter attacks when target is within its band");
 
-        Player closeTarget(Position{3, 2}, Stats{}); // distance 1 -- too close
+        Player closeTarget(Position{3, 2}, Stats{}, TalentSet{}); // distance 1 -- too close
         decision = kiter.decideAction(self, map, closeTarget, {});
         check(decision.type == AIActionType::Move && decision.movePosition.x == 1 &&
                   decision.movePosition.y == 2,
@@ -114,7 +114,7 @@ int main() {
 
         Support support(/*buffMagnitude=*/4, /*buffDuration=*/4, /*buffRadius=*/4);
         Map map = makeOpenRoom();
-        Player irrelevantPlayer(Position{0, 0}, Stats{});
+        Player irrelevantPlayer(Position{0, 0}, Stats{}, TalentSet{});
 
         Monster self(MonsterType::Shaman, "Shaman", 'h', Position{5, 2}, Stats{}, std::make_unique<NullAIBehavior>(),
                      TalentSet(abilities));
@@ -144,16 +144,16 @@ int main() {
                                                             TargetingMode::Self,
                                                             EffectShape::SingleTarget, 0, 0, 5}}));
 
-        Player farTarget(Position{8, 2}, Stats{}); // distance 6 -- beyond blastRange(4), within sight(8)
+        Player farTarget(Position{8, 2}, Stats{}, TalentSet{}); // distance 6 -- beyond blastRange(4), within sight(8)
         AIDecision decision = bomber.decideAction(self, map, farTarget, {});
         check(decision.type == AIActionType::Move, "AoEBomber approaches when target is too far");
 
-        Player inRangeTarget(Position{5, 2}, Stats{}); // distance 3 -- within blastRange, off cooldown
+        Player inRangeTarget(Position{5, 2}, Stats{}, TalentSet{}); // distance 3 -- within blastRange, off cooldown
         decision = bomber.decideAction(self, map, inRangeTarget, {});
         check(decision.type == AIActionType::UseAbility && decision.attackPower == 10,
               "AoEBomber blasts when in range and off cooldown");
 
-        Player closeTarget(Position{3, 2}, Stats{}); // distance 1 -- too close
+        Player closeTarget(Position{3, 2}, Stats{}, TalentSet{}); // distance 1 -- too close
         decision = bomber.decideAction(self, map, closeTarget, {});
         check(decision.type == AIActionType::Move && decision.movePosition.x == 1,
               "AoEBomber retreats when the target is too close");

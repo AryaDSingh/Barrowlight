@@ -27,7 +27,8 @@ int main() {
     Stats playerStats;
     playerStats.maxHp = 20;
     playerStats.hp = 20;
-    Player player({5, 5}, playerStats);
+    Player player({5, 5}, playerStats, TalentSet{}); // empty kit -- this test only exercises
+                                                      // entity hierarchy basics, not talents
 
     Stats goblinStats;
     goblinStats.maxHp = 8;

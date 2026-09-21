@@ -45,7 +45,7 @@ int main() {
     {
         Monster goblin(MonsterType::Goblin, "Goblin", 'g', Position{1, 1}, Stats{},
                         std::make_unique<Chaser>(profile, /*sightRadius=*/5));
-        Player farTarget(Position{9, 3}, Stats{}); // distance ~8.25, beyond radius 5
+        Player farTarget(Position{9, 3}, Stats{}, TalentSet{}); // distance ~8.25, beyond radius 5
         const AIDecision decision = goblin.ai()->decideAction(goblin, map, farTarget, {});
         check(decision.type == AIActionType::Wait, "target beyond sight radius -> Wait");
     }
@@ -56,7 +56,7 @@ int main() {
     {
         Monster goblin(MonsterType::Goblin, "Goblin", 'g', Position{1, 1}, Stats{},
                         std::make_unique<Chaser>(profile, /*sightRadius=*/5));
-        Player target(Position{5, 1}, Stats{});
+        Player target(Position{5, 1}, Stats{}, TalentSet{});
         const std::vector<Position> expectedSteps = {{2, 1}, {3, 1}, {4, 1}};
 
         std::cout << "\nChasing target (" << target.position().x << ',' << target.position().y

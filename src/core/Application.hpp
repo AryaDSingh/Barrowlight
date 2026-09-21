@@ -1,6 +1,9 @@
 #pragma once
 
+#include <deque>
 #include <memory>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include <SFML/Graphics.hpp>
@@ -9,10 +12,23 @@
 #include "entities/AIBehavior.hpp"
 #include "entities/Monster.hpp"
 #include "entities/Player.hpp"
+#include "entities/PlayerClass.hpp"
 #include "world/ExploredMap.hpp"
 #include "world/Map.hpp"
 
 namespace engine {
+
+// Which top-level screen the game is currently showing. Introduced at
+// Prompt 15 alongside the multi-class system -- before this, the
+// constructor went straight into Playing (always as the Spellblade,
+// the only class that existed). ClassSelection is deliberately simple:
+// a text menu, not a separate scene/state-machine framework -- this
+// project's established minimal-but-real UI approach (Prompt 13), just
+// applied to one more screen.
+enum class GameMode {
+    ClassSelection,
+    Playing,
+};
 
 // Owns the window and the top-level loop shell.
 //
@@ -34,6 +50,13 @@ namespace engine {
 // extracted into its own class (that refactor stays deliberately
 // deferred; nothing here demands it be done *this* prompt, just noted
 // that the case for it keeps getting stronger).
+//
+// As of Prompt 13, Application also owns a loaded sf::Font and every
+// call site that used to print only to the console now goes through
+// log() instead, which does both: prints to std::cout exactly as
+// before (so existing verification-by-console-output still works
+// unchanged) and keeps a rolling on-screen log buffer render() draws
+// each frame.
 class Application {
 public:
     Application();
@@ -58,7 +81,7 @@ private:
     // Walks up to `maxDistance` tiles from the player's position in
     // `direction` for Blink, stopping just before a wall or an
     // actor-occupied tile rather than requiring the full distance clear.
-    Position resolveBlinkDestination(Position direction, int maxDistance) const;
+    Position resolveBlinkDestination(Position direction, int maxDistance);
 
     // Recomputes FOV from the player's current position.
     void updateFieldOfView();
@@ -68,6 +91,21 @@ private:
     // boss if the layout has room for one, scheduler, exploredMap_) to
     // match it.
     void regenerateLevel(unsigned int seed);
+
+    // Applies `cls` to player_ (stats and talents both, via
+    // PlayerClassFactory), records it as playerClass_ (so a later R
+    // regenerates as the same class, and save/load knows which kit a
+    // loaded save's cooldowns belong to), switches mode_ to Playing, and
+    // generates the first dungeon. The one place a class selection
+    // actually takes effect -- processEvents() only reads input and
+    // calls this, it doesn't touch player_ itself.
+    void selectClass(PlayerClass cls);
+
+    // Draws the ClassSelection screen: a plain text menu, not a
+    // separate scene graph -- this project's established minimal HUD
+    // approach (Prompt 13), just for one more screen instead of the
+    // gameplay HUD.
+    void renderClassSelection();
 
     // Gathers current map/player/monster/exploredMap_ state into a
     // SaveGameState and writes it via engine::saveGame(). Prints whether
@@ -116,7 +154,13 @@ private:
     // `exclude` (the player, or any living monster). The integration-pass
     // bug this prompt fixed: movement previously only checked terrain,
     // never this -- see ARCHITECTURE_DECISIONS.md.
-    bool isOccupied(Position pos, const Actor* exclude) const;
+    bool isOccupied(Position pos, const Actor* exclude);
+
+    // The living actor (other than `exclude`) standing at `pos`, or
+    // nullptr. isOccupied() is this with the result reduced to a bool;
+    // tryMovePlayer's bump-into-a-monster handling (Phase 2, Prompt 13)
+    // needs the actor itself, to name it and to trigger its own turn.
+    Actor* actorAt(Position pos, const Actor* exclude);
 
     // Every monster except `exclude`, still alive. Built fresh each time
     // an AIBehavior needs it (only Support actually uses it) rather than
@@ -136,13 +180,49 @@ private:
     // Called once at the end of processMonsterTurns(), never mid-loop.
     void removeDeadMonsters();
 
+    // Concatenates `args` (anything operator<< accepts, same as chaining
+    // std::cout <<) into one message and routes it through logImpl() --
+    // the single replacement for every std::cout call site that used to
+    // exist directly in this file. A template so call sites read almost
+    // exactly like the std::cout chains they replaced; the real work
+    // (print + buffer) lives in logImpl() so it isn't duplicated per
+    // instantiation.
+    template <typename... Args>
+    void log(Args&&... args) {
+        std::ostringstream oss;
+        (oss << ... << args);
+        logImpl(oss.str());
+    }
+
+    // Prints `message` to std::cout (exactly as every direct std::cout
+    // call here used to -- console-based verification from earlier
+    // prompts still works unchanged) and appends it to logMessages_,
+    // capped at kMaxLogMessages, for render() to draw on-screen.
+    void logImpl(const std::string& message);
+
+    // Draws one line of text at (x, y) in pixels. A thin wrapper around
+    // sf::Text -- not a new abstraction layer, just avoids repeating
+    // setString/setCharacterSize/setFillColor/setPosition/draw at every
+    // call site in render().
+    void drawText(const std::string& text, float x, float y, unsigned int size,
+                   sf::Color color);
+
     sf::RenderWindow window_;
+    sf::Font font_;
+    GameMode mode_ = GameMode::ClassSelection;
+    PlayerClass playerClass_ = PlayerClass::Spellblade; // meaningless until selectClass() runs
     Map map_;
     Player player_;
     std::vector<std::unique_ptr<Monster>> monsters_;
     Monster* boss_ = nullptr; // non-owning pointer into monsters_, if the level has a boss room
     TurnScheduler scheduler_;
     ExploredMap exploredMap_;
+
+    // Rolling on-screen combat log -- oldest messages drop off the front
+    // as new ones are appended. Deque specifically for cheap pop_front();
+    // this is never indexed randomly, only iterated front-to-back.
+    std::deque<std::string> logMessages_;
+    static constexpr std::size_t kMaxLogMessages = 6;
 
     // Direction of the player's last successful move -- Blink teleports
     // in this direction.

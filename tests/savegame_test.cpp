@@ -50,12 +50,21 @@ int main() {
     original.exploredMap.restoreAll(visibility);
 
     original.playerPosition = Position{2, 1};
+    original.playerClass = PlayerClass::Marauder; // deliberately not the default (Spellblade) --
+                                                    // a round-trip bug that always left this at
+                                                    // its default would go uncaught otherwise
     original.playerStats.hp = 17;
     original.playerStats.maxHp = 30;
     original.playerStats.mana = 9;
     original.playerStats.maxMana = 20;
     original.playerStats.strength = 12;
     original.playerStats.dexterity = 14;
+    original.playerStats.intelligence = 18; // deliberately non-default -- this exact field was
+                                              // missing from the save format until Prompt 15
+                                              // caught it, and the gap slipped through
+                                              // unnoticed specifically because the original
+                                              // version of this test never set a non-default
+                                              // value here either
     original.playerStats.speed = 100;
     original.playerCooldowns = {0, 3, 1, 0, 0, 4, 0, 2};
     original.playerStatusEffects = {
@@ -116,10 +125,12 @@ int main() {
 
     check(loaded.playerPosition.x == 2 && loaded.playerPosition.y == 1,
           "player position matches");
+    check(loaded.playerClass == PlayerClass::Marauder,
+          "player class matches (not left at the Spellblade default)");
     check(loaded.playerStats.hp == 17 && loaded.playerStats.maxHp == 30 &&
               loaded.playerStats.mana == 9 && loaded.playerStats.maxMana == 20 &&
               loaded.playerStats.strength == 12 && loaded.playerStats.dexterity == 14 &&
-              loaded.playerStats.speed == 100,
+              loaded.playerStats.intelligence == 18 && loaded.playerStats.speed == 100,
           "every player stat field matches exactly");
     check(loaded.playerCooldowns == original.playerCooldowns,
           "all 8 talent cooldowns match exactly, in order");

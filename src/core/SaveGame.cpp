@@ -6,7 +6,15 @@ namespace engine {
 
 namespace {
 
-constexpr int kSaveFormatVersion = 1;
+// Version 2: added Stats::intelligence (missed when it was introduced
+// at Prompt 14 -- a real gap, caught while touching this file again for
+// playerClass below) and playerClass (Prompt 15's multi-class system --
+// needed so a loaded save's playerCooldowns are applied to the right
+// class's talent list, not whatever player_ happened to be configured
+// as at the moment F9 was pressed). A version-1 save is simply
+// rejected, not migrated -- see ARCHITECTURE_DECISIONS.md, "Save/load,"
+// for why that's an acceptable simplification at this scale.
+constexpr int kSaveFormatVersion = 2;
 
 char tileChar(const Tile& t) {
     return t.type == TileType::Wall ? '#' : '.';
@@ -97,10 +105,11 @@ bool saveGame(const SaveGameState& state, const std::string& path) {
     }
 
     out << state.playerPosition.x << ' ' << state.playerPosition.y << '\n';
+    out << static_cast<int>(state.playerClass) << '\n';
     out << state.playerStats.hp << ' ' << state.playerStats.maxHp << ' '
         << state.playerStats.mana << ' ' << state.playerStats.maxMana << ' '
         << state.playerStats.strength << ' ' << state.playerStats.dexterity << ' '
-        << state.playerStats.speed << '\n';
+        << state.playerStats.intelligence << ' ' << state.playerStats.speed << '\n';
     out << state.lastMoveDirection.x << ' ' << state.lastMoveDirection.y << '\n';
 
     out << state.playerCooldowns.size() << '\n';
@@ -169,9 +178,15 @@ std::optional<SaveGameState> loadGame(const std::string& path) {
     if (!(in >> state.playerPosition.x >> state.playerPosition.y)) {
         return std::nullopt;
     }
+    int playerClassValue = 0;
+    if (!(in >> playerClassValue)) {
+        return std::nullopt;
+    }
+    state.playerClass = static_cast<PlayerClass>(playerClassValue);
     if (!(in >> state.playerStats.hp >> state.playerStats.maxHp >> state.playerStats.mana >>
           state.playerStats.maxMana >> state.playerStats.strength >>
-          state.playerStats.dexterity >> state.playerStats.speed)) {
+          state.playerStats.dexterity >> state.playerStats.intelligence >>
+          state.playerStats.speed)) {
         return std::nullopt;
     }
     if (!(in >> state.lastMoveDirection.x >> state.lastMoveDirection.y)) {

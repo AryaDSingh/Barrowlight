@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "core/Position.hpp"
+#include "entities/DamageType.hpp"
 #include "entities/StatusEffects.hpp"
 
 namespace engine {
@@ -35,6 +36,18 @@ struct AIDecision {
                                  // (an ally for Support, the player for AoEBomber)
     std::size_t abilityIndex = 0;   // for UseAbility, which of the actor's own talents
     int attackPower = 0;             // for Attack (or a damaging UseAbility), already resolved
+
+    // Which attribute attackPower scales with (Prompt 14). Defaults to
+    // Physical, matching MonsterAttackProfile's own default -- Chaser
+    // and Kiter (both MonsterAttackProfile-backed) never need to set
+    // this explicitly. AoEBomber and BossBehavior's blast phase set it
+    // to Magic directly in their own decision-building code, not via a
+    // constructor parameter -- there's exactly one Bomber and one boss,
+    // so this is a fixed characteristic of that specific ability, not
+    // data that varies across instances the way MonsterAttackProfile's
+    // damageType genuinely does across the Chaser-based roster.
+    DamageType damageType = DamageType::Physical;
+
     std::optional<StatusEffectInstance> effectToApply; // for Attack (on-hit proc), UseAbility
                                                           // (a buff), or SelfBuff
                                                           // (unset if nothing applies)

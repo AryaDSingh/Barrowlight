@@ -695,6 +695,382 @@ subfolders speculatively ahead of the system that needs them.
   already-proven execution paths (attack/ability/self-buff handling)
   Phase 2/3 also use.
 
+## Multi-class system and Marauder (decided Prompt 15, Phase 2)
+
+- **`PlayerClassFactory` mirrors `MonsterFactory`'s shape exactly** --
+  one factory, a switch over an enum, `statsForClass`/`talentSetForClass`
+  returning fully-configured data. The same pattern that already proved
+  itself across six monster types plus a boss, applied to player classes
+  without needing to invent anything new.
+- **`Player`'s constructor no longer hardcodes `TalentSet
+  (spellbladeTalents())` internally.** This was a real, blocking
+  coupling -- discovered by tracing exactly how `player_`'s talents got
+  set up before writing a line of the class-selection system, not
+  assumed. `Player` now takes a `TalentSet` parameter, the same shape
+  `Monster` already had. Every test-local `Player` construction across
+  the whole suite needed updating for the new signature -- an initial
+  targeted grep found 2 sites; a second, more thorough pass (after the
+  first full rebuild still failed to compile) found 14 more across
+  `boss_test.cpp` and `monster_ai_test.cpp`. Worth noting as a real
+  lesson: the first grep pattern was too narrow (it matched some
+  constructions but not others using different local variable names),
+  and only a broader pattern across the whole repo caught everything.
+- **`GameMode` (ClassSelection/Playing), not a full scene/state-machine
+  framework.** One enum, one member, a handful of `if (mode_ == ...)`
+  branches in `processEvents()`/`render()`. Consistent with this
+  project's established "minimal but real" UI philosophy (Prompt 13) --
+  a second screen doesn't justify a general-purpose state machine when
+  there are only ever going to be a small, known number of screens.
+- **The class-selection screen is a plain text menu**, not a design
+  requiring mouse support, hover states, or visual polish beyond what
+  Prompt 13's `drawText` already provides. Two classes, two numbered
+  options, a one-line instruction -- exactly as much UI as the decision
+  actually needs.
+- **`Talent::isHeal` (a single bool, added at Prompt 14) became
+  `TalentEffectKind`, a proper three-value enum (Damage/Heal/SelfBuff),
+  plus a `selfBuffEffect` field.** Rallying Cry needed a third kind of
+  effect a talent could have; rather than bolting on a second bool
+  (`isSelfBuff`) alongside the first, generalized into an enum once a
+  third case made the pattern clear -- mirroring `AIDecision`'s own
+  discriminated-by-enum shape (`AIActionType`), which already existed
+  as precedent for "one struct represents different kinds of things" in
+  this codebase. `effectKind` and `selfBuffEffect` both sit at the very
+  end of `Talent`, following the exact positional-aggregate-
+  initialization safety rule established when `damageType` was added
+  (see "Attribute-driven combat" above).
+- **Self-targeting needed a real resolution path for `SingleTarget`
+  shape, reused from Renewal (Prompt 14's healing addition) rather than
+  rebuilt.** `TargetingMode::Self` already existed but was never
+  actually read by `tryUseTalent`'s anchor-resolution logic before
+  Renewal added the `Self` + `SingleTarget` → "resolves to the caster
+  directly" case; Rallying Cry reuses that exact same resolution rather
+  than needing its own.
+- **A real bug live testing caught that no unit test would have: Rallying
+  Cry's Empowered buff did nothing to the caster's own damage.**
+  `executeAIDecision` (monster attacks, Prompt 11) already checked
+  `attacker.statusEffects().has(Empowered)`; `applyTalentDamage` (every
+  player attack, since Prompt 9) never did -- a gap that existed from
+  the very first talent system and was never exercised, because no
+  earlier talent ever needed to check the attacker's own status effects.
+  Every damage number in a live Marauder fight after casting Rallying
+  Cry matched the *un-buffed* formula exactly (Slam: base 4 + strength
+  bonus 5 = 9, not 13), which is what surfaced it. Fixed by adding the
+  identical check to `applyTalentDamage`, folded in before the
+  conditional multiplier (same reasoning as the attribute bonus: an
+  execute amplifies the attacker's full output, buffs included). While
+  writing the regression test for this fix, caught a *second*, smaller
+  bug -- in the test itself: the attacker `Stats` used for the new check
+  had been left at the default strength (10) instead of the Marauder's
+  real 20, which made the fix's own test fail even though the fix was
+  correct. Traced by hand-recomputing the expected arithmetic rather
+  than assuming either the code or the test was simply wrong, and fixing
+  the actual mistake (the test's setup) rather than adjusting the
+  expected value to match whatever the buggy test produced.
+- **`F9` (load) is reachable from both `GameMode`s, checked before the
+  mode branch rather than only inside the Playing-mode key switch.**
+  Found by literally trying to load a save from a fresh launch (which
+  now starts at class selection, not auto-started as the Spellblade the
+  way every earlier prompt's testing assumed) and getting silence --
+  the key press was reaching `processEvents()` but nothing handled it
+  outside Playing mode. `loadGame()` now sets `mode_ = Playing` on
+  success explicitly, rather than assuming the caller was already there.
+- **`Stats::intelligence` was missing from the save format entirely --
+  a real latent bug from Prompt 14, caught only because this prompt
+  needed to touch `SaveGame.cpp` again anyway for `playerClass`
+  persistence.** Every save silently dropped the player's actual
+  Intelligence value back to the `Stats` default (10) on load. The
+  original `savegame_test` never caught this because it never set a
+  non-default Intelligence value in the first place -- confirmed this
+  directly by checking the old test, not assumed. Fixed alongside adding
+  `playerClass`, with the save format version bumped to 2 (a version-1
+  save is now simply rejected, not migrated -- see "Save/load" above for
+  why that's an acceptable simplification at this project's scale).
+- **Loading reconstructs the saved player's class -- and therefore the
+  correct talent list -- before applying saved cooldowns.**
+  `playerCooldowns` is a flat list of remaining-cooldown values applied
+  positionally by index; without first setting `player_.talents()` to
+  match `state.playerClass`, a loaded Marauder save's cooldowns could
+  silently apply to whatever talents `player_` happened to already have
+  configured (e.g. a Spellblade's, if the game hadn't been reset since
+  launch) -- wrong values landing on the wrong talents with no error at
+  all. Verified live, precisely: saved a Marauder mid-fight with Cleave
+  on a real cooldown, loaded into a completely separate fresh process,
+  and confirmed the HUD showed exactly 4 Marauder talents (never a
+  Spellblade default) with Cleave correctly still on cooldown, hp/mana
+  exactly matching what was saved.
+- **Marauder's maxHp (45) is hand-tuned data, not a dynamic Strength-hp
+  formula.** Strength giving a real hp bonus was explicitly deferred at
+  Prompt 14 (documented there as real scope avoided on purpose, not an
+  oversight) specifically because implementing it would have meant
+  rebalancing every already-tuned hp value project-wide. "Tankier than
+  the Spellblade" is expressed the same way every other hp value in this
+  project already is -- a deliberate number in the class's own data --
+  rather than reopening that deferred decision under this prompt's
+  different scope.
+
+## Healing spell: Renewal (player-requested, post-Prompt 14)
+
+- **The Spellblade had no way to recover hp at all before this.** Mana
+  regenerates per turn (the Prompt 13 follow-up fix), but there was no
+  hp equivalent -- once damaged, the only paths were death or the run
+  ending. A real, if honest, gap once a fight could genuinely outlast
+  the player's starting hp pool.
+- **A 9th talent, not a replacement for any of the original 8.** Key 9,
+  joining the Flame tree (5 talents now, Blade stays at 4) since it's
+  Intelligence-scaled -- there's no Strength-scaled equivalent for
+  healing, the way there is for the two damage types.
+- **A genuinely separate `applyTalentHeal` function, not a sign flip on
+  `applyTalentDamage`.** The two have real behavioral differences beyond
+  the arithmetic: healing never rolls dodge (avoiding your own
+  beneficial spell doesn't make sense the way avoiding an incoming
+  attack does), and it caps at `maxHp` rather than having no upper
+  bound the way damage has no lower one. Branching on a new
+  `Talent::isHeal` flag in `tryUseTalent` rather than trying to make one
+  function serve both cases.
+- **Self-targeting needed a real resolution path it didn't have.**
+  `TargetingMode::Self` existed already (Blink, Immolate) but was never
+  actually read by `tryUseTalent`'s anchor-resolution logic -- Blink
+  works because `EffectShape::Movement` bypasses targeting entirely, and
+  Immolate's `AreaAroundSelf` searches for nearby *enemies* via
+  `actorsWithinRadius`, which is the wrong tool for "heal yourself."
+  Added a direct `Self` + `SingleTarget` case that resolves the target
+  to the caster, rather than trying to force this through either
+  existing path.
+- **`isHeal` was added to `Talent` at the very end, after `damageType`
+  -- not because it's logically related to placement there, but because
+  every existing talent is built with positional aggregate
+  initialization (see "Attribute-driven combat" above), and appending
+  is the only insertion point that can't silently shift an existing
+  value into the wrong field.**
+- **Balanced deliberately, not just "some reasonable number."** Base 8 +
+  the Spellblade's own Intelligence bonus (4) == 12 hp, about 40% of the
+  30 maxHp pool -- meaningful without being a full heal from empty. A
+  6-turn cooldown, the longest of any Spellblade talent, paces it
+  deliberately: sustain this strong needs rationing, not spamming every
+  fight. Verified live, precisely: cast from 20/30 hp, the log showed
+  the heal correctly cap at 30/30 rather than overshoot to the
+  arithmetic 32 -- confirmed in the actual running game, not just the
+  unit test (`talent_test` separately confirms the same cap in
+  isolation, including a dedicated near-full-hp case).
+
+## Attribute-driven combat (decided Prompt 14, Phase 2)
+
+- **A new `AttributeFormulas` module, pure functions only.** Same
+  separation-of-concerns reasoning as `TalentEffects` being kept
+  separate from `Talent`: `Stats` stays plain data (its own header
+  comment has said so since Prompt 3), the formulas that interpret it
+  live outside it. `physicalDamageBonus`/`magicDamageBonus`/
+  `dodgeChance`/`manaBonusFromIntelligence` are all pure and fully
+  unit-tested (`attribute_formulas_test`, 25 checks). `didDodge(chance,
+  roll)` is deliberately split out as its own pure comparison so the
+  *logic* of a dodge check is testable with exact inputs even though
+  `rollDodge()` -- the one function that actually draws a random number
+  -- isn't tested in isolation, same precedent as Chaser's `onHitChance`
+  roll (Prompt 10), which was never isolated for testing either.
+- **A floating-point exact-equality bug, caught and fixed in the test
+  itself, not the formula.** `dodgeChance(20)` computes exactly the 30%
+  cap via `10 * 0.03f`, but that computed value isn't guaranteed
+  bit-exact to the literal `0.30f` the way `dodgeChance(30)` is (which
+  gets clamped and returns the cap constant directly, not a computed
+  value) -- `dodgeChance(20) == 0.30f` failed on first run despite the
+  formula being correct. Fixed with a tolerance-based comparison for
+  that one boundary case, leaving the clamped-past-cap cases on exact
+  equality since those genuinely do return the literal constant.
+- **`damageType` was moved to the very end of `Talent`, not placed
+  naturally alongside `power`/`areaRadius`, after finding a real
+  landmine.** Every talent in `SpellbladeTalents.cpp` is constructed via
+  positional aggregate initialization -- the `/*name=*/`-style
+  annotations are plain comments, not C++20 designated initializers, so
+  values are matched to struct fields by position alone. Inserting a
+  new field mid-struct would have silently shifted every value after it
+  in any construction listing that many fields: specifically,
+  `conditionalMultiplier` (an int, meant for the second-to-last field)
+  would have landed in `conditionalHpFraction`'s old slot -- which
+  compiles perfectly cleanly via an implicit int-to-float conversion,
+  no warning, just quietly wrong data. Checked `MonsterAttackProfile`
+  and `AIDecision` for the same risk before adding `damageType` to
+  either; both were confirmed safe (every construction site uses named-
+  member assignment or empty-brace default-init, never a positional
+  value list), so `damageType` sits in a natural position in both of
+  those.
+- **Every existing tuned damage number was recalibrated, not left to
+  drift.** Each talent's and monster attack's base `power` was reduced
+  by exactly its new attribute bonus, so the *total* (base + bonus)
+  reproduces the exact value Prompts 9-11 already tuned and tested --
+  e.g. Quick Strike's base dropped from 6 to 4, but the Spellblade's
+  strength (14) contributes +2, landing back on 6. This was verified
+  directly, twice: `talent_test` uses an attacker with the Spellblade's
+  real configured stats and asserts the *exact original* damage numbers
+  still come out (not just "some plausible number"), and live play
+  showed every logged combat number matching those same hand-computed
+  values exactly. The alternative -- leaving old flat values in place
+  and just adding attribute bonuses on top -- was rejected specifically
+  because it would have silently made every fight easier or harder by
+  however much the new bonuses added up to, without that being a
+  deliberate difficulty decision.
+- **Dodge blocks the on-hit status effect too, not just the raw
+  damage.** A dodged Spider bite shouldn't still poison the target --
+  avoiding the hit means avoiding what rode in on it. Implemented as a
+  single `dodged` flag gating both the damage branch and the
+  effect-application branch in `executeAIDecision`, rather than two
+  independent checks that could drift out of sync with each other.
+- **The attribute bonus is folded into `power` *before* Execution's
+  conditional multiplier applies, not added after.** `(power + bonus) *
+  multiplier`, not `power * multiplier + bonus`. An execute is meant to
+  amplify the attacker's full output including their inherent strength,
+  not just the talent's flat listed number -- confirmed with an exact
+  hand-computed value in `talent_test`: (8 base + 2 strength) * 3 == 30,
+  matching the original tuned 10 * 3 == 30 precisely, not the 26 the
+  other order would have produced.
+- **Monster attributes are genuinely differentiated per type, not
+  reused defaults.** Every monster had strength=10/dexterity=10
+  (`Stats`' plain defaults) regardless of type before this prompt --
+  meaningless once dodge and damage bonuses actually depend on them.
+  Chosen per-type to match each monster's established identity rather
+  than arbitrarily: Ogre leans Strength-heavy/Dexterity-light (hits
+  hard, 0% dodge -- a lumbering brute), Spider and Archer lean Dexterity
+  (18%/24% dodge respectively, "hard to pin down"), Shaman and Bomber
+  lean Intelligence (matching their already-magic-coded kits from
+  Prompt 10), the boss balances both offense stats across its melee and
+  blast phases. Goblin stays fully baseline on purpose -- the roster's
+  plain, undifferentiated mob, deliberately unchanged by this prompt.
+- **The player recalibrated to Strength 14 / Dexterity 10 / Intelligence
+  18** -- the Str+Int hybrid corner of the attribute triangle (see
+  ROADMAP.md, "Phase 2"), Dexterity left at baseline since evasion isn't
+  this class's identity. `maxMana` is now computed from
+  `manaBonusFromIntelligence()` (12 base + 8 from Intelligence) rather
+  than hardcoded -- lands on exactly 20, the same value this class has
+  had since Prompt 9, confirmed live via a screenshot showing "20/20" at
+  game start, not just asserted.
+- **No live-forced dodge observation.** Getting an actual dodge to occur
+  during scripted `xdotool` play is probabilistic (an 18-24% chance per
+  hit against the roster's most evasive monsters) and there's no way to
+  manually select a specific target to attack (targeting auto-picks the
+  nearest adjacent/visible enemy) -- an attempt to specifically farm a
+  Spider encounter ended up hitting the adjacent Goblin instead every
+  time. Rather than spend many more turns chasing a probabilistic
+  confirmation, treated this the same as `onHitChance` (Prompt 10):
+  the deterministic formula is exhaustively tested, the zero-chance
+  case is proven to never dodge (a real integration proof, not just a
+  formula-in-isolation one), and the dodge-branch code itself is simple
+  enough to trust by inspection once both of those hold.
+
+## Combat pacing: bump-turn-starvation and mana regen (player-reported, post-Prompt 13, confirmed on the person's machine)
+
+Two issues reported directly from play, not from the drafted roadmap --
+investigated and fixed with the same rigor as any other bug, including
+constructing a direct test before touching any code.
+
+- **"Monsters won't attack unless I attack first" -- confirmed as a real,
+  reproducible bug, not a misunderstanding.** Diagnosed by loading a save
+  with the player standing directly adjacent to two monsters at full hp
+  (confirmed via `savegame.txt` inspection, not guesswork) and testing
+  precisely what made them act: using a talent made both attack
+  immediately, proving the AI/FOV/adjacency logic itself was correct.
+  The actual defect was in `tryMovePlayer`: bumping into an
+  actor-occupied tile was treated identically to bumping into a wall --
+  a complete no-op, `processMonsterTurns()` never called, no turn
+  consumed. Walked through `TurnScheduler`'s energy math by hand first
+  (confirmed: with equal speeds, a full round-robin naturally emerges,
+  so turn frequency itself isn't the problem) before concluding the bug
+  was specifically in what counts as a "turn" at all. A monster that
+  just moved into range needs its *own* next turn to notice it's now
+  adjacent and attack -- its current decision was already computed
+  using its pre-move position (`Chaser::decideAction`, Prompt 10) --
+  and a player's natural instinct after walking up to a monster is
+  often to press the same direction again, expecting *something* to
+  happen. With no bump-to-attack in this game, that repeated input was
+  being silently swallowed forever, so the monster's overdue turn never
+  came. Fixed by giving `tryMovePlayer` two genuinely different
+  outcomes for "can't move here": a wall remains a pure no-op (an input
+  mistake, nothing gained by consuming a turn over it), but bumping into
+  an actor now logs "You bump into X." and runs the same
+  turn-processing as a successful move, without moving the player or
+  dealing damage -- this still isn't a bump-to-attack (combat stays
+  exclusively through talents, not a new mechanic scope wasn't asked
+  for), it just stops silently discarding turns the player has clearly
+  earned. `isOccupied` was refactored to be built on top of a new
+  `actorAt()` helper (returns the actor, not just a bool) since the fix
+  needs to know *who* was bumped, to name them. Verified live, twice:
+  once reproducing the exact original scenario end-to-end (10 pure
+  movement turns to reach the identical adjacent position, then one bump
+  with no talent used at all -- both monsters attacked immediately), and
+  again with clean single-bump isolation to confirm it's exactly one
+  turn's worth of consequence, not a repeat-fire bug.
+- **Mana regen: +2 per player turn, capped at max.** The player had no
+  way to recover mana at all before this -- a fight that outlasted the
+  starting pool left talents visibly off cooldown but permanently
+  unaffordable for the rest of that encounter. Applied once per player
+  turn inside `advanceTurnsUntilPlayerCanAct()`, alongside where status
+  effects already tick -- the natural single place that already
+  represents "a round has passed for the player," ticking even through
+  stun-skips (a stunned player is still in the round, just unable to
+  act). Verified live with exact arithmetic, not just "it went up": cast
+  Blink (3 mana cost) then checked mana after every subsequent turn via
+  the save file -- landed at 19/20 immediately after Blink itself
+  (20 - 3 cost + 2 regen from that same turn's own end-of-turn
+  processing == 19, matching exactly), then 20/20 after the next
+  successful move (19 + 2 == 21, correctly capped to the 20 max), then
+  held flat at 20/20 across further *blocked* moves (walls remaining a
+  correct no-op, not a hidden extra regen source).
+
+## Text rendering + HUD (decided Prompt 13, Phase 2)
+
+- **DejaVu Sans Mono, sourced via apt, bundled with its license file.**
+  Checked the license *before* bundling anything, not after: Bitstream
+  Vera-derived, explicitly permits reproduction/distribution including
+  within a larger software package (the only real restriction -- can't
+  sell the font by itself -- doesn't apply to bundling it as a project
+  asset). `assets/fonts/LICENSE-DejaVu.txt` ships alongside the font
+  for that reason.
+- **Confirmed SFML 3's text API by searching before writing any code,**
+  same discipline as every other SFML-version-specific decision in this
+  project (see `sf::Event`, Prompt 2). Two real breaking changes from
+  SFML 2: `sf::Font::loadFromFile` was renamed `openFromFile`, and
+  `sf::Text` lost its default constructor entirely -- it now requires a
+  valid `sf::Font&` at construction, the same "can't hold a null
+  resource pointer" reasoning that also removed `sf::Sprite`'s default
+  constructor. Both confirmed correct on the first real build attempt.
+- **One `log()` template method replaces all 23 scattered `std::cout`
+  call sites in `Application.cpp`.** A variadic template
+  (`template<typename... Args> void log(Args&&... args)`, C++17 fold
+  expression to build the string) rather than converting each call site
+  into a verbose `std::ostringstream` block -- call sites read almost
+  exactly like the `std::cout <<` chains they replaced. `log()` does
+  two things: prints to `std::cout` exactly as every direct call used
+  to (every prior console-based verification technique in this project
+  -- redirecting stdout, grepping for expected strings -- still works
+  completely unchanged), and appends to a capped rolling buffer
+  (`logMessages_`, a `std::deque`, capped at 6) that `render()` draws
+  on-screen. Two messages were deliberately left as raw `std::cout`,
+  not routed through `log()`: the dungeon-generation summary and the
+  font-load warning. Both are one-time diagnostics that fire before or
+  outside normal play (at launch/regenerate, and at startup
+  respectively) -- putting them in the *combat* log would mean a stale,
+  disconnected first line sitting in the on-screen log for the rest of
+  the run.
+- **A genuinely new verification technique for this prompt: screenshot
+  the live window and look at it.** Every prior prompt's rendering work
+  was verified by console output, hand-traced geometry, or trusting the
+  draw calls -- reasonable for colored rectangles, insufficient for
+  confirming *text actually renders correctly and looks right*.
+  Installed ImageMagick's `import`, captured the real SFML window
+  running under Xvfb via `xdotool`-scripted play, and inspected the
+  images directly. This is what caught a real, if minor, issue no
+  amount of code review would have: the talent-list text initially had
+  no visual separation from the dungeon tiles it happened to render
+  over -- legible, but genuinely unfinished-looking. Fixed with
+  semi-transparent backing panels behind the talent list and combat
+  log, then re-screenshotted specifically to confirm the fix looked
+  better, not just assumed it would from reading the diff.
+- **Talent list and combat log both use the same drawText() helper**
+  as the boss's new name label -- a thin, direct wrapper around
+  `sf::Text` (setString/setCharacterSize/setFillColor/setPosition/draw),
+  deliberately not a new abstraction layer. The boss label wasn't
+  separately screenshotted -- it uses the identical, already-proven
+  code path as everything that *was* screenshotted, so re-verifying it
+  live would only prove the same mechanism twice.
+
 ## Save/load (decided Prompt 12)
 
 - **A hand-rolled, human-readable text format, not JSON or binary.**
@@ -775,11 +1151,14 @@ subfolders speculatively ahead of the system that needs them.
   format (mismatched version number is rejected outright, not migrated).
   No real concern yet with one format version ever having existed.
 
-- No font or sprite/tile-atlas rendering yet -- flat colored rectangles
-  and simple HUD bars stand in until real art (or a chosen font) exists.
-  Now genuinely limiting (talent/monster names, damage, status effects
-  are all console-only, not shown in the game window) rather than just
-  cosmetic.
+- **Font rendering now exists (Prompt 13) -- sprite/tile art still
+  doesn't.** Tiles, monsters, and the player are still flat colored
+  rectangles; text (names, damage, status effects, talent list, combat
+  log) now renders for real, which was the more limiting half of this
+  gap. Real sprite/tile-atlas art remains a from-scratch pipeline
+  (texture loading + atlas slicing) with no immediate need driving it
+  -- revisit if/when visual fidelity, not readability, becomes the
+  constraint.
 - No camera/viewport/scrolling. Not urgent yet (the generated dungeon
   still fits the window), but this is now the clear next sharp edge, not
   a vague someday -- a real dungeon will exceed one screen eventually.

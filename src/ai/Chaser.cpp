@@ -34,6 +34,7 @@ AIDecision Chaser::decideAction(const Actor& self, const Map& map, Actor& player
         decision.type = AIActionType::Attack;
         decision.target = &player;
         decision.attackPower = attackProfile_.power;
+        decision.damageType = attackProfile_.damageType;
 
         if (attackProfile_.onHitEffect.has_value()) {
             static std::mt19937 rng{std::random_device{}()};

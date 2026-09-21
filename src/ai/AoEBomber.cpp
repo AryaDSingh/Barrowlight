@@ -51,6 +51,7 @@ AIDecision AoEBomber::decideAction(const Actor& self, const Map& map, Actor& pla
             decision.target = &player;
             decision.abilityIndex = 0;
             decision.attackPower = blastPower_;
+            decision.damageType = DamageType::Magic; // an explosive blast -- magic-coded, not a physical hit
             return decision;
         }
         return AIDecision{}; // in range but still recharging

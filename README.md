@@ -63,9 +63,9 @@ roguelike/
 └── data/                # data-driven content (empty -- see Prompt 9/10 notes)
 ```
 
-There are eleven build targets: `roguelike` (the real game, links SFML),
-and ten standalone console programs with zero SFML dependency. Run them
-after building:
+There are thirteen build targets: `roguelike` (the real game, links
+SFML), and twelve standalone console programs with zero SFML
+dependency. Run them after building:
 
 ```bash
 ./build/bin/entity_smoke_test
@@ -75,19 +75,24 @@ after building:
 ./build/bin/chaser_test
 ./build/bin/dungeon_test
 ./build/bin/talent_test
+./build/bin/marauder_test
 ./build/bin/monster_ai_test
 ./build/bin/boss_test
 ./build/bin/savegame_test
+./build/bin/attribute_formulas_test
 ./build/bin/roguelike
 ```
 On Windows with the Visual Studio generator, substitute
 `.\build\bin\Debug\<name>.exe`.
 
-**Controls:** arrow keys / WASD to move, **R** to regenerate the level,
-**1-8** to use talents (1-4 Blade: melee, must be adjacent; 5-8 Flame:
-ranged/AoE/utility), **F5** to save, **F9** to load. No text rendering
-exists yet, so all feedback prints to the **console**, not the game
-window.
+**Controls:** on launch, **1** or **2** to pick a class (Spellblade or
+Marauder). Arrow keys / WASD to move, **R** to regenerate the level,
+number keys to use talents (Spellblade: 1-9; Marauder: 1-4 -- see the
+class-selection screen or the talent-list panel for what's currently
+bound), **F5** to save, **F9** to load (reachable even before picking a
+class, to resume a previous run). Combat/status feedback is shown
+**both** in the console and as an on-screen log in the game window (see
+Prompt 13).
 
 As of Prompt 5, `roguelike` opens a window with a player tile you can
 move using arrow keys or WASD, routed through the real turn scheduler.
@@ -116,15 +121,53 @@ As of Prompt 12, **F5 saves, F9 loads** -- map, fog-of-war, player state
 roster (including the boss, if present) all round-trip exactly. Saves to
 `savegame.txt` next to wherever the game is run from.
 
-| Enemy | Color | Behavior |
-|---|---|---|
-| Goblin | red | `Chaser` -- plain melee |
-| Spider | green | `Chaser` -- melee, applies Poison on hit |
-| Ogre | brown | `Chaser` -- melee, chance to Stun on hit |
-| Archer | tan | `Kiter` -- keeps its distance, shoots from range |
-| Shaman | purple | `Support` -- never attacks; buffs a nearby ally instead |
-| Bomber | orange | `AoEBomber` -- ranged area attack on a cooldown |
-| Goblin Warlord | gold | `BossBehavior` -- 3-phase set-piece fight |
+As of Prompt 13 (Phase 2), the engine renders **real text** for the
+first time -- a bundled DejaVu Sans Mono font (`assets/fonts/`, license
+included). Hp/mana now show as readable numbers next to their bars, a
+talent-list panel shows all of the player's talents' live names and cooldown status
+(dimmed while on cooldown), and an on-screen combat log mirrors the last
+6 console messages in the game window itself. Every message in the game
+-- combat, status effects, save/load, deaths -- now goes through one
+`log()` helper instead of scattered direct `std::cout` calls.
+
+As of Prompt 14 (Phase 2), Strength/Dexterity/Intelligence do something
+for the first time -- previously present on every `Stats` but never read
+by anything. Strength and Intelligence each add real bonus damage to
+Physical- and Magic-tagged attacks respectively; Dexterity gives a real
+chance to dodge an incoming hit entirely (symmetric -- monsters roll it
+too); Intelligence also scales max mana. Every monster type now has
+genuinely different attributes reflecting its identity instead of
+identical defaults (see the table below). Every previously-tuned damage
+number was recalibrated to still deal exactly the same amount as before
+-- this is a new formula layer underneath existing balance, not a
+difficulty change.
+
+Also added post-Prompt 14: **Renewal** (key **9**), the Spellblade's
+first healing spell -- a real gap before this, since there was no way
+to recover hp at all. Heals 12 (capped at max hp), costs 6 mana, and
+has the longest cooldown of any Spellblade talent (6 turns) so it
+paces out rather than trivializing danger.
+
+As of Prompt 15 (Phase 2), the game opens on a **class-selection
+screen** -- press 1 or 2 to choose. **Marauder** is the second playable
+class: pure Strength (Str 20 / Dex 8 / Int 4), a tankier 45 max hp than
+the Spellblade's 30, and a genuinely different resource rhythm -- a free
+spammable basic attack (Slam, zero mana cost), a small 10-mana pool for
+Cleave (hits everything adjacent) and Rallying Cry (a self-buff, not
+another damage number), and Berserker's Fury, which spends the
+Marauder's own hp for the hardest single hit either class has. Save/load
+now remembers which class is active and correctly restores that class's
+own talent list before applying saved cooldowns.
+
+| Enemy | Color | Behavior | Str/Dex/Int | Dodge |
+|---|---|---|---|---|
+| Goblin | red | `Chaser` -- plain melee | 10/10/10 | 0% |
+| Spider | green | `Chaser` -- melee, applies Poison on hit | 8/16/10 | 18% |
+| Ogre | brown | `Chaser` -- melee, chance to Stun on hit | 18/6/10 | 0% |
+| Archer | tan | `Kiter` -- keeps its distance, shoots from range | 8/18/10 | 24% |
+| Shaman | purple | `Support` -- never attacks; buffs a nearby ally instead | 6/10/18 | 0% |
+| Bomber | orange | `AoEBomber` -- ranged area attack on a cooldown | 8/10/16 | 0% |
+| Goblin Warlord | gold | `BossBehavior` -- 3-phase set-piece fight | 16/8/14 | 0% |
 
 ## Building
 

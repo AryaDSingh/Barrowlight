@@ -1,6 +1,10 @@
 #pragma once
 
+#include <optional>
 #include <string>
+
+#include "entities/DamageType.hpp"
+#include "entities/StatusEffects.hpp"
 
 namespace engine {
 
@@ -22,6 +26,19 @@ enum class EffectShape {
     Movement,          // relocates the caster; power/areaRadius unused
 };
 
+// What a talent's effect actually does to whatever it resolves as its
+// target(s) -- introduced at Prompt 15 once a third kind (SelfBuff, for
+// the Marauder's Rallying Cry) made a lone `bool isHeal` (Prompt 14's
+// healing addition) worth generalizing rather than bolting on a second
+// flag. Mirrors AIDecision's own discriminated-by-enum shape
+// (AIActionType), the established pattern for "one struct represents
+// different kinds of things."
+enum class TalentEffectKind {
+    Damage,   // the common case -- TalentEffects::applyTalentDamage
+    Heal,     // TalentEffects::applyTalentHeal
+    SelfBuff, // TalentEffects::applyTalentSelfBuff, using selfBuffEffect below
+};
+
 // A talent's full definition -- deliberately POD-like data, no behavior
 // of its own. The generic logic that interprets these fields lives in
 // TalentEffects (application) and Application (targeting resolution),
@@ -40,7 +57,7 @@ struct Talent {
     int hpCost = 0;       // Reckless Lunge: costs the caster's own hp too -- risk/reward
     int cooldownTurns = 0;
 
-    int power = 0;        // base damage; unused for Movement
+    int power = 0;        // base damage/heal amount; unused for Movement and SelfBuff
     int areaRadius = 0;   // for AreaAroundTarget / AreaAroundSelf
     int moveDistance = 0; // for Movement (Blink)
 
@@ -50,6 +67,34 @@ struct Talent {
     // conditional effect (the common case).
     float conditionalHpFraction = 0.f;
     int conditionalMultiplier = 1;
+
+    // Which attribute this talent's damage/heal scales with (Prompt
+    // 14) -- Physical for the Blade tree, Magic for the Flame tree and
+    // for every Heal-kind talent (healing is life magic; there's no
+    // Strength-scaled equivalent). Unused for Movement and SelfBuff.
+    // Deliberately the LAST-but-two field, not inserted earlier
+    // alongside power/areaRadius where it would read more naturally:
+    // every talent in SpellbladeTalents.cpp/MarauderTalents.cpp is
+    // constructed with positional (not designated) aggregate
+    // initialization, so inserting a field anywhere but the end would
+    // silently shift every value after it in every existing
+    // construction that lists that many fields -- worst case, an int
+    // meant for conditionalMultiplier landing in conditionalHpFraction
+    // instead, which compiles cleanly (int -> float is an implicit,
+    // silent conversion) and would have been a very easy bug to ship
+    // unnoticed. effectKind and selfBuffEffect, added after it at
+    // Prompt 15, follow the same rule.
+    DamageType damageType = DamageType::Physical;
+
+    // Damage (the default), Heal, or SelfBuff -- see TalentEffectKind's
+    // own comment.
+    TalentEffectKind effectKind = TalentEffectKind::Damage;
+
+    // For SelfBuff only: the status effect applied directly to the
+    // caster (e.g. the Marauder's Rallying Cry applying Empowered to
+    // themselves, the same status effect the boss's enrage already
+    // uses). Unset for every other effectKind.
+    std::optional<StatusEffectInstance> selfBuffEffect;
 };
 
 } // namespace engine
