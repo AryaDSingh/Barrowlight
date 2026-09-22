@@ -695,6 +695,153 @@ subfolders speculatively ahead of the system that needs them.
   already-proven execution paths (attack/ability/self-buff handling)
   Phase 2/3 also use.
 
+## End-game screens (decided Prompt 17)
+
+- **Chosen from an open-ended list rather than assumed.** `ROADMAP.md`'s
+  Prompt 17+ item was explicitly "open-ended, lower priority... not
+  sequenced precisely yet." Asked directly which of several genuinely
+  different-shaped candidates (a UI fix, a rendering refactor, a new
+  asset-driven system, more content) mattered most, rather than picking
+  one and hoping it matched what was actually wanted.
+- **A new `GameMode::GameOver`, not a special case bolted onto Playing
+  or ClassSelection.** Reached from `checkAndHandleDeath` (player death
+  or boss defeat), distinguished by a new `wonGame_` bool. Renders as a
+  fully standalone screen -- the same "replace the view entirely"
+  approach `renderClassSelection` already established -- rather than an
+  overlay on the frozen game world.
+- **Returning to class selection does the actual reset; the mode
+  transition itself does nothing extra.** `selectClass()` already fully
+  reconfigures `player_`, `map_`, `monsters_`, and `scheduler_` the
+  moment a class is chosen -- there was no reason to duplicate that
+  logic in the GameOver-to-ClassSelection transition, or to invent a
+  separate "restart with the same class" path the person didn't ask for.
+- **Defeating the boss now genuinely ends the run in victory -- this
+  didn't exist as a game state at all before this prompt.** Previously,
+  `checkAndHandleDeath`'s boss branch only logged a message and cleared
+  `boss_`; play just continued with nothing actually won. Victory ends
+  the run outright even if other regular monsters remain alive
+  elsewhere in the dungeon, matching the boss's established role as the
+  set-piece finale (Prompt 11), not one more kill among many.
+- **A real, previously-invisible bug, found by removing `window_.close()`
+  rather than introduced by it.** The first live death test logged "You
+  have died!" twice. Cause: `advanceTurnsUntilPlayerCanAct` calls
+  `checkAndHandleDeath` again on every loop iteration regardless of
+  whether a prior call already handled that exact death -- hp stays at
+  whatever negative value it ended on, so nothing about the old guard
+  (`if (hp > 0) return`) caught the repeat. This bug's precondition has
+  existed since `checkAndHandleDeath` was first written, but was
+  completely unobservable for the entire life of this project until
+  now: `window_.close()` used to make `window_.isOpen()` false
+  immediately on the first call, and every later iteration of that
+  same loop checks `if (!window_.isOpen()) return` before it would ever
+  reach `checkAndHandleDeath` again. Removing the close-on-death
+  behavior (the actual point of this prompt) is what finally let a
+  pre-existing structural gap surface. Fixed with an explicit
+  idempotency guard at the very top of `checkAndHandleDeath`: once
+  `mode_ == GameOver`, return immediately, before even checking hp --
+  applies uniformly to the player, the boss, and regular monsters
+  alike, since none of their deaths matter anymore once the run has
+  already ended.
+- **Verified live with deterministic, hand-crafted save files for both
+  paths, not natural play.** Real combat's dodge rolls made triggering
+  an exact death or an exact boss kill on demand unreliable -- one
+  scripted attempt to force a death via repeated attacks ended with the
+  player surviving instead, purely from favorable RNG that run. Crafted
+  save files placing the player at 1 hp next to a full-health monster
+  (death path) and at full hp next to a 1-hp boss (victory path)
+  instead, giving deterministic, repeatable outcomes to actually verify
+  against -- confirmed exactly one death/victory message each (proving
+  the idempotency fix), both screens rendering with the correct
+  message and color, and Enter correctly returning to class selection
+  from either.
+
+## Archer and the vault mechanic (decided Prompt 16, Phase 2)
+
+- **Archer (pure Dexterity) replaced the originally drafted Shadow
+  (Dexterity + Intelligence) on direct request.** Fills the pure-Dex
+  corner of the attribute triangle -- the mirror of Marauder's pure
+  Strength -- rather than adding a second Str+Int-flavored hybrid
+  alongside the Spellblade. A more legible three-class spread: one
+  hybrid, two pure corners, each pure corner mechanically opposite the
+  other (Marauder tanks damage with high hp and 0% dodge; Archer avoids
+  it entirely with the lowest hp of any class and the dodge cap).
+- **Dexterity does not scale damage in this project's formula system,
+  and Archer's kit was designed around that rather than adding a new
+  formula to work around it.** `AttributeFormulas` has exactly two
+  damage-scaling functions, `physicalDamageBonus` (Strength) and
+  `magicDamageBonus` (Intelligence) -- there is no
+  `rangedDamageBonus(dexterity)`. Introducing one would have been new,
+  untested formula surface for a single class's benefit; instead Archer
+  keeps a moderate Strength (14, not a dump stat -- "someone has to
+  actually draw the bow") so its Physical-typed attacks stay competent,
+  while Dexterity governs the thing it already governs project-wide
+  (dodge chance) and nothing else. A real design trade-off worth being
+  explicit about, not a default nobody considered: a more "pure" design
+  would tie ranged damage to Dexterity directly, but that's real scope
+  this prompt didn't need to take on to deliver what was actually asked
+  for.
+- **`PlayerClass` collides in name, not in code, with the existing
+  `MonsterType::Archer`** (the Kiter-AI enemy from Prompt 10). Separate
+  enums, no compiler-level ambiguity anywhere, but worth documenting
+  since a person could reasonably wonder "wait, am I playing the archer
+  or fighting it" -- the answer is both are legitimately named that,
+  independently, and the game doesn't need to disambiguate them any
+  further than the enum system already does.
+- **Vault Kick's knockback is a new `Talent::retreatDistance` field,
+  not a new `EffectShape` or a special-cased talent.** Every other
+  Damage-kind talent in the game only ever affects the target; Vault
+  Kick needed to affect the *caster's own position* too, after the
+  ordinary damage step. Adding one int field (0 for every existing
+  talent, meaning "no change in behavior for anything but Vault Kick")
+  was a smaller, more contained change than introducing a whole new
+  shape that would need its own targeting-resolution branch in
+  `tryUseTalent`. Placed at the very end of `Talent`, following the
+  same positional-aggregate-initialization safety rule established when
+  `damageType` was added at Prompt 14.
+- **The retreat reuses `resolveBlinkDestination()` rather than new
+  movement code.** "Walk up to N tiles in a direction, stopping early
+  at a wall or another actor" is exactly what Blink already does; Vault
+  Kick just computes a different direction (directly away from the
+  target, rather than the caster's last-move direction) and feeds it
+  into the same function. One retreat-capable movement primitive, not
+  two independent implementations that could drift apart.
+- **The retreat happens whether or not the kick's own damage was
+  dodged.** Contrasted deliberately with how a dodged hit already
+  blocks its on-hit status effect (Prompt 14: dodging a Spider bite
+  means no Poison either) -- that precedent is about effects that ride
+  in *on* a successful hit. The retreat here is different in kind: it's
+  the caster's own follow-through motion, not something that depends on
+  the kick connecting solidly. A player using Vault Kick to escape
+  melee range shouldn't have that escape fail on an unlucky dodge roll
+  from the *enemy's* side -- the utility half of the talent stays
+  reliable even when the damage half doesn't land.
+- **Live testing surfaced a wall-blocked retreat on the first real
+  attempt, and it was correct behavior, not a bug -- confirmed by
+  inspecting the map data directly rather than assuming either way.**
+  The existing seed-1337 dungeon happened to put a wall directly behind
+  the player at the position reached through normal play, so the
+  retreat legitimately moved 0 tiles (identical to how Blink already
+  behaves when fully boxed in). Rather than accept an undemonstrative
+  test, crafted a save file by hand placing the player in known-open
+  corridor space specifically to get a clean, visually clear
+  demonstration -- confirmed both the exact retreat distance/direction
+  and the exact damage dealt, numerically via the save file and
+  visually via before/after screenshots showing the player and target
+  newly separated by open floor.
+- **`archer_test` covers every data-level property of the kit (and the
+  ordinary damage math Vault Kick shares with every other Damage-kind
+  talent) but explicitly cannot reach the retreat destination itself**
+  -- that requires `Application::resolveBlinkDestination`, an
+  `Application` method, unreachable from a standalone test the way
+  `applyTalentDamage`/`applyTalentSelfBuff` (free functions) are. The
+  test file says so directly in its own header comment, rather than
+  silently having a coverage gap nobody documented.
+- **End-game screens, the other half of the originally drafted Prompt
+  16, were not part of this request and were not built.** Explicitly
+  not silently dropped -- carried forward to Prompt 17 in `ROADMAP.md`,
+  with the current "window just closes on death" behavior (Prompts
+  10-11) noted as still unchanged.
+
 ## Multi-class system and Marauder (decided Prompt 15, Phase 2)
 
 - **`PlayerClassFactory` mirrors `MonsterFactory`'s shape exactly** --
@@ -1183,10 +1330,11 @@ constructing a direct test before touching any code.
   the current roster size; would matter more with denser encounters.
 - No faction/friendly-fire system -- Bomber's AoE only ever targets the
   player, never other monsters, even ones standing in the blast area.
-- No game-over screen or restart flow -- player death (and victory
-  against the boss) currently just leave the window as-is (death closes
-  it, victory doesn't). Building a proper screen/flow is explicitly
-  Prompt 12 territory ("final polish").
+- Game-over screens exist now (Prompt 17) -- what's still open is
+  restarting *with the same class already selected* rather than always
+  routing back through the class-selection screen first. A minor
+  convenience gap, not a missing feature; picking the same number again
+  is a one-keystroke cost.
 - No indication in the game window of *which* phase the boss is in
   beyond the console announcement and its health bar's fill level -- no
   visual phase-change effect (a flash, a color shift). Minor, but a

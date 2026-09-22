@@ -1,5 +1,6 @@
 #include "entities/PlayerClassFactory.hpp"
 
+#include "entities/ArcherTalents.hpp"
 #include "entities/AttributeFormulas.hpp"
 #include "entities/MarauderTalents.hpp"
 #include "entities/SpellbladeTalents.hpp"
@@ -50,6 +51,31 @@ Stats statsForClass(PlayerClass cls) {
             stats.mana = stats.maxMana;
             break;
         }
+        case PlayerClass::Archer: {
+            // Pure Dexterity -- the mirror of Marauder's pure Strength.
+            // Dexterity 20 hits the dodge-chance cap exactly (30%, see
+            // AttributeFormulas::dodgeChance) -- the maximum possible
+            // evasion in the game, this class's entire defensive
+            // identity, since its hp pool is deliberately the lowest of
+            // any class (24, versus the Spellblade's 30 and the
+            // Marauder's 45): survives by not getting hit, not by
+            // soaking hits. Strength (14) is moderate, not a dump stat
+            // -- someone has to actually draw the bow -- while
+            // Intelligence (6) sits below baseline on purpose, a real
+            // (if modest) penalty reinforcing "not a caster at all."
+            // maxMana == 8 base + manaBonusFromIntelligence(6) == 0
+            // (floored, not negative), landing on exactly 8 -- the
+            // smallest pool of any class.
+            constexpr int kBaseMana = 8;
+            stats.hp = 24;
+            stats.maxHp = 24;
+            stats.strength = 14;
+            stats.dexterity = 20;
+            stats.intelligence = 6;
+            stats.maxMana = kBaseMana + manaBonusFromIntelligence(stats.intelligence);
+            stats.mana = stats.maxMana;
+            break;
+        }
     }
     return stats;
 }
@@ -60,6 +86,8 @@ TalentSet talentSetForClass(PlayerClass cls) {
             return TalentSet(spellbladeTalents());
         case PlayerClass::Marauder:
             return TalentSet(marauderTalents());
+        case PlayerClass::Archer:
+            return TalentSet(archerTalents());
     }
     return TalentSet(); // unreachable -- all enum values handled above
 }

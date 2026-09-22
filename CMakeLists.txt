@@ -61,6 +61,7 @@ set(ENTITY_HEADERS
     src/entities/PlayerClass.hpp
     src/entities/PlayerClassFactory.hpp
     src/entities/MarauderTalents.hpp
+    src/entities/ArcherTalents.hpp
     src/entities/Actor.hpp
     src/entities/Player.hpp
     src/entities/Monster.hpp
@@ -117,6 +118,7 @@ add_executable(roguelike
     src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
     src/entities/MarauderTalents.cpp
+    src/entities/ArcherTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
     src/entities/StatusEffectLogic.cpp
@@ -147,6 +149,7 @@ add_executable(entity_smoke_test
     src/entities/TalentSet.cpp
     src/entities/SpellbladeTalents.cpp
     src/entities/MarauderTalents.cpp
+    src/entities/ArcherTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/AttributeFormulas.cpp
     src/entities/StatusEffects.cpp
@@ -229,6 +232,7 @@ add_executable(chaser_test
     src/entities/TalentSet.cpp
     src/entities/SpellbladeTalents.cpp
     src/entities/MarauderTalents.cpp
+    src/entities/ArcherTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/AttributeFormulas.cpp
     src/entities/StatusEffects.cpp
@@ -272,6 +276,7 @@ add_executable(talent_test
     src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
     src/entities/MarauderTalents.cpp
+    src/entities/ArcherTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
     ${COMMON_HEADERS}
@@ -295,6 +300,7 @@ add_executable(marauder_test
     src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
     src/entities/MarauderTalents.cpp
+    src/entities/ArcherTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
     ${COMMON_HEADERS}
@@ -304,6 +310,30 @@ add_executable(marauder_test
 
 target_include_directories(marauder_test PRIVATE src)
 target_compile_features(marauder_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# Archer test
+# ---------------------------------------------------------------------------
+# Mirrors marauder_test.cpp's structure exactly, for the Archer's kit
+# and PlayerClassFactory instead of the Marauder's.
+
+add_executable(archer_test
+    tests/archer_test.cpp
+    src/entities/TalentSet.cpp
+    src/entities/TalentEffects.cpp
+    src/entities/AttributeFormulas.cpp
+    src/entities/SpellbladeTalents.cpp
+    src/entities/MarauderTalents.cpp
+    src/entities/ArcherTalents.cpp
+    src/entities/PlayerClassFactory.cpp
+    src/entities/StatusEffects.cpp
+    ${COMMON_HEADERS}
+    ${ENTITY_HEADERS}
+    ${AI_HEADERS}
+)
+
+target_include_directories(archer_test PRIVATE src)
+target_compile_features(archer_test PRIVATE cxx_std_17)
 
 # ---------------------------------------------------------------------------
 # Monster AI test
@@ -325,6 +355,7 @@ add_executable(monster_ai_test
     src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
     src/entities/MarauderTalents.cpp
+    src/entities/ArcherTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
     src/entities/StatusEffectLogic.cpp
@@ -355,6 +386,7 @@ add_executable(boss_test
     src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
     src/entities/MarauderTalents.cpp
+    src/entities/ArcherTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
     ${COMMON_HEADERS}

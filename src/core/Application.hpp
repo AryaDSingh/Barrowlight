@@ -28,6 +28,7 @@ namespace engine {
 enum class GameMode {
     ClassSelection,
     Playing,
+    GameOver, // Prompt 17: either death or victory -- see Application::wonGame_
 };
 
 // Owns the window and the top-level loop shell.
@@ -106,6 +107,11 @@ private:
     // approach (Prompt 13), just for one more screen instead of the
     // gameplay HUD.
     void renderClassSelection();
+
+    // Draws the GameOver screen: death or victory, distinguished by
+    // wonGame_. Same standalone-screen approach as renderClassSelection
+    // -- replaces the whole view rather than overlaying the game world.
+    void renderGameOver();
 
     // Gathers current map/player/monster/exploredMap_ state into a
     // SaveGameState and writes it via engine::saveGame(). Prints whether
@@ -211,6 +217,7 @@ private:
     sf::Font font_;
     GameMode mode_ = GameMode::ClassSelection;
     PlayerClass playerClass_ = PlayerClass::Spellblade; // meaningless until selectClass() runs
+    bool wonGame_ = false; // meaningless unless mode_ == GameOver -- see checkAndHandleDeath
     Map map_;
     Player player_;
     std::vector<std::unique_ptr<Monster>> monsters_;

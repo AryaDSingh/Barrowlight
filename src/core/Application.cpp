@@ -184,6 +184,19 @@ void Application::processEvents() {
                     selectClass(PlayerClass::Spellblade);
                 } else if (keyPressed->code == sf::Keyboard::Key::Num2) {
                     selectClass(PlayerClass::Marauder);
+                } else if (keyPressed->code == sf::Keyboard::Key::Num3) {
+                    selectClass(PlayerClass::Archer);
+                }
+                continue;
+            }
+
+            if (mode_ == GameMode::GameOver) {
+                // selectClass() (reached via the ClassSelection screen
+                // this leads back to) does the actual reset -- this
+                // mode transition alone doesn't need to touch
+                // map_/monsters_/player_ itself.
+                if (keyPressed->code == sf::Keyboard::Key::Enter) {
+                    mode_ = GameMode::ClassSelection;
                 }
                 continue;
             }
@@ -423,6 +436,26 @@ bool Application::tryUseTalent(std::size_t talentIndex) {
                 log(target->name(), " dodges ", player_.name(), "'s ", talent.name, "!");
             }
         }
+
+        // Vault Kick (Archer, Prompt 16): moves the caster away from
+        // the target after the damage step above, regardless of
+        // whether that damage landed -- the retreat is the caster's own
+        // follow-through motion, not an on-hit effect a dodge would
+        // block. affected[0] rather than a loop: retreatDistance-bearing
+        // talents are always AdjacentEnemy + SingleTarget (exactly one
+        // target), never an AoE shape, so there's only ever one
+        // position to retreat away from.
+        if (talent.retreatDistance > 0 && !affected.empty()) {
+            const Position targetPos = affected[0]->position();
+            const Position awayDirection{player_.position().x - targetPos.x,
+                                          player_.position().y - targetPos.y};
+            const Position retreatDestination =
+                resolveBlinkDestination(awayDirection, talent.retreatDistance);
+            player_.setPosition(retreatDestination);
+            lastMoveDirection_ = awayDirection;
+            log(player_.name(), " vaults back to (", retreatDestination.x, ',',
+                retreatDestination.y, ")");
+        }
     }
 
     player_.talents().startCooldown(talentIndex);
@@ -562,16 +595,33 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision) {
 }
 
 void Application::checkAndHandleDeath(Actor& actor) {
+    if (mode_ == GameMode::GameOver) {
+        // Already handled -- without this, a dead player's hp stays <=
+        // 0 indefinitely, and this function gets called again on every
+        // subsequent status-effect tick (advanceTurnsUntilPlayerCanAct
+        // calls it unconditionally each iteration), re-running the
+        // entire death branch below repeatedly. Invisible before this
+        // prompt, since window_.close() used to make window_.isOpen()
+        // false immediately, short-circuiting those later calls before
+        // they ever reached here -- now that death leads to a GameOver
+        // screen instead of closing the window, that accidental
+        // short-circuit is gone, so this needs to be explicit.
+        return;
+    }
+
     if (actor.stats().hp > 0) {
         return;
     }
 
     if (&actor == &player_) {
         log("You have died!");
-        // No game-over screen or restart flow exists yet (Phase 2,
-        // Prompt 16 territory) -- closing cleanly beats leaving the game
-        // running in a broken, still-controllable-but-dead state.
-        window_.close();
+        // As of Prompt 17: a real GameOver screen instead of closing
+        // the window outright. selectClass() (reachable from the
+        // ClassSelection screen this leads to) already does a complete
+        // reset of player_/map_/monsters_/scheduler_, so nothing extra
+        // needs cleaning up here -- transitioning mode_ is the whole fix.
+        mode_ = GameMode::GameOver;
+        wonGame_ = false;
         return;
     }
 
@@ -579,6 +629,15 @@ void Application::checkAndHandleDeath(Actor& actor) {
         log(actor.name(), " falls! You have slain the Goblin Warlord!");
         boss_ = nullptr; // must clear before removeDeadMonsters() erases the underlying object
         scheduler_.remove(actor);
+        // Defeating the boss ends the run in victory outright, even if
+        // other regular monsters are still alive elsewhere in the
+        // dungeon -- it's the set-piece finale (Prompt 11), not one
+        // more kill among many. This is also the very first place
+        // "victory" has existed as a real game state at all; before
+        // this, killing the boss just logged a message and let play
+        // continue with nothing actually won.
+        mode_ = GameMode::GameOver;
+        wonGame_ = true;
         return;
     }
 
@@ -837,7 +896,28 @@ void Application::renderClassSelection() {
              sf::Color(190, 190, 190));
     drawText("class has.", 80.f, 294.f, 14, sf::Color(190, 190, 190));
 
-    drawText("Press 1 or 2 to begin.", 60.f, 360.f, 16, sf::Color(150, 150, 150));
+    drawText("3. Archer", 60.f, 330.f, 20, sf::Color(120, 230, 140));
+    drawText("Pure Dexterity. The lowest hp of any class, but the highest", 80.f, 358.f, 14,
+             sf::Color(190, 190, 190));
+    drawText("possible dodge chance -- survives by not getting hit at all.", 80.f, 376.f, 14,
+             sf::Color(190, 190, 190));
+    drawText("Vault Kick lets you strike an adjacent enemy and leap back", 80.f, 394.f, 14,
+             sf::Color(190, 190, 190));
+    drawText("out of melee range in the same motion.", 80.f, 412.f, 14, sf::Color(190, 190, 190));
+
+    drawText("Press 1, 2 or 3 to begin.", 60.f, 460.f, 16, sf::Color(150, 150, 150));
+}
+
+void Application::renderGameOver() {
+    if (wonGame_) {
+        drawText("Victory!", 60.f, 60.f, 32, sf::Color(255, 215, 0));
+        drawText("You have slain the Goblin Warlord.", 60.f, 120.f, 18, sf::Color(210, 210, 210));
+    } else {
+        drawText("You Died", 60.f, 60.f, 32, sf::Color(200, 50, 50));
+        drawText("The dungeon claims another.", 60.f, 120.f, 18, sf::Color(210, 210, 210));
+    }
+    drawText("Press Enter to return to class selection.", 60.f, 180.f, 16,
+              sf::Color(150, 150, 150));
 }
 
 void Application::render() {
@@ -845,6 +925,12 @@ void Application::render() {
 
     if (mode_ == GameMode::ClassSelection) {
         renderClassSelection();
+        window_.display();
+        return;
+    }
+
+    if (mode_ == GameMode::GameOver) {
+        renderGameOver();
         window_.display();
         return;
     }

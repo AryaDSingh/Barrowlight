@@ -95,6 +95,20 @@ struct Talent {
     // themselves, the same status effect the boss's enrage already
     // uses). Unset for every other effectKind.
     std::optional<StatusEffectInstance> selfBuffEffect;
+
+    // Prompt 16 (Archer's Vault Kick): for a Damage-kind, AdjacentEnemy-
+    // targeted talent, moves the caster this many tiles directly away
+    // from the target after the damage step -- a knockback on the
+    // caster's own position, not the target's. 0 (the default) means no
+    // retreat, every existing talent's ordinary behavior. Happens
+    // whether or not the damage itself was dodged: the retreat is the
+    // caster's own follow-through motion, not an on-hit effect riding
+    // on a successful strike the way Poison or Stun are. Reuses
+    // resolveBlinkDestination() for the actual movement -- "walk N
+    // tiles in a direction, stopping early at a wall or another actor"
+    // is exactly what Blink already does, just computed away from the
+    // target instead of in the caster's last-move direction.
+    int retreatDistance = 0;
 };
 
 } // namespace engine

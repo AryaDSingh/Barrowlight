@@ -63,8 +63,8 @@ roguelike/
 └── data/                # data-driven content (empty -- see Prompt 9/10 notes)
 ```
 
-There are thirteen build targets: `roguelike` (the real game, links
-SFML), and twelve standalone console programs with zero SFML
+There are fourteen build targets: `roguelike` (the real game, links
+SFML), and thirteen standalone console programs with zero SFML
 dependency. Run them after building:
 
 ```bash
@@ -76,6 +76,7 @@ dependency. Run them after building:
 ./build/bin/dungeon_test
 ./build/bin/talent_test
 ./build/bin/marauder_test
+./build/bin/archer_test
 ./build/bin/monster_ai_test
 ./build/bin/boss_test
 ./build/bin/savegame_test
@@ -85,14 +86,15 @@ dependency. Run them after building:
 On Windows with the Visual Studio generator, substitute
 `.\build\bin\Debug\<name>.exe`.
 
-**Controls:** on launch, **1** or **2** to pick a class (Spellblade or
-Marauder). Arrow keys / WASD to move, **R** to regenerate the level,
-number keys to use talents (Spellblade: 1-9; Marauder: 1-4 -- see the
-class-selection screen or the talent-list panel for what's currently
-bound), **F5** to save, **F9** to load (reachable even before picking a
-class, to resume a previous run). Combat/status feedback is shown
-**both** in the console and as an on-screen log in the game window (see
-Prompt 13).
+**Controls:** on launch, **1**, **2** or **3** to pick a class
+(Spellblade, Marauder, or Archer). Arrow keys / WASD to move, **R** to
+regenerate the level, number keys to use talents (Spellblade: 1-9;
+Marauder and Archer: 1-4 -- see the class-selection screen or the
+talent-list panel for what's currently bound), **F5** to save, **F9** to
+load (reachable even before picking a class, to resume a previous run),
+**Enter** to return to class selection after death or victory. Combat/
+status feedback is shown **both** in the console and as an on-screen
+log in the game window (see Prompt 13).
 
 As of Prompt 5, `roguelike` opens a window with a player tile you can
 move using arrow keys or WASD, routed through the real turn scheduler.
@@ -149,15 +151,33 @@ has the longest cooldown of any Spellblade talent (6 turns) so it
 paces out rather than trivializing danger.
 
 As of Prompt 15 (Phase 2), the game opens on a **class-selection
-screen** -- press 1 or 2 to choose. **Marauder** is the second playable
-class: pure Strength (Str 20 / Dex 8 / Int 4), a tankier 45 max hp than
-the Spellblade's 30, and a genuinely different resource rhythm -- a free
-spammable basic attack (Slam, zero mana cost), a small 10-mana pool for
-Cleave (hits everything adjacent) and Rallying Cry (a self-buff, not
-another damage number), and Berserker's Fury, which spends the
-Marauder's own hp for the hardest single hit either class has. Save/load
-now remembers which class is active and correctly restores that class's
-own talent list before applying saved cooldowns.
+screen** -- press 1, 2 or 3 to choose. **Marauder** is the second
+playable class: pure Strength (Str 20 / Dex 8 / Int 4), a tankier 45 max
+hp than the Spellblade's 30, and a genuinely different resource rhythm
+-- a free spammable basic attack (Slam, zero mana cost), a small
+10-mana pool for Cleave (hits everything adjacent) and Rallying Cry (a
+self-buff, not another damage number), and Berserker's Fury, which
+spends the Marauder's own hp for the hardest single hit either class
+has. Save/load now remembers which class is active and correctly
+restores that class's own talent list before applying saved cooldowns.
+
+As of Prompt 16 (Phase 2), **Archer** is the third playable class --
+pure Dexterity (Str 14 / Dex 20 / Int 6), the exact opposite defensive
+philosophy from the Marauder: the lowest hp of any class (24) paired
+with the highest possible dodge chance (30%, the game's hard cap).
+Ranged basics (Quick Shot, Volley) keep it out of melee range in the
+first place, and **Vault Kick** is the signature move when that fails
+anyway -- kick an adjacent enemy for modest damage, then vault several
+tiles directly away from them in the same motion. The first talent in
+the game that moves the caster as part of a damage-dealing effect, not
+just a pure-movement talent like Blink.
+
+As of Prompt 17, dying or defeating the boss now leads to a real
+**end-game screen** -- red "You Died" or gold "Victory!" -- instead of
+the window just closing or nothing happening at all. Defeating the boss
+is, for the first time, an actual win condition rather than one more
+kill among many. Press Enter from either screen to return to class
+selection.
 
 | Enemy | Color | Behavior | Str/Dex/Int | Dodge |
 |---|---|---|---|---|

@@ -489,26 +489,114 @@ after an initial pass missed 14 sites across two files. New
 kit, including a dedicated regression check for the Empowered bug. See
 `ARCHITECTURE_DECISIONS.md` → "Multi-class system and Marauder."
 
-## ⬜ Prompt 16 — Shadow (Dexterity + Intelligence) + end-game screens
-Third class, completing the initial triangle. **Shadow**: agile
-assassin/rogue-caster hybrid, reusing existing mechanisms in new
-combinations rather than inventing more -- mobility talents building on
-Blink's precedent, a "Backstab"-style conditional-bonus talent (reusing
-Execution's conditional-multiplier mechanic from Prompt 9), and
-player-castable Poison (currently only Spider can inflict it -- the
-player has never had access to it). Also: proper on-screen "You died" /
-"You have won" screens (using Prompt 13's text rendering), replacing the
-"window just closes" behavior from Prompts 10-11 -- closes that
-long-flagged gap too.
+## ⏳ Prompt 16 — Archer (pure Dexterity) + Vault Kick
+Originally drafted as "Shadow (Dexterity + Intelligence)" -- redirected
+on direct request to **Archer**, pure Dexterity instead of a third
+hybrid. Fills the pure-Dex corner of the attribute triangle the same
+way Marauder fills pure-Str, rather than stacking a second hybrid
+alongside the Spellblade's existing Str+Int. Also requested: a melee-
+range **Vault Kick** that damages an adjacent enemy and launches the
+caster backwards, away from it -- a genuinely new mechanic, since
+nothing in the talent system previously combined "deal damage" with
+"move the caster" in one action (Movement-shape talents like Blink
+move but never damage; every Damage-kind talent before this only ever
+affected the target, never the caster's own position).
 
-## ⬜ Prompt 17+ — open-ended, lower priority
+**Result:** `PlayerClass::Archer` + `ArcherTalents` (4 talents, matching
+the Marauder's "deliberately smaller than the Spellblade's 9"
+precedent). Str 14 / Dex 20 / Int 6 -- Dexterity exactly hits the 30%
+dodge cap (the maximum possible in the game), Intelligence sits below
+baseline as a real, if modest, penalty reinforcing "not a caster."
+Lowest hp of any class (24, versus Spellblade's 30 and Marauder's 45) --
+survives by not getting hit, not by soaking hits. Smallest mana pool
+(8). Kit: Quick Shot (ranged filler, mirrors Slam/Ember Bolt's role),
+Volley (ranged AoE, reuses Fireball's AreaAroundTarget shape re-themed
+as arrows), Steady Aim (SelfBuff, applies Empowered -- the same status
+effect Rallying Cry and the boss's own enrage already use), and **Vault
+Kick**.
+
+Vault Kick's knockback is implemented as a new `Talent::retreatDistance`
+field (0 for every other talent in the game): after the ordinary damage
+step, the caster moves that many tiles directly away from the target,
+reusing `resolveBlinkDestination()` (the exact "walk N tiles, stop
+early at a wall or another actor" logic Blink already uses) rather than
+writing new movement code. The retreat happens whether or not the
+kick's own damage was dodged -- it's the caster's own follow-through
+motion, not an on-hit effect a dodge would block, unlike Poison or Stun.
+
+Live verification caught something worth noting, not a bug: the first
+live attempt (in the existing seed-1337 dungeon) retreated exactly 0
+tiles, because the tile directly behind the player happened to be a
+wall -- correct behavior (identical to how Blink already handles being
+fully blocked), just not a demonstrative test. Crafted a save file
+placing the player in open corridor space specifically to get a clean
+demonstration, confirmed both numerically (exact expected damage and
+retreat destination via the save file) and visually (before/after
+screenshots showing the player and target now clearly separated by open
+floor). `archer_test` (22 checks) covers every data-level property of
+the kit and the ordinary damage math Vault Kick shares with every other
+Damage-kind talent; the retreat destination itself needs
+`Application::resolveBlinkDestination` and isn't reachable from a
+standalone test, so it's verified live instead. See
+`ARCHITECTURE_DECISIONS.md` → "Archer and the vault mechanic."
+
+**End-game screens (the other half of the originally drafted Prompt 16)
+were not part of this request and remain undone** -- rolled forward to
+Prompt 17. "Window just closes on death" (Prompts 10-11) is still the
+current behavior.
+
+## ⏳ Prompt 17 — End-game screens
+Chosen from the open-ended Prompt 17+ list below (asked directly rather
+than assumed -- see the conversation) as the highest-value item: closes
+a gap flagged since Prompts 10-11 and carried forward through the
+original Prompt 16 draft, uses infrastructure that already exists
+(Prompt 13's text rendering, no new systems or assets), and directly
+affects the core gameplay loop's polish -- the thing most likely to be
+noticed in a demo.
+
+**Result:** a new `GameMode::GameOver`, reached from `checkAndHandleDeath`
+on either the player dying or the boss falling, distinguished by a new
+`wonGame_` bool. Both render as a standalone screen (same
+"replace the view entirely" approach `renderClassSelection` already
+uses) -- red "You Died" or gold "Victory!", matching the boss's own
+color scheme -- with Enter returning to class selection, where picking
+a class does the actual reset (`selectClass()` already fully
+reconfigures `player_`/`map_`/`monsters_`/`scheduler_`, so the mode
+transition itself needs no extra cleanup).
+
+**Defeating the boss is now the first time "victory" has existed as a
+real game state at all** -- before this, killing the boss just logged a
+message and let play continue with nothing actually won. Ends the run
+outright even if other regular monsters are still alive elsewhere in
+the dungeon, matching the boss's role as the set-piece finale (Prompt
+11), not one more kill among many.
+
+**A real bug caught live, not assumed away:** the very first death test
+logged "You have died!" twice. Traced to `advanceTurnsUntilPlayerCanAct`
+calling `checkAndHandleDeath` again after `processMonsterTurns` already
+had -- since hp stays at whatever negative value it ended on, the full
+death branch re-ran a second time. This was invisible for the entire
+life of this project until now, because `window_.close()` used to make
+`window_.isOpen()` false immediately, short-circuiting every later call
+in that loop before it ever reached `checkAndHandleDeath` again --
+removing that call was what finally exposed a pre-existing structural
+gap. Fixed with an explicit idempotency guard: once `mode_ ==
+GameOver`, the function returns immediately, before even checking hp.
+Verified live for both paths with deterministic, hand-crafted save
+files (RNG-driven combat made a natural death/boss-kill unreliable to
+trigger on demand) -- confirmed exactly one death message and one
+victory message, both screens rendering correctly, and Enter correctly
+returning to class selection from either. See
+`ARCHITECTURE_DECISIONS.md` → "End-game screens."
+
+## ⬜ Prompt 18+ — open-ended, lower priority
 Camera/viewport for dungeons bigger than one screen (flagged since
 Prompt 5). Sound (`SFML_BUILD_AUDIO` has been off since Prompt 2,
 deliberately, until there was a reason to want it -- there's a reason
 now). Additional classes to round out the full PoE-style set (Duelist,
 Ranger, Witch, Scion) once the 3-class pattern is proven. Packaging/
 distribution for actually publishing. Not sequenced precisely yet --
-revisit once Prompts 13-16 are done and it's clearer what matters most.
+revisit once it's clearer what matters most.
 
 ## Decisions locked in before starting Prompt 13
 
