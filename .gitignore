@@ -1,0 +1,23 @@
+# Build output
+build/
+out/
+cmake-build-*/
+
+# Runtime save files
+savegame.txt
+*_test_output.txt
+*_test_garbage.txt
+
+# IDE
+.vscode/
+.idea/
+.vs/
+*.suo
+*.user
+
+# CMake
+CMakeUserPresets.json
+
+# OS cruft
+.DS_Store
+Thumbs.db

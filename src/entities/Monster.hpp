@@ -1,0 +1,54 @@
+#pragma once
+
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "entities/Actor.hpp"
+#include "entities/MonsterTier.hpp"
+#include "entities/MonsterType.hpp"
+
+namespace engine {
+
+// A non-player Actor. Always constructed with an AIBehavior -- there is
+// no default here on purpose, unlike Player. What makes different monster
+// types feel different is which Stats, which AIBehavior (parameterized
+// with its own numbers), and -- as of Prompt 10 -- which talents get
+// plugged in here, not a subclass per monster type. Most monster types
+// don't need talents at all (a plain melee/ranged attack doesn't need
+// cooldown tracking); Shaman and Bomber do, reusing the same TalentSet
+// the player uses for exactly the same reason: it's already generic,
+// nothing about it is player-specific.
+//
+// Remembers its own `type_` (Prompt 12) purely so save/load can
+// reconstruct a matching Monster via MonsterFactory::createMonster() --
+// nothing about normal gameplay reads it.
+class Monster : public Actor {
+public:
+    Monster(MonsterType type, std::string name, char glyph, Position position, Stats stats,
+            std::unique_ptr<AIBehavior> ai, TalentSet talents = TalentSet{})
+        : Actor(std::move(name), glyph, position, stats, std::move(ai), std::move(talents)),
+          type_(type) {}
+
+    MonsterType type() const { return type_; }
+
+    // Which Elite/Nightmare tier this monster was created at (Prompt
+    // 22) -- Base by default, set explicitly by MonsterFactory
+    // ::createMonster() via setTier(), the same "constructor stays
+    // simple, a setter attaches the extra field afterward" pattern
+    // Actor::setXpReward() already established. Not a constructor
+    // parameter specifically so every existing test that constructs a
+    // Monster directly (there are many, across nearly every test file)
+    // keeps compiling completely unchanged. Purely for rendering (the
+    // Elite/Nightmare border, see Application) -- gameplay-affecting
+    // numbers (hp, damage) are already baked into stats()/the
+    // AIBehavior at creation time and don't need this to be read back.
+    MonsterTier tier() const { return tier_; }
+    void setTier(MonsterTier tier) { tier_ = tier; }
+
+private:
+    MonsterType type_;
+    MonsterTier tier_ = MonsterTier::Base;
+};
+
+} // namespace engine

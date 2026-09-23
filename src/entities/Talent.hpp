@@ -1,0 +1,129 @@
+#pragma once
+
+#include <optional>
+#include <string>
+
+#include "entities/DamageType.hpp"
+#include "entities/StatusEffects.hpp"
+
+namespace engine {
+
+enum class TalentTree {
+    Blade,
+    Flame,
+};
+
+enum class TargetingMode {
+    Self,               // affects the caster only (Blink, Immolate's origin)
+    AdjacentEnemy,      // must target an enemy in one of the 4 adjacent tiles
+    RangedEnemyInSight, // any enemy within the caster's current field of view
+};
+
+enum class EffectShape {
+    SingleTarget,      // affects only the resolved target
+    AreaAroundTarget,  // affects the resolved target and anything within areaRadius of it
+    AreaAroundSelf,    // affects anything within areaRadius of the caster
+    Movement,          // relocates the caster; power/areaRadius unused
+};
+
+// What a talent's effect actually does to whatever it resolves as its
+// target(s) -- introduced at Prompt 15 once a third kind (SelfBuff, for
+// the Fighter's Rallying Cry, that class originally named "Marauder"
+// and renamed at Prompt 19) made a lone `bool isHeal` (Prompt 14's
+// healing addition) worth generalizing rather than bolting on a second
+// flag. Mirrors AIDecision's own discriminated-by-enum shape
+// (AIActionType), the established pattern for "one struct represents
+// different kinds of things."
+enum class TalentEffectKind {
+    Damage,   // the common case -- TalentEffects::applyTalentDamage
+    Heal,     // TalentEffects::applyTalentHeal
+    SelfBuff, // TalentEffects::applyTalentSelfBuff, using selfBuffEffect below
+};
+
+// A talent's full definition -- deliberately POD-like data, no behavior
+// of its own. The generic logic that interprets these fields lives in
+// TalentEffects (application) and Application (targeting resolution),
+// not here. See ARCHITECTURE_DECISIONS.md for why this counts as
+// "data-driven" even without an external file: logic and data are
+// cleanly separated, the data table is trivially swappable for a file
+// loader later, but no such loader exists yet.
+struct Talent {
+    std::string name;
+    std::string description;
+    TalentTree tree = TalentTree::Blade;
+    TargetingMode targeting = TargetingMode::AdjacentEnemy;
+    EffectShape shape = EffectShape::SingleTarget;
+
+    int manaCost = 0;
+    int hpCost = 0;       // Reckless Lunge: costs the caster's own hp too -- risk/reward
+    int cooldownTurns = 0;
+
+    int power = 0;        // base damage/heal amount; unused for Movement and SelfBuff
+    int areaRadius = 0;   // for AreaAroundTarget / AreaAroundSelf
+    int moveDistance = 0; // for Movement (Blink)
+
+    // Execution-style conditional bonus: if the target's hp fraction is
+    // at or below this threshold, `power` is multiplied by
+    // conditionalMultiplier instead of used as-is. 0 threshold means no
+    // conditional effect (the common case).
+    float conditionalHpFraction = 0.f;
+    int conditionalMultiplier = 1;
+
+    // Which attribute this talent's damage/heal scales with (Prompt
+    // 14) -- Physical for the Blade tree, Magic for the Flame tree and
+    // for every Heal-kind talent (healing is life magic; there's no
+    // Strength-scaled equivalent). Unused for Movement and SelfBuff.
+    // Deliberately the LAST-but-two field, not inserted earlier
+    // alongside power/areaRadius where it would read more naturally:
+    // every talent in SpellbladeTalents.cpp/FighterTalents.cpp/
+    // ThiefTalents.cpp/SorcererTalents.cpp is constructed with
+    // positional (not designated) aggregate initialization, so
+    // inserting a field anywhere but the end would silently shift
+    // every value after it in every existing construction that lists
+    // that many fields -- worst case, an int meant for
+    // conditionalMultiplier landing in conditionalHpFraction instead,
+    // which compiles cleanly (int -> float is an implicit, silent
+    // conversion) and would have been a very easy bug to ship
+    // unnoticed. effectKind, selfBuffEffect, retreatDistance, and
+    // onHitEffect/onHitChance, added after it across Prompts 15-19,
+    // all follow the same rule.
+    DamageType damageType = DamageType::Physical;
+
+    // Damage (the default), Heal, or SelfBuff -- see TalentEffectKind's
+    // own comment.
+    TalentEffectKind effectKind = TalentEffectKind::Damage;
+
+    // For SelfBuff only: the status effect applied directly to the
+    // caster (e.g. the Fighter's Rallying Cry applying Empowered to
+    // themselves, the same status effect the boss's enrage already
+    // uses). Unset for every other effectKind.
+    std::optional<StatusEffectInstance> selfBuffEffect;
+
+    // Prompt 16 (originally "Archer's" Vault Kick, that class renamed
+    // to Thief at Prompt 19): for a Damage-kind, AdjacentEnemy-targeted
+    // talent, moves the caster this many tiles directly away
+    // from the target after the damage step -- a knockback on the
+    // caster's own position, not the target's. 0 (the default) means no
+    // retreat, every existing talent's ordinary behavior. Happens
+    // whether or not the damage itself was dodged: the retreat is the
+    // caster's own follow-through motion, not an on-hit effect riding
+    // on a successful strike the way Poison or Stun are. Reuses
+    // resolveBlinkDestination() for the actual movement -- "walk N
+    // tiles in a direction, stopping early at a wall or another actor"
+    // is exactly what Blink already does, just computed away from the
+    // target instead of in the caster's last-move direction.
+    int retreatDistance = 0;
+
+    // Prompt 19 (Sorcerer's Mind Shatter): for a Damage-kind talent,
+    // optionally applies this status effect to the *target* on a
+    // successful (non-dodged) hit, with probability onHitChance --
+    // mirrors MonsterAttackProfile's onHitEffect/onHitChance exactly
+    // (Poison, Stun, and so on have applied to the player from monsters
+    // this way since Prompt 10), just now available to a player talent
+    // for the first time. Unset/1.f are the defaults, meaning "no
+    // extra effect," every existing talent's ordinary behavior.
+    std::optional<StatusEffectInstance> onHitEffect;
+    float onHitChance = 1.f;
+};
+
+} // namespace engine
