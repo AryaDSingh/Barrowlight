@@ -21,31 +21,31 @@ void check(bool condition, const std::string& description) {
 
 int main() {
     // --- Eligibility: exactly Fighter and Sorcerer.
-    check(isHybridEligible(PlayerClass::Fighter), "Fighter is hybrid-eligible");
-    check(isHybridEligible(PlayerClass::Sorcerer), "Sorcerer is hybrid-eligible");
+    check(isHybridEligible(PlayerClass::Warrior), "Fighter is hybrid-eligible");
+    check(isHybridEligible(PlayerClass::Mage), "Sorcerer is hybrid-eligible");
     check(!isHybridEligible(PlayerClass::Thief),
           "Thief is not hybrid-eligible -- shares neither of Spellblade's stats");
     check(!isHybridEligible(PlayerClass::Spellblade),
           "Spellblade is not hybrid-eligible -- no opposing class to draw from");
 
     // --- Pool class: each draws from the other.
-    check(hybridPoolClass(PlayerClass::Fighter) == PlayerClass::Sorcerer,
+    check(hybridPoolClass(PlayerClass::Warrior) == PlayerClass::Mage,
           "Fighter's hybrid pool is Sorcerer's kit");
-    check(hybridPoolClass(PlayerClass::Sorcerer) == PlayerClass::Fighter,
+    check(hybridPoolClass(PlayerClass::Mage) == PlayerClass::Warrior,
           "Sorcerer's hybrid pool is Fighter's kit");
 
     // --- fullKitForClass: starting talents plus both level-gated
     // unlocks, regardless of what level a character actually is.
-    check(fullKitForClass(PlayerClass::Fighter).size() == 6,
+    check(fullKitForClass(PlayerClass::Warrior).size() == 6,
           "Fighter's full kit is 6 talents (4 starting + Whirlwind + Undying Rage)");
-    check(fullKitForClass(PlayerClass::Sorcerer).size() == 6,
+    check(fullKitForClass(PlayerClass::Mage).size() == 6,
           "Sorcerer's full kit is 6 talents (4 starting + Meteor + Overload)");
 
     // --- availableHybridPicks: a fresh Fighter can pick from all 6 of
     // Sorcerer's abilities.
     {
-        TalentSet freshFighter = talentSetForClass(PlayerClass::Fighter);
-        std::vector<Talent> available = availableHybridPicks(PlayerClass::Fighter, freshFighter);
+        TalentSet freshFighter = talentSetForClass(PlayerClass::Warrior);
+        std::vector<Talent> available = availableHybridPicks(PlayerClass::Warrior, freshFighter);
         check(available.size() == 6,
               "a fresh (unspecced) Fighter has all 6 Sorcerer abilities available to pick");
         check(available[0].name == "Arcane Bolt",
@@ -56,9 +56,9 @@ int main() {
     // known -- this is the core mechanic the whole choice screen
     // depends on being correct.
     {
-        TalentSet fighter = talentSetForClass(PlayerClass::Fighter);
+        TalentSet fighter = talentSetForClass(PlayerClass::Warrior);
         fighter.learnTalent(Talent{/*name=*/"Arcane Bolt"}); // simulates picking it
-        std::vector<Talent> available = availableHybridPicks(PlayerClass::Fighter, fighter);
+        std::vector<Talent> available = availableHybridPicks(PlayerClass::Warrior, fighter);
         check(available.size() == 5, "picking one ability shrinks the available pool to 5");
         bool stillOffersArcaneBolt = false;
         for (const Talent& t : available) {
@@ -71,11 +71,11 @@ int main() {
 
     // --- Picking all 6 empties the pool entirely.
     {
-        TalentSet fighter = talentSetForClass(PlayerClass::Fighter);
-        for (const Talent& sorcererTalent : fullKitForClass(PlayerClass::Sorcerer)) {
+        TalentSet fighter = talentSetForClass(PlayerClass::Warrior);
+        for (const Talent& sorcererTalent : fullKitForClass(PlayerClass::Mage)) {
             fighter.learnTalent(sorcererTalent);
         }
-        check(availableHybridPicks(PlayerClass::Fighter, fighter).empty(),
+        check(availableHybridPicks(PlayerClass::Warrior, fighter).empty(),
               "picking all 6 of the opposing kit empties the available pool");
     }
 

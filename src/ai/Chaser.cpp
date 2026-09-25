@@ -34,7 +34,7 @@ AIDecision Chaser::decideAction(const Actor& self, const Map& map, Actor& player
         decision.type = AIActionType::Attack;
         decision.target = &player;
         decision.attackPower = attackProfile_.power;
-        decision.damageType = attackProfile_.damageType;
+        decision.scalingStat = attackProfile_.scalingStat;
 
         if (attackProfile_.onHitEffect.has_value() && rollChance(attackProfile_.onHitChance)) {
             decision.effectToApply = attackProfile_.onHitEffect;

@@ -21,10 +21,19 @@ namespace {
 // Version 4: added playerHybridPickNames/playerHybridSpecced (Prompt
 // 24's hybrid path). Same "reject outright, don't migrate" policy as
 // every prior version bump.
-constexpr int kSaveFormatVersion = 4;
+// Version 5: added currentFloor (the multi-floor dungeon progression).
+// Same "reject outright, don't migrate" policy as every prior version
+// bump.
+constexpr int kSaveFormatVersion = 5;
 
 char tileChar(const Tile& t) {
-    return t.type == TileType::Wall ? '#' : '.';
+    if (t.type == TileType::Wall) {
+        return '#';
+    }
+    if (t.type == TileType::Door) {
+        return 'D';
+    }
+    return '.';
 }
 
 // Prompt 24: every other field in this format is a single
@@ -49,6 +58,9 @@ std::string unescapeTalentName(const std::string& escaped) {
 Tile charToTile(char c) {
     if (c == '#') {
         return Tile{TileType::Wall, false, false};
+    }
+    if (c == 'D') {
+        return Tile{TileType::Door, true, true}; // walkable/transparent exactly like Floor
     }
     return Tile{TileType::Floor, true, true};
 }
@@ -133,6 +145,7 @@ bool saveGame(const SaveGameState& state, const std::string& path) {
     out << state.playerPosition.x << ' ' << state.playerPosition.y << '\n';
     out << static_cast<int>(state.playerClass) << '\n';
     out << state.playerLevel << ' ' << state.playerXp << '\n';
+    out << state.currentFloor << '\n';
     out << state.playerStats.hp << ' ' << state.playerStats.maxHp << ' '
         << state.playerStats.mana << ' ' << state.playerStats.maxMana << ' '
         << state.playerStats.strength << ' ' << state.playerStats.dexterity << ' '
@@ -218,6 +231,9 @@ std::optional<SaveGameState> loadGame(const std::string& path) {
     }
     state.playerClass = static_cast<PlayerClass>(playerClassValue);
     if (!(in >> state.playerLevel >> state.playerXp)) {
+        return std::nullopt;
+    }
+    if (!(in >> state.currentFloor)) {
         return std::nullopt;
     }
     if (!(in >> state.playerStats.hp >> state.playerStats.maxHp >> state.playerStats.mana >>

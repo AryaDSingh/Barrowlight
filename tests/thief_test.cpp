@@ -7,6 +7,10 @@
 // set correctly, targeting/shape are right) and the ordinary damage
 // path Vault Kick shares with every other Damage-kind talent; the
 // retreat itself is verified live (see ARCHITECTURE_DECISIONS.md).
+//
+// Rewritten for the attribute-system redesign -- see fighter_test.cpp's
+// own header comment for why every damage check now verifies "normal
+// or crit" rather than a single exact value.
 
 #include <iostream>
 #include <memory>
@@ -27,24 +31,21 @@ void check(bool condition, const std::string& description) {
     g_allOk &= condition;
     std::cout << (condition ? "[ok] " : "[FAIL] ") << description << '\n';
 }
+
+bool matchesNormalOrCrit(int actualDamage, int normalDamage) {
+    const int critDamage = static_cast<int>(static_cast<float>(normalDamage) * 1.5f);
+    return actualDamage == normalDamage || actualDamage == critDamage;
+}
 } // namespace
 
 int main() {
     // --- PlayerClassFactory: statsForClass(Thief).
     const Stats thiefStats = statsForClass(PlayerClass::Thief);
-    check(thiefStats.strength == 14, "Thief strength == 14 (moderate, not a dump stat)");
-    check(thiefStats.dexterity == 20,
-          "Thief dexterity == 20 (hits the 30% dodge cap exactly -- the maximum "
-          "possible evasion in the game)");
-    check(thiefStats.intelligence == 6,
-          "Thief intelligence == 6 (below baseline -- a real, if modest, penalty "
-          "reinforcing \"not a caster\")");
-    check(thiefStats.maxHp == 24,
-          "Thief maxHp == 24 -- the lowest of any class (Spellblade 30, Marauder 45), "
-          "survives via dodge instead of hp");
-    check(thiefStats.maxMana == 8,
-          "Thief maxMana == 8 base 8 + manaBonusFromIntelligence(6) == 0 (floored) -- "
-          "the smallest pool of any class");
+    check(thiefStats.strength == 2, "Thief strength == 2 (a true dump stat)");
+    check(thiefStats.dexterity == 6, "Thief dexterity == 6 (the dominant stat)");
+    check(thiefStats.intelligence == 2, "Thief intelligence == 2 (a true dump stat)");
+    check(thiefStats.maxHp == 25, "Thief maxHp == 25 (hand-picked, not derived from any attribute)");
+    check(thiefStats.maxMana == 15, "Thief maxMana == 15 (hand-picked, not derived from Intelligence)");
     check(thiefStats.mana == thiefStats.maxMana, "Thief starts at full mana");
     check(thiefStats.hp == thiefStats.maxHp, "Thief starts at full hp");
 
@@ -57,29 +58,35 @@ int main() {
     const std::vector<Talent> talents = thiefTalents();
     check(talents.size() == 4, "thiefTalents() returns exactly 4 talents");
 
-    // An attacker with the Thief's own real configured stats.
+    // An attacker with the Thief's own real configured stats. Note
+    // Strength (2) is low enough that its ability-damage bonus is 0 at
+    // every tier up through Power (2/5 truncates to 0 even at the 2.0x
+    // multiplier) -- "bows stay Strength-based for damage" per the
+    // redesign, but a Thief investing nothing further into Strength
+    // gets none of the scaling bonus from it, only the flat base power.
     Monster attacker(MonsterType::Goblin, "ThiefAttacker", '@', Position{0, 0}, thiefStats,
                       std::make_unique<NullAIBehavior>());
 
-    // Index 0: Quick Shot -- ranged, base 6 + strength bonus 2 == 8.
+    // Index 0: Quick Shot -- ranged, base 6 + strength bonus (2/5 * 1.0,
+    // truncated to 0) == 6.
     constexpr std::size_t kQuickShot = 0;
     check(talents[kQuickShot].targeting == TargetingMode::RangedEnemyInSight,
           "Quick Shot is ranged -- no adjacency needed");
-    check(talents[kQuickShot].damageType == DamageType::Physical,
-          "Quick Shot is Physical, not Magic -- Intelligence is a penalty for this class, "
-          "not a resource to spend");
+    check(talents[kQuickShot].scalingStat == ScalingStat::Strength,
+          "Quick Shot scales from Strength -- bows stay Strength-based for damage");
 
     Stats quickShotTargetStats;
     quickShotTargetStats.hp = 20;
-    quickShotTargetStats.maxHp = 20; // dexterity left at the 10 baseline -- guaranteed to land
+    quickShotTargetStats.maxHp = 20; // dexterity defaults to 0 now -- guaranteed to land
     Monster quickShotTarget(MonsterType::Goblin, "QuickShotTarget", 'q', Position{0, 0},
                              quickShotTargetStats, std::make_unique<NullAIBehavior>());
     const bool quickShotHit = applyTalentDamage(talents[kQuickShot], attacker, quickShotTarget);
     check(quickShotHit, "Quick Shot lands against a 0%-dodge target (guaranteed, not flaky)");
-    check(quickShotTarget.stats().hp == 12,
-          "Quick Shot deals base 6 + strength bonus 2 == 8 damage (20 -> 12)");
+    check(matchesNormalOrCrit(20 - quickShotTarget.stats().hp, 6),
+          "Quick Shot deals base 6 + strength bonus 0 == 6 damage (or 9 on a crit)");
 
-    // Index 1: Volley -- AreaAroundTarget, base 6 + strength bonus 2 == 8 per enemy.
+    // Index 1: Volley -- AreaAroundTarget, base 6 + strength bonus (2/5
+    // * 2.0, truncated to 0) == 6 per enemy.
     constexpr std::size_t kVolley = 1;
     check(talents[kVolley].shape == EffectShape::AreaAroundTarget,
           "Volley is AreaAroundTarget-shaped -- hits a cluster, not one target");
@@ -91,8 +98,8 @@ int main() {
     Monster volleyTarget(MonsterType::Goblin, "VolleyTarget", 'v', Position{0, 0},
                           volleyTargetStats, std::make_unique<NullAIBehavior>());
     applyTalentDamage(talents[kVolley], attacker, volleyTarget);
-    check(volleyTarget.stats().hp == 12,
-          "Volley deals base 6 + strength bonus 2 == 8 damage per enemy hit (20 -> 12)");
+    check(matchesNormalOrCrit(20 - volleyTarget.stats().hp, 6),
+          "Volley deals base 6 + strength bonus 0 == 6 damage per enemy hit (or 9 on a crit)");
 
     // Index 2: Steady Aim -- SelfBuff, applies Empowered.
     constexpr std::size_t kSteadyAim = 2;
@@ -112,7 +119,8 @@ int main() {
     // math it shares with every ranged/melee Damage talent); the actual
     // retreat destination requires Application::resolveBlinkDestination
     // and is verified live instead (see ARCHITECTURE_DECISIONS.md,
-    // "Thief and the vault mechanic").
+    // "Thief and the vault mechanic"). Base 4 + strength bonus (2/5 *
+    // 2.0, truncated to 0) == 4.
     constexpr std::size_t kVaultKick = 3;
     check(talents[kVaultKick].targeting == TargetingMode::AdjacentEnemy,
           "Vault Kick requires melee range -- the whole point is escaping it");
@@ -126,9 +134,9 @@ int main() {
     Monster vaultTarget(MonsterType::Goblin, "VaultTarget", 'k', Position{0, 0}, vaultTargetStats,
                          std::make_unique<NullAIBehavior>());
     applyTalentDamage(talents[kVaultKick], attacker, vaultTarget);
-    check(vaultTarget.stats().hp == 14,
-          "Vault Kick deals base 4 + strength bonus 2 == 6 damage (20 -> 14) -- deliberately "
-          "modest, since the escape is the point, not the hit");
+    check(matchesNormalOrCrit(20 - vaultTarget.stats().hp, 4),
+          "Vault Kick deals base 4 + strength bonus 0 == 4 damage (or 6 on a crit) -- "
+          "deliberately modest, since the escape is the point, not the hit");
 
     // Sanity check that no other talent in this kit accidentally carries
     // a nonzero retreatDistance -- the mechanic should be exclusive to

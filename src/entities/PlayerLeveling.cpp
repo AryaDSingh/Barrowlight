@@ -5,8 +5,8 @@ namespace engine {
 namespace {
 constexpr int kMaxLevel = 10;
 constexpr int kXpPerLevelStep = 20;
-constexpr int kMaxHpGrowthPerLevel = 3;
-constexpr int kMaxManaGrowthPerLevel = 2;
+constexpr int kMaxHpGrowthPerLevel = 1;
+constexpr int kAttributePointsPerLevel = 2;
 } // namespace
 
 int xpForNextLevel(int currentLevel) {
@@ -25,8 +25,12 @@ void grantXp(Player& player, int amount) {
         player.level() += 1;
 
         player.stats().maxHp += kMaxHpGrowthPerLevel;
-        player.stats().maxMana += kMaxManaGrowthPerLevel;
-        player.stats().hp = player.stats().maxHp;   // full heal on level-up
+        player.unspentAttributePoints() += kAttributePointsPerLevel;
+        // Full heal on level-up, same as before -- max mana isn't
+        // touched here at all anymore (it only grows from Intelligence
+        // points the player actually chooses to spend), but a fresh
+        // level should still restore whatever pool currently exists.
+        player.stats().hp = player.stats().maxHp;
         player.stats().mana = player.stats().maxMana;
     }
 

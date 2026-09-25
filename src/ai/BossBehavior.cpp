@@ -104,7 +104,7 @@ AIDecision BossBehavior::decidePhase2(const Actor& self, const Map& map, Actor& 
         decision.type = AIActionType::Attack;
         decision.target = &player;
         decision.attackPower = meleeProfile_.power;
-        decision.damageType = meleeProfile_.damageType;
+        decision.scalingStat = meleeProfile_.scalingStat;
         return decision;
     }
 
@@ -115,7 +115,7 @@ AIDecision BossBehavior::decidePhase2(const Actor& self, const Map& map, Actor& 
             decision.target = &player;
             decision.abilityIndex = 0;
             decision.attackPower = blastPower_;
-            decision.damageType = DamageType::Magic; // a magical blast, not a physical hit -- same as AoEBomber's
+            decision.scalingStat = ScalingStat::Intelligence; // a magical blast, not a physical hit -- same as AoEBomber's
             return decision;
         }
         return AIDecision{}; // in range, still recharging
@@ -162,7 +162,7 @@ AIDecision BossBehavior::meleeApproach(const Actor& self, const Map& map, Actor&
         decision.type = AIActionType::Attack;
         decision.target = &player;
         decision.attackPower = meleeProfile_.power;
-        decision.damageType = meleeProfile_.damageType;
+        decision.scalingStat = meleeProfile_.scalingStat;
         return decision;
     }
 

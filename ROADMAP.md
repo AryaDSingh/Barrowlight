@@ -1073,13 +1073,211 @@ after) -- the game ran the entire sequence correctly with the audio
 subsystem completely unavailable, exactly the scenario this environment
 actually presents, not a hypothetical one.
 
-## ⬜ Prompt 26+ — open-ended, lower priority
-Additional classes to round out the full PoE-style set (Duelist,
-Ranger, Witch, Scion) once the 3-class pattern is proven. Mixed-tier
-monster spawning within a single dungeon, rather than one uniform tier
-per level -- flagged as a reasonable follow-up to Prompt 22, not
-decided as final. Packaging/distribution for actually publishing. Not
-sequenced precisely yet -- revisit once it's clearer what matters most.
+## ⏳ Prompt 26 — The attribute-system redesign
+Requested as a from-scratch rework of starting classes, leveling, and
+attributes -- designed collaboratively across an extended conversation
+(see the transcript) rather than handed over as a single spec: an
+initial "smaller PoE tree" idea was pushed back on and reshaped several
+times before settling on a concrete, buildable design. The core shift:
+no more baseline-10 model (where every stat implicitly compared against
+an assumed "average" of 10) -- classes now start at genuinely low,
+hand-picked values (2 or 6), every point counts at full value from
+zero, and a talent's damage scales from exactly one attribute the
+talent itself declares, not a universal per-actor bonus.
+
+**Classes renamed again:** Fighter -> Warrior, Sorcerer -> Mage (Thief
+keeps its name) -- hand-picked starting HP/Mana per class (Warrior
+30/10, Thief 25/15, Mage 20/20), explicitly *not* derived from the
+6/2/2 Strength/Dexterity/Intelligence spread at all. That spread is
+used purely for ability-scaling damage and secondary effects (Dexterity
+-> dodge/crit) from the moment of character creation onward.
+
+**Leveling reworked:** +1 max HP automatically every level (down from
+the old flat +3), no more automatic mana growth at all -- mana only
+grows from Intelligence points a player actually chooses to spend.
+Every level also grants 2 free attribute points, spent through a new
+`AttributeAllocation` screen. This needed a real state machine
+(`resumeLevelUpSequence()`) to sequence correctly against the *existing*
+talent-unlock and hybrid-choice systems (Prompts 23-24) without losing
+track of a later pause if a big XP grant crosses multiple decision
+points at once -- attribute allocation always resolves first, then
+talent unlocks, then hybrid choices, for whatever levels a single XP
+grant actually crossed.
+
+**Damage scaling is now per-ability, not per-actor.** Each talent
+declares one `ScalingStat` (Strength/Dexterity/Intelligence, replacing
+the old two-way Physical/Magic `DamageType`) and scales by `+1 damage
+per 5 points in that stat, multiplied by the ability's own cooldown
+tier` (Filler x1.0, Core x1.5, Power x2.0, Signature x2.5) -- a
+deliberate first-pass formula, not a final tuned one, chosen so a
+talent used rarely rewards investment more than one spammed every turn.
+
+**Crit is new and global:** every actor, player and monster alike,
+rolls a 5% base chance, +0.5%/point of the attacker's own Dexterity,
+for 1.5x damage on a hit. Dodge also lost its baseline: +0.5%/point of
+current total Dexterity, capped at 25% (down from the old 30%). Both
+apply to monsters exactly as they do to players -- the exact same
+`rollDodge`/`rollCrit` functions, not a separate monster-side copy.
+
+**Piercing Shot (Thief's level-4 unlock) was reworked mid-conversation**
+from its original conditional-triple-damage-on-low-hp mechanic into an
+inherent +20% crit chance and +50% increased crit damage (a Piercing
+Shot crit deals 2.0x, not the global 1.5x), cooldown raised from 4 to
+7 to match. Needed new per-talent `bonusCritChance`/
+`bonusCritDamageMultiplier` fields and overloaded `rollCrit`/
+`critDamageMultiplier` functions, rather than hijacking the global crit
+numbers for one talent.
+
+**The test suite needed a genuinely new testing pattern, not just
+updated numbers.** Global crit means every damage check now has a real
+chance (as high as ~28% for a Thief using Piercing Shot) of landing an
+unplanned critical hit -- an exact `==` assertion would be flaky, not
+wrong. Every damage-value check across `talent_test`/`fighter_test`/
+`thief_test`/`sorcerer_test`/`talent_unlock_test` now verifies the
+result matches *either* the normal or the critical value, confirmed
+non-flaky by actually running the full suite 5+ times in a row, not
+just reasoning that the pattern should work. `Stats`' own default
+Dexterity (10, a leftover from the deleted baseline-10 model) was also
+caught and fixed to 0 -- left at 10, it would have silently given every
+test's default-constructed target a real dodge chance.
+
+**Two real, portability-affecting problems were caught and fixed while
+building this, neither hypothetical:** `SFML_BUILD_AUDIO` requiring
+Vorbis/OGG, which defaults to *system* libraries on Linux and this
+project's own bundled ones on Windows/macOS -- forced
+`SFML_USE_SYSTEM_DEPS OFF` explicitly and verified by literally
+uninstalling the system libraries and confirming a from-scratch build
+still succeeds. And a real save/load gap (Prompt 24's own fix) that
+generalizes here too -- every new save field this prompt needed
+(`playerHybridPickNames`-style reasoning) follows the same "save only
+what's a genuine choice, re-derive the rest from level" principle
+already established.
+
+**Known, explicitly-flagged gaps, not silently left unfinished:**
+monster Strength/Dexterity/Intelligence are still on the old 6-20 scale
+and haven't been rebalanced against the new formula -- functionally
+correct (compiles, produces real damage) but not tuned. Spellblade's
+stats are deliberately left on the old baseline-10 model, since it's
+still unreachable in play (reserved for a future unlock, see Prompt 19)
+-- fixing it up is a no-op until that unlock mechanism exists. File and
+function names (`FighterTalents.cpp`, `fighterTalents()`,
+`SorcererTalents.cpp`, `sorcererTalents()`) were *not* renamed to match
+Warrior/Mage this time, unlike the thorough Prompt 19 rename -- a
+deliberate scope cut given how much else this redesign already
+touched, not an oversight.
+
+## ⏳ Prompt 27 — Monster attribute rebalance
+The most significant open item flagged from Prompt 26: monster
+Strength/Dexterity/Intelligence were still on the old 6-20-range
+values, now interacting with a damage/dodge formula they were never
+tuned against.
+
+**Result:** every monster's Str/Dex/Int recomputed to reproduce
+exactly the same dodge percentages and damage totals already carefully
+tuned in Prompt 21 -- not new numbers guessed from scratch. Spider and
+Archer's Dexterity (36 and 48) look large next to a player's starting
+2-6, deliberately: monster attributes aren't held to the same
+"genuinely low, hand-picked" philosophy player stats follow, since
+monsters are static and never grow through play the way a player's
+starting spread is designed to. Those values exist purely to reproduce
+this roster's existing 18%/24% dodge identity exactly under the new
+no-baseline formula (36 * 0.5% == 18%, 48 * 0.5% == 24%). A side effect
+worth noting, not a separately-designed feature: the same high
+Dexterity now also gives Spider/Archer a real crit chance (23%/29%)
+under the new global crit system, which happens to reinforce rather
+than fight their existing "nimble, precise" identity. Every other
+monster's Strength/Intelligence was chosen to keep its own damage total
+exactly matching the Prompt 21 value, using the same "base + attribute
+bonus = target total" recalibration discipline every attribute-driven
+number in this project has used since Prompt 14.
+
+Verified two ways, not just by re-running the existing test suite
+(which passed without a single change needed, confirming no test had
+been asserting a stale exact value): live combat against a real Ogre --
+the case that most exercises this, since most of its damage comes from
+the Strength bonus rather than the flat power field -- showed
+"Ogre hits Player for 5" consistently across many real hits, and
+"Ogre critically hits Player for 7" on the one crit that landed,
+both exactly matching the hand-computed target (5 total, crit
+== round(5 * 1.5) == 7).
+
+## ⏳ Prompt 28 — Multi-floor dungeon progression (skeleton)
+Requested as two connected pieces: gate the boss behind at least a
+handful of rooms so there's real time to level up first, and add red
+doors to move between separate dungeon "areas." What it became,
+through conversation, was a full 10-floor progression structure:
+floors 1-4 and 6-9 are pure "clear it, find the door" dungeons with no
+boss at all; floor 5 has the existing Goblin Warlord, defeating him
+opens the door rather than ending the run; floor 10 is the true final
+fight. Explicitly staged: this prompt is the complete structural
+skeleton, verified working end to end for all ten floors -- the actual
+Lich (see below) is separate, later work, and floor 10 currently reuses
+the Goblin Warlord as a placeholder specifically so the full 1-10
+structure and victory gating could be built and verified correctly
+first, rather than being blocked on content that doesn't exist yet.
+
+**The original "room 5" request turned out to generalize cleanly.** The
+existing shortcut-connection system (Prompt 21) already protected the
+boss room from being bypassed; the same protection was extended to the
+*last* regular room too, since that room now hosts the door on every
+non-boss floor -- reaching either a boss or a door still means actually
+working through the floor, not skipping most of it via a lucky
+shortcut. Verified `dungeon_test` still reports 100% connectivity after
+this change, not just assumed compatible.
+
+**Doors need no separate "is it active yet" tracking at all -- a
+deliberate simplification, not an oversight.** On a boss floor, the
+door tile sits exactly where the boss stands. While the boss is alive
+it blocks that tile like any other actor, the same as it always has;
+once it's dead, the tile is simply walkable, and the door "activates"
+as a pure side effect of an existing game rule rather than a new one.
+
+**A real bug was found and fixed by live testing, not by the design
+review that preceded it.** The initial implementation set the GameOver/
+victory transition unconditionally the moment the final-floor boss
+died -- but `grantXpAndAnnounce()` can itself leave the game paused on
+an AttributeAllocation or AbilityChoice screen if that kill's XP
+crosses a level-up threshold, and overwriting that unconditionally
+would have silently discarded attribute points or a talent choice the
+player had genuinely just earned, replacing the choice screen with the
+victory screen before it was ever shown. Caught specifically by
+live-testing a final-boss kill that *also* crossed a level-up threshold
+-- an easy scenario to skip when testing the systems separately, since
+neither one alone would have revealed it. Fixed with a
+`pendingFinalVictory_` flag that defers the actual transition until
+`resumeLevelUpSequence()` -- the same resumable state machine
+Prompts 23/24 already built for exactly this class of problem --
+confirms nothing is left pending, rather than adding a second, separate
+pause mechanism. Verified live twice: once catching the bug happening,
+once confirming the fix (attribute screen and talent unlock both shown,
+in order, before Victory finally appears).
+
+**Save format bumped to version 5** for `currentFloor` and the new
+`Door` tile type (`'D'` in the save file's map rows, alongside the
+existing `#`/`.`) -- both covered by dedicated round-trip tests, not
+just added and assumed to work.
+
+Live-verified the complete flow across three separate scenarios, not
+just one: a plain floor 1 -> 2 transition through a door, a floor 4 -> 5
+transition confirming the boss actually appears, and the floor 5 boss
+kill -> door -> floor 6 sequence confirming defeat doesn't end the run
+and the door becomes reachable immediately after.
+
+## ⬜ Prompt 29+ — open-ended, lower priority
+**The Lich (floor 10's real boss)** -- separate, clearly-scoped work
+building on the skeleton above: a new `MonsterType`, a genuinely new
+"summons skeleton minions" AI mechanic (nothing in this engine currently
+lets a monster spawn new monsters mid-fight, so this needs real new
+plumbing, not a reskin of `BossBehavior`), and a new `MonsterType::Skeleton`
+minion. Once built, it replaces the placeholder Goblin Warlord currently
+occupying floor 10. Renaming FighterTalents/SorcererTalents' files and
+functions to match Warrior/Mage, for consistency with the Prompt 19
+precedent. Additional classes to round out a larger set once the
+3-class pattern is proven. Mixed-tier monster spawning within a single
+dungeon, rather than one uniform tier per level. Packaging/distribution
+for actually publishing. Not sequenced precisely yet -- revisit once
+it's clearer what matters
+most.
 
 ## Decisions locked in before starting Prompt 13
 

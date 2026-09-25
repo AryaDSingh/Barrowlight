@@ -10,7 +10,7 @@ std::vector<Talent> thiefTalents() {
     // == 2 -- same recalibration discipline as every other class's kit
     // (Prompt 14): the number written here plus the formula bonus
     // equals the intended total, not the total itself. All four are
-    // left at DamageType::Physical (the default) -- Intelligence sits
+    // left at ScalingStat::Strength (the default) -- Intelligence sits
     // below baseline for this class, so Magic-typed damage would
     // actively be worse, not just unused upside.
 
@@ -92,29 +92,36 @@ std::vector<Talent> thiefTalents() {
 
 std::optional<Talent> thiefTalentUnlockedAtLevel(int level) {
     if (level == 4) {
-        // Piercing Shot -- reuses Execution's exact conditional-
-        // multiplier mechanic (Prompt 9: modest damage normally, but a
-        // real multiplier against a target already below 30% hp) for
-        // the first time outside the Spellblade. Base total (12) is
-        // noticeably higher than Quick Shot's (8), on a real cooldown
-        // to match.
+        // Piercing Shot -- reworked during the attribute-system redesign
+        // from its original conditional-multiplier mechanic (which
+        // reused Execution's "triples below 30% hp" design, the first
+        // time that specific mechanic was used outside the Spellblade)
+        // into something that leans into the new global crit system
+        // instead: an inherent +20% crit chance and +50% increased crit
+        // damage, so a Piercing Shot crit deals 2.0x rather than the
+        // normal 1.5x. Base total (10, still noticeably higher than
+        // Quick Shot's 6) unchanged from the original design; cooldown
+        // raised from 4 to 7 to match the new mechanic's higher ceiling
+        // (an inherent, always-on crit-chance boost is a stronger
+        // baseline guarantee than a conditional multiplier that only
+        // ever mattered against a specific, narrow hp window).
         Talent piercingShot{
             /*name=*/"Piercing Shot",
-            /*description=*/"Modest damage normally, but triples against a "
-                             "target already below 30% hp. Rewards good "
-                             "timing, not raw power.",
+            /*description=*/"A precise shot with a real chance to land a "
+                             "devastating critical hit. A long cooldown to "
+                             "match.",
             /*tree=*/TalentTree::Blade,
             /*targeting=*/TargetingMode::RangedEnemyInSight,
             /*shape=*/EffectShape::SingleTarget,
             /*manaCost=*/5,
             /*hpCost=*/0,
-            /*cooldownTurns=*/4,
-            /*power=*/10, // +2 from strength == 12
-            /*areaRadius=*/0,
-            /*moveDistance=*/0,
-            /*conditionalHpFraction=*/0.3f,
-            /*conditionalMultiplier=*/3,
+            /*cooldownTurns=*/7,
+            /*power=*/10, // +1 from strength (2/5 * Signature-tier 2.5, truncated to 1) == 11 --
+                          // confirmed live, not just calculated: this is the exact total a
+                          // real Piercing Shot dealt during verification
         };
+        piercingShot.bonusCritChance = 0.2f;
+        piercingShot.bonusCritDamageMultiplier = 0.5f;
         return piercingShot;
     }
     if (level == 7) {

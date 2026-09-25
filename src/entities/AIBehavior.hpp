@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "core/Position.hpp"
-#include "entities/DamageType.hpp"
+#include "entities/AttributeFormulas.hpp"
 #include "entities/StatusEffects.hpp"
 
 namespace engine {
@@ -37,16 +37,19 @@ struct AIDecision {
     std::size_t abilityIndex = 0;   // for UseAbility, which of the actor's own talents
     int attackPower = 0;             // for Attack (or a damaging UseAbility), already resolved
 
-    // Which attribute attackPower scales with (Prompt 14). Defaults to
-    // Physical, matching MonsterAttackProfile's own default -- Chaser
-    // and Kiter (both MonsterAttackProfile-backed) never need to set
-    // this explicitly. AoEBomber and BossBehavior's blast phase set it
-    // to Magic directly in their own decision-building code, not via a
-    // constructor parameter -- there's exactly one Bomber and one boss,
-    // so this is a fixed characteristic of that specific ability, not
-    // data that varies across instances the way MonsterAttackProfile's
-    // damageType genuinely does across the Chaser-based roster.
-    DamageType damageType = DamageType::Physical;
+    // Which attribute attackPower scales with. Defaults to Strength,
+    // matching MonsterAttackProfile's own default -- Chaser and Kiter
+    // (both MonsterAttackProfile-backed) never need to set this
+    // explicitly. AoEBomber and BossBehavior's blast phase set it to
+    // Intelligence directly in their own decision-building code, not
+    // via a constructor parameter -- there's exactly one Bomber and one
+    // boss, so this is a fixed characteristic of that specific ability,
+    // not data that varies across instances the way
+    // MonsterAttackProfile's scalingStat genuinely does across the
+    // Chaser-based roster. Treated as Filler tier for the damage-bonus
+    // calculation, same as MonsterAttackProfile's own attacks -- see
+    // that struct's comment for why.
+    ScalingStat scalingStat = ScalingStat::Strength;
 
     std::optional<StatusEffectInstance> effectToApply; // for Attack (on-hit proc), UseAbility
                                                           // (a buff), or SelfBuff

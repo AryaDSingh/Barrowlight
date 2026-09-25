@@ -21,6 +21,15 @@ void check(bool condition, const std::string& description) {
     g_allOk &= condition;
     std::cout << (condition ? "[ok] " : "[FAIL] ") << description << '\n';
 }
+
+// A damage result is valid if it matches either the normal hit or the
+// (1.5x, truncated) critical hit -- crit is now global (a flat 5% base
+// chance, always active), so an exact `==` would be genuinely flaky.
+// See fighter_test.cpp's own header comment for the full reasoning.
+bool matchesNormalOrCrit(int actualDamage, int normalDamage) {
+    const int critDamage = static_cast<int>(static_cast<float>(normalDamage) * 1.5f);
+    return actualDamage == normalDamage || actualDamage == critDamage;
+}
 } // namespace
 
 int main() {
@@ -71,9 +80,8 @@ int main() {
 
     const bool quickStrikeHit = applyTalentDamage(talents[kQuickStrike], attacker, dummy);
     check(quickStrikeHit, "Quick Strike lands against a 0%-dodge target (guaranteed, not flaky)");
-    check(dummy.stats().hp == 14,
-          "Quick Strike deals base 4 + strength bonus 2 == 6 damage (20 -> 14), "
-          "matching the original Prompt 9 tuned value exactly");
+    check(matchesNormalOrCrit(20 - dummy.stats().hp, 6),
+          "Quick Strike deals base 4 + strength bonus 2 == 6 damage (or 9 on a crit)");
 
     talentSet.startCooldown(kQuickStrike);
     check(!talentSet.isReady(kQuickStrike), "Quick Strike goes on cooldown after use");
@@ -94,10 +102,11 @@ int main() {
     talentSet.tickCooldowns();
     check(talentSet.isReady(kPowerStrike), "Power Strike ready after the 4th tick");
 
-    // Index 3: Execution -- power 10, triples (30) at/below 30% target hp.
-    // The attribute bonus is folded in *before* the conditional
-    // multiplier applies (see TalentEffects.cpp): (8 base + 2 strength)
-    // * 3 == 30, not 8*3 + 2 == 26 -- an execute is meant to amplify the
+    // Index 3: Execution -- power 8, base total 8 + strength bonus
+    // (14/5 * Core-tier 1.5, truncated to 4) == 12, triples to 36 at/below
+    // 30% target hp. The attribute bonus is folded in *before* the
+    // conditional multiplier applies (see TalentEffects.cpp): (8+4)*3 ==
+    // 36, not 8*3 + 4 == 28 -- an execute is meant to amplify the
     // attacker's full output, not just the talent's flat base number.
     constexpr std::size_t kExecution = 3;
 
@@ -107,9 +116,9 @@ int main() {
     Monster healthyTarget(MonsterType::Goblin, "Healthy", 'h', Position{0, 0}, healthyStats,
                            std::make_unique<NullAIBehavior>());
     applyTalentDamage(talents[kExecution], attacker, healthyTarget);
-    check(healthyTarget.stats().hp == 10,
-          "Execution deals base 8 + strength bonus 2 == 10 damage above the hp threshold "
-          "(20 -> 10), matching the original Prompt 9 tuned value exactly");
+    check(matchesNormalOrCrit(20 - healthyTarget.stats().hp, 12),
+          "Execution deals base 8 + strength bonus 4 == 12 damage above the hp threshold "
+          "(or 18 on a crit)");
 
     Stats lowHpStats;
     lowHpStats.hp = 5;
@@ -117,17 +126,16 @@ int main() {
     Monster lowHpTarget(MonsterType::Goblin, "Weakened", 'w', Position{0, 0}, lowHpStats,
                          std::make_unique<NullAIBehavior>());
     applyTalentDamage(talents[kExecution], attacker, lowHpTarget);
-    check(lowHpTarget.stats().hp == 5 - 30,
-          "Execution deals tripled (8+2)*3 == 30 damage at/below the hp threshold (5 -> -25), "
-          "the attribute bonus folded in before the multiplier, matching the original "
-          "Prompt 9 tuned value exactly");
+    check(matchesNormalOrCrit(5 - lowHpTarget.stats().hp, 36),
+          "Execution deals tripled (8+4)*3 == 36 damage at/below the hp threshold (or 54 "
+          "on a crit), the attribute bonus folded in before the multiplier");
 
     // Ember Bolt (index 4, Magic-typed, base 3) -- verifies the
     // Intelligence bonus specifically, and that it genuinely scales with
     // the attacker rather than being a fixed pass-through: the same
-    // attacker (intelligence 18) deals 3+4==7, matching the original
-    // tuned value, while a baseline-intelligence attacker deals only the
-    // base 3, no bonus at all.
+    // attacker (intelligence 18) deals 3 + (18/5 * Filler-tier 1.0,
+    // truncated to 3) == 6, while an attacker with 0 intelligence deals
+    // only the base 3, no bonus at all.
     constexpr std::size_t kEmberBolt = 4;
     Stats emberTargetStats;
     emberTargetStats.hp = 20;
@@ -135,11 +143,10 @@ int main() {
     Monster emberTarget(MonsterType::Goblin, "EmberTarget", 'e', Position{0, 0}, emberTargetStats,
                          std::make_unique<NullAIBehavior>());
     applyTalentDamage(talents[kEmberBolt], attacker, emberTarget);
-    check(emberTarget.stats().hp == 13,
-          "Ember Bolt deals base 3 + intelligence bonus 4 == 7 damage (20 -> 13), matching "
-          "the original Prompt 9 tuned value exactly");
+    check(matchesNormalOrCrit(20 - emberTarget.stats().hp, 6),
+          "Ember Bolt deals base 3 + intelligence bonus 3 == 6 damage (or 9 on a crit)");
 
-    Stats baselineAttackerStats; // every attribute left at the 10 baseline -- every bonus is 0
+    Stats baselineAttackerStats; // every attribute defaults to 0 now -- every bonus is 0
     Monster baselineAttacker(MonsterType::Goblin, "BaselineAttacker", '@', Position{0, 0},
                               baselineAttackerStats, std::make_unique<NullAIBehavior>());
     Stats emberTarget2Stats;
@@ -148,9 +155,9 @@ int main() {
     Monster emberTarget2(MonsterType::Goblin, "EmberTarget2", 'e', Position{0, 0},
                           emberTarget2Stats, std::make_unique<NullAIBehavior>());
     applyTalentDamage(talents[kEmberBolt], baselineAttacker, emberTarget2);
-    check(emberTarget2.stats().hp == 17,
-          "the same talent from a baseline-intelligence attacker deals only its base 3 "
-          "damage (20 -> 17), no bonus -- confirms the bonus genuinely scales with the "
+    check(matchesNormalOrCrit(20 - emberTarget2.stats().hp, 3),
+          "the same talent from a zero-intelligence attacker deals only its base 3 damage "
+          "(or 4 on a crit), no bonus -- confirms the bonus genuinely scales with the "
           "attacker's own stats rather than being a fixed pass-through");
 
     // Index 8: Renewal -- heals instead of damaging. base 8 + intelligence
@@ -170,12 +177,15 @@ int main() {
     Monster wounded(MonsterType::Goblin, "Wounded", 'w', Position{0, 0}, woundedStats,
                      std::make_unique<NullAIBehavior>());
     applyTalentHeal(talents[kRenewal], attacker, wounded);
-    check(wounded.stats().hp == 22,
-          "Renewal restores base 8 + intelligence bonus 4 == 12 hp (10 -> 22)");
+    check(wounded.stats().hp == 21,
+          "Renewal restores base 8 + intelligence bonus 3 == 11 hp (10 -> 21) -- heals are "
+          "always treated as Filler tier regardless of their own actual cooldown (see "
+          "TalentEffects::applyTalentHeal), and never crit -- this check stays a simple "
+          "exact value, unlike the damage checks above");
 
     Stats nearFullStats;
     nearFullStats.hp = 25;
-    nearFullStats.maxHp = 30; // only 5 hp of headroom -- less than the 12 Renewal would give
+    nearFullStats.maxHp = 30; // only 5 hp of headroom -- less than the 11 Renewal would give
     Monster nearFull(MonsterType::Goblin, "NearFull", 'n', Position{0, 0}, nearFullStats,
                       std::make_unique<NullAIBehavior>());
     applyTalentHeal(talents[kRenewal], attacker, nearFull);

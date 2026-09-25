@@ -33,6 +33,15 @@ constexpr float kTileSize = 32.f;
 constexpr int kSightRadius = 8;
 constexpr unsigned int kInitialSeed = 1337;
 
+// The multi-floor dungeon progression: floors 1 through kFinalFloor,
+// each a separate generated dungeon reached by walking through the
+// previous floor's door. Only kFirstBossFloor and kFinalFloor generate
+// with a boss room at all -- see regenerateLevel(). kFinalFloor's boss
+// currently reuses GoblinWarlord as a placeholder (see that function's
+// own comment) -- the actual Lich is separate, later work.
+constexpr int kFirstBossFloor = 5;
+constexpr int kFinalFloor = 10;
+
 // Passive regen, applied once per player turn (see
 // advanceTurnsUntilPlayerCanAct) regardless of what action was taken --
 // without it, a fight that outlasts the player's starting mana pool
@@ -246,9 +255,9 @@ void Application::processEvents() {
                 // PlayerClassFactory (see PlayerClass.hpp), just not as
                 // a starting option anymore.
                 if (keyPressed->code == sf::Keyboard::Key::Num1) {
-                    selectClass(PlayerClass::Fighter);
+                    selectClass(PlayerClass::Warrior);
                 } else if (keyPressed->code == sf::Keyboard::Key::Num2) {
-                    selectClass(PlayerClass::Sorcerer);
+                    selectClass(PlayerClass::Mage);
                 } else if (keyPressed->code == sf::Keyboard::Key::Num3) {
                     selectClass(PlayerClass::Thief);
                 }
@@ -290,16 +299,47 @@ void Application::processEvents() {
                                                       : "Learned ",
                         chosen.name, "!");
                     soundManager_.play(SoundEffect::Select);
-                    const int resumeFrom = pendingHybridChoiceLevel_ + 1;
                     mode_ = GameMode::Playing;
-                    processLevelUpEffects(resumeFrom);
+                    resumeLevelUpSequence();
                 } else if (pendingHybridChoiceIsSpecIn_ &&
                            keyPressed->code == sf::Keyboard::Key::Num0) {
                     log("You decide to stay on your current path.");
                     soundManager_.play(SoundEffect::Select);
-                    const int resumeFrom = pendingHybridChoiceLevel_ + 1;
                     mode_ = GameMode::Playing;
-                    processLevelUpEffects(resumeFrom);
+                    resumeLevelUpSequence();
+                }
+                continue;
+            }
+
+            if (mode_ == GameMode::AttributeAllocation) {
+                bool allocated = false;
+                if (keyPressed->code == sf::Keyboard::Key::Num1) {
+                    player_.stats().strength += 1;
+                    player_.stats().maxHp += 1;
+                    log("+1 Strength.");
+                    allocated = true;
+                } else if (keyPressed->code == sf::Keyboard::Key::Num2) {
+                    player_.stats().dexterity += 1;
+                    log("+1 Dexterity.");
+                    allocated = true;
+                } else if (keyPressed->code == sf::Keyboard::Key::Num3) {
+                    player_.stats().intelligence += 1;
+                    player_.stats().maxMana += 1;
+                    log("+1 Intelligence.");
+                    allocated = true;
+                }
+
+                if (allocated) {
+                    player_.unspentAttributePoints() -= 1;
+                    soundManager_.play(SoundEffect::Select);
+                    // Tentatively resume -- resumeLevelUpSequence() puts
+                    // mode_ straight back to AttributeAllocation if
+                    // there are still points left from this level-up,
+                    // so the same screen naturally reappears for the
+                    // next point rather than needing a separate loop
+                    // here.
+                    mode_ = GameMode::Playing;
+                    resumeLevelUpSequence();
                 }
                 continue;
             }
@@ -441,6 +481,24 @@ bool Application::tryMovePlayer(int dx, int dy) {
     currentActor_ = &scheduler_.nextTurn();
     processMonsterTurns();
     advanceTurnsUntilPlayerCanAct();
+
+    // Stepping onto a door tile advances to the next floor -- checked
+    // after the normal move/turn processing above completes, not
+    // before, so the move itself still counts as a real turn (monsters
+    // still get to act on it) even though regenerateLevel() below
+    // immediately replaces them anyway. On a boss floor this tile only
+    // becomes reachable once the boss is actually dead -- while alive
+    // it occupies (and blocks) this exact position like any other
+    // actor, so no separate "is the boss defeated" check is needed
+    // here at all.
+    if (mode_ == GameMode::Playing && map_.tileAt(target.x, target.y).type == TileType::Door) {
+        currentFloor_ += 1;
+        log("You step through the door into floor ", currentFloor_, ".");
+        regenerateLevel(std::random_device{}()); // fresh layout, same convention as the R key --
+                                                   // not tied deterministically to floor number,
+                                                   // so replaying the same run still varies
+    }
+
     return true;
 }
 
@@ -657,16 +715,29 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision) {
                     soundManager_.play(SoundEffect::Dodge);
                 } else {
                     int damage = decision.attackPower;
-                    damage += (decision.damageType == DamageType::Physical)
-                                  ? physicalDamageBonus(actor.stats().strength)
-                                  : magicDamageBonus(actor.stats().intelligence);
+                    const int statValue = statValueForScalingStat(
+                        decision.scalingStat, actor.stats().strength, actor.stats().dexterity,
+                        actor.stats().intelligence);
+                    // Filler tier (cooldown 0): MonsterAttackProfile-backed
+                    // attacks have no cooldown concept at all, and "every
+                    // eligible turn" is the closest existing tier to that
+                    // -- see MonsterAttackProfile's own comment.
+                    damage += abilityDamageBonus(decision.scalingStat, statValue, /*cooldownTurns=*/0);
                     if (actor.statusEffects().has(StatusEffectType::Empowered)) {
                         damage += actor.statusEffects().magnitudeOf(StatusEffectType::Empowered);
                     }
+                    // Global crit (per design: every creature, player and
+                    // monster alike, rolls it) -- multiplies the result of
+                    // everything above.
+                    bool crit = false;
+                    if (rollCrit(actor.stats().dexterity)) {
+                        crit = true;
+                        damage = static_cast<int>(static_cast<float>(damage) * critDamageMultiplier());
+                    }
                     decision.target->stats().hp -= damage;
-                    log(actor.name(), " hits ", decision.target->name(), " for ", damage, " (",
-                        decision.target->stats().hp, "/", decision.target->stats().maxHp,
-                        " hp left)");
+                    log(actor.name(), crit ? " critically hits " : " hits ", decision.target->name(),
+                        " for ", damage, " (", decision.target->stats().hp, "/",
+                        decision.target->stats().maxHp, " hp left)");
                     soundManager_.play(SoundEffect::Hit);
                     checkAndHandleDeath(*decision.target);
                 }
@@ -735,19 +806,44 @@ void Application::checkAndHandleDeath(Actor& actor) {
     }
 
     if (&actor == boss_) {
-        log(actor.name(), " falls! You have slain the Goblin Warlord!");
         boss_ = nullptr; // must clear before removeDeadMonsters() erases the underlying object
         scheduler_.remove(actor);
         grantXpAndAnnounce(actor.xpReward());
-        // Defeating the boss ends the run in victory outright, even if
-        // other regular monsters are still alive elsewhere in the
-        // dungeon -- it's the set-piece finale (Prompt 11), not one
-        // more kill among many. This is also the very first place
-        // "victory" has existed as a real game state at all; before
-        // this, killing the boss just logged a message and let play
-        // continue with nothing actually won.
-        mode_ = GameMode::GameOver;
-        wonGame_ = true;
+        if (currentFloor_ == kFinalFloor) {
+            log(actor.name(), " falls! You have slain the Goblin Warlord!");
+            // Deliberately NOT setting mode_ = GameOver here directly --
+            // the grantXpAndAnnounce() call just above already ran the
+            // full level-up sequence internally, and may have left
+            // mode_ on AttributeAllocation or AbilityChoice if this
+            // kill's XP crossed a level-up threshold with its own
+            // pending choice. pendingFinalVictory_ just records that a
+            // victory is waiting; resumeLevelUpSequence() itself (called
+            // again by the AttributeAllocation/AbilityChoice key
+            // handling once each pause resolves, or already reached its
+            // own "nothing left pending" point just now if this kill
+            // triggered no pause at all) is what actually makes the
+            // GameOver transition, once every earned choice has
+            // genuinely been offered.
+            pendingFinalVictory_ = true;
+            if (mode_ == GameMode::Playing) {
+                // Nothing was left pending by the call above -- the
+                // sequence already reached its own end without this
+                // flag existing yet, so trigger the transition directly
+                // rather than waiting for a key handler that will never
+                // fire.
+                mode_ = GameMode::GameOver;
+                wonGame_ = true;
+                pendingFinalVictory_ = false;
+            }
+        } else {
+            // Any earlier boss floor (currently just kFirstBossFloor) --
+            // defeating it doesn't end the run at all. The door
+            // occupying this same position (see regenerateLevel()) is
+            // now reachable, since the boss no longer blocks it; play
+            // continues normally until the player chooses to step
+            // through.
+            log(actor.name(), " falls! The way forward opens.");
+        }
         return;
     }
 
@@ -760,14 +856,14 @@ void Application::checkAndHandleDeath(Actor& actor) {
 }
 
 void Application::grantXpAndAnnounce(int amount) {
-    // Prompt 20: captures level before/after specifically to detect a
-    // level-up and announce it -- grantXp() itself is a plain void
-    // function (data + logic, no logging; see PlayerLeveling.hpp), so
-    // this is the one place XP gain actually becomes visible to the
-    // player. A single large grant (the boss's 200 XP, well above any
-    // individual level's threshold) can cross more than one level at
-    // once -- grantXp() loops internally to handle that, and this still
-    // only prints one summary line, not one per level crossed.
+    // Captures level before/after specifically to detect a level-up
+    // and announce it -- grantXp() itself is a plain void function
+    // (data + logic, no logging; see PlayerLeveling.hpp), so this is
+    // the one place XP gain actually becomes visible to the player. A
+    // single large grant (the boss's 200 XP, well above any individual
+    // level's threshold) can cross more than one level at once --
+    // grantXp() loops internally to handle that, and this still only
+    // prints one summary line, not one per level crossed.
     const int levelBefore = player_.level();
     grantXp(player_, amount);
     log("Gained ", amount, " XP.");
@@ -776,7 +872,35 @@ void Application::grantXpAndAnnounce(int amount) {
         soundManager_.play(SoundEffect::LevelUp);
     }
 
-    processLevelUpEffects(levelBefore + 1);
+    pendingLevelUpFromLevel_ = levelBefore + 1;
+    resumeLevelUpSequence();
+}
+
+void Application::resumeLevelUpSequence() {
+    // Attribute allocation always resolves first, before any talent
+    // unlocks or hybrid choices for the levels just gained -- a
+    // deliberate ordering choice (see ARCHITECTURE_DECISIONS.md), not
+    // an arbitrary one: it keeps every pause for a single XP grant in
+    // one predictable sequence rather than interleaving two different
+    // kinds of choice level-by-level.
+    if (player_.unspentAttributePoints() > 0) {
+        mode_ = GameMode::AttributeAllocation;
+        return; // paused; the AttributeAllocation key handling calls this again once resolved
+    }
+    processLevelUpEffects(pendingLevelUpFromLevel_);
+
+    // The sequence has now genuinely reached its own end -- either
+    // nothing was ever pending, or every attribute point and hybrid
+    // choice this XP grant produced has actually been offered and
+    // resolved. Only now is it safe to make the deferred final-boss
+    // victory transition (see checkAndHandleDeath) -- doing it any
+    // earlier risked silently skipping a choice the player had genuinely
+    // earned.
+    if (mode_ == GameMode::Playing && pendingFinalVictory_) {
+        pendingFinalVictory_ = false;
+        mode_ = GameMode::GameOver;
+        wonGame_ = true;
+    }
 }
 
 void Application::processLevelUpEffects(int fromLevel) {
@@ -794,10 +918,13 @@ void Application::processLevelUpEffects(int fromLevel) {
 
         offerHybridChoiceIfEligible(level);
         if (mode_ == GameMode::AbilityChoice) {
-            // Paused for a real decision -- stop here. The AbilityChoice
-            // key handling resumes this same loop (from level + 1) once
-            // the person responds, so any further level in this same
-            // grant still gets checked rather than silently skipped.
+            // Paused for a real decision -- stop here. pendingLevelUpFromLevel_
+            // is updated so resumeLevelUpSequence() (called by the
+            // AbilityChoice key handling once the person responds)
+            // continues from the *next* level, not from the start of
+            // this call -- any further level in this same grant still
+            // gets checked rather than silently skipped.
+            pendingLevelUpFromLevel_ = level + 1;
             return;
         }
     }
@@ -908,12 +1035,20 @@ void Application::selectClass(PlayerClass cls) {
     player_.level() = 1;
     player_.xp() = 0;
     player_.hybridSpecced() = false;
+    currentFloor_ = 1;
     mode_ = GameMode::Playing;
     regenerateLevel(kInitialSeed);
 }
 
 void Application::regenerateLevel(unsigned int seed) {
-    const DungeonGenerationParams params; // defaults
+    DungeonGenerationParams params; // defaults, then floor-gated below
+    // Only specific floors generate with a boss room at all -- every
+    // other floor is a pure "clear it, find the door" dungeon. kFinalFloor
+    // (10) is a placeholder using the same GoblinWarlord as
+    // kFirstBossFloor (5) for now -- the actual Lich (see ROADMAP.md)
+    // is a separate, later piece of work; this gets the full 10-floor
+    // structure and victory gating correct end to end first.
+    params.includeBossRoom = (currentFloor_ == kFirstBossFloor || currentFloor_ == kFinalFloor);
     const GeneratedDungeon dungeon = generateDungeon(params, seed);
 
     map_ = dungeon.map;
@@ -942,6 +1077,22 @@ void Application::regenerateLevel(unsigned int seed) {
         boss_ = monsters_.back().get();
     }
 
+    // The floor-transition door: on a boss floor it sits exactly where
+    // the boss stands, so the player can only reach it (the boss blocks
+    // that tile like any other actor, no special "is the boss dead yet"
+    // check needed) once the fight is actually won. On a non-boss floor
+    // it sits at the last regular room's center -- the same room the
+    // shortcut protection above keeps reachable only via the full
+    // chain, so reaching the door still means genuinely working through
+    // the floor. kFinalFloor has no door at all: reaching it is the
+    // end of the run, handled entirely by checkAndHandleDeath's victory
+    // branch instead.
+    if (currentFloor_ != kFinalFloor) {
+        const Position doorPosition =
+            dungeon.hasBossRoom ? dungeon.bossRoomCenter : dungeon.otherRoomCenters.back();
+        map_.setTile(doorPosition.x, doorPosition.y, Tile{TileType::Door, true, true});
+    }
+
     exploredMap_ = ExploredMap(map_);
 
     scheduler_ = TurnScheduler{};
@@ -955,9 +1106,10 @@ void Application::regenerateLevel(unsigned int seed) {
     advanceTurnsUntilPlayerCanAct();
     updateFieldOfView();
 
-    std::cout << "Generated dungeon (seed " << seed << "): " << map_.width() << 'x'
-              << map_.height() << ", " << dungeon.roomCount << " rooms, " << monsters_.size()
-              << " monsters" << (dungeon.hasBossRoom ? " (boss present)" : " (no boss this run)")
+    std::cout << "Generated dungeon (seed " << seed << ", floor " << currentFloor_
+              << "): " << map_.width() << 'x' << map_.height() << ", " << dungeon.roomCount
+              << " rooms, " << monsters_.size() << " monsters"
+              << (dungeon.hasBossRoom ? " (boss present)" : " (no boss this run)")
               << ", player start (" << dungeon.playerStart.x << ',' << dungeon.playerStart.y
               << ")" << std::endl;
     // Deliberately raw std::cout above, not log() -- logMessages_ is a
@@ -975,6 +1127,7 @@ void Application::saveGame() {
     state.playerClass = playerClass_;
     state.playerLevel = player_.level();
     state.playerXp = player_.xp();
+    state.currentFloor = currentFloor_;
     state.playerStats = player_.stats();
     state.lastMoveDirection = lastMoveDirection_;
 
@@ -1045,6 +1198,7 @@ void Application::loadGame() {
     player_.talents() = talentSetForClass(playerClass_);
     player_.level() = state.playerLevel;
     player_.xp() = state.playerXp;
+    currentFloor_ = state.currentFloor;
     player_.stats() = state.playerStats;
     lastMoveDirection_ = state.lastMoveDirection;
 
@@ -1189,7 +1343,7 @@ void Application::renderGameOver() {
 
 void Application::renderAbilityChoice() {
     const PlayerClass poolClass = hybridPoolClass(playerClass_);
-    const char* poolClassName = poolClass == PlayerClass::Sorcerer ? "Sorcerer" : "Fighter";
+    const char* poolClassName = poolClass == PlayerClass::Mage ? "Mage" : "Warrior";
 
     if (pendingHybridChoiceIsSpecIn_) {
         drawText("A new path opens...", 60.f, 60.f, 28, sf::Color(230, 230, 230));
@@ -1222,6 +1376,36 @@ void Application::renderAbilityChoice() {
     }
 }
 
+void Application::renderAttributeAllocation() {
+    drawText("Level up!", 60.f, 60.f, 28, sf::Color(230, 230, 230));
+
+    std::ostringstream subtitle;
+    subtitle << "You have " << player_.unspentAttributePoints()
+              << (player_.unspentAttributePoints() == 1 ? " point" : " points")
+              << " to spend. Choose one:";
+    drawText(subtitle.str(), 60.f, 104.f, 16, sf::Color(190, 190, 190));
+
+    const Stats& stats = player_.stats();
+
+    std::ostringstream strLine;
+    strLine << "1. Strength (currently " << stats.strength << ")";
+    drawText(strLine.str(), 60.f, 160.f, 18, sf::Color(230, 140, 100));
+    drawText("+1 Max HP. Scales Strength-based abilities.", 80.f, 184.f, 14,
+             sf::Color(180, 180, 180));
+
+    std::ostringstream dexLine;
+    dexLine << "2. Dexterity (currently " << stats.dexterity << ")";
+    drawText(dexLine.str(), 60.f, 224.f, 18, sf::Color(120, 220, 140));
+    drawText("+0.5% Dodge (cap 25%), +0.5% Crit. Scales Dexterity-based abilities.", 80.f,
+             248.f, 14, sf::Color(180, 180, 180));
+
+    std::ostringstream intLine;
+    intLine << "3. Intelligence (currently " << stats.intelligence << ")";
+    drawText(intLine.str(), 60.f, 288.f, 18, sf::Color(140, 170, 230));
+    drawText("+1 Max Mana. Scales Intelligence-based abilities.", 80.f, 312.f, 14,
+             sf::Color(180, 180, 180));
+}
+
 void Application::render() {
     window_.clear(sf::Color(10, 10, 14));
 
@@ -1239,6 +1423,12 @@ void Application::render() {
 
     if (mode_ == GameMode::AbilityChoice) {
         renderAbilityChoice();
+        window_.display();
+        return;
+    }
+
+    if (mode_ == GameMode::AttributeAllocation) {
+        renderAttributeAllocation();
         window_.display();
         return;
     }
@@ -1263,9 +1453,15 @@ void Application::render() {
                 continue;
             }
 
-            const sf::Color baseColor = map_.tileAt(x, y).type == TileType::Wall
-                                             ? sf::Color(45, 45, 52)
-                                             : sf::Color(90, 90, 100);
+            const TileType tileType = map_.tileAt(x, y).type;
+            sf::Color baseColor;
+            if (tileType == TileType::Wall) {
+                baseColor = sf::Color(45, 45, 52);
+            } else if (tileType == TileType::Door) {
+                baseColor = sf::Color(180, 40, 40); // red -- the floor-transition door
+            } else {
+                baseColor = sf::Color(90, 90, 100);
+            }
 
             sf::RectangleShape tileShape({kTileSize - 1.f, kTileSize - 1.f});
             tileShape.setPosition(worldToScreen(x, y));
@@ -1373,6 +1569,15 @@ void Application::render() {
         drawText(oss.str(), 10.f, 46.f, 13, sf::Color(200, 200, 160));
     }
 
+    // Floor -- the multi-floor dungeon progression. Small and
+    // unobtrusive, same styling as the Level line above it, just one
+    // more fact about where the character currently stands.
+    {
+        std::ostringstream oss;
+        oss << "Floor " << currentFloor_ << " / " << kFinalFloor;
+        drawText(oss.str(), 10.f, 60.f, 13, sf::Color(180, 180, 200));
+    }
+
     // Talent list -- names + live cooldown status, replacing "console
     // only" as the sole way to know what's on cooldown. Dimmed while on
     // cooldown, full brightness once ready, same "Visible vs Remembered"
@@ -1385,8 +1590,8 @@ void Application::render() {
     // just trusting the draw order would look fine.
     {
         constexpr float kTalentListX = 10.f;
-        constexpr float kTalentListY = 72.f; // pushed down from 58.f (Prompt 20) to leave
-                                              // clean room for the level/XP line above it
+        constexpr float kTalentListY = 86.f; // pushed down again to leave clean room for the
+                                              // floor line now sitting below the level/XP line
         constexpr float kTalentLineHeight = 16.f;
         const std::vector<Talent>& talents = player_.talents().knownTalents();
 

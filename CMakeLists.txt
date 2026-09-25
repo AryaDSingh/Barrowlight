@@ -60,7 +60,6 @@ set(ENTITY_HEADERS
     src/entities/Item.hpp
     src/entities/Feature.hpp
     src/entities/Stats.hpp
-    src/entities/DamageType.hpp
     src/entities/AttributeFormulas.hpp
     src/entities/AIBehavior.hpp
     src/entities/Inventory.hpp

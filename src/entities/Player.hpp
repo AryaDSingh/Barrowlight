@@ -56,10 +56,19 @@ public:
     bool& hybridSpecced() { return hybridSpecced_; }
     bool hybridSpecced() const { return hybridSpecced_; }
 
+    // How many attribute points this character has earned (2 per
+    // level, see PlayerLeveling.hpp) but not yet spent. Decremented as
+    // each point is allocated to Strength/Dexterity/Intelligence via
+    // the AttributeAllocation screen -- see
+    // Application::offerAttributeAllocationIfPending().
+    int& unspentAttributePoints() { return unspentAttributePoints_; }
+    int unspentAttributePoints() const { return unspentAttributePoints_; }
+
 private:
     int level_ = 1;
     int xp_ = 0;
     bool hybridSpecced_ = false;
+    int unspentAttributePoints_ = 0;
 };
 
 } // namespace engine

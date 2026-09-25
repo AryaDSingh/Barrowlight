@@ -39,18 +39,28 @@ int main() {
         check(player.level() == 1, "5 XP (below the 20 needed) doesn't level up");
         check(player.xp() == 5, "5 XP is tracked as progress toward level 2");
         check(player.stats().maxHp == 30, "maxHp unchanged without a level-up");
+        check(player.unspentAttributePoints() == 0, "no attribute points without a level-up");
     }
 
-    // --- grantXp: exactly enough for one level-up.
+    // --- grantXp: exactly enough for one level-up. Rewritten for the
+    // new leveling rules: +1 maxHp automatically (not +3), +2 unspent
+    // attribute points (a player choice, not applied automatically),
+    // and maxMana does NOT grow automatically at all anymore -- it only
+    // grows from Intelligence points the player actually chooses to
+    // spend via the AttributeAllocation screen, which this test never
+    // does.
     {
         Player player = makePlayer();
         grantXp(player, 20);
         check(player.level() == 2, "exactly 20 XP triggers the level 1 -> 2 level-up");
         check(player.xp() == 0, "no leftover XP after an exact-threshold grant");
-        check(player.stats().maxHp == 33, "maxHp grew by 3 on level-up (30 -> 33)");
-        check(player.stats().maxMana == 22, "maxMana grew by 2 on level-up (20 -> 22)");
-        check(player.stats().hp == 33 && player.stats().mana == 22,
-              "a level-up fully heals hp and mana to their new max");
+        check(player.stats().maxHp == 31, "maxHp grew by 1 on level-up (30 -> 31)");
+        check(player.stats().maxMana == 20,
+              "maxMana does NOT grow automatically -- only allocated Intelligence points do that");
+        check(player.unspentAttributePoints() == 2,
+              "one level-up grants 2 unspent attribute points to allocate");
+        check(player.stats().hp == 31 && player.stats().mana == 20,
+              "a level-up fully heals hp and mana to their (possibly unchanged) max");
     }
 
     // --- grantXp: a grant with leftover XP carrying into the new level.
@@ -72,9 +82,10 @@ int main() {
               "200 XP from level 1 crosses 4 thresholds at once, landing exactly on level 5 "
               "(20+40+60+80 == 200) -- confirms grantXp() loops rather than checking once");
         check(player.xp() == 0, "no leftover XP after landing exactly on a threshold");
-        check(player.stats().maxHp == 30 + 4 * 3, "maxHp grew by 3 for each of the 4 level-ups");
-        check(player.stats().maxMana == 20 + 4 * 2,
-              "maxMana grew by 2 for each of the 4 level-ups");
+        check(player.stats().maxHp == 30 + 4 * 1, "maxHp grew by 1 for each of the 4 level-ups");
+        check(player.stats().maxMana == 20, "maxMana is still untouched -- no allocation happened");
+        check(player.unspentAttributePoints() == 4 * 2,
+              "4 level-ups grant 2 points each == 8 unspent attribute points");
     }
 
     // --- grantXp: capped at level 10, doesn't overshoot.
@@ -84,6 +95,10 @@ int main() {
         check(player.level() == 10, "an enormous XP grant still caps at level 10, not beyond");
         check(player.xp() == 0,
               "XP is zeroed once capped, not left holding a huge leftover that reads as a bug");
+        check(player.stats().maxHp == 30 + 9 * 1,
+              "9 level-ups (1 through 10) grew maxHp by 1 each, capped correctly at the 9th");
+        check(player.unspentAttributePoints() == 9 * 2,
+              "9 level-ups granted 2 points each == 18 unspent attribute points, none lost to the cap");
     }
 
     // --- grantXp: already at level 10, further XP does nothing.
@@ -92,10 +107,13 @@ int main() {
         grantXp(player, 100000);
         check(player.level() == 10, "sanity check -- player is capped at 10 before the next grant");
         const int hpBefore = player.stats().maxHp;
+        const int pointsBefore = player.unspentAttributePoints();
         grantXp(player, 500);
         check(player.level() == 10, "granting more XP at the cap doesn't do anything further");
         check(player.xp() == 0, "XP stays at 0 once capped, doesn't start accumulating again");
         check(player.stats().maxHp == hpBefore, "maxHp doesn't grow further once capped");
+        check(player.unspentAttributePoints() == pointsBefore,
+              "no further attribute points are granted once capped");
     }
 
     std::cout << "\n"

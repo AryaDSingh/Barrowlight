@@ -136,9 +136,11 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     // sequence" -- trying it first would place it right next to the
     // player's own starting room instead.
     std::optional<Room> bossRoom;
-    for (int attempt = 0; attempt < kBossRoomAttempts && !bossRoom.has_value(); ++attempt) {
-        bossRoom = tryPlaceRoom(map, rng, params.bossRoomMinSize, params.bossRoomMaxSize,
-                                 params.width, params.height, kPadding, rooms, &rooms.back());
+    if (params.includeBossRoom) {
+        for (int attempt = 0; attempt < kBossRoomAttempts && !bossRoom.has_value(); ++attempt) {
+            bossRoom = tryPlaceRoom(map, rng, params.bossRoomMinSize, params.bossRoomMaxSize,
+                                     params.width, params.height, kPadding, rooms, &rooms.back());
+        }
     }
 
     // Extra "shortcut" connections between nearby regular rooms that
@@ -150,23 +152,36 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     // order, which reads as "one long hallway" rather than "one
     // connected space" once the map is big enough for that to matter --
     // confirmed live, not just reasoned about (a real BFS-verified
-    // walkthrough on the bigger 60x32 map). Regular rooms only, not the
-    // boss room -- it should stay reachable only by the full chain,
+    // walkthrough on the bigger 60x32 map). The boss room is excluded
+    // entirely -- it should stay reachable only by the full chain,
     // preserving "the far end of the level, reached at the end of the
-    // sequence" (Prompt 11). Capped and probabilistic, not "connect
-    // every nearby pair": a fully connected grid would remove the sense
-    // of distinct areas entirely, which isn't the goal either.
+    // sequence" (Prompt 11). The *last* regular room is excluded as a
+    // shortcut endpoint too, for the same reason extended to the
+    // floor-progression system: on a non-boss floor that room hosts the
+    // door to the next floor, so it deserves the identical protection
+    // the boss room already had -- reaching either should mean actually
+    // working through the floor, not skipping most of it via a lucky
+    // shortcut. Capped and probabilistic, not "connect every nearby
+    // pair": a fully connected grid would remove the sense of distinct
+    // areas entirely, which isn't the goal either.
     constexpr int kMaxExtraConnections = 6;
     constexpr int kExtraConnectionMaxDistanceSq = 15 * 15;
     constexpr float kExtraConnectionChance = 0.4f;
     std::uniform_real_distribution<float> extraConnectionRoll(0.f, 1.f);
     int extraConnectionsAdded = 0;
+    const std::size_t lastRoomIndex = rooms.size() - 1;
     for (std::size_t i = 0; i < rooms.size() && extraConnectionsAdded < kMaxExtraConnections;
          ++i) {
+        if (i == lastRoomIndex) {
+            continue; // the last room only ever connects via the chain -- see comment above
+        }
         // j starts at i+2: j == i+1 is already chain-connected, nothing
         // extra to add there.
         for (std::size_t j = i + 2;
              j < rooms.size() && extraConnectionsAdded < kMaxExtraConnections; ++j) {
+            if (j == lastRoomIndex) {
+                continue;
+            }
             const Position centerI = rooms[i].center();
             const Position centerJ = rooms[j].center();
             const int dx = centerI.x - centerJ.x;

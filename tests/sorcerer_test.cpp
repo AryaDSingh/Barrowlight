@@ -1,6 +1,12 @@
-// Standalone sanity check for the Sorcerer's talent kit
-// (SorcererTalents) and PlayerClassFactory -- hand-computed expected
-// results, no SFML, no window, no Application.
+// Standalone sanity check for the Mage's talent kit (SorcererTalents --
+// file/function names not yet renamed to match, a known, deliberate
+// simplification for this pass; see ARCHITECTURE_DECISIONS.md) and
+// PlayerClassFactory -- hand-computed expected results, no SFML, no
+// window, no Application.
+//
+// Rewritten for the attribute-system redesign -- see fighter_test.cpp's
+// own header comment for why every damage check now verifies "normal
+// or crit" rather than a single exact value.
 
 #include <iostream>
 #include <memory>
@@ -21,58 +27,59 @@ void check(bool condition, const std::string& description) {
     g_allOk &= condition;
     std::cout << (condition ? "[ok] " : "[FAIL] ") << description << '\n';
 }
+
+bool matchesNormalOrCrit(int actualDamage, int normalDamage) {
+    const int critDamage = static_cast<int>(static_cast<float>(normalDamage) * 1.5f);
+    return actualDamage == normalDamage || actualDamage == critDamage;
+}
 } // namespace
 
 int main() {
-    // --- PlayerClassFactory: statsForClass(Sorcerer).
-    const Stats sorcererStats = statsForClass(PlayerClass::Sorcerer);
-    check(sorcererStats.strength == 6,
-          "Sorcerer strength == 6 (a true dump stat -- unlike the Thief, nothing here "
-          "needs a moderate secondary attribute for damage)");
-    check(sorcererStats.dexterity == 8, "Sorcerer dexterity == 8 (below baseline -- 0% dodge)");
-    check(sorcererStats.intelligence == 24,
-          "Sorcerer intelligence == 24 (the dominant stat, covering both damage and mana)");
-    check(sorcererStats.maxHp == 22,
-          "Sorcerer maxHp == 22 -- the lowest of any class (Spellblade 30, Fighter 45, "
-          "Thief 24), the purest glass cannon of the three base classes");
-    check(sorcererStats.maxMana == 28,
-          "Sorcerer maxMana == 28 base 14 + manaBonusFromIntelligence(24) == 14 -- the "
-          "largest pool of any class by a wide margin");
-    check(sorcererStats.mana == sorcererStats.maxMana, "Sorcerer starts at full mana");
-    check(sorcererStats.hp == sorcererStats.maxHp, "Sorcerer starts at full hp");
+    // --- PlayerClassFactory: statsForClass(Mage).
+    const Stats mageStats = statsForClass(PlayerClass::Mage);
+    check(mageStats.strength == 2, "Mage strength == 2 (a true dump stat)");
+    check(mageStats.dexterity == 2, "Mage dexterity == 2 (a true dump stat)");
+    check(mageStats.intelligence == 6, "Mage intelligence == 6 (the dominant stat)");
+    check(mageStats.maxHp == 20, "Mage maxHp == 20 -- the lowest of the three base classes");
+    check(mageStats.maxMana == 20,
+          "Mage maxMana == 20 (hand-picked, not derived from Intelligence) -- the largest "
+          "pool of any class");
+    check(mageStats.mana == mageStats.maxMana, "Mage starts at full mana");
+    check(mageStats.hp == mageStats.maxHp, "Mage starts at full hp");
 
-    // --- PlayerClassFactory: talentSetForClass(Sorcerer).
-    const TalentSet sorcererTalentSet = talentSetForClass(PlayerClass::Sorcerer);
-    check(sorcererTalentSet.knownTalents().size() == 4,
-          "talentSetForClass(Sorcerer) carries exactly 4 talents");
+    // --- PlayerClassFactory: talentSetForClass(Mage).
+    const TalentSet mageTalentSet = talentSetForClass(PlayerClass::Mage);
+    check(mageTalentSet.knownTalents().size() == 4,
+          "talentSetForClass(Mage) carries exactly 4 talents");
 
     // --- sorcererTalents(): the data table itself.
     const std::vector<Talent> talents = sorcererTalents();
     check(talents.size() == 4, "sorcererTalents() returns exactly 4 talents");
 
-    // An attacker with the Sorcerer's own real configured stats.
-    Monster attacker(MonsterType::Goblin, "SorcererAttacker", '@', Position{0, 0}, sorcererStats,
+    // An attacker with the Mage's own real configured stats.
+    Monster attacker(MonsterType::Goblin, "MageAttacker", '@', Position{0, 0}, mageStats,
                       std::make_unique<NullAIBehavior>());
 
-    // Index 0: Arcane Bolt -- ranged, base 2 + intelligence bonus 7 == 9.
+    // Index 0: Arcane Bolt -- ranged, base 2 + intelligence bonus
+    // (6/5 * Filler-tier 1.0, truncated to 1) == 3.
     constexpr std::size_t kArcaneBolt = 0;
     check(talents[kArcaneBolt].targeting == TargetingMode::RangedEnemyInSight,
           "Arcane Bolt is ranged -- no adjacency needed");
-    check(talents[kArcaneBolt].damageType == DamageType::Magic,
-          "Arcane Bolt is Magic-typed -- Intelligence is this class's whole identity, "
-          "not a stat to work around");
+    check(talents[kArcaneBolt].scalingStat == ScalingStat::Intelligence,
+          "Arcane Bolt scales from Intelligence -- this class's whole identity");
 
     Stats boltTargetStats;
     boltTargetStats.hp = 20;
-    boltTargetStats.maxHp = 20; // dexterity left at the 10 baseline -- guaranteed to land
+    boltTargetStats.maxHp = 20; // dexterity defaults to 0 now -- guaranteed to land
     Monster boltTarget(MonsterType::Goblin, "BoltTarget", 'q', Position{0, 0}, boltTargetStats,
                         std::make_unique<NullAIBehavior>());
     const bool boltHit = applyTalentDamage(talents[kArcaneBolt], attacker, boltTarget);
     check(boltHit, "Arcane Bolt lands against a 0%-dodge target (guaranteed, not flaky)");
-    check(boltTarget.stats().hp == 11,
-          "Arcane Bolt deals base 2 + intelligence bonus 7 == 9 damage (20 -> 11)");
+    check(matchesNormalOrCrit(20 - boltTarget.stats().hp, 3),
+          "Arcane Bolt deals base 2 + intelligence bonus 1 == 3 damage (or 4 on a crit)");
 
-    // Index 1: Arcane Storm -- AreaAroundTarget, base 6 + intelligence bonus 7 == 13 per enemy.
+    // Index 1: Arcane Storm -- AreaAroundTarget, base 6 + intelligence
+    // bonus (6/5 * Power-tier 2.0, truncated to 2) == 8 per enemy.
     constexpr std::size_t kArcaneStorm = 1;
     check(talents[kArcaneStorm].shape == EffectShape::AreaAroundTarget,
           "Arcane Storm is AreaAroundTarget-shaped -- hits a cluster, not one target");
@@ -84,8 +91,9 @@ int main() {
     Monster stormTarget(MonsterType::Goblin, "StormTarget", 's', Position{0, 0}, stormTargetStats,
                          std::make_unique<NullAIBehavior>());
     applyTalentDamage(talents[kArcaneStorm], attacker, stormTarget);
-    check(stormTarget.stats().hp == 7,
-          "Arcane Storm deals base 6 + intelligence bonus 7 == 13 damage per enemy hit (20 -> 7)");
+    check(matchesNormalOrCrit(20 - stormTarget.stats().hp, 8),
+          "Arcane Storm deals base 6 + intelligence bonus 2 == 8 damage per enemy hit (or "
+          "12 on a crit)");
 
     // Index 2: Arcane Focus -- SelfBuff, applies Empowered.
     constexpr std::size_t kArcaneFocus = 2;
@@ -101,7 +109,8 @@ int main() {
           "every other class's self-buff and the boss's own enrage all already use");
 
     // Index 3: Mind Shatter -- the signature move. Modest damage, base 3
-    // + intelligence bonus 7 == 10, plus a real chance to Stun.
+    // + intelligence bonus (6/5 * Power-tier 2.0, truncated to 2) == 5,
+    // plus a real chance to Stun.
     constexpr std::size_t kMindShatter = 3;
     check(talents[kMindShatter].onHitEffect.has_value() &&
               talents[kMindShatter].onHitEffect->type == StatusEffectType::Stun,
@@ -117,8 +126,8 @@ int main() {
     Monster shatterTarget(MonsterType::Goblin, "ShatterTarget", 'm', Position{0, 0},
                            shatterTargetStats, std::make_unique<NullAIBehavior>());
     applyTalentDamage(talents[kMindShatter], attacker, shatterTarget);
-    check(shatterTarget.stats().hp == 10,
-          "Mind Shatter deals base 3 + intelligence bonus 7 == 10 damage (20 -> 10)");
+    check(matchesNormalOrCrit(20 - shatterTarget.stats().hp, 5),
+          "Mind Shatter deals base 3 + intelligence bonus 2 == 5 damage (or 7 on a crit)");
 
     // Deterministic coverage of the on-hit-effect *application* mechanism
     // itself (not the dice roll -- rollChance()'s actual draw is
@@ -140,7 +149,7 @@ int main() {
           "a guaranteed (100% chance) Mind Shatter applies Stun to the target");
 
     std::cout << "\n"
-              << (g_allOk ? "All Sorcerer checks passed." : "Some Sorcerer checks FAILED.")
+              << (g_allOk ? "All Mage checks passed." : "Some Mage checks FAILED.")
               << '\n';
     return g_allOk ? 0 : 1;
 }

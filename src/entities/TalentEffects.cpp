@@ -12,10 +12,10 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
         return false;
     }
 
-    int damage = talent.power;
-    damage += (talent.damageType == DamageType::Physical)
-                  ? physicalDamageBonus(attacker.stats().strength)
-                  : magicDamageBonus(attacker.stats().intelligence);
+    const int statValue = statValueForScalingStat(talent.scalingStat, attacker.stats().strength,
+                                                    attacker.stats().dexterity,
+                                                    attacker.stats().intelligence);
+    int damage = talent.power + abilityDamageBonus(talent.scalingStat, statValue, talent.cooldownTurns);
 
     // Same Empowered check executeAIDecision already applies to monster
     // attacks (Prompt 11) -- missing here until Prompt 15's Rallying Cry
@@ -37,6 +37,18 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
         }
     }
 
+    // Global crit: multiplies the result of everything above (including
+    // a conditional multiplier like a low-hp execute) rather than
+    // adding to it -- "Base Damage x ability modifier x crit modifier"
+    // was the explicit design intent. Rolled on the attacker's own
+    // Dexterity plus any talent-specific bonus (Piercing Shot's own
+    // +20% crit chance/+50% crit damage) -- crit is a property of the
+    // one landing the hit, not the one receiving it, unlike dodge.
+    if (rollCrit(attacker.stats().dexterity, talent.bonusCritChance)) {
+        damage = static_cast<int>(static_cast<float>(damage) *
+                                   critDamageMultiplier(talent.bonusCritDamageMultiplier));
+    }
+
     target.stats().hp -= damage;
 
     // Sorcerer's Mind Shatter (Prompt 19): a status effect applied to
@@ -54,10 +66,18 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
 }
 
 void applyTalentHeal(const Talent& talent, Actor& caster, Actor& target) {
-    // Always Intelligence-scaled, regardless of talent.damageType --
+    // Always Intelligence-scaled, regardless of talent.scalingStat --
     // healing is life magic, not a physical strike, so there's no
-    // Strength-scaled equivalent the way there is for damage.
-    const int healAmount = talent.power + magicDamageBonus(caster.stats().intelligence);
+    // Strength-scaled equivalent the way there is for damage. Treated
+    // as Filler tier (cooldown 0) for the bonus calculation regardless
+    // of the healing talent's own actual cooldown -- healing doesn't
+    // participate in the same "bigger cooldown, bigger payoff" tier
+    // reasoning damage talents do; this project has exactly one heal
+    // (Renewal) and it stays a modest, reliable topper-off rather than
+    // scaling with its own 6-turn cooldown the way a damage talent
+    // would.
+    const int healAmount =
+        talent.power + abilityDamageBonus(ScalingStat::Intelligence, caster.stats().intelligence, 0);
     target.stats().hp = std::min(target.stats().hp + healAmount, target.stats().maxHp);
 }
 

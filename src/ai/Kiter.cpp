@@ -38,7 +38,7 @@ AIDecision Kiter::decideAction(const Actor& self, const Map& map, Actor& player,
         decision.type = AIActionType::Attack;
         decision.target = &player;
         decision.attackPower = attackProfile_.power;
-        decision.damageType = attackProfile_.damageType;
+        decision.scalingStat = attackProfile_.scalingStat;
         if (attackProfile_.onHitEffect.has_value()) {
             static std::mt19937 rng{std::random_device{}()};
             std::uniform_real_distribution<float> roll(0.f, 1.f);

@@ -29,9 +29,11 @@ namespace engine {
 enum class GameMode {
     ClassSelection,
     Playing,
-    GameOver,      // Prompt 17: either death or victory -- see Application::wonGame_
-    AbilityChoice, // Prompt 24: the Fighter/Sorcerer hybrid path's pick-one screen --
-                    // see Application::pendingHybridChoices_/pendingHybridChoiceIsSpecIn_
+    GameOver,             // either death or victory -- see Application::wonGame_
+    AbilityChoice,        // the Fighter/Sorcerer... now Warrior/Mage hybrid path's pick-one
+                           // screen -- see Application::pendingHybridChoices_
+    AttributeAllocation,  // spending earned attribute points -- see
+                           // Application::offerAttributeAllocationIfPending()
 };
 
 // Owns the window and the top-level loop shell.
@@ -147,6 +149,24 @@ private:
     // both a hybrid-choice level and a later base-class unlock level
     // doesn't lose track of the later one while waiting on the choice.
     void processLevelUpEffects(int fromLevel);
+
+    // The single "what happens next in the level-up sequence" decision
+    // point -- called once from grantXpAndAnnounce() to kick the whole
+    // sequence off, and again from both the AttributeAllocation and
+    // AbilityChoice key handling once each respective pause resolves.
+    // Attribute allocation always resolves first: if
+    // player_.unspentAttributePoints() > 0, switches mode_ to
+    // AttributeAllocation and returns (paused); only once every point
+    // is spent does this fall through to processLevelUpEffects(),
+    // covering talent unlocks and hybrid choices for whatever levels
+    // were actually crossed.
+    void resumeLevelUpSequence();
+
+    // Draws the AttributeAllocation screen: how many points remain,
+    // and what each of Strength/Dexterity/Intelligence currently does
+    // for this character. Same standalone-screen approach as every
+    // other non-Playing mode.
+    void renderAttributeAllocation();
 
     // Recomputes cameraX_/cameraY_ (top-left of the viewport, in tile
     // units) to keep the player roughly centered, clamped so the
@@ -280,6 +300,23 @@ private:
     PlayerClass playerClass_ = PlayerClass::Spellblade; // meaningless until selectClass() runs
     bool wonGame_ = false; // meaningless unless mode_ == GameOver -- see checkAndHandleDeath
 
+    // Which floor of the multi-floor dungeon progression the character
+    // is currently on -- 1 through kFinalFloor (see Application.cpp).
+    // Reset to 1 on a fresh selectClass(), restored from the save on
+    // loadGame(). Every floor except the ones that should have a boss
+    // fight generates with DungeonGenerationParams::includeBossRoom ==
+    // false -- see regenerateLevel().
+    int currentFloor_ = 1;
+
+    // Set when the final-floor boss dies, instead of transitioning to
+    // GameOver immediately -- that kill's own XP can trigger a level-up
+    // with its own attribute-allocation (or hybrid-choice) pause, and
+    // jumping straight to GameOver would silently skip it, discarding
+    // earned points the player never got to spend. resumeLevelUpSequence()
+    // checks this once every pending choice from the kill has actually
+    // resolved, and only then makes the real mode_ transition.
+    bool pendingFinalVictory_ = false;
+
     // Prompt 24: what the AbilityChoice screen is currently offering --
     // populated by offerHybridChoiceIfEligible(), read by
     // renderAbilityChoice() and the AbilityChoice key handling in
@@ -298,6 +335,13 @@ private:
     // grantXp() loop exists for, can cross both a hybrid-choice level
     // and a base-class unlock level in one grant).
     int pendingHybridChoiceLevel_ = 0;
+
+    // The level to resume processLevelUpEffects() from once every
+    // pending pause (attribute allocation, then any hybrid choices) for
+    // the current XP grant has been resolved -- see
+    // resumeLevelUpSequence(). Set once per grantXpAndAnnounce() call,
+    // at levelBefore + 1.
+    int pendingLevelUpFromLevel_ = 0;
 
     // Top-left of the viewport, in tile units -- see updateCamera().
     // Recomputed every frame in Playing mode; 0,0 elsewhere (harmless,

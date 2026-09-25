@@ -35,6 +35,12 @@ struct SaveGameState {
     PlayerClass playerClass = PlayerClass::Spellblade; // which kit playerCooldowns belongs to
     int playerLevel = 1; // Prompt 20
     int playerXp = 0;    // progress toward the *next* level, not a cumulative lifetime total
+    int currentFloor = 1; // which floor of the multi-floor dungeon progression -- the
+                           // dungeon layout itself is never saved (map/monsters below
+                           // already capture whatever floor the player was actually on when
+                           // they saved), but the floor *number* is needed on load so
+                           // subsequent door transitions and boss-floor gating pick up
+                           // correctly rather than silently resetting to floor 1
                           // -- see PlayerLeveling.hpp
     Stats playerStats;
     std::vector<int> playerCooldowns; // parallel to player_.talents().knownTalents() at save

@@ -25,6 +25,14 @@ struct DungeonGenerationParams {
     int maxRooms = 10;
     int bossRoomMinSize = 7;
     int bossRoomMaxSize = 9;
+
+    // Whether to attempt placing a boss room at all -- true by default
+    // (every dungeon generated before the multi-floor system had a
+    // boss). As of the floor-progression system, Application sets this
+    // to false for every floor except the ones that should actually
+    // have a boss fight, so most floors generate as a pure "clear it,
+    // find the door" dungeon with no boss room attempted at all.
+    bool includeBossRoom = true;
 };
 
 struct GeneratedDungeon {

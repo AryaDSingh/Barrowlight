@@ -28,7 +28,7 @@ std::vector<Talent> sorcererTalents() {
         /*cooldownTurns=*/1,
         /*power=*/2, // +7 from intelligence == 9
     };
-    arcaneBolt.damageType = DamageType::Magic;
+    arcaneBolt.scalingStat = ScalingStat::Intelligence;
     talents.push_back(arcaneBolt);
 
     Talent arcaneStorm{
@@ -44,7 +44,7 @@ std::vector<Talent> sorcererTalents() {
         /*power=*/6, // +7 from intelligence == 13 per enemy hit
         /*areaRadius=*/2,
     };
-    arcaneStorm.damageType = DamageType::Magic;
+    arcaneStorm.scalingStat = ScalingStat::Intelligence;
     talents.push_back(arcaneStorm);
 
     // Arcane Focus -- SelfBuff, not Damage, so damageType is irrelevant
@@ -87,7 +87,7 @@ std::vector<Talent> sorcererTalents() {
         /*cooldownTurns=*/5,
         /*power=*/3, // +7 from intelligence == 10
     };
-    mindShatter.damageType = DamageType::Magic;
+    mindShatter.scalingStat = ScalingStat::Intelligence;
     mindShatter.onHitEffect = StatusEffectInstance{StatusEffectType::Stun, 1, 0};
     mindShatter.onHitChance = 0.6f;
     talents.push_back(mindShatter);
@@ -113,7 +113,7 @@ std::optional<Talent> sorcererTalentUnlockedAtLevel(int level) {
             /*cooldownTurns=*/6,
             /*power=*/11, // +7 from intelligence == 18
         };
-        meteor.damageType = DamageType::Magic;
+        meteor.scalingStat = ScalingStat::Intelligence;
         return meteor;
     }
     if (level == 7) {

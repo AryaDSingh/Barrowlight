@@ -2,7 +2,7 @@
 
 #include <optional>
 
-#include "entities/DamageType.hpp"
+#include "entities/AttributeFormulas.hpp"
 #include "entities/StatusEffects.hpp"
 
 namespace engine {
@@ -18,14 +18,18 @@ struct MonsterAttackProfile {
     std::optional<StatusEffectInstance> onHitEffect; // e.g. Poison, Stun
     float onHitChance = 1.f; // 1.0 = always applies onHitEffect when present
 
-    // Which attribute this attack's damage scales with (Prompt 14).
-    // Defaults to Physical -- every current MonsterAttackProfile-backed
-    // attack (Goblin/Spider/Ogre/Archer's basic hits, the boss's melee)
-    // is a physical strike; nothing currently needs Magic here (the
-    // roster's two magic-coded attacks, Bomber's Blast and the boss's
-    // Warlord's Fury, are both TalentSet-driven abilities, not
-    // MonsterAttackProfile-backed).
-    DamageType damageType = DamageType::Physical;
+    // Which attribute this attack's damage scales with. Defaults to
+    // Strength -- every current MonsterAttackProfile-backed attack
+    // (Goblin/Spider/Ogre/Archer's basic hits, the boss's melee) is a
+    // physical strike; nothing currently needs Dexterity or
+    // Intelligence here (the roster's two magic-coded attacks, Bomber's
+    // Blast and the boss's Warlord's Fury, are both TalentSet-driven
+    // abilities, not MonsterAttackProfile-backed). Treated as Filler
+    // tier when computing its damage bonus (see
+    // AttributeFormulas::abilityDamageBonus) -- these attacks have no
+    // cooldown concept at all, and "every eligible turn" is the closest
+    // existing tier to that.
+    ScalingStat scalingStat = ScalingStat::Strength;
 };
 
 } // namespace engine

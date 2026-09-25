@@ -50,11 +50,12 @@ int main() {
     original.exploredMap.restoreAll(visibility);
 
     original.playerPosition = Position{2, 1};
-    original.playerClass = PlayerClass::Fighter; // deliberately not the default (Spellblade) --
+    original.playerClass = PlayerClass::Warrior; // deliberately not the default (Spellblade) --
                                                     // a round-trip bug that always left this at
                                                     // its default would go uncaught otherwise
     original.playerLevel = 4; // deliberately not the default (1) -- same reasoning as playerClass
     original.playerXp = 37;   // deliberately not the default (0)
+    original.currentFloor = 6; // deliberately not the default (1)
     original.playerHybridSpecced = true; // deliberately not the default (false)
     original.playerHybridPickNames = {"Arcane Bolt", "Mind Shatter"}; // deliberately non-empty --
                                                                         // names with spaces,
@@ -133,10 +134,11 @@ int main() {
 
     check(loaded.playerPosition.x == 2 && loaded.playerPosition.y == 1,
           "player position matches");
-    check(loaded.playerClass == PlayerClass::Fighter,
+    check(loaded.playerClass == PlayerClass::Warrior,
           "player class matches (not left at the Spellblade default)");
     check(loaded.playerLevel == 4 && loaded.playerXp == 37,
           "player level and XP match (not left at the level-1/0-XP defaults)");
+    check(loaded.currentFloor == 6, "current floor matches (not left at the default of 1)");
     check(loaded.playerHybridSpecced == true,
           "player hybrid-specced flag matches (not left at the false default)");
     check(loaded.playerHybridPickNames.size() == 2 &&

@@ -757,6 +757,221 @@ subfolders speculatively ahead of the system that needs them.
   choice to a future reader instead of looking like an overlooked
   warning.
 
+## Multi-floor dungeon progression (decided Prompt 28)
+
+- **Staged deliberately: the full 10-floor structural skeleton first,
+  the Lich as clearly separate later work.** The request named a
+  concrete, specific boss ("a lich that spawns skeleton minions") --
+  building that alongside floor-tracking, doors, and victory-gating
+  in one pass would have meant a genuinely new AI mechanic (nothing in
+  this engine lets a monster spawn others mid-fight) competing for
+  attention with foundational plumbing that needed to be verified
+  correct first. Floor 10 reuses the existing Goblin Warlord as an
+  explicit placeholder so the entire 1-10 structure -- including the
+  victory gating, which is exactly the kind of thing worth getting
+  right before building content on top of it -- could be built and
+  live-verified end to end before any Lich-specific work begins.
+- **The door needs no "is it unlocked yet" state of its own -- a
+  deliberate simplification enabled by an existing game rule, not a
+  missed edge case.** On a boss floor, the door tile is placed exactly
+  where the boss stands. The boss already blocks that tile like any
+  other actor while alive (this game has no walking through monsters);
+  once it's dead, the tile is simply walkable. The door "activates"
+  as a side effect of a rule that already existed, rather than
+  needing new tracking invented for it.
+- **The original "boss in at least room 5" request generalized into a
+  system-level protection, not a one-off numeric check.** The
+  underlying goal was real exploration time before a floor's finale,
+  whatever that finale is. Extending the existing boss-room shortcut
+  protection (Prompt 21) to the last regular room too -- since that
+  room now hosts the door on every non-boss floor -- solves this for
+  every floor uniformly, rather than special-casing floor 5
+  specifically and leaving every other floor's door open to a
+  shortcut bypass.
+- **A real bug in the victory sequencing was found by live-testing a
+  scenario that combines two systems, not by reviewing either system
+  alone.** The initial implementation set the GameOver transition
+  unconditionally the instant the final-floor boss died. But
+  `grantXpAndAnnounce()` can itself leave the game paused mid-choice
+  (AttributeAllocation or AbilityChoice) if that same kill's XP crosses
+  a level-up threshold -- overwriting `mode_` unconditionally would
+  have silently discarded an attribute point or talent choice the
+  player had just earned, without ever showing the screen for it.
+  Neither the leveling system nor the victory system was wrong in
+  isolation; the bug only existed at their intersection, which is
+  exactly why it surfaced during live testing of a kill that crossed a
+  level-up threshold rather than during either system's own test
+  suite.
+- **Fixed by extending the existing resumable state machine, not by
+  adding a second, competing pause mechanism.** `pendingFinalVictory_`
+  only records that a victory is waiting; the actual transition happens
+  inside `resumeLevelUpSequence()`, at the exact point that function
+  already represents "every pending choice from this XP grant has been
+  resolved." This reuses the same machinery Prompts 23/24 built for
+  sequencing attribute allocation against talent unlocks and hybrid
+  choices, rather than introducing a parallel way to ask "is anything
+  still pending" that could drift out of sync with the original one.
+  Verified live twice, deliberately: once reproducing the bug (the
+  Victory screen appearing with the attribute choice silently skipped),
+  once confirming the fix (the attribute screen and the level-7 talent
+  unlock both shown, in that order, before Victory finally appears).
+
+## Monster attribute rebalance (decided Prompt 27)
+
+- **Monster Str/Dex/Int were rebalanced by reproducing the existing
+  tuned outcomes exactly, not by guessing new numbers from scratch.**
+  Every monster's damage total and dodge percentage from Prompt 21 was
+  treated as the fixed target; new attribute values were derived to hit
+  those exact numbers under the new formula, the same "recalibrate the
+  inputs, keep the tuned output" discipline the original Prompt 14
+  attribute system and the Prompt 21 rebalance both already used. The
+  actual gameplay balance this project has already validated wasn't
+  thrown out just because the formula underneath it changed shape.
+- **Monster attributes are explicitly not held to the same "genuinely
+  low, hand-picked" philosophy player starting stats follow -- a
+  deliberate scope distinction, not an inconsistency.** Players start
+  at 2 or 6 specifically because the whole redesign's premise is
+  growing from a low, honest starting point through real choices.
+  Monsters are static and never grow through play at all -- there's no
+  narrative reason to constrain them to the same range, and doing so
+  would have meant sacrificing real, already-tuned gameplay identities
+  (Spider and Archer's evasiveness) rather than preserving them.
+  Spider's Dexterity of 36 and Archer's 48 exist purely as the inputs
+  that reproduce 18%/24% dodge under the new linear, uncapped-below-25%
+  formula -- not an implied claim that these monsters are "more
+  developed" than a level-10 player capable of similar investment.
+- **A real, positive side effect was noticed and named rather than
+  left as an unexamined coincidence.** The same high Dexterity chosen
+  purely to preserve Spider/Archer's dodge identity also gives them a
+  meaningfully high crit chance under the new global crit system (23%
+  and 29%) -- nobody separately designed "make the evasive monsters
+  also precise," but the math worked out that way, and it reinforces
+  rather than undercuts their existing character. Worth documenting as
+  an observed consequence, since a future reader tuning these numbers
+  further should know the dodge and crit values are coupled through
+  the same Dexterity field, not independently adjustable.
+- **Verified against the single case most likely to expose an error,
+  not an arbitrary one.** The Ogre was specifically chosen for live
+  verification because most of its damage total comes from its
+  Strength-derived bonus rather than the flat power field -- exactly
+  the scenario where a recalibration mistake would be most visible.
+  Real combat produced "Ogre hits Player for 5" consistently and a
+  single "Ogre critically hits Player for 7," both landing exactly on
+  the hand-computed values, not just plausibly close to them.
+- **The existing test suite needed zero changes for this rebalance,
+  and that result itself was treated as a finding to confirm, not
+  simply accepted at face value.** Every test passing unchanged after
+  a full monster-stat rewrite could mean either "the rebalance is
+  correct" or "nothing was actually testing these values in the first
+  place" -- live-verifying the Ogre's exact damage output distinguished
+  between those two possibilities rather than trusting the more
+  convenient explanation.
+
+## The attribute-system redesign (decided Prompt 26)
+
+- **No baseline at all, replacing the old baseline-10 model
+  outright, not extending it.** The original system (Prompt 14)
+  compared every stat against an implicit "average" of 10 -- a point
+  below it was a penalty, a point above it was a bonus. The new system
+  has nothing to compare against: a class's starting spread is a
+  genuinely low, hand-picked value (2 or 6), and every point counts at
+  its full value from zero. This wasn't a refinement of the old model;
+  it's a different one, chosen specifically because the redesign
+  conversation wanted starting stats to read as "an origin, not a
+  spreadsheet-optimal allocation."
+- **Starting HP/Mana are hand-picked literals, deliberately independent
+  of the attribute spread that determines everything else.** A Warrior
+  with Strength 6 does *not* have its starting 30 HP computed from that
+  6 -- the two are separate decisions on purpose, confirmed explicitly
+  during design rather than assumed, specifically to avoid a class's
+  identity-defining attribute silently double-counting into a stat it
+  was never meant to touch.
+- **Damage scaling moved from the actor to the ability.** Every talent
+  now declares exactly one `ScalingStat` it scales from -- there is no
+  attribute that universally boosts all of an actor's damage the way
+  the old `physicalDamageBonus`/`magicDamageBonus` implicitly did for
+  every Physical/Magic-typed talent regardless of what it actually was.
+  This was a deliberate design requirement from the start ("I don't
+  want attributes to automatically increase all damage. Skills should
+  explicitly determine which attribute they scale from"), not a
+  refactor discovered to be necessary later.
+- **The damage formula scales by the ability's own cooldown tier
+  (Filler/Core/Power/Signature), a decision explicitly delegated and
+  made on this project's own judgment, not specified by the person.**
+  Rationale: a talent used rarely should reward invested points more
+  than one spammed every turn, or investment would trivially favor
+  whichever ability has the lowest cooldown regardless of its actual
+  role in a kit. Explicitly documented as a first-pass formula needing
+  real playtesting, the same "reasoned guess, not derived-to-be-
+  correct" honesty this project has applied to every rebalance since
+  Prompt 21.
+- **Crit is global -- every actor, player and monster, rolls the exact
+  same `rollDodge`/`rollCrit` functions.** Considered and rejected: a
+  separate, simpler monster-side crit check. Reusing the identical
+  function for both sides means dodge and crit behave identically
+  regardless of which side of a fight is attacking, the same "one
+  function, not two copies" reasoning `rollDodge` has followed since
+  Prompt 14.
+- **Testing required a genuinely new pattern, not just updated
+  numbers, and this was verified by actually running the suite
+  repeatedly, not by reasoning that the pattern should work.** Global
+  crit means any damage assertion now has a real (sometimes double-
+  digit percentage) chance of landing an unplanned critical hit. An
+  exact `==` would be flaky -- intermittently, unpredictably wrong, the
+  worst kind of test failure since it erodes trust in the whole suite.
+  Every affected check was rewritten to verify the result matches
+  *either* the normal or the critical value, then the full suite was
+  run 5+ times consecutively specifically to catch any check that
+  still had a hidden flakiness risk the manual audit missed -- and one
+  was found and fixed this way (`talent_test.cpp`'s Quick Strike check,
+  which had coincidentally computed the same value under both the old
+  and new formulas and so hadn't shown up as a failure, masking that it
+  was still exposed to the same crit-flakiness as everything else).
+- **`Stats`' default Dexterity was a live bug caught by reasoning about
+  the new model's implications, not by a failing test.** It defaulted
+  to 10, a leftover from the deleted baseline-10 model -- under the new
+  formula, `dodgeChance(10)` is a real 5%, not the intended-neutral 0%
+  it used to represent. Left unfixed, every test's default-constructed
+  target (and any production code relying on the default) would have
+  carried a hidden, unintended dodge chance. Fixed to 0, the only value
+  that means "no investment, no bonus" under a system with nothing to
+  offset against.
+- **Piercing Shot's rework needed new per-talent fields
+  (`bonusCritChance`/`bonusCritDamageMultiplier`) and overloaded
+  formula functions, not a special case bolted onto the global crit
+  constants.** `rollCrit(int)`/`critDamageMultiplier()` keep their
+  original single-argument behavior completely unchanged for every
+  other talent in the game; the two-argument overloads exist
+  specifically so one talent's inherent bonus doesn't require every
+  other call site to pass an explicit zero. Caught and fixed a real
+  discrepancy in this exact rework via live testing: a code comment
+  claimed the Thief's Strength (2) contributed "0 bonus at every tier,"
+  which was true for Filler/Core/Power but not for Signature (Piercing
+  Shot's own cooldown of 7) -- `2/5 * 2.5 == 1.0`, a real +1, not 0.
+  Live testing surfaced the discrepancy (11 damage dealt, not the
+  commented 10); a new, dedicated damage-application test was added
+  specifically to catch this class of error automatically going
+  forward, not just documented as a one-off correction.
+- **The Vorbis/OGG system-dependency issue, caught while enabling audio
+  for this same session's work, generalizes as a principle worth
+  naming here too: verify a portability claim by actually breaking the
+  environment and rebuilding, not by reading what a flag is supposed
+  to do.** `SFML_USE_SYSTEM_DEPS` defaults differently per platform;
+  forcing it off and then literally uninstalling the system libraries
+  before confirming a clean rebuild still succeeds is the same standard
+  of evidence applied throughout this redesign's own testing work.
+- **Explicitly deferred, not silently dropped: monster attribute
+  rebalancing, and renaming `FighterTalents.cpp`/`SorcererTalents.cpp`
+  to match `Warrior`/`Mage`.** Monster Strength/Dexterity/Intelligence
+  are still the old 6-20-range values, now interacting with a formula
+  they were never tuned against -- functionally correct, not
+  balanced. Given how much of this redesign already touched (classes,
+  leveling, damage formulas, crit, dodge, one talent's mechanic, the
+  entire test suite), a full monster rebalance pass and a cosmetic
+  file/function rename were both deliberately scoped out rather than
+  attempted in the same pass, and recorded in `ROADMAP.md` as real,
+  tracked follow-up work rather than left implicit.
+
 ## Level-gated talent unlocks (decided Prompt 23)
 
 - **New talents land at levels 4 and 7 specifically, to line up with the

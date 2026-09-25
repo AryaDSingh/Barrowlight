@@ -1,6 +1,18 @@
-// Standalone sanity check for the Fighter's talent kit
-// (FighterTalents) and PlayerClassFactory -- hand-computed expected
-// results, no SFML, no window, no Application.
+// Standalone sanity check for the Warrior's talent kit
+// (FighterTalents -- file/function names not yet renamed to match,
+// a known, deliberate simplification for this pass; see
+// ARCHITECTURE_DECISIONS.md) and PlayerClassFactory -- hand-computed
+// expected results, no SFML, no window, no Application.
+//
+// Rewritten for the attribute-system redesign: renamed class, new
+// hand-picked stats, and the new tiered damage formula. Every damage
+// check now also has to account for global crit (a flat 5% base
+// chance, always active, plus a small Dexterity-derived bonus) -- a
+// single exact `==` assertion would be genuinely flaky, since roughly
+// 1 in 17 real runs would land an unexpected crit on any given hit.
+// Each check instead verifies the result is *one of* the two possible
+// values (normal or critical), which stays deterministic while still
+// meaningfully validating the damage math.
 
 #include <iostream>
 #include <memory>
@@ -21,60 +33,59 @@ void check(bool condition, const std::string& description) {
     g_allOk &= condition;
     std::cout << (condition ? "[ok] " : "[FAIL] ") << description << '\n';
 }
+
+// A damage result is valid if it matches either the normal hit or the
+// (1.5x, truncated) critical hit -- see this file's own header comment
+// for why an exact `==` would be flaky now that crit is global.
+bool matchesNormalOrCrit(int actualDamage, int normalDamage) {
+    const int critDamage = static_cast<int>(static_cast<float>(normalDamage) * 1.5f);
+    return actualDamage == normalDamage || actualDamage == critDamage;
+}
 } // namespace
 
 int main() {
-    // --- PlayerClassFactory: statsForClass(Fighter).
-    const Stats fighterStats = statsForClass(PlayerClass::Fighter);
-    check(fighterStats.strength == 20, "Fighter strength == 20 (pure Strength identity)");
-    check(fighterStats.dexterity == 8, "Fighter dexterity == 8 (below baseline -- 0% dodge)");
-    check(fighterStats.intelligence == 4,
-          "Fighter intelligence == 4 (well below baseline -- a genuine dump stat)");
-    check(fighterStats.maxHp == 45,
-          "Fighter maxHp == 45 (hand-tuned tanky identity, higher than the Spellblade's 30)");
-    check(fighterStats.maxMana == 10,
-          "Fighter maxMana == 10 base 10 + manaBonusFromIntelligence(4) == 0 (floored, "
-          "not negative) -- a small pool, not the Spellblade's mana-juggling");
-    check(fighterStats.mana == fighterStats.maxMana, "Fighter starts at full mana");
-    check(fighterStats.hp == fighterStats.maxHp, "Fighter starts at full hp");
+    // --- PlayerClassFactory: statsForClass(Warrior).
+    const Stats warriorStats = statsForClass(PlayerClass::Warrior);
+    check(warriorStats.strength == 6, "Warrior strength == 6 (pure Strength identity)");
+    check(warriorStats.dexterity == 2, "Warrior dexterity == 2 (a true dump stat)");
+    check(warriorStats.intelligence == 2, "Warrior intelligence == 2 (a true dump stat)");
+    check(warriorStats.maxHp == 30, "Warrior maxHp == 30 (hand-picked, not derived from Strength)");
+    check(warriorStats.maxMana == 10, "Warrior maxMana == 10 (hand-picked, not derived from Intelligence)");
+    check(warriorStats.mana == warriorStats.maxMana, "Warrior starts at full mana");
+    check(warriorStats.hp == warriorStats.maxHp, "Warrior starts at full hp");
 
-    // --- PlayerClassFactory: talentSetForClass(Fighter) round-trips
+    // --- PlayerClassFactory: talentSetForClass(Warrior) round-trips
     // the same talents fighterTalents() returns directly.
-    const TalentSet fighterTalentSet = talentSetForClass(PlayerClass::Fighter);
-    check(fighterTalentSet.knownTalents().size() == 4,
-          "talentSetForClass(Fighter) carries exactly 4 talents");
+    const TalentSet warriorTalentSet = talentSetForClass(PlayerClass::Warrior);
+    check(warriorTalentSet.knownTalents().size() == 4,
+          "talentSetForClass(Warrior) carries exactly 4 talents");
 
     // --- fighterTalents(): the data table itself.
     const std::vector<Talent> talents = fighterTalents();
     check(talents.size() == 4, "fighterTalents() returns exactly 4 talents");
 
-    // An attacker with the Fighter's own real configured stats --
-    // verifying the recalibration (base power + strength bonus ==
-    // the intended total) the same way talent_test.cpp does for the
-    // Spellblade.
-    Monster attacker(MonsterType::Goblin, "FighterAttacker", '@', Position{0, 0}, fighterStats,
+    // An attacker with the Warrior's own real configured stats.
+    Monster attacker(MonsterType::Goblin, "WarriorAttacker", '@', Position{0, 0}, warriorStats,
                       std::make_unique<NullAIBehavior>());
 
-    // Index 0: Slam -- zero mana cost, base 4 + strength bonus 5 == 9.
+    // Index 0: Slam -- zero mana cost, base 4 + strength bonus (6/5 * Filler-tier 1.0,
+    // truncated to 1) == 5.
     constexpr std::size_t kSlam = 0;
-    check(talents[kSlam].manaCost == 0, "Slam costs zero mana -- the Fighter's free filler");
+    check(talents[kSlam].manaCost == 0, "Slam costs zero mana -- the Warrior's free filler");
     check(talents[kSlam].cooldownTurns == 1, "Slam has only a 1-turn cooldown -- spammable");
 
     Stats slamTargetStats;
     slamTargetStats.hp = 20;
-    slamTargetStats.maxHp = 20; // dexterity left at the 10 baseline -- guaranteed to land
+    slamTargetStats.maxHp = 20; // dexterity defaults to 0 now -- guaranteed to land
     Monster slamTarget(MonsterType::Goblin, "SlamTarget", 's', Position{0, 0}, slamTargetStats,
                         std::make_unique<NullAIBehavior>());
     const bool slamHit = applyTalentDamage(talents[kSlam], attacker, slamTarget);
     check(slamHit, "Slam lands against a 0%-dodge target (guaranteed, not flaky)");
-    check(slamTarget.stats().hp == 11,
-          "Slam deals base 4 + strength bonus 5 == 9 damage (20 -> 11)");
+    check(matchesNormalOrCrit(20 - slamTarget.stats().hp, 5),
+          "Slam deals base 4 + strength bonus 1 == 5 damage (or 7 on a crit)");
 
-    // Index 1: Cleave -- AreaAroundSelf, base 5 + strength bonus 5 == 10
-    // per enemy. Only the shape/targeting/cost are checked here (the
-    // "hits everyone nearby" resolution itself is Application's job,
-    // already covered by the AoE-radius tests elsewhere); the damage
-    // math is the same applyTalentDamage path already proven above.
+    // Index 1: Cleave -- AreaAroundSelf, base 5 + strength bonus (6/5 *
+    // Core-tier 1.5, truncated to 1) == 6 per enemy.
     constexpr std::size_t kCleave = 1;
     check(talents[kCleave].shape == EffectShape::AreaAroundSelf,
           "Cleave is AreaAroundSelf-shaped -- hits everything adjacent, not one target");
@@ -86,8 +97,8 @@ int main() {
     Monster cleaveTarget(MonsterType::Goblin, "CleaveTarget", 'c', Position{0, 0},
                           cleaveTargetStats, std::make_unique<NullAIBehavior>());
     applyTalentDamage(talents[kCleave], attacker, cleaveTarget);
-    check(cleaveTarget.stats().hp == 10,
-          "Cleave deals base 5 + strength bonus 5 == 10 damage per enemy hit (20 -> 10)");
+    check(matchesNormalOrCrit(20 - cleaveTarget.stats().hp, 6),
+          "Cleave deals base 5 + strength bonus 1 == 6 damage per enemy hit (or 9 on a crit)");
 
     // Index 2: Rallying Cry -- SelfBuff, applies Empowered to the caster
     // directly via applyTalentSelfBuff, not applyTalentDamage.
@@ -101,14 +112,9 @@ int main() {
     check(talents[kRallyingCry].selfBuffEffect.has_value() &&
               talents[kRallyingCry].selfBuffEffect->type == StatusEffectType::Empowered,
           "Rallying Cry's selfBuffEffect applies Empowered -- the same status effect the "
-          "boss's own enrage uses (Prompt 11), reused rather than reinvented");
+          "boss's own enrage uses, reused rather than reinvented");
 
-    Stats casterStats;
-    casterStats.hp = 45;
-    casterStats.maxHp = 45;
-    casterStats.strength = 20; // the Fighter's own real strength -- without this, the
-                                // Empowered+Slam check below would silently use the Stats
-                                // default (10) instead of testing the intended scenario
+    Stats casterStats = warriorStats; // the Warrior's own real stats, not an arbitrary override
     Monster caster(MonsterType::Goblin, "Caster", 'c', Position{0, 0}, casterStats,
                     std::make_unique<NullAIBehavior>());
     check(!caster.statusEffects().has(StatusEffectType::Empowered),
@@ -119,25 +125,25 @@ int main() {
     check(caster.statusEffects().magnitudeOf(StatusEffectType::Empowered) == 4,
           "Empowered's magnitude matches the talent's configured selfBuffEffect (4)");
 
-    // The exact bug live testing caught: Rallying Cry granting Empowered
-    // did nothing to the caster's own subsequent damage, since
-    // applyTalentDamage never checked for it (only executeAIDecision,
-    // the *monster*-attack path, did). Verify the fix directly: the same
-    // caster now empowered, using Slam, deals its normal 9 damage *plus*
-    // the 4 from Empowered.
+    // The exact bug live testing originally caught (Prompt 15): Rallying
+    // Cry granting Empowered did nothing to the caster's own subsequent
+    // damage, since applyTalentDamage never checked for it. Verify the
+    // fix still holds: the same caster now empowered, using Slam, deals
+    // its normal 5 damage *plus* the 4 from Empowered == 9.
     Stats empoweredSlamTargetStats;
     empoweredSlamTargetStats.hp = 20;
     empoweredSlamTargetStats.maxHp = 20;
     Monster empoweredSlamTarget(MonsterType::Goblin, "EmpoweredSlamTarget", 'e', Position{0, 0},
                                  empoweredSlamTargetStats, std::make_unique<NullAIBehavior>());
     applyTalentDamage(talents[kSlam], caster, empoweredSlamTarget);
-    check(empoweredSlamTarget.stats().hp == 7,
-          "an Empowered caster's Slam deals base 4 + strength bonus 5 + Empowered 4 == 13 "
-          "damage (20 -> 7), not just the un-buffed 9 -- the exact scenario live testing "
-          "caught as broken before this fix");
+    check(matchesNormalOrCrit(20 - empoweredSlamTarget.stats().hp, 9),
+          "an Empowered caster's Slam deals base 4 + strength bonus 1 + Empowered 4 == 9 "
+          "damage (or 13 on a crit), not just the un-buffed 5 -- the fix from the bug live "
+          "testing originally caught still holds");
 
-    // Index 3: Berserker's Fury -- costs hp, base 23 + strength bonus 5
-    // == 28, the hardest-hitting single-target strike in either kit.
+    // Index 3: Berserker's Fury -- costs hp, base 23 + strength bonus
+    // (6/5 * Power-tier 2.0, truncated to 2) == 25, the hardest-hitting
+    // single-target strike in the kit.
     constexpr std::size_t kBerserkersFury = 3;
     check(talents[kBerserkersFury].hpCost == 8,
           "Berserker's Fury costs 8 hp -- blood magic, not mana (manaCost is 0)");
@@ -145,17 +151,17 @@ int main() {
           "Berserker's Fury costs zero mana -- the cost is entirely hp");
 
     Stats furyTargetStats;
-    furyTargetStats.hp = 30;
-    furyTargetStats.maxHp = 30;
+    furyTargetStats.hp = 40;
+    furyTargetStats.maxHp = 40;
     Monster furyTarget(MonsterType::Goblin, "FuryTarget", 'f', Position{0, 0}, furyTargetStats,
                         std::make_unique<NullAIBehavior>());
     applyTalentDamage(talents[kBerserkersFury], attacker, furyTarget);
-    check(furyTarget.stats().hp == 2,
-          "Berserker's Fury deals base 23 + strength bonus 5 == 28 damage (30 -> 2), the "
-          "hardest hit in either class's kit");
+    check(matchesNormalOrCrit(40 - furyTarget.stats().hp, 25),
+          "Berserker's Fury deals base 23 + strength bonus 2 == 25 damage (or 37 on a "
+          "crit), the hardest hit in the kit");
 
     std::cout << "\n"
-              << (g_allOk ? "All Fighter checks passed." : "Some Fighter checks FAILED.")
+              << (g_allOk ? "All Warrior checks passed." : "Some Warrior checks FAILED.")
               << '\n';
     return g_allOk ? 0 : 1;
 }

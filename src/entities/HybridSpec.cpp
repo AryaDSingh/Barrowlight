@@ -5,15 +5,15 @@
 namespace engine {
 
 bool isHybridEligible(PlayerClass cls) {
-    return cls == PlayerClass::Fighter || cls == PlayerClass::Sorcerer;
+    return cls == PlayerClass::Warrior || cls == PlayerClass::Mage;
 }
 
 PlayerClass hybridPoolClass(PlayerClass cls) {
     switch (cls) {
-        case PlayerClass::Fighter:
-            return PlayerClass::Sorcerer;
-        case PlayerClass::Sorcerer:
-            return PlayerClass::Fighter;
+        case PlayerClass::Warrior:
+            return PlayerClass::Mage;
+        case PlayerClass::Mage:
+            return PlayerClass::Warrior;
         case PlayerClass::Thief:
         case PlayerClass::Spellblade:
             return cls; // not eligible -- see isHybridEligible(); an inert default

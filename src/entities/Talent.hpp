@@ -3,7 +3,7 @@
 #include <optional>
 #include <string>
 
-#include "entities/DamageType.hpp"
+#include "entities/AttributeFormulas.hpp"
 #include "entities/StatusEffects.hpp"
 
 namespace engine {
@@ -69,25 +69,27 @@ struct Talent {
     float conditionalHpFraction = 0.f;
     int conditionalMultiplier = 1;
 
-    // Which attribute this talent's damage/heal scales with (Prompt
-    // 14) -- Physical for the Blade tree, Magic for the Flame tree and
-    // for every Heal-kind talent (healing is life magic; there's no
-    // Strength-scaled equivalent). Unused for Movement and SelfBuff.
-    // Deliberately the LAST-but-two field, not inserted earlier
-    // alongside power/areaRadius where it would read more naturally:
-    // every talent in SpellbladeTalents.cpp/FighterTalents.cpp/
-    // ThiefTalents.cpp/SorcererTalents.cpp is constructed with
-    // positional (not designated) aggregate initialization, so
-    // inserting a field anywhere but the end would silently shift
-    // every value after it in every existing construction that lists
-    // that many fields -- worst case, an int meant for
-    // conditionalMultiplier landing in conditionalHpFraction instead,
-    // which compiles cleanly (int -> float is an implicit, silent
-    // conversion) and would have been a very easy bug to ship
-    // unnoticed. effectKind, selfBuffEffect, retreatDistance, and
-    // onHitEffect/onHitChance, added after it across Prompts 15-19,
-    // all follow the same rule.
-    DamageType damageType = DamageType::Physical;
+    // Which attribute this talent's damage/heal scales with -- fully
+    // rewritten from the original Prompt 14 version (which only chose
+    // between Physical/Strength and Magic/Intelligence) into the new
+    // three-way ScalingStat, now that Dexterity can power a talent's
+    // damage too. Every talent scales from exactly one attribute; there
+    // is no "scales from two stats" or "universal bonus" concept.
+    // Unused for Movement and SelfBuff. Deliberately the LAST-but-two
+    // field, not inserted earlier alongside power/areaRadius where it
+    // would read more naturally: every talent in
+    // SpellbladeTalents.cpp/FighterTalents.cpp/ThiefTalents.cpp/
+    // SorcererTalents.cpp is constructed with positional (not
+    // designated) aggregate initialization, so inserting a field
+    // anywhere but the end would silently shift every value after it in
+    // every existing construction that lists that many fields -- worst
+    // case, an int meant for conditionalMultiplier landing in
+    // conditionalHpFraction instead, which compiles cleanly (int ->
+    // float is an implicit, silent conversion) and would have been a
+    // very easy bug to ship unnoticed. effectKind, selfBuffEffect,
+    // retreatDistance, and onHitEffect/onHitChance, added after it
+    // across Prompts 15-19, all follow the same rule.
+    ScalingStat scalingStat = ScalingStat::Strength;
 
     // Damage (the default), Heal, or SelfBuff -- see TalentEffectKind's
     // own comment.
@@ -124,6 +126,16 @@ struct Talent {
     // extra effect," every existing talent's ordinary behavior.
     std::optional<StatusEffectInstance> onHitEffect;
     float onHitChance = 1.f;
+
+    // Per-talent crit modifiers, on top of the global crit system
+    // (AttributeFormulas::rollCrit/critDamageMultiplier) -- Thief's
+    // Piercing Shot is the one talent that uses these: an inherent
+    // +20% crit chance and +50% increased crit damage (so a Piercing
+    // Shot crit deals 2.0x, not the normal 1.5x), replacing what was
+    // originally a conditional triple-damage-on-low-hp mechanic. 0 (the
+    // default) means no bonus, every other talent's ordinary behavior.
+    float bonusCritChance = 0.f;
+    float bonusCritDamageMultiplier = 0.f;
 };
 
 } // namespace engine

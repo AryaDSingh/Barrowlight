@@ -91,16 +91,19 @@ dependency. Run them after building:
 On Windows with the Visual Studio generator, substitute
 `.\build\bin\Debug\<name>.exe`.
 
-**Controls:** on launch, **1**, **2** or **3** to pick a class (Fighter,
-Sorcerer, or Thief). Arrow keys / WASD to move, **R** to regenerate the
+**Controls:** on launch, **1**, **2** or **3** to pick a class (Warrior,
+Mage, or Thief). Arrow keys / WASD to move, **R** to regenerate the
 level, number keys to use talents (all three base classes start with
 1-4, growing to 1-6 as talents are unlocked through play -- see the
 talent-list panel for what's currently bound), **F5** to save, **F9**
 to load (reachable even before picking a class, to resume a previous
 run), **Enter** to return to class selection after death or victory.
-When an ability-choice screen appears (Prompt 24's hybrid path), number
-keys pick an option and **0** declines where offered. Combat/status
-feedback is shown **both** in the console and as an on-screen log in
+When an ability-choice screen appears (the hybrid path), number keys
+pick an option and **0** declines where offered. On leveling up,
+**1**/**2**/**3** spend an earned attribute point on
+Strength/Dexterity/Intelligence -- shown as its own screen, once per
+point, before the game resumes. Combat/status feedback is shown
+**both** in the console and as an on-screen log in
 the game window (see Prompt 13).
 
 As of Prompt 5, `roguelike` opens a window with a player tile you can
@@ -258,15 +261,53 @@ Vorbis/FLAC/Ogg from source, the same one-command, no-manual-
 dependency-installation approach this project has used since Prompt 2,
 just with a few more libraries to build the first time.
 
+As of Prompt 26, the attribute system is **fully redesigned** --
+Fighter is now **Warrior**, Sorcerer is now **Mage** (Thief keeps its
+name), and there's no more "baseline 10" model at all. Classes start
+with hand-picked HP/Mana (Warrior 30/10, Thief 25/15, Mage 20/20) and a
+genuinely low 6/2/2 Strength/Dexterity/Intelligence spread, kept
+strictly separate from those starting pools. Leveling now grants +1 HP
+automatically plus **2 free attribute points** every level, spent
+through a new on-screen choice -- Strength adds max HP, Dexterity adds
+dodge and crit chance, Intelligence adds max mana, and each also scales
+whichever talents declare that attribute as their own. Every hit,
+player or monster, can now **critically strike** (5% base chance, +0.5%
+per point of the attacker's Dexterity, for 1.5x damage). Thief's
+Piercing Shot was reworked to lean into this: an inherent +20% crit
+chance and +50% increased crit damage, on a longer cooldown. Monster
+attributes haven't been rebalanced against the new formula yet --
+functionally correct, not yet tuned.
+
+As of Prompt 27, monster attributes **are** rebalanced -- every
+Strength/Dexterity/Intelligence value below was recomputed to reproduce
+exactly the same dodge percentages and damage totals already tuned
+back in Prompt 21, not guessed from scratch. Spider and Archer's high
+Dexterity (36 and 48) exists purely to hit their original 18%/24%
+dodge under the new formula -- monster attributes aren't held to the
+same "start low" philosophy player stats are, since monsters are
+static and never grow through play. A nice side effect: that same
+Dexterity now also gives them a real crit chance (23%/29%), which
+happens to reinforce their nimble, precise identity rather than fight
+it.
+
+As of Prompt 28, the game has **10 floors** instead of one dungeon.
+Floors 1-4 and 6-9 are pure "clear it, find the door" dungeons -- walk
+onto the **red door** tile in the final room to move on. Floor 5 has
+the Goblin Warlord; defeating him opens the door instead of ending the
+run. Floor 10 is the true final fight -- for now it's the same Goblin
+Warlord again as a placeholder, since the actual final boss (a Lich
+that summons skeleton minions) is separate, not-yet-built work. The
+current floor shows in the HUD under your level.
+
 | Enemy | Color | Behavior | Str/Dex/Int | Dodge |
 |---|---|---|---|---|
-| Goblin | red | `Chaser` -- plain melee | 10/10/10 | 0% |
-| Spider | green | `Chaser` -- melee, applies Poison on hit | 8/16/10 | 18% |
-| Ogre | brown | `Chaser` -- melee, chance to Stun on hit | 18/6/10 | 0% |
-| Archer | tan | `Kiter` -- keeps its distance, shoots from range | 8/18/10 | 24% |
-| Shaman | purple | `Support` -- never attacks; buffs a nearby ally instead | 6/10/18 | 0% |
-| Bomber | orange | `AoEBomber` -- ranged area attack on a cooldown | 8/10/16 | 0% |
-| Goblin Warlord | gold | `BossBehavior` -- 3-phase set-piece fight | 16/8/14 | 0% |
+| Goblin | red | `Chaser` -- plain melee | 6/0/2 | 0% |
+| Spider | green | `Chaser` -- melee, applies Poison on hit | 4/36/2 | 18% |
+| Ogre | brown | `Chaser` -- melee, chance to Stun on hit | 15/0/2 | 0% |
+| Archer | tan | `Kiter` -- keeps its distance, shoots from range | 4/48/2 | 24% |
+| Shaman | purple | `Support` -- never attacks; buffs a nearby ally instead | 1/0/16 | 0% |
+| Bomber | orange | `AoEBomber` -- ranged area attack on a cooldown | 2/0/14 | 0% |
+| Goblin Warlord | gold | `BossBehavior` -- 3-phase set-piece fight | 14/0/10 | 0% |
 
 ## Building
 

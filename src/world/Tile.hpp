@@ -5,6 +5,9 @@ namespace engine {
 enum class TileType {
     Wall,
     Floor,
+    Door, // a floor-transition door -- walkable/transparent exactly like Floor (see Tile's own
+          // comment); Application is the only thing that treats it specially, by checking
+          // tileAt(...).type after a move rather than needing a new field here
 };
 
 // A single grid cell. `walkable` and `transparent` are stored explicitly

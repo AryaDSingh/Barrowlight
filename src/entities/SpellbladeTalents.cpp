@@ -88,7 +88,7 @@ std::vector<Talent> spellbladeTalents() {
         /*cooldownTurns=*/1,
         /*power=*/3, // +4 from intelligence == 7, matching the original tuned value
     };
-    emberBolt.damageType = DamageType::Magic;
+    emberBolt.scalingStat = ScalingStat::Intelligence;
     talents.push_back(emberBolt);
 
     Talent fireball{
@@ -105,7 +105,7 @@ std::vector<Talent> spellbladeTalents() {
         /*power=*/8, // +4 from intelligence == 12, matching the original tuned value
         /*areaRadius=*/2,
     };
-    fireball.damageType = DamageType::Magic;
+    fireball.scalingStat = ScalingStat::Intelligence;
     talents.push_back(fireball);
 
     // Blink deals no damage (power stays 0, Movement shape) -- damageType
@@ -139,7 +139,7 @@ std::vector<Talent> spellbladeTalents() {
         /*power=*/5, // +4 from intelligence == 9, matching the original tuned value
         /*areaRadius=*/1,
     };
-    immolate.damageType = DamageType::Magic;
+    immolate.scalingStat = ScalingStat::Intelligence;
     talents.push_back(immolate);
 
     // Renewal (player-requested addition, post-Prompt 14): the
@@ -170,7 +170,7 @@ std::vector<Talent> spellbladeTalents() {
         /*cooldownTurns=*/6,
         /*power=*/8, // heal amount here, not damage -- +4 from intelligence == 12 hp restored
     };
-    renewal.damageType = DamageType::Magic;
+    renewal.scalingStat = ScalingStat::Intelligence;
     renewal.effectKind = TalentEffectKind::Heal;
     talents.push_back(renewal);
 

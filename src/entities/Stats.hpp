@@ -3,21 +3,27 @@
 namespace engine {
 
 // Plain data -- an Actor's numeric attributes. Deliberately still no
-// methods, even now that real combat formulas exist (Prompt 14,
-// AttributeFormulas.hpp): those formulas interpret Stats' fields from
-// the outside rather than living as Stats methods, the same
-// separation-of-concerns reasoning as TalentEffects being kept separate
-// from Talent. strength/dexterity/intelligence baseline at 10 --
-// AttributeFormulas' bonuses are calibrated to that exact baseline, so
-// changing these defaults would silently shift every derived bonus too.
+// methods, even now that real combat formulas exist (AttributeFormulas.hpp):
+// those formulas interpret Stats' fields from the outside rather than
+// living as Stats methods, the same separation-of-concerns reasoning as
+// TalentEffects being kept separate from Talent.
+//
+// strength/dexterity/intelligence default to 0, not some implicit
+// "average" value -- the attribute-system redesign has no baseline
+// concept at all (a class's starting spread is a hand-picked low value
+// like 2 or 6, and every point counts at full value from zero). A
+// freshly-constructed Actor with every attribute left untouched
+// contributes exactly zero bonus anywhere, the same property the old
+// baseline-10 model achieved by subtracting 10 first -- this achieves
+// it more directly, by having nothing to subtract at all.
 struct Stats {
     int maxHp = 10;
     int hp = 10;
     int maxMana = 0;
     int mana = 0;
-    int strength = 10;     // physical damage, via AttributeFormulas::physicalDamageBonus
-    int dexterity = 10;    // dodge chance, via AttributeFormulas::dodgeChance
-    int intelligence = 10; // magic damage + max mana, via AttributeFormulas
+    int strength = 0;     // scales Strength-tagged talents, via AttributeFormulas::abilityDamageBonus
+    int dexterity = 0;    // dodge chance + crit chance, via AttributeFormulas
+    int intelligence = 0; // scales Intelligence-tagged talents, via AttributeFormulas
 
     // Baseline is 100. The TurnScheduler (Prompt 4) will consume this to
     // decide act frequency -- higher speed acts more often. Not used by

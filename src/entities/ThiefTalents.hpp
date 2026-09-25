@@ -41,11 +41,14 @@ namespace engine {
 // As of Prompt 23, two more are unlocked through play rather than known
 // from the start -- see thiefTalentUnlockedAtLevel() below.
 //
-//   4. Piercing Shot -- unlocked at level 4. Reuses the Spellblade's
-//                       Execution conditional-multiplier mechanic
-//                       (Prompt 9) for the first time outside that
-//                       class: modest ranged damage normally, triple
-//                       against a target already below 30% hp.
+//   4. Piercing Shot -- unlocked at level 4. Originally reused the
+//                       Spellblade's Execution conditional-multiplier
+//                       mechanic (Prompt 9); reworked during the
+//                       attribute-system redesign into an inherent
+//                       +20% crit chance and +50% increased crit
+//                       damage instead, leaning into the new global
+//                       crit system rather than a separate conditional
+//                       one.
 //   5. Adrenaline     -- unlocked at level 7. A genuine upgrade on
 //                       Steady Aim: a longer, stronger Empowered.
 //

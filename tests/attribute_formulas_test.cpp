@@ -1,9 +1,17 @@
-// Standalone sanity check for AttributeFormulas -- the pure, deterministic
-// functions only. rollDodge() itself (the one function here that actually
-// draws a random number) is deliberately not tested in isolation, same
-// precedent as Chaser's onHitChance roll (Prompt 10): didDodge(), the
-// pure comparison it's built on, is exhaustively tested instead, and live
-// play is what confirms the randomized rate behaves plausibly.
+// Standalone sanity check for AttributeFormulas -- the pure,
+// deterministic functions only. rollDodge()/rollCrit() themselves (the
+// functions here that actually draw a random number) are deliberately
+// not tested in isolation, same precedent as Chaser's onHitChance roll
+// (Prompt 10): didDodge(), the pure comparison they're built on, is
+// exhaustively tested instead, and live play is what confirms a
+// randomized rate behaves plausibly.
+//
+// Fully rewritten for the attribute-system redesign -- the original
+// Prompt 14 version tested a baseline-10 model (physicalDamageBonus,
+// magicDamageBonus, manaBonusFromIntelligence) that no longer exists.
+// The new system has no baseline at all: every point counts at full
+// value from zero, damage scaling is per-ability (not universal), and
+// scales by the ability's own cooldown tier.
 
 #include <iostream>
 #include <string>
@@ -22,54 +30,79 @@ void check(bool condition, const std::string& description) {
 } // namespace
 
 int main() {
-    // --- physicalDamageBonus: +1 per 2 points of strength above the 10
-    // baseline, truncated toward zero (C++'s native integer division).
-    check(physicalDamageBonus(10) == 0, "physicalDamageBonus(10) == 0 (baseline contributes nothing)");
-    check(physicalDamageBonus(14) == 2, "physicalDamageBonus(14) == 2 (the Spellblade's own strength)");
-    check(physicalDamageBonus(18) == 4, "physicalDamageBonus(18) == 4");
-    check(physicalDamageBonus(20) == 5, "physicalDamageBonus(20) == 5");
-    check(physicalDamageBonus(8) == -1, "physicalDamageBonus(8) == -1 (below baseline, genuinely weaker)");
-    check(physicalDamageBonus(6) == -2, "physicalDamageBonus(6) == -2 (Ogre's dexterity value, used here on strength for the arithmetic)");
-    check(physicalDamageBonus(11) == 0,
-          "physicalDamageBonus(11) == 0 (truncation toward zero: 1/2 == 0, not a floor to -1)");
+    // --- tierForCooldown: the four bands.
+    check(tierForCooldown(0) == AbilityCooldownTier::Filler, "cooldown 0 is Filler");
+    check(tierForCooldown(1) == AbilityCooldownTier::Filler, "cooldown 1 is Filler");
+    check(tierForCooldown(2) == AbilityCooldownTier::Core, "cooldown 2 is Core");
+    check(tierForCooldown(3) == AbilityCooldownTier::Core, "cooldown 3 is Core");
+    check(tierForCooldown(4) == AbilityCooldownTier::Power, "cooldown 4 is Power");
+    check(tierForCooldown(5) == AbilityCooldownTier::Power, "cooldown 5 is Power");
+    check(tierForCooldown(6) == AbilityCooldownTier::Signature, "cooldown 6 is Signature");
+    check(tierForCooldown(10) == AbilityCooldownTier::Signature, "cooldown 10 (well past 6) is still Signature");
 
-    // --- magicDamageBonus: identical shape, mirrored onto Intelligence.
-    check(magicDamageBonus(10) == 0, "magicDamageBonus(10) == 0 (baseline contributes nothing)");
-    check(magicDamageBonus(18) == 4, "magicDamageBonus(18) == 4 (the Spellblade's own intelligence)");
-    check(magicDamageBonus(16) == 3, "magicDamageBonus(16) == 3 (Bomber's intelligence)");
-    check(magicDamageBonus(14) == 2, "magicDamageBonus(14) == 2 (the boss's intelligence)");
-    check(magicDamageBonus(6) == -2, "magicDamageBonus(6) == -2 (below baseline)");
+    // --- abilityDamageBonus: +1 per 5 points in the scaling stat,
+    // multiplied by the ability's own cooldown tier (Filler x1.0, Core
+    // x1.5, Power x2.0, Signature x2.5), truncated toward zero.
+    check(abilityDamageBonus(ScalingStat::Strength, 0, 0) == 0,
+          "abilityDamageBonus with 0 stat investment is 0, regardless of tier");
+    check(abilityDamageBonus(ScalingStat::Strength, 5, 0) == 1,
+          "abilityDamageBonus(Strength, 5, Filler) == 1 (5/5 * 1.0)");
+    check(abilityDamageBonus(ScalingStat::Strength, 10, 1) == 2,
+          "abilityDamageBonus(Strength, 10, cooldown 1/Filler) == 2 (10/5 * 1.0)");
+    check(abilityDamageBonus(ScalingStat::Strength, 24, 1) == 4,
+          "abilityDamageBonus(Strength, 24, Filler) == 4 (24/5 == 4.8, truncated down, not rounded)");
+    check(abilityDamageBonus(ScalingStat::Strength, 10, 2) == 3,
+          "abilityDamageBonus(Strength, 10, Core) == 3 (10/5 * 1.5 == 3.0)");
+    check(abilityDamageBonus(ScalingStat::Strength, 10, 4) == 4,
+          "abilityDamageBonus(Strength, 10, Power) == 4 (10/5 * 2.0 == 4.0)");
+    check(abilityDamageBonus(ScalingStat::Intelligence, 10, 6) == 5,
+          "abilityDamageBonus(Intelligence, 10, Signature) == 5 (10/5 * 2.5 == 5.0)");
+    check(abilityDamageBonus(ScalingStat::Intelligence, 24, 7) == 12,
+          "abilityDamageBonus(Intelligence, 24, Signature) == 12 (24/5 == 4.8, *2.5 == 12.0) -- "
+          "a heavily-invested Signature ability, the top of this formula's current range");
 
-    // --- dodgeChance: +3% per point of dexterity above the 10 baseline,
-    // floored at 0%, capped at 30%.
-    check(dodgeChance(10) == 0.f, "dodgeChance(10) == 0 (baseline)");
-    check(dodgeChance(6) == 0.f, "dodgeChance(6) == 0 (below baseline floors at 0, doesn't go negative)");
-    check(dodgeChance(8) == 0.f, "dodgeChance(8) == 0 (Archer/Ogre's strength value, used here on dexterity)");
-    const float spiderDodge = dodgeChance(16);
-    check(spiderDodge > 0.1799f && spiderDodge < 0.1801f,
-          "dodgeChance(16) == 0.18 (Spider's own dexterity -- 18%)");
-    const float archerDodge = dodgeChance(18);
-    check(archerDodge > 0.2399f && archerDodge < 0.2401f,
-          "dodgeChance(18) == 0.24 (Archer's own dexterity -- 24%, the roster's most evasive)");
-    const float dexTwentyDodge = dodgeChance(20);
-    check(dexTwentyDodge > 0.2999f && dexTwentyDodge < 0.3001f,
-          "dodgeChance(20) == 0.30 (exactly at the cap, computed via multiplication -- "
-          "compared with tolerance, not exact ==, since 10*0.03f isn't guaranteed bit-exact "
-          "to the literal 0.30f the way a clamped return value is)");
-    check(dodgeChance(30) == 0.30f, "dodgeChance(30) == 0.30 (well past the cap, still clamped)");
-    check(dodgeChance(100) == 0.30f, "dodgeChance(100) == 0.30 (extreme value, still clamped -- the cap is real)");
+    // --- dodgeChance: +0.5% per point of *current total* dexterity (no
+    // baseline subtraction at all -- every point counts, including a
+    // class's starting spread), capped at 25%.
+    check(dodgeChance(0) == 0.f, "dodgeChance(0) == 0");
+    const float dexTwoDodge = dodgeChance(2);
+    check(dexTwoDodge > 0.0099f && dexTwoDodge < 0.0101f,
+          "dodgeChance(2) == 0.01 (1%) -- Thief's Dex-2 minority stats would compute this way");
+    const float dexSixDodge = dodgeChance(6);
+    check(dexSixDodge > 0.0299f && dexSixDodge < 0.0301f,
+          "dodgeChance(6) == 0.03 (3%) -- Thief's own starting Dexterity");
+    const float dexFiftyDodge = dodgeChance(50);
+    check(dexFiftyDodge > 0.2499f && dexFiftyDodge < 0.2501f,
+          "dodgeChance(50) == 0.25 (exactly at the cap, computed via multiplication -- "
+          "compared with tolerance, not exact ==, since 50*0.005f isn't guaranteed bit-exact "
+          "to the literal 0.25f the way a clamped return value is)");
+    check(dodgeChance(100) == 0.25f, "dodgeChance(100) == 0.25 (well past the cap, still clamped)");
 
-    // --- manaBonusFromIntelligence: +1 per point above the 10 baseline,
-    // floored at 0 (unlike the damage bonuses, this can't go negative --
-    // a mana pool can't shrink below its base from low intelligence).
-    check(manaBonusFromIntelligence(10) == 0, "manaBonusFromIntelligence(10) == 0 (baseline)");
-    check(manaBonusFromIntelligence(18) == 8,
-          "manaBonusFromIntelligence(18) == 8 (the Spellblade's own intelligence -- "
-          "12 base + 8 == 20, matching the original Prompt 9 tuned maxMana exactly)");
-    check(manaBonusFromIntelligence(6) == 0,
-          "manaBonusFromIntelligence(6) == 0 (below baseline floors at 0, doesn't reduce the pool)");
+    // --- critChanceBonus: +0.5% per point of current total dexterity,
+    // no cap (unlike dodge, crit is allowed to climb as high as
+    // investment takes it).
+    check(critChanceBonus(0) == 0.f, "critChanceBonus(0) == 0");
+    const float critBonusAtSix = critChanceBonus(6);
+    check(critBonusAtSix > 0.0299f && critBonusAtSix < 0.0301f,
+          "critChanceBonus(6) == 0.03 (3%) -- Thief's own starting Dexterity");
+    const float critBonusAtHundred = critChanceBonus(100);
+    check(critBonusAtHundred > 0.4999f && critBonusAtHundred < 0.5001f,
+          "critChanceBonus(100) == 0.50 (50%) -- deliberately uncapped, unlike dodge");
 
-    // --- didDodge: pure comparison, roll < chance.
+    // --- critDamageMultiplier: a flat constant.
+    check(critDamageMultiplier() > 1.499f && critDamageMultiplier() < 1.501f,
+          "critDamageMultiplier() == 1.5");
+
+    // --- statValueForScalingStat: picks out the right field.
+    check(statValueForScalingStat(ScalingStat::Strength, 6, 2, 2) == 6,
+          "statValueForScalingStat(Strength, ...) returns the strength argument");
+    check(statValueForScalingStat(ScalingStat::Dexterity, 6, 2, 2) == 2,
+          "statValueForScalingStat(Dexterity, ...) returns the dexterity argument");
+    check(statValueForScalingStat(ScalingStat::Intelligence, 2, 2, 6) == 6,
+          "statValueForScalingStat(Intelligence, ...) returns the intelligence argument");
+
+    // --- didDodge: pure comparison, roll < chance -- unchanged by the
+    // redesign, same semantics as before.
     check(didDodge(0.3f, 0.29f), "didDodge(0.3, 0.29) == true (roll just under the chance)");
     check(!didDodge(0.3f, 0.31f), "didDodge(0.3, 0.31) == false (roll just over the chance)");
     check(!didDodge(0.3f, 0.3f), "didDodge(0.3, 0.3) == false (an exact tie does not count as a dodge)");
