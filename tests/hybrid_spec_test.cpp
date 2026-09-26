@@ -38,16 +38,16 @@ int main() {
     // unlocks, regardless of what level a character actually is.
     check(fullKitForClass(PlayerClass::Warrior).size() == 6,
           "Fighter's full kit is 6 talents (4 starting + Whirlwind + Undying Rage)");
-    check(fullKitForClass(PlayerClass::Mage).size() == 6,
-          "Sorcerer's full kit is 6 talents (4 starting + Meteor + Overload)");
+    check(fullKitForClass(PlayerClass::Mage).size() == 7,
+          "Mage's full kit is 7 talents (4 starting + Blink + Meteor + Overload)");
 
-    // --- availableHybridPicks: a fresh Fighter can pick from all 6 of
+    // --- availableHybridPicks: a fresh Fighter can pick from all 7 of
     // Sorcerer's abilities.
     {
         TalentSet freshFighter = talentSetForClass(PlayerClass::Warrior);
         std::vector<Talent> available = availableHybridPicks(PlayerClass::Warrior, freshFighter);
-        check(available.size() == 6,
-              "a fresh (unspecced) Fighter has all 6 Sorcerer abilities available to pick");
+        check(available.size() == 7,
+              "a fresh (unspecced) Fighter has all 7 Sorcerer abilities available to pick");
         check(available[0].name == "Arcane Bolt",
               "available picks are ordered the same way Sorcerer's own kit is ordered");
     }
@@ -57,9 +57,9 @@ int main() {
     // depends on being correct.
     {
         TalentSet fighter = talentSetForClass(PlayerClass::Warrior);
-        fighter.learnTalent(Talent{/*name=*/"Arcane Bolt"}); // simulates picking it
+        fighter.learnTalent(fullKitForClass(PlayerClass::Mage).front()); // simulates picking it
         std::vector<Talent> available = availableHybridPicks(PlayerClass::Warrior, fighter);
-        check(available.size() == 5, "picking one ability shrinks the available pool to 5");
+        check(available.size() == 6, "picking one ability shrinks the available pool to 6");
         bool stillOffersArcaneBolt = false;
         for (const Talent& t : available) {
             if (t.name == "Arcane Bolt") {
@@ -69,14 +69,14 @@ int main() {
         check(!stillOffersArcaneBolt, "an already-picked ability is never offered again");
     }
 
-    // --- Picking all 6 empties the pool entirely.
+    // --- Picking all 7 empties the pool entirely.
     {
         TalentSet fighter = talentSetForClass(PlayerClass::Warrior);
-        for (const Talent& sorcererTalent : fullKitForClass(PlayerClass::Mage)) {
-            fighter.learnTalent(sorcererTalent);
+        for (const Talent& mageTalent : fullKitForClass(PlayerClass::Mage)) {
+            fighter.learnTalent(mageTalent);
         }
         check(availableHybridPicks(PlayerClass::Warrior, fighter).empty(),
-              "picking all 6 of the opposing kit empties the available pool");
+              "picking all 7 of the opposing kit empties the available pool");
     }
 
     // --- A non-eligible class always returns an empty pool, regardless

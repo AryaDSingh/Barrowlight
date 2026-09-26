@@ -1,9 +1,9 @@
 #include "entities/PlayerClassFactory.hpp"
 
-#include "entities/FighterTalents.hpp"
-#include "entities/SorcererTalents.hpp"
+#include "entities/MageTalents.hpp"
 #include "entities/SpellbladeTalents.hpp"
 #include "entities/ThiefTalents.hpp"
+#include "entities/WarriorTalents.hpp"
 
 namespace engine {
 
@@ -93,11 +93,11 @@ TalentSet talentSetForClass(PlayerClass cls) {
         case PlayerClass::Spellblade:
             return TalentSet(spellbladeTalents());
         case PlayerClass::Warrior:
-            return TalentSet(fighterTalents());
+            return TalentSet(warriorTalents());
         case PlayerClass::Thief:
             return TalentSet(thiefTalents());
         case PlayerClass::Mage:
-            return TalentSet(sorcererTalents());
+            return TalentSet(mageTalents());
     }
     return TalentSet(); // unreachable -- all enum values handled above
 }
@@ -107,11 +107,11 @@ std::optional<Talent> talentUnlockedAtLevel(PlayerClass cls, int level) {
         case PlayerClass::Spellblade:
             return std::nullopt; // reserved for its own separate unlock mechanism, not this one
         case PlayerClass::Warrior:
-            return fighterTalentUnlockedAtLevel(level);
+            return warriorTalentUnlockedAtLevel(level);
         case PlayerClass::Thief:
             return thiefTalentUnlockedAtLevel(level);
         case PlayerClass::Mage:
-            return sorcererTalentUnlockedAtLevel(level);
+            return mageTalentUnlockedAtLevel(level);
     }
     return std::nullopt; // unreachable -- all enum values handled above
 }

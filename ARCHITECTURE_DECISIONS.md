@@ -5,9 +5,208 @@ before contradicting it. Claude doesn't retain memory between separate
 conversations — paste this whole file at the start of a fresh session to
 restore context, and ask for it to be updated as new decisions get made.
 
-Last updated: 2026-09-19 (through completion of Prompt 2).
+Last updated: 2026-09-25 (Prompts 33-34). Earlier sections retain their historical
+context; later decisions supersede earlier rules where explicitly stated.
 
 ---
+
+## Loot and support runes (Prompts 33-34)
+
+### Loot identities, random stream and budget
+
+- `LootGenerator` owns an explicitly serialized nonzero xorshift64* state.
+  Only committed enemy/chest/boss rewards draw from it. Known seed and reward
+  sequence reproduce rolls without depending on the combat RNG or previews.
+  Item instances store actual affix IDs/values and roll tier; loading never
+  rerolls them. Instance IDs are shared by equipment and rune copies.
+- Normal/magic/rare means zero/one/two affixes. All affixes must support the
+  item's slot; two affixes may not modify the same stat. Tier is
+  `clamp((floor-1)/3 + quality, 0, 5)`: quality 0 for ordinary Base/chests,
+  1 for Elite, 2 for Nightmare/bosses. The following base ranges increase by
+  `tier * step`; values are inclusive. No physical mitigation was added.
+
+| Affix ID | Stat | Slots | Base range | Step |
+|---|---|---|---|---|
+| might | Strength | weapon/charm | 2-4 | 1 |
+| agility | Dexterity | all | 1-3 | 1 |
+| knowledge | Intelligence | weapon/charm | 2-4 | 1 |
+| vitality | maximum HP | armour/charm | 3-6 | 2 |
+| reservoir | maximum mana | armour/charm | 3-6 | 2 |
+| brawn | Strength | armour | 1-2 | 1 |
+| insight | Intelligence | armour | 1-2 | 1 |
+| vigor | maximum HP | weapon | 2-3 | 2 |
+
+- Base rarity weights: rare `15+5*tier` percent, magic up to the 75th
+  percentile, normal 25%. Chests promote normal to magic; bosses force rare.
+  Floor one retains its three fixed starter items. Later floors replace the
+  old entrance supplies with random rewards. One reachable chest is placed
+  toward each floor's far side by BFS, without drawing loot RNG. G opens it
+  once for one turn, grants to bag, and saves the claim flag.
+- Ordinary drops: 35/50/65 percent for Base/Elite/Nightmare, maximum two per
+  floor, with the cap persisted. Both bosses grant two rare items directly
+  to the bag (including final-run rewards before victory). With six ordinary
+  monsters per floor, expect roughly 16-20 ordinary drops plus 10 chests,
+  four boss items and three starters: about 33-37 equipment candidates.
+  Target 6-10 meaningful equipment changes per run, not a measured result.
+- Summons are explicitly reward-ineligible and have zero XP. This flag
+  persists alongside exact monster tier; loading no longer scales existing
+  enemies to a new tier based on the player's latest level. Death processing
+  claims each monster once before issuing rewards. R remains a development
+  regeneration/healing shortcut; reward budgets assume ordinary door travel.
+
+### Support rules and progression
+
+- Talent definitions have literal stable IDs. Typed compatibility flags
+  (melee, projectile, area, movement, damaging, pure movement) are derived
+  from definition geometry once when entering a TalentSet. Compatibility
+  checks use these flags and reject invalid combinations with explanations.
+- Each talent supports one owned rune instance. TalentSet keeps immutable
+  base definitions and creates temporary effective talents. Chain is limited
+  to damaging single-target projectiles: primary hit unchanged, nearest
+  reachable visible secondary within radius 3 at 50% damage. Coordinate ties
+  are deterministic. Bounce paths cannot cross terrain, blocked corners,
+  unseen cells or intervening actors. Primary/secondary independently roll
+  dodge/crit; the secondary cannot be the primary or caster. No recursive chain.
+- Widen adds one radius and `ceil(baseMana/2)` mana (minimum one). Venom deals
+  80% direct damage and applies Poison(3 turns, magnitude 2) after a successful
+  hit if the target survives. Existing on-hit talents are incompatible; poison
+  on the victim refreshes through the existing StatusEffects rules rather
+  than stacking. Swift Passage adds two movement tiles and two cooldown turns
+  to pure movement only. Effective damage always retains base cooldown scaling.
+- User-approved progression addition: Mage learns Blink at level 2, with
+  distance 3, mana 4 and cooldown 4. This also joins the existing Mage hybrid
+  pool. Seven hybrid options are supported by the choice screen and controls;
+  six picks no longer exhaust every Mage option. Prompt 35's larger
+  specialization redesign remains unimplemented.
+- V manages runes: arrows select talent/rune, Enter attaches/swaps and U
+  removes. Valid changes cost one turn and close the panel. They do not reset
+  existing cooldown counters, which then advance normally with the paid turn.
+  Displaced runes return to the rune bag; moving an attached rune clears its
+  old attachment. Invalid/no-op changes and browsing are free.
+- First-floor chest grants a deferred, free choice of one rune (V, keys 1-4)
+  after paying the chest turn. Choice availability persists. Even-floor
+  chests and both bosses each grant one random rune: eight total opportunities
+  across a full run, including the initial choice. Rune rolls share the
+  dedicated loot stream, never combat RNG.
+
+### Persistence and verification boundary
+
+Save format 8 supersedes 6 (inventory) and 7 (loot); old saves are rejected.
+Learned talent IDs and cooldowns are saved together in learned order,
+including borrowed talents. Enemy talent cooldowns also use IDs. Rune
+ownership and attachments persist by instance/talent IDs. Restore validates
+item affixes, IDs/slots, chest/drop state, rune attachment compatibility and
+talent catalogs before committing the live game replacement. Current pools
+are restored against the fully reconstructed equipment bonuses.
+
+The Debug game target builds. Existing save/hybrid/targeting fixtures were
+adapted to the new schema and Mage kit, but no tests were added or run and
+no interactive playthrough was performed. Reward pacing, visual layout and
+rune balance still need gameplay verification. Scheduler energies and AI
+internal phase/summon counters remain outside serialization, as previously;
+summons remain reward-ineligible even if an AI counter restarts after loading.
+
+## Inventory and equipment (Prompt 32)
+
+- **Ownership:** Application owns ground items; Inventory owns the bag and
+  weapon/armour/charm slots through unique pointers. Equipping into an occupied
+  slot swaps the old item into the selected bag row. Removing gear appends it
+  to the bag. Nine C++ definitions have stable string IDs; every generated
+  copy has a distinct monotonic 64-bit instance ID within the run.
+- **Stats:** Player owns permanent `baseStats_`; Actor's existing `stats()` is
+  the effective combat snapshot, including live HP/mana. Level growth and
+  allocated attributes modify base stats, then refresh the snapshot. Equipment
+  operations go through Player to refresh it. Combat still mutates current
+  HP/mana directly. Base HP/mana current fields are not authoritative; saves
+  combine base maxima/attributes with live current pools. Equipment attributes
+  do not also grant pool bonuses; item definitions state those separately.
+- **Pool policy:** recalculation retains current HP/mana, clamped to the new
+  maximum. Equipping capacity never refills it, and removing/re-equipping cannot
+  recover discarded points. Existing level/floor healing remains unchanged.
+  This policy is simple and prevents swap healing, but taking off capacity
+  while full can lose HP/mana; the comparison explicitly previews this cost.
+- **Turn contract (chosen before scheduler integration):** browsing/selecting/
+  comparing/cancelling and invalid actions are free. Each successful pickup,
+  equip or removal costs one player turn, using normal cooldown/status ticks,
+  mana regeneration and enemy responses. The inventory closes on commitment.
+  This preserves tactical costs and visibility of enemy actions; equipping a
+  whole outfit requires reopening the bag between actions.
+- **UI/content:** B opens a keyboard inventory; G takes one item at the player's
+  feet. Equipment rows precede a paginated bag. The comparison shows base, now,
+  after and change, with pool previews before turn effects. Nine items grant
+  only existing attributes and HP/mana. Ordinary floors place three rewards
+  near the entrance through a deterministic walkable BFS; floor one offers
+  items suited to the starting class, with variants rotating on later floors.
+  Boss floors do not spawn these supplies. Placement consumes no RNG. R remains
+  an explicit development regeneration shortcut, outside reward balancing.
+- **Persistence:** version 6 rejects older files, as before. Save base stats
+  plus current pools, unspent points, item definition/instance IDs, ownership
+  locations, ground positions and next ID. Loading validates known definitions,
+  unique IDs, compatible unique equipment slots, ground walkability and bounded
+  counts; equip all saved items before deriving stats once. Never apply saved
+  effective bonuses as new base stats. Floor transitions retain owned items
+  and the ID counter; abandoned ground items are removed with the old map.
+- **Implementation boundary:** item definitions and ownership remain small
+  header-only components; ApplicationInventory.cpp handles SFML/input/turn
+  integration. No mitigation formula, procedural affixes, drops or runes yet.
+  The Debug game target builds. No automated tests or interactive playthrough
+  were run for this prompt.
+
+## Manual targeting and enemy inspection (Prompt 31)
+
+- **One pure resolver for preview and execution.** `world/TalentTargeting`
+  receives the map, player visibility, caster, enemies, talent, and cursor.
+  It returns a path, affected tiles/actors, movement endpoint, validity, and
+  a reason. It never mutates state or rolls RNG. `Application::tryUseTalent`
+  validates readiness/resources and recomputes that same result before the
+  commit point. `estimateTalentDamage` supplies arithmetic shared with real
+  hits; previewing cannot advance combat randomness.
+- **Selection is transient UI state.** Store talent indexes and tile
+  coordinates, never long-lived actor pointers. A committed action clears
+  selection before combat; load/regeneration clears it before replacing the
+  roster. Save files do not store hover, aim, or page state. A selected
+  talent is copied for execution because kill XP can append talents and
+  invalidate a reference into the talent vector during an area attack.
+- **Mouse and keyboard have equal access.** Number keys/sidebar clicks
+  choose a talent; mouse/arrows aim; Tab cycles visible valid targets;
+  Enter/map click confirms; Escape/right-click cancels. I enables keyboard
+  inspection. Pages of nine talents cover the complete hybrid kit. Self
+  buffs/heals remain immediate. Hover details include the player's own
+  ability costs, cooldowns, and targeting rules.
+- **Player projectiles explicitly declare their geometry.** A trailing
+  `Talent::projectile` field marks Quick Shot, Volley, Piercing Shot, Arcane
+  Bolt, Ember Bolt, and Fireball. Rays stop at the first enemy or terrain
+  and cannot cut blocked diagonal corners. Piercing Shot's name still
+  describes its existing crit-focused mechanic, not actor penetration.
+  Direct spells keep the visible-target rule. Enemy AI still uses its
+  existing targeting; extending trajectory rules to it is separate work.
+- **Visible information bounds player targeting.** Player splash includes
+  currently visible walkable cells within the existing circular radius;
+  it does not make a new line-of-effect check from the impact. Hidden
+  enemies cannot leak through area highlighting, target counts, or damage
+  estimates. This deliberately changes the previous unrestricted radius
+  search. Aimed movement stops before blocked, occupied, or unseen cells.
+- **Basic inspection is free; deeper information can be earned later.**
+  `MonsterInspection` exposes visible living enemies' HP, attributes, speed,
+  active effects, behavior, and abilities. Basic attack descriptions cover
+  monsters whose attacks are AI profiles rather than TalentSet entries;
+  actual talent descriptions come from their definitions. Live cooldowns
+  require explicit `InspectionAccess::revealCooldowns` and use enemy-turn
+  units. This update adds the access boundary, not a new perception talent.
+  Access never bypasses field of view. Static behavior summaries will need
+  updating alongside future AI changes.
+- **A separate sidebar trades some map width for reliable readability.**
+  Shared `PlayLayout` constants reserve the right 384 pixels for talent and
+  inspection panels. The 896x504 map uses 28-pixel tiles, fitting the complete
+  radius-8 FOV. Input converts window pixels through the SFML view and
+  camera offset; HUD clicks cannot select the tile underneath them.
+- **Verification includes real input/cast integration.** `targeting_test`
+  is SFML-independent; `application_targeting_test` uses a hidden window,
+  controlled scenes, and real Application handlers. It writes snapshots
+  and a private save under the ignored build directory. Twenty-one test
+  executables passed (nineteen existing plus two new). Interactive play
+  feedback remains necessary for readability and combat feel.
+
 
 ## Project scope (locked in Prompt 0)
 
@@ -756,6 +955,121 @@ subfolders speculatively ahead of the system that needs them.
   regardless. Acknowledging that explicitly reads as a deliberate
   choice to a future reader instead of looking like an overlooked
   warning.
+
+## FighterTalents/SorcererTalents renamed (decided Prompt 30)
+
+- **Test files were renamed too, not just the two source files the
+  request named -- following the Prompt 19 precedent rather than
+  interpreting the request narrowly.** Prompt 19's own class rename
+  renamed its talent files *and* its test files together, as one
+  consistent unit; doing only the two headers/implementations named in
+  this request and leaving `fighter_test.cpp`/`sorcerer_test.cpp`
+  stale would have reintroduced exactly the inconsistency this prompt
+  existed to close.
+- **A rename is exactly the kind of change that looks obviously correct
+  and can still be silently broken -- worth verifying by actually
+  rebuilding, not by re-reading the diff.** Moving `FighterTalents.hpp`
+  to `WarriorTalents.hpp` doesn't touch the `#include` line *inside*
+  that same file referencing its own old name -- an easy mistake
+  precisely because the file's own content doesn't visibly change
+  when it's renamed. Caught immediately by attempting a real build
+  right after the rename, not by inspecting the renamed files by eye.
+- **A single grep pass was deliberately treated as insufficient, and a
+  second, broader one was run before calling this done.** The first
+  search (for `fighterTalents`, plural) missed
+  `fighterTalentUnlockedAtLevel` (singular "Talent" plus a different
+  suffix) -- not a fuzzy variant the same pattern could have caught,
+  a genuinely different substring. A full clean rebuild surfacing the
+  resulting compile errors is what actually caught it, which is itself
+  the argument for treating "the grep came back clean" as a checkpoint
+  to verify against a real build, not as sufficient evidence on its own.
+- **Comments describing a class's own naming history were extended,
+  not overwritten -- but comments only incidentally referencing an old
+  file or function name were updated to the current one.** These are
+  different situations: `WarriorTalents.hpp`'s own "originally
+  Marauder, renamed to Fighter, then Warrior" lineage is a comment
+  *about* the rename history itself, so it was extended to include this
+  latest step. A stray mention like "see fighter_test.cpp's header
+  comment" is just a cross-reference that happens to name a file --
+  updating it to `warrior_test.cpp` doesn't lose any historical
+  information, it just stops pointing at a file that no longer exists.
+- **A genuinely unrelated staleness was found and fixed while already
+  in the area, rather than left for a later pass to rediscover.**
+  `MageTalents.cpp` still described the pre-Prompt-26 `damageType`
+  field (removed during the attribute-system redesign, replaced by
+  `scalingStat`) in a comment explaining a real bug that was caught
+  live at the time. The comment was about this rename's own file, found
+  during this rename's own verification search -- fixing it here, while
+  the file is already open and the context is already loaded, cost
+  far less than leaving it as a landmine for whoever next has reason to
+  read that comment closely.
+
+## The Lich (decided Prompt 29)
+
+- **`AIActionType::Summon` follows the existing "AIBehavior decides,
+  Application executes" split exactly, rather than carving out a
+  special case for it.** LichBehavior only returns an `AIDecision`
+  naming a position and a `MonsterType`/`MonsterTier` to summon;
+  `Application::executeAIDecision()` is the only place that actually
+  constructs the Monster, the same separation `Attack`, `UseAbility`,
+  and every other action type already maintains. The alternative --
+  letting an `AIBehavior` reach into `Application`'s own `monsters_`
+  container directly -- would have broken that boundary for exactly
+  one behavior, the first crack in a pattern this project has held
+  consistently since Prompt 0.
+- **Mid-turn `monsters_.push_back()` was confirmed safe by reasoning
+  about the actual container type, not assumed.** `monsters_` is
+  `vector<unique_ptr<Monster>>`; a `push_back` can reallocate the
+  vector's own internal array, but the `Monster` objects it points to
+  are heap-allocated and never move as a result. `processMonsterTurns()`
+  only ever holds a single `Actor*` (`currentActor_`), never an
+  iterator into `monsters_` itself, so nothing currently running during
+  turn processing can be invalidated by a summon happening mid-loop.
+  This is the kind of thing worth actually verifying against the real
+  container type before relying on it, not just assuming "adding to a
+  vector while iterating" is fine because it happened not to crash in a
+  quick test.
+- **No phase structure, unlike BossBehavior -- a deliberate omission,
+  not a simpler first pass left unfinished.** BossBehavior's three
+  phases exist because its escalation has to come from somewhere
+  static (HP thresholds) -- it has no other mechanism for the fight to
+  intensify. The Lich already has one: more attackers alive over time.
+  Stacking an HP-threshold phase system on top would have been a
+  second, redundant escalation axis rather than a complementary one.
+- **The summon cap counts attempts made, not skeletons currently
+  alive.** Tracking "how many are alive right now" would have let a
+  sufficiently aggressive player farm the cap indefinitely by killing
+  skeletons quickly and forcing more summons -- counting usage instead
+  means the Lich has a genuinely finite number of reinforcements across
+  the whole fight, regardless of how quickly each one is dealt with.
+- **A blocked summon attempt (no open adjacent tile) does not consume
+  the cap, and this was specifically tested, not just implemented and
+  assumed correct.** The alternative -- charging the attempt to the cap
+  regardless of whether it actually happened -- would let a player
+  "waste" the Lich's summons for free by clever positioning, an
+  exploit-shaped edge case worth closing deliberately rather than
+  leaving to chance. `lich_test.cpp` verifies this directly: a fully
+  boxed-in Lich falls back to a bolt, and a follow-up call with one
+  tile freed still succeeds at summoning, confirming the earlier
+  blocked attempt truly didn't count against the limit.
+- **A new dedicated test file, matching `boss_test.cpp`'s own
+  standard, rather than relying on live testing alone.** The summon
+  mechanic has enough genuinely new logic -- cooldown gating, a cap
+  held across multiple separately-ready cooldowns, and the blocked-
+  tile edge case above -- that it warranted the same level of
+  hand-computed, automated coverage every other AIBehavior in this
+  project already has. Caught a real mistake in the test itself on
+  first run (a target placed beyond the Lich's sight radius rather
+  than just beyond attack range, producing an unexpected `Wait`) --
+  exactly the value of writing the test rather than trusting the
+  design review alone.
+- **Live verification specifically targeted the more complex case the
+  Prompt 28 victory-sequencing fix was built for, not just the simple
+  one.** Defeating the Lich from level 5 crossed two level-up
+  thresholds in one grant (4 attribute points, not 2) -- confirming
+  every point and the resulting talent unlock still resolved correctly
+  before Victory appeared is a meaningfully stronger check than
+  confirming the single-threshold case alone would have been.
 
 ## Multi-floor dungeon progression (decided Prompt 28)
 

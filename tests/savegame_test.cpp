@@ -57,11 +57,6 @@ int main() {
     original.playerXp = 37;   // deliberately not the default (0)
     original.currentFloor = 6; // deliberately not the default (1)
     original.playerHybridSpecced = true; // deliberately not the default (false)
-    original.playerHybridPickNames = {"Arcane Bolt", "Mind Shatter"}; // deliberately non-empty --
-                                                                        // names with spaces,
-                                                                        // specifically exercising
-                                                                        // the underscore-escaping
-                                                                        // round-trip
     original.playerStats.hp = 17;
     original.playerStats.maxHp = 30;
     original.playerStats.mana = 9;
@@ -75,7 +70,10 @@ int main() {
                                               // version of this test never set a non-default
                                               // value here either
     original.playerStats.speed = 100;
-    original.playerCooldowns = {0, 3, 1, 0, 0, 4, 0, 2};
+    original.playerTalents = {{"warrior.slam",0}, {"warrior.cleave",3},
+        {"warrior.rallying_cry",1}, {"warrior.berserkers_fury",0},
+        {"warrior.whirlwind",0}, {"warrior.undying_rage",4},
+        {"mage.arcane_bolt",0}, {"mage.mind_shatter",2}};
     original.playerStatusEffects = {
         StatusEffectInstance{StatusEffectType::Poison, 2, 3},
     };
@@ -141,18 +139,17 @@ int main() {
     check(loaded.currentFloor == 6, "current floor matches (not left at the default of 1)");
     check(loaded.playerHybridSpecced == true,
           "player hybrid-specced flag matches (not left at the false default)");
-    check(loaded.playerHybridPickNames.size() == 2 &&
-              loaded.playerHybridPickNames[0] == "Arcane Bolt" &&
-              loaded.playerHybridPickNames[1] == "Mind Shatter",
-          "player hybrid pick names round-trip exactly, including the space in each name "
-          "(the underscore-escaping survives the round-trip correctly)");
+    check(loaded.playerTalents.size() == 8 &&
+              loaded.playerTalents[6].id == "mage.arcane_bolt" &&
+              loaded.playerTalents[7].id == "mage.mind_shatter",
+          "borrowed talents preserve stable IDs");
     check(loaded.playerStats.hp == 17 && loaded.playerStats.maxHp == 30 &&
               loaded.playerStats.mana == 9 && loaded.playerStats.maxMana == 20 &&
               loaded.playerStats.strength == 12 && loaded.playerStats.dexterity == 14 &&
               loaded.playerStats.intelligence == 18 && loaded.playerStats.speed == 100,
           "every player stat field matches exactly");
-    check(loaded.playerCooldowns == original.playerCooldowns,
-          "all 8 talent cooldowns match exactly, in order");
+    check(loaded.playerTalents == original.playerTalents,
+          "all 8 talent identities and cooldowns match exactly");
     check(loaded.lastMoveDirection.x == 1 && loaded.lastMoveDirection.y == 0,
           "lastMoveDirection matches (needed for Blink to resume correctly)");
 

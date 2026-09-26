@@ -63,9 +63,10 @@ roguelike/
 └── data/                # data-driven content (empty -- see Prompt 9/10 notes)
 ```
 
-There are nineteen build targets: `roguelike` (the real game, links
-SFML), and eighteen standalone console programs with zero SFML
-dependency. Run them after building:
+There are twenty-two build targets: `roguelike`, twenty console tests
+with no SFML dependency, and `application_targeting_test` (a hidden-window
+SFML integration test that needs a working graphics session). Run them
+after building:
 
 ```bash
 ./build/bin/entity_smoke_test
@@ -75,17 +76,20 @@ dependency. Run them after building:
 ./build/bin/chaser_test
 ./build/bin/dungeon_test
 ./build/bin/talent_test
-./build/bin/fighter_test
+./build/bin/warrior_test
 ./build/bin/thief_test
-./build/bin/sorcerer_test
+./build/bin/mage_test
 ./build/bin/player_leveling_test
 ./build/bin/monster_tier_test
 ./build/bin/talent_unlock_test
 ./build/bin/hybrid_spec_test
 ./build/bin/monster_ai_test
 ./build/bin/boss_test
+./build/bin/lich_test
 ./build/bin/savegame_test
 ./build/bin/attribute_formulas_test
+./build/bin/targeting_test
+./build/bin/application_targeting_test
 ./build/bin/roguelike
 ```
 On Windows with the Visual Studio generator, substitute
@@ -105,6 +109,129 @@ Strength/Dexterity/Intelligence -- shown as its own screen, once per
 point, before the game resumes. Combat/status feedback is shown
 **both** in the console and as an on-screen log in
 the game window (see Prompt 13).
+
+### Inventory and equipment (Prompt 32)
+
+**B** opens the inventory. Use **Up/Down** to select one of the three equipped
+slots or a bag item; **PageUp/PageDown** scroll longer bags. **Enter** equips
+a bag item or removes equipped gear (**E** and **U** also work respectively).
+**B/Escape** closes the inventory. **G** picks up one item at your feet;
+visible ground items appear as diamonds (normal: white, magic: blue, rare:
+gold). Three starter items appear at the first floor's entrance. Later
+rewards come from enemies and chests (Prompt 33).
+
+Viewing, selecting, comparing and cancelling are free. Successful pickup,
+equip and removal each consume one turn, including normal cooldown/status
+ticks, mana regeneration and enemy actions. Committing closes the inventory
+so the combat response is visible. Empty pickups/slots consume nothing.
+
+Equipment has **weapon, armour and charm** slots, with three fixed items per
+slot. All classes can equip all items. The comparison shows base/current/
+resulting Strength, Dexterity, Intelligence, maximum HP and maximum mana.
+Gear attributes affect existing combat formulas; HP/mana bonuses are listed
+separately. Armour grants its listed stats, without an additional damage
+reduction mechanic. Replacing gear returns the old item to the bag.
+
+Increasing a maximum never refills its pool; reducing it clamps the current
+pool. Comparisons show values before the action's normal turn effects.
+Equipment bonuses are recalculated from permanent character stats, so they
+do not accumulate when swapping. Level-ups retain their existing full heal.
+
+**Save format 8:** ground items, bag order, equipped items, rolled affixes,
+unique instance IDs, permanent stats, current pools, loot RNG, chest claims,
+talent IDs/cooldowns and rune ownership/attachments persist. Older saves are rejected.
+Owned gear travels between floors; uncollected items stay behind and are
+discarded with the old floor. Floors 5 and 10 have no fixed pickups. **R**
+remains a development shortcut that regenerates/heals/repopulates the floor;
+ordinary progression uses doors.
+
+### Loot and rewards (Prompt 33)
+
+Every floor has one reward chest, shown as a gold rectangular box. Stand
+on it and press **G**: opening costs one turn and puts its item directly
+into your bag. Chests guarantee at least magic gear. Normal items have no
+affixes, magic items have one, and rare items have two different compatible
+stat affixes. **B** shows the rolled values and their effect on your stats.
+
+Ordinary enemies have a 35%/50%/65% drop chance at Base/Elite/Nightmare tier,
+capped at **two equipment drops per floor**. Each boss awards **two rare
+items directly to your bag**. Summons give no loot or XP. Affix strength
+increases mainly with floor depth, with elite/boss bonuses. A complete run
+offers about 33-37 equipment items including starters; the initial balance
+target is 6-10 worthwhile equipment changes, pending playtesting.
+
+### Skill runes (Prompt 34)
+
+Open the first floor's chest, then press **V** and **1-4** to choose one
+rune. The choice may be deferred and survives saving. Even-floor chests
+and both bosses each add one random rune. These use the separate loot RNG.
+
+In **V**, **Up/Down** selects a talent and **Left/Right** cycles owned runes.
+**Enter** attaches or swaps the selected rune; **U** removes the selected
+talent's rune. **V/Escape** closes the screen. Each change costs one turn,
+preserves running cooldowns and returns displaced runes to the rune bag.
+Browsing and rejected changes are free. Each talent has one rune slot.
+
+| Rune | Effect and compatibility |
+|---|---|
+| Chain | Damaging single-target projectiles bounce to one other visible enemy within 3 tiles, for 50% damage. Walls, blocked corners and intervening enemies stop the bounce. |
+| Widen | Damaging area talents gain +1 radius; mana costs increase by 50%, rounded up (minimum +1). |
+| Venom | Damaging talents without existing on-hit effects deal 80% direct damage, then poison surviving targets for 2 damage on each of 3 enemy turns. Dodges prevent poison. Reapplication refreshes the existing poison instead of stacking. |
+| Swift Passage | Pure movement gains +2 tiles and +2 cooldown turns. Vault Kick is an attack with a retreat, so it is incompatible. |
+
+Mage now learns **Blink at level 2**: 3 tiles, 4 mana, 4-turn cooldown.
+With Swift Passage it travels up to 5 tiles with a 6-turn cooldown. Blink
+also enters the existing Warrior hybrid pool, which now has seven choices.
+Damage scaling always uses the base talent's cooldown tier. Aiming previews
+use the same modified radius, trajectory, movement and costs as the cast.
+
+Both prompts compile in the Debug game target. Automated tests and an
+interactive playthrough have not been run for these changes; balance values
+are initial tuning.
+
+### Targeting and inspection (Prompt 31)
+
+| Control | Action |
+|---|---|
+| 1-9, or click a talent in the sidebar | Select a talent; targeted attacks and movement enter aiming mode |
+| Mouse movement, or arrows/WASD while aiming | Move the targeting cursor |
+| Tab / Shift+Tab | Cycle valid visible enemies forward/backward |
+| Enter / left-click on the map | Confirm the aimed action |
+| Escape / right-click | Cancel aiming or keyboard inspection, spending nothing |
+| Hover an enemy | Inspect its HP, attributes, speed, statuses, and abilities |
+| I, or Tab outside aiming | Enter keyboard inspection; arrows move its cursor |
+| I again | Leave keyboard inspection |
+| PageUp / PageDown | Change the talent page; keys 1-9 refer to the displayed page |
+
+Self-buffs and self-healing activate immediately. Outside aiming/inspection,
+Escape still exits when the inventory is also closed. Aiming, inspecting, changing pages, and invalid casts
+consume no turn. Each key press is one action; holding a key does not repeat
+casts or movement. A dedicated sidebar leaves the map unobscured, with
+28-pixel tiles and an 18-row viewport that fits the radius-8 field of view.
+
+Quick Shot, Volley, Piercing Shot, Arcane Bolt, Ember Bolt, and Fireball
+are player projectiles: their arrows stop at terrain or the first enemy.
+Piercing Shot retains its existing critical-hit identity; it does not pierce
+multiple actors. Volley/Fireball splash around the first impact. Other
+targeted spells select a visible enemy directly. Area previews show the
+same visible, walkable tiles used to find victims; splash does not add a
+separate line-of-effect check from its center. Hidden enemies are neither
+revealed nor damaged by player splash. Blink follows the aimed tile up to
+its movement limit, stopping before terrain, occupants, or unseen tiles;
+Vault Kick previews its retreat too. Red indicates a blocked/invalid path,
+cyan the affected area, and blue a retreat path. The damage estimate includes
+normal/critical outcomes, but a hit can still be dodged.
+
+Enemy ability descriptions are public; remaining cooldowns are **unknown**.
+The inspection API has an explicit reveal permission for a future perception
+talent, but no Analyze talent is granted in this update. Hidden or remembered
+enemies cannot be inspected even with that permission. Enemy AI targeting
+is unchanged; this prompt introduces player targeting and inspection.
+
+Selections are transient: load/regeneration cancels them. No save-format
+change is needed because projectile definitions are rebuilt with the class
+kit. The integration test writes its own save and screenshots under
+`build/targeting-checks/`, without touching the player's normal save.
 
 As of Prompt 5, `roguelike` opens a window with a player tile you can
 move using arrow keys or WASD, routed through the real turn scheduler.
@@ -299,6 +426,12 @@ Warlord again as a placeholder, since the actual final boss (a Lich
 that summons skeleton minions) is separate, not-yet-built work. The
 current floor shows in the HUD under your level.
 
+As of Prompt 29, floor 10's boss **is** the Lich -- the placeholder
+above is gone. It fights entirely at range (bolt attacks, retreating if
+you close in), and periodically raises a **Skeleton** minion instead of
+bolting, up to 3 times per fight. Skeletons are individually weak but
+block your path and add up if ignored while you focus the Lich itself.
+
 | Enemy | Color | Behavior | Str/Dex/Int | Dodge |
 |---|---|---|---|---|
 | Goblin | red | `Chaser` -- plain melee | 6/0/2 | 0% |
@@ -308,6 +441,8 @@ current floor shows in the HUD under your level.
 | Shaman | purple | `Support` -- never attacks; buffs a nearby ally instead | 1/0/16 | 0% |
 | Bomber | orange | `AoEBomber` -- ranged area attack on a cooldown | 2/0/14 | 0% |
 | Goblin Warlord | gold | `BossBehavior` -- 3-phase set-piece fight | 14/0/10 | 0% |
+| Lich | pale teal | `LichBehavior` -- ranged, summons Skeleton minions | 4/20/16 | 10% |
+| Skeleton | bone white | `Chaser` -- plain melee, the Lich's summoned minion | 5/0/0 | 0% |
 
 ## Building
 

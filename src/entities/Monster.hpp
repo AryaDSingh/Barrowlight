@@ -45,10 +45,15 @@ public:
     // AIBehavior at creation time and don't need this to be read back.
     MonsterTier tier() const { return tier_; }
     void setTier(MonsterTier tier) { tier_ = tier; }
+    bool rewardsEligible() const { return rewardsEligible_; }
+    void setRewardsEligible(bool value) { rewardsEligible_ = value; if (!value) setXpReward(0); }
+    bool claimDeath() { if (deathClaimed_) return false; deathClaimed_ = true; return true; }
 
 private:
     MonsterType type_;
     MonsterTier tier_ = MonsterTier::Base;
+    bool rewardsEligible_ = true;
+    bool deathClaimed_ = false;
 };
 
 } // namespace engine

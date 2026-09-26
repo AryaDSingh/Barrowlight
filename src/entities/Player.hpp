@@ -1,6 +1,7 @@
 #pragma once
 
 #include <utility>
+#include <algorithm>
 
 #include "entities/Actor.hpp"
 
@@ -16,10 +17,7 @@ namespace engine {
 // Player actually knows is now PlayerClassFactory's job
 // (talentSetForClass), the same "factory decides, the class itself
 // stays generic" shape MonsterFactory already established for monsters.
-// There's still no leveling/unlock system in this vertical slice, so a
-// class's full kit is always known from the start -- gating talent
-// access behind character progression would be scope this project
-// hasn't asked for.
+// Progression adds talents to that initial kit as levels are earned.
 //
 // As of Prompt 20: level_/xp_ track character progression -- level_
 // starts at 1, capped at 10; xp_ is progress toward the *next* level
@@ -45,7 +43,34 @@ namespace engine {
 class Player : public Actor {
 public:
     Player(Position position, Stats stats, TalentSet talents)
-        : Actor("Player", '@', position, std::move(stats), nullptr, std::move(talents)) {}
+        : Actor("Player", '@', position, stats, nullptr, std::move(talents)), baseStats_(stats) {}
+
+    // Permanent progression changes base stats; combat changes current hp/mana in stats().
+    Stats& baseStats() { return baseStats_; }
+    const Stats& baseStats() const { return baseStats_; }
+    Stats effectiveStats() const {
+        Stats result = baseStats_;
+        for (int i = 0; i < 3; ++i) {
+            const auto* item = inventory().equipped(static_cast<EquipmentSlot>(i));
+            if (!item) continue;
+            const auto b = item->bonuses();
+            result.strength += b.strength; result.dexterity += b.dexterity;
+            result.intelligence += b.intelligence;
+            result.maxHp += b.maxHp; result.maxMana += b.maxMana;
+        }
+        result.hp = std::clamp(stats().hp, 0, result.maxHp);
+        result.mana = std::clamp(stats().mana, 0, result.maxMana);
+        return result;
+    }
+    void refreshEquipmentStats() { stats() = effectiveStats(); }
+    bool equip(std::size_t index) {
+        if (!inventory().equip(index)) return false;
+        refreshEquipmentStats(); return true;
+    }
+    bool unequip(EquipmentSlot slot) {
+        if (!inventory().unequip(slot)) return false;
+        refreshEquipmentStats(); return true;
+    }
 
     int& level() { return level_; }
     int level() const { return level_; }
@@ -65,6 +90,7 @@ public:
     int unspentAttributePoints() const { return unspentAttributePoints_; }
 
 private:
+    Stats baseStats_;
     int level_ = 1;
     int xp_ = 0;
     bool hybridSpecced_ = false;

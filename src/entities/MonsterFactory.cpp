@@ -7,6 +7,7 @@
 #include "ai/BossBehavior.hpp"
 #include "ai/Chaser.hpp"
 #include "ai/Kiter.hpp"
+#include "ai/LichBehavior.hpp"
 #include "ai/Support.hpp"
 #include "entities/AttributeFormulas.hpp"
 #include "entities/MonsterAttackProfile.hpp"
@@ -171,6 +172,7 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
             std::vector<Talent> abilities;
             Talent empower;
             empower.name = "Empower";
+            empower.id = "shaman.empower";
             empower.description = "Grants an ally bonus damage for a few turns.";
             empower.cooldownTurns = 4;
             abilities.push_back(empower);
@@ -195,6 +197,7 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
             std::vector<Talent> abilities;
             Talent blast;
             blast.name = "Blast";
+            blast.id = "bomber.blast";
             blast.description = "An area burst, on a real cooldown.";
             blast.cooldownTurns = 5;
             blast.scalingStat = ScalingStat::Intelligence;
@@ -233,6 +236,7 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
             std::vector<Talent> abilities;
             Talent fury;
             fury.name = "Warlord's Fury";
+            fury.id = "warlord.fury";
             fury.description = "A desperate magical blast, unlocked once wounded.";
             fury.cooldownTurns = 4;
             fury.scalingStat = ScalingStat::Intelligence;
@@ -245,6 +249,68 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
                                                 /*blastRange=*/5, /*tooCloseRange=*/2,
                                                 /*enrageBonus=*/6),
                 TalentSet(abilities));
+            break;
+        }
+        case MonsterType::Lich: {
+            // The floor kFinalFloor boss -- tougher than the Goblin
+            // Warlord across the board (110 hp vs. 90), entirely
+            // ranged, and the first monster in the roster with a real
+            // Dexterity investment (20 -> 10% dodge, "hard to pin down"
+            // fitting a spellcaster better than the Warlord's
+            // deliberate 0%). Deliberately ignores `tier` for the same
+            // reason the Warlord does -- it's already the separately-
+            // tuned hardest fight in the game. boltProfile.power == 6 +
+            // 3 (16/5 == 3) == 9 total -- a bit harder-hitting than the
+            // Warlord's own blast (10), matching a later, tougher
+            // encounter. The single ability in its talent set exists
+            // purely to track the summon cooldown (LichBehavior checks
+            // isReady(0)) -- there's no separate damage number attached
+            // to it the way Warlord's Fury or Bomber's Blast have,
+            // since summoning doesn't deal damage itself.
+            constexpr int kStrength = 4;
+            constexpr int kDexterity = 20;
+            constexpr int kIntelligence = 16;
+            MonsterAttackProfile boltProfile;
+            boltProfile.power = 6;
+            boltProfile.scalingStat = ScalingStat::Intelligence;
+
+            std::vector<Talent> abilities;
+            Talent raiseSkeleton;
+            raiseSkeleton.name = "Raise Skeleton";
+            raiseSkeleton.id = "lich.raise_skeleton";
+            raiseSkeleton.description = "Summons a skeleton minion, on a real cooldown.";
+            raiseSkeleton.cooldownTurns = 5;
+            abilities.push_back(raiseSkeleton);
+
+            monster = std::make_unique<Monster>(
+                type, "Lich", 'L', position, makeStats(110, kStrength, kDexterity, kIntelligence),
+                std::make_unique<LichBehavior>(boltProfile, /*attackRange=*/6,
+                                                /*tooCloseRange=*/2, /*maxSummons=*/3),
+                TalentSet(abilities));
+            break;
+        }
+        case MonsterType::Skeleton: {
+            // The Lich's summoned minion -- never independently placed
+            // by a dungeon's regular roster, only ever created via
+            // AIActionType::Summon (see Application::executeAIDecision).
+            // Deliberately weaker than a regular Goblin (15 hp vs. 20,
+            // 3 total damage vs. 4) -- individually modest, dangerous
+            // in numbers if left unchecked while focusing the Lich
+            // itself, which is the whole point of the mechanic. Plain
+            // Chaser melee, no on-hit effect -- a minion doesn't need
+            // its own gimmick on top of just being another body in the
+            // fight. Always Base tier: summonTier defaults to Base in
+            // AIDecision (see AIBehavior.hpp) and LichBehavior never
+            // overrides it -- a summoned skeleton doesn't scale with
+            // character level the way a dungeon's own spawned roster
+            // does.
+            constexpr int kStrength = 5;
+            MonsterAttackProfile profile;
+            profile.power = 2; // +1 from strength (5/5 == 1) == 3 total
+            monster = std::make_unique<Monster>(
+                type, tieredName("Skeleton", tier), 'z', position,
+                makeStats(scaledHp(15, tier), kStrength, /*dex=*/0, /*int=*/0),
+                std::make_unique<Chaser>(profile));
             break;
         }
     }
@@ -293,6 +359,16 @@ int xpRewardForType(MonsterType type, MonsterTier tier) {
             // createMonster()'s GoblinWarlord case), so its reward
             // shouldn't either.
             return 200;
+        case MonsterType::Lich:
+            // The true final fight -- an even larger flat reward than
+            // the Warlord's, matching "the last boss in the game," even
+            // though in practice defeating it ends the run before any
+            // further XP could matter. Same "always Base tier" reasoning
+            // as GoblinWarlord.
+            return 300;
+        case MonsterType::Skeleton:
+            baseReward = 5; // a modest fraction of Goblin's 10 -- a minion, not a real kill goal
+            break;
     }
     return static_cast<int>(std::lround(baseReward * xpMultiplierForTier(tier)));
 }

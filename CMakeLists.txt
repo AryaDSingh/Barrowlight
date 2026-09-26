@@ -58,6 +58,8 @@ set(COMMON_HEADERS
 set(ENTITY_HEADERS
     src/entities/Entity.hpp
     src/entities/Item.hpp
+    src/entities/LootGenerator.hpp
+    src/entities/Rune.hpp
     src/entities/Feature.hpp
     src/entities/Stats.hpp
     src/entities/AttributeFormulas.hpp
@@ -71,15 +73,16 @@ set(ENTITY_HEADERS
     src/entities/StatusEffectLogic.hpp
     src/entities/MonsterAttackProfile.hpp
     src/entities/MonsterType.hpp
+    src/entities/MonsterInspection.hpp
     src/entities/MonsterTier.hpp
     src/entities/HybridSpec.hpp
     src/entities/MonsterFactory.hpp
     src/entities/PlayerClass.hpp
     src/entities/PlayerClassFactory.hpp
     src/entities/PlayerLeveling.hpp
-    src/entities/FighterTalents.hpp
+    src/entities/WarriorTalents.hpp
     src/entities/ThiefTalents.hpp
-    src/entities/SorcererTalents.hpp
+    src/entities/MageTalents.hpp
     src/entities/Actor.hpp
     src/entities/Player.hpp
     src/entities/Monster.hpp
@@ -87,6 +90,7 @@ set(ENTITY_HEADERS
 
 set(CORE_HEADERS
     src/core/Application.hpp
+    src/core/PlayLayout.hpp
     src/core/TurnScheduler.hpp
     src/core/SaveGame.hpp
     src/core/SoundManager.hpp
@@ -95,6 +99,7 @@ set(CORE_HEADERS
 set(WORLD_HEADERS
     src/world/Tile.hpp
     src/world/Map.hpp
+    src/world/TalentTargeting.hpp
     src/world/FieldOfView.hpp
     src/world/ExploredMap.hpp
     src/world/Pathfinder.hpp
@@ -109,6 +114,7 @@ set(AI_HEADERS
     src/ai/Support.hpp
     src/ai/AoEBomber.hpp
     src/ai/BossBehavior.hpp
+    src/ai/LichBehavior.hpp
 )
 
 # ---------------------------------------------------------------------------
@@ -121,6 +127,12 @@ set(AI_HEADERS
 add_executable(roguelike
     src/main.cpp
     src/core/Application.cpp
+    src/core/ApplicationTargeting.cpp
+    src/core/ApplicationInventory.cpp
+    src/core/ApplicationLoot.cpp
+    src/core/ApplicationRunes.cpp
+    src/world/TalentTargeting.cpp
+    src/entities/MonsterInspection.cpp
     src/core/TurnScheduler.cpp
     src/world/Map.cpp
     src/world/FieldOfView.cpp
@@ -132,12 +144,13 @@ add_executable(roguelike
     src/ai/Support.cpp
     src/ai/AoEBomber.cpp
     src/ai/BossBehavior.cpp
+    src/ai/LichBehavior.cpp
     src/entities/TalentSet.cpp
     src/entities/TalentEffects.cpp
     src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
-    src/entities/FighterTalents.cpp
-    src/entities/SorcererTalents.cpp
+    src/entities/WarriorTalents.cpp
+    src/entities/MageTalents.cpp
     src/entities/ThiefTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/PlayerLeveling.cpp
@@ -172,8 +185,8 @@ add_executable(entity_smoke_test
     tests/entity_smoke_test.cpp
     src/entities/TalentSet.cpp
     src/entities/SpellbladeTalents.cpp
-    src/entities/FighterTalents.cpp
-    src/entities/SorcererTalents.cpp
+    src/entities/WarriorTalents.cpp
+    src/entities/MageTalents.cpp
     src/entities/ThiefTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/AttributeFormulas.cpp
@@ -256,8 +269,8 @@ add_executable(chaser_test
     src/ai/Chaser.cpp
     src/entities/TalentSet.cpp
     src/entities/SpellbladeTalents.cpp
-    src/entities/FighterTalents.cpp
-    src/entities/SorcererTalents.cpp
+    src/entities/WarriorTalents.cpp
+    src/entities/MageTalents.cpp
     src/entities/ThiefTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/AttributeFormulas.cpp
@@ -301,8 +314,8 @@ add_executable(talent_test
     src/entities/TalentEffects.cpp
     src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
-    src/entities/FighterTalents.cpp
-    src/entities/SorcererTalents.cpp
+    src/entities/WarriorTalents.cpp
+    src/entities/MageTalents.cpp
     src/entities/ThiefTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
@@ -315,20 +328,20 @@ target_include_directories(talent_test PRIVATE src)
 target_compile_features(talent_test PRIVATE cxx_std_17)
 
 # ---------------------------------------------------------------------------
-# Fighter test
+# Warrior test
 # ---------------------------------------------------------------------------
-# Mirrors talent_test.cpp's structure exactly, for the Fighter's kit
-# (originally "Marauder," renamed at Prompt 19) and PlayerClassFactory
-# instead of the Spellblade's.
+# Mirrors talent_test.cpp's structure exactly, for the Warrior's kit
+# (originally "Marauder," renamed to Fighter at Prompt 19, then Warrior
+# at Prompt 26) and PlayerClassFactory instead of the Spellblade's.
 
-add_executable(fighter_test
-    tests/fighter_test.cpp
+add_executable(warrior_test
+    tests/warrior_test.cpp
     src/entities/TalentSet.cpp
     src/entities/TalentEffects.cpp
     src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
-    src/entities/FighterTalents.cpp
-    src/entities/SorcererTalents.cpp
+    src/entities/WarriorTalents.cpp
+    src/entities/MageTalents.cpp
     src/entities/ThiefTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
@@ -337,15 +350,15 @@ add_executable(fighter_test
     ${AI_HEADERS}
 )
 
-target_include_directories(fighter_test PRIVATE src)
-target_compile_features(fighter_test PRIVATE cxx_std_17)
+target_include_directories(warrior_test PRIVATE src)
+target_compile_features(warrior_test PRIVATE cxx_std_17)
 
 # ---------------------------------------------------------------------------
 # Thief test
 # ---------------------------------------------------------------------------
-# Mirrors fighter_test.cpp's structure exactly, for the Thief's kit
+# Mirrors warrior_test.cpp's structure exactly, for the Thief's kit
 # (originally "Archer," renamed at Prompt 19) and PlayerClassFactory
-# instead of the Fighter's.
+# instead of the Warrior's.
 
 add_executable(thief_test
     tests/thief_test.cpp
@@ -353,8 +366,8 @@ add_executable(thief_test
     src/entities/TalentEffects.cpp
     src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
-    src/entities/FighterTalents.cpp
-    src/entities/SorcererTalents.cpp
+    src/entities/WarriorTalents.cpp
+    src/entities/MageTalents.cpp
     src/entities/ThiefTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
@@ -367,19 +380,19 @@ target_include_directories(thief_test PRIVATE src)
 target_compile_features(thief_test PRIVATE cxx_std_17)
 
 # ---------------------------------------------------------------------------
-# Sorcerer test
+# Mage test
 # ---------------------------------------------------------------------------
-# Mirrors fighter_test.cpp/thief_test.cpp's structure exactly, for the
+# Mirrors warrior_test.cpp/thief_test.cpp's structure exactly, for the
 # third base class's kit and PlayerClassFactory.
 
-add_executable(sorcerer_test
-    tests/sorcerer_test.cpp
+add_executable(mage_test
+    tests/mage_test.cpp
     src/entities/TalentSet.cpp
     src/entities/TalentEffects.cpp
     src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
-    src/entities/FighterTalents.cpp
-    src/entities/SorcererTalents.cpp
+    src/entities/WarriorTalents.cpp
+    src/entities/MageTalents.cpp
     src/entities/ThiefTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
@@ -388,8 +401,8 @@ add_executable(sorcerer_test
     ${AI_HEADERS}
 )
 
-target_include_directories(sorcerer_test PRIVATE src)
-target_compile_features(sorcerer_test PRIVATE cxx_std_17)
+target_include_directories(mage_test PRIVATE src)
+target_compile_features(mage_test PRIVATE cxx_std_17)
 
 # ---------------------------------------------------------------------------
 # Talent unlock test
@@ -404,8 +417,8 @@ add_executable(talent_unlock_test
     src/entities/TalentEffects.cpp
     src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
-    src/entities/FighterTalents.cpp
-    src/entities/SorcererTalents.cpp
+    src/entities/WarriorTalents.cpp
+    src/entities/MageTalents.cpp
     src/entities/ThiefTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
@@ -420,9 +433,9 @@ target_compile_features(talent_unlock_test PRIVATE cxx_std_17)
 # ---------------------------------------------------------------------------
 # Hybrid spec test
 # ---------------------------------------------------------------------------
-# Covers Prompt 24's Fighter/Sorcerer hybrid path: eligibility, pool
-# class, and availableHybridPicks() shrinking correctly as abilities are
-# picked.
+# Covers Prompt 24's Warrior/Mage hybrid path (Fighter/Sorcerer at the
+# time it was built): eligibility, pool class, and availableHybridPicks()
+# shrinking correctly as abilities are picked.
 
 add_executable(hybrid_spec_test
     tests/hybrid_spec_test.cpp
@@ -431,8 +444,8 @@ add_executable(hybrid_spec_test
     src/entities/TalentEffects.cpp
     src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
-    src/entities/FighterTalents.cpp
-    src/entities/SorcererTalents.cpp
+    src/entities/WarriorTalents.cpp
+    src/entities/MageTalents.cpp
     src/entities/ThiefTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
@@ -487,6 +500,7 @@ add_executable(monster_tier_test
     src/ai/Support.cpp
     src/ai/AoEBomber.cpp
     src/ai/BossBehavior.cpp
+    src/ai/LichBehavior.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
     ${AI_HEADERS}
@@ -514,8 +528,8 @@ add_executable(monster_ai_test
     src/entities/TalentEffects.cpp
     src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
-    src/entities/FighterTalents.cpp
-    src/entities/SorcererTalents.cpp
+    src/entities/WarriorTalents.cpp
+    src/entities/MageTalents.cpp
     src/entities/ThiefTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
@@ -546,8 +560,8 @@ add_executable(boss_test
     src/entities/TalentEffects.cpp
     src/entities/AttributeFormulas.cpp
     src/entities/SpellbladeTalents.cpp
-    src/entities/FighterTalents.cpp
-    src/entities/SorcererTalents.cpp
+    src/entities/WarriorTalents.cpp
+    src/entities/MageTalents.cpp
     src/entities/ThiefTalents.cpp
     src/entities/PlayerClassFactory.cpp
     src/entities/StatusEffects.cpp
@@ -559,6 +573,39 @@ add_executable(boss_test
 
 target_include_directories(boss_test PRIVATE src)
 target_compile_features(boss_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# Lich test
+# ---------------------------------------------------------------------------
+# Also console-only, no SFML -- verifies LichBehavior's Kiter-like
+# movement and, more importantly, the summon mechanic itself (cooldown
+# gating, the maxSummons cap held across multiple ready cooldowns, and
+# falling back to a bolt when no open tile exists), using MonsterFactory's
+# real configured numbers.
+
+add_executable(lich_test
+    tests/lich_test.cpp
+    src/world/Map.cpp
+    src/world/FieldOfView.cpp
+    src/world/Pathfinder.cpp
+    src/ai/LichBehavior.cpp
+    src/entities/TalentSet.cpp
+    src/entities/TalentEffects.cpp
+    src/entities/AttributeFormulas.cpp
+    src/entities/SpellbladeTalents.cpp
+    src/entities/WarriorTalents.cpp
+    src/entities/MageTalents.cpp
+    src/entities/ThiefTalents.cpp
+    src/entities/PlayerClassFactory.cpp
+    src/entities/StatusEffects.cpp
+    ${COMMON_HEADERS}
+    ${ENTITY_HEADERS}
+    ${WORLD_HEADERS}
+    ${AI_HEADERS}
+)
+
+target_include_directories(lich_test PRIVATE src)
+target_compile_features(lich_test PRIVATE cxx_std_17)
 
 # ---------------------------------------------------------------------------
 # Save/load test
@@ -598,3 +645,26 @@ target_include_directories(attribute_formulas_test PRIVATE src)
 target_compile_features(attribute_formulas_test PRIVATE cxx_std_17)
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT roguelike)
+
+# Pure targeting/inspection rules, with no SFML dependency.
+add_executable(targeting_test
+    tests/targeting_test.cpp
+    src/world/TalentTargeting.cpp
+    src/world/Map.cpp
+    src/world/ExploredMap.cpp
+    src/entities/MonsterInspection.cpp
+    src/entities/TalentSet.cpp
+    src/entities/TalentEffects.cpp
+    src/entities/AttributeFormulas.cpp
+    src/entities/StatusEffects.cpp
+)
+target_include_directories(targeting_test PRIVATE src)
+target_compile_features(targeting_test PRIVATE cxx_std_17)
+
+# Real input/casting integration and render snapshots using a hidden SFML window.
+get_target_property(APPLICATION_TEST_SOURCES roguelike SOURCES)
+list(REMOVE_ITEM APPLICATION_TEST_SOURCES src/main.cpp)
+add_executable(application_targeting_test tests/application_targeting_test.cpp ${APPLICATION_TEST_SOURCES})
+target_include_directories(application_targeting_test PRIVATE src)
+target_compile_features(application_targeting_test PRIVATE cxx_std_17)
+target_link_libraries(application_targeting_test PRIVATE SFML::Graphics SFML::Audio)

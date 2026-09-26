@@ -6,13 +6,13 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
-#include <limits>
 #include <optional>
 #include <random>
 #include <string>
 #include <vector>
 
 #include "core/SaveGame.hpp"
+#include "core/PlayLayout.hpp"
 #include "entities/AttributeFormulas.hpp"
 #include "entities/MonsterFactory.hpp"
 #include "entities/HybridSpec.hpp"
@@ -26,10 +26,13 @@
 namespace engine {
 
 namespace {
-constexpr unsigned int kWindowWidth = 1280;
-constexpr unsigned int kWindowHeight = 720;
+constexpr unsigned int kWindowWidth = playLayout::windowWidth;
+constexpr unsigned int kWindowHeight = playLayout::windowHeight;
 constexpr char kWindowTitle[] = "Roguelike Engine - Dev Window";
-constexpr float kTileSize = 32.f;
+constexpr float kTileSize = static_cast<float>(playLayout::tileSize);
+constexpr unsigned int kMapWidth = playLayout::mapWidth;
+constexpr unsigned int kMapHeight = playLayout::mapHeight;
+constexpr float kMapTop = static_cast<float>(playLayout::mapTop);
 constexpr int kSightRadius = 8;
 constexpr unsigned int kInitialSeed = 1337;
 
@@ -75,18 +78,6 @@ sf::Color dim(sf::Color c) {
                       static_cast<std::uint8_t>(c.b * kDimFactor));
 }
 
-bool isAdjacent(Position a, Position b) {
-    const int dx = std::abs(a.x - b.x);
-    const int dy = std::abs(a.y - b.y);
-    return (dx + dy) == 1;
-}
-
-int distanceSquared(Position a, Position b) {
-    const int dx = a.x - b.x;
-    const int dy = a.y - b.y;
-    return dx * dx + dy * dy;
-}
-
 // No sprite/tile art exists yet (see ARCHITECTURE_DECISIONS.md) -- each
 // enemy type gets a distinct flat color so the roster is at least
 // visually distinguishable at a glance.
@@ -105,6 +96,8 @@ sf::Color monsterColor(MonsterType type) {
         case MonsterType::Shaman: return sf::Color(170, 70, 210);
         case MonsterType::Bomber: return sf::Color(230, 110, 30);
         case MonsterType::GoblinWarlord: return sf::Color(255, 215, 0);
+        case MonsterType::Lich: return sf::Color(140, 220, 210); // pale, ghostly teal
+        case MonsterType::Skeleton: return sf::Color(220, 220, 200); // bone white
     }
     return sf::Color(190, 190, 190); // unreachable -- all enum values handled above
 }
@@ -161,6 +154,7 @@ Application::Application()
     }
 
     window_.setFramerateLimit(60);
+    window_.setKeyRepeatEnabled(false); // A held confirm key must not cast twice.
     // Deliberately no regenerateLevel() call here -- mode_ starts at
     // ClassSelection (see the member's default), and selectClass()
     // calls regenerateLevel() itself once a real choice is made. Prompt
@@ -200,8 +194,8 @@ void Application::updateCamera() {
     // Viewport size in whole tiles -- derived from the window/tile
     // constants rather than hardcoded again, so this stays correct if
     // either ever changes.
-    constexpr int kViewportWidthTiles = static_cast<int>(kWindowWidth / kTileSize);
-    constexpr int kViewportHeightTiles = static_cast<int>(kWindowHeight / kTileSize);
+    constexpr int kViewportWidthTiles = static_cast<int>(kMapWidth / kTileSize);
+    constexpr int kViewportHeightTiles = static_cast<int>(kMapHeight / kTileSize);
 
     const int desiredX = player_.position().x - kViewportWidthTiles / 2;
     const int desiredY = player_.position().y - kViewportHeightTiles / 2;
@@ -221,7 +215,7 @@ void Application::updateCamera() {
 
 sf::Vector2f Application::worldToScreen(int tileX, int tileY) const {
     return {static_cast<float>(tileX - cameraX_) * kTileSize,
-            static_cast<float>(tileY - cameraY_) * kTileSize};
+            kMapTop + static_cast<float>(tileY - cameraY_) * kTileSize};
 }
 
 void Application::processEvents() {
@@ -230,8 +224,19 @@ void Application::processEvents() {
             window_.close();
         }
 
+        if (mode_ == GameMode::Playing && !inventoryOpen_ && !runesOpen_) handleTargetingMouse(*event);
+
         if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
             if (keyPressed->code == sf::Keyboard::Key::Escape) {
+                if (runesOpen_) { runesOpen_ = false; continue; }
+                if (inventoryOpen_) {
+                    inventoryOpen_ = false;
+                    continue;
+                }
+                if (mode_ == GameMode::Playing && (aimingTalent_ || inspecting_)) {
+                    cancelTargeting();
+                    continue;
+                }
                 window_.close();
                 continue;
             }
@@ -280,9 +285,10 @@ void Application::processEvents() {
                 // .size(), at most 6); 0 declines, only meaningful
                 // during the one-time spec-in decision.
                 std::optional<std::size_t> pickedIndex;
-                static constexpr std::array<sf::Keyboard::Key, 6> kChoiceKeys{
+                static constexpr std::array<sf::Keyboard::Key, 7> kChoiceKeys{
                     sf::Keyboard::Key::Num1, sf::Keyboard::Key::Num2, sf::Keyboard::Key::Num3,
                     sf::Keyboard::Key::Num4, sf::Keyboard::Key::Num5, sf::Keyboard::Key::Num6,
+                    sf::Keyboard::Key::Num7,
                 };
                 for (std::size_t i = 0; i < kChoiceKeys.size(); ++i) {
                     if (keyPressed->code == kChoiceKeys[i] && i < pendingHybridChoices_.size()) {
@@ -314,22 +320,23 @@ void Application::processEvents() {
             if (mode_ == GameMode::AttributeAllocation) {
                 bool allocated = false;
                 if (keyPressed->code == sf::Keyboard::Key::Num1) {
-                    player_.stats().strength += 1;
-                    player_.stats().maxHp += 1;
+                    player_.baseStats().strength += 1;
+                    player_.baseStats().maxHp += 1;
                     log("+1 Strength.");
                     allocated = true;
                 } else if (keyPressed->code == sf::Keyboard::Key::Num2) {
-                    player_.stats().dexterity += 1;
+                    player_.baseStats().dexterity += 1;
                     log("+1 Dexterity.");
                     allocated = true;
                 } else if (keyPressed->code == sf::Keyboard::Key::Num3) {
-                    player_.stats().intelligence += 1;
-                    player_.stats().maxMana += 1;
+                    player_.baseStats().intelligence += 1;
+                    player_.baseStats().maxMana += 1;
                     log("+1 Intelligence.");
                     allocated = true;
                 }
 
                 if (allocated) {
+                    player_.refreshEquipmentStats();
                     player_.unspentAttributePoints() -= 1;
                     soundManager_.play(SoundEffect::Select);
                     // Tentatively resume -- resumeLevelUpSequence() puts
@@ -343,6 +350,26 @@ void Application::processEvents() {
                 }
                 continue;
             }
+
+            if (runesOpen_) { handleRuneKey(keyPressed->code); continue; }
+            if (inventoryOpen_) {
+                handleInventoryKey(keyPressed->code);
+                continue;
+            }
+            if (keyPressed->code == sf::Keyboard::Key::B) {
+                openInventory();
+                continue;
+            }
+            if (keyPressed->code == sf::Keyboard::Key::V) {
+                cancelTargeting(); mousePixel_.reset(); runeFeedback_.clear();
+                runesOpen_ = true;
+                continue;
+            }
+            if (keyPressed->code == sf::Keyboard::Key::G) {
+                pickupItem();
+                continue;
+            }
+            if (handleTargetingKey(keyPressed->code, keyPressed->shift)) continue;
 
             switch (keyPressed->code) {
                 case sf::Keyboard::Key::Up:
@@ -365,31 +392,31 @@ void Application::processEvents() {
                     regenerateLevel(std::random_device{}());
                     break;
                 case sf::Keyboard::Key::Num1:
-                    tryUseTalent(0);
+                    requestTalent(talentPage_ * 9);
                     break;
                 case sf::Keyboard::Key::Num2:
-                    tryUseTalent(1);
+                    requestTalent(talentPage_ * 9 + 1);
                     break;
                 case sf::Keyboard::Key::Num3:
-                    tryUseTalent(2);
+                    requestTalent(talentPage_ * 9 + 2);
                     break;
                 case sf::Keyboard::Key::Num4:
-                    tryUseTalent(3);
+                    requestTalent(talentPage_ * 9 + 3);
                     break;
                 case sf::Keyboard::Key::Num5:
-                    tryUseTalent(4);
+                    requestTalent(talentPage_ * 9 + 4);
                     break;
                 case sf::Keyboard::Key::Num6:
-                    tryUseTalent(5);
+                    requestTalent(talentPage_ * 9 + 5);
                     break;
                 case sf::Keyboard::Key::Num7:
-                    tryUseTalent(6);
+                    requestTalent(talentPage_ * 9 + 6);
                     break;
                 case sf::Keyboard::Key::Num8:
-                    tryUseTalent(7);
+                    requestTalent(talentPage_ * 9 + 7);
                     break;
                 case sf::Keyboard::Key::Num9:
-                    tryUseTalent(8);
+                    requestTalent(talentPage_ * 9 + 8);
                     break;
                 case sf::Keyboard::Key::F5:
                     saveGame();
@@ -427,18 +454,6 @@ Actor* Application::actorAt(Position pos, const Actor* exclude) {
     return nullptr;
 }
 
-Position Application::resolveBlinkDestination(Position direction, int maxDistance) {
-    Position current = player_.position();
-    for (int i = 0; i < maxDistance; ++i) {
-        const Position next{current.x + direction.x, current.y + direction.y};
-        if (!map_.isWalkable(next.x, next.y) || isOccupied(next, &player_)) {
-            break;
-        }
-        current = next;
-    }
-    return current;
-}
-
 bool Application::tryMovePlayer(int dx, int dy) {
     if (!window_.isOpen()) {
         return false;
@@ -474,6 +489,10 @@ bool Application::tryMovePlayer(int dx, int dy) {
     }
 
     player_.setPosition(target);
+    for (const auto& item : groundItems_) {
+        if (item->position().x == target.x && item->position().y == target.y)
+            log("You see ", item->name(), ". G: pick up (1 turn).");
+    }
     lastMoveDirection_ = Position{dx, dy};
     player_.talents().tickCooldowns();
     updateFieldOfView();
@@ -502,7 +521,7 @@ bool Application::tryMovePlayer(int dx, int dy) {
     return true;
 }
 
-bool Application::tryUseTalent(std::size_t talentIndex) {
+bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     if (!window_.isOpen()) {
         return false;
     }
@@ -511,63 +530,26 @@ bool Application::tryUseTalent(std::size_t talentIndex) {
     if (talentIndex >= talents.size()) {
         return false;
     }
-    const Talent& talent = talents[talentIndex];
+    // Own a copy: killing a target can grant a talent and reallocate the kit.
+    const Talent talent = player_.talents().effectiveTalent(talentIndex);
 
-    if (!player_.talents().isReady(talentIndex)) {
-        log(talent.name, " is on cooldown (", player_.talents().cooldownRemaining(talentIndex),
-            " turns left)");
-        return false;
-    }
-    if (player_.stats().mana < talent.manaCost) {
-        log("Not enough mana for ", talent.name, " (", player_.stats().mana, "/",
-            talent.manaCost, " needed)");
-        return false;
-    }
-    if (talent.hpCost > 0 && player_.stats().hp <= talent.hpCost) {
-        log("Not enough hp to safely cast ", talent.name);
+    const auto unavailable = talentUnavailableReason(player_, talentIndex);
+    if (!unavailable.empty()) {
+        log(unavailable);
         return false;
     }
 
-    std::vector<Actor*> affected;
-    Position blinkDestination = player_.position();
-
-    if (talent.shape == EffectShape::Movement) {
-        blinkDestination = resolveBlinkDestination(lastMoveDirection_, talent.moveDistance);
-        if (blinkDestination.x == player_.position().x &&
-            blinkDestination.y == player_.position().y) {
-            log(talent.name, " has nowhere to go that direction");
-            return false;
-        }
-    } else if (talent.shape == EffectShape::AreaAroundSelf) {
-        affected = actorsWithinRadius(player_.position(), talent.areaRadius);
-    } else {
-        Actor* anchor = nullptr;
-        if (talent.targeting == TargetingMode::Self) {
-            // Renewal (Prompt 14 follow-up): a Self-targeted,
-            // SingleTarget-shaped talent affects the caster directly --
-            // AreaAroundSelf (Immolate) searches for nearby *enemies*,
-            // which is the wrong tool for "heal yourself," so this is a
-            // separate, simpler resolution rather than reusing that path.
-            anchor = &player_;
-        } else if (talent.targeting == TargetingMode::AdjacentEnemy) {
-            anchor = findAdjacentEnemy();
-        } else if (talent.targeting == TargetingMode::RangedEnemyInSight) {
-            anchor = findNearestVisibleEnemy();
-        }
-
-        if (anchor != nullptr) {
-            if (talent.shape == EffectShape::AreaAroundTarget) {
-                affected = actorsWithinRadius(anchor->position(), talent.areaRadius);
-            } else {
-                affected.push_back(anchor);
-            }
-        }
-    }
-
-    if (talent.shape != EffectShape::Movement && affected.empty()) {
-        log("No valid target for ", talent.name);
+    const TalentTarget target = targetPreview(talentIndex, cursor);
+    if (!target.valid) {
+        log(target.message);
         return false;
     }
+    const auto& affected = target.affected;
+    const Actor* chainedTarget = target.chainedTarget;
+    const Position blinkDestination = target.destination;
+
+    // Commit point: validation and preview above are side-effect free.
+    cancelTargeting();
 
     player_.stats().mana -= talent.manaCost;
     player_.stats().hp -= talent.hpCost;
@@ -589,7 +571,9 @@ bool Application::tryUseTalent(std::size_t talentIndex) {
         log(player_.name(), " uses ", talent.name, "!");
     } else {
         for (Actor* target : affected) {
-            if (applyTalentDamage(talent, player_, *target)) {
+            Talent hitTalent = talent;
+            if (target == chainedTarget) hitTalent.damagePercent /= 2;
+            if (applyTalentDamage(hitTalent, player_, *target)) {
                 log(player_.name(), " uses ", talent.name, " on ", target->name(), " (",
                     target->stats().hp, "/", target->stats().maxHp, " hp left)");
                 soundManager_.play(SoundEffect::Hit);
@@ -612,8 +596,7 @@ bool Application::tryUseTalent(std::size_t talentIndex) {
             const Position targetPos = affected[0]->position();
             const Position awayDirection{player_.position().x - targetPos.x,
                                           player_.position().y - targetPos.y};
-            const Position retreatDestination =
-                resolveBlinkDestination(awayDirection, talent.retreatDistance);
+            const Position retreatDestination = target.destination;
             player_.setPosition(retreatDestination);
             lastMoveDirection_ = awayDirection;
             log(player_.name(), " vaults back to (", retreatDestination.x, ',',
@@ -767,6 +750,35 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision) {
             }
             break;
 
+        case AIActionType::Summon: {
+            // The only action type that creates a new Monster rather
+            // than acting on an existing one -- LichBehavior only
+            // decided to do this (and picked movePosition), everything
+            // about actually bringing the monster into existence
+            // happens here, the same "AIBehavior decides, Application
+            // executes" split every other action type already follows.
+            // Safe to push into monsters_/scheduler_ mid-turn-
+            // processing: monsters_ is vector<unique_ptr<Monster>>, so
+            // the underlying Monster objects' addresses never move even
+            // if the vector itself reallocates, and
+            // processMonsterTurns()'s own loop only ever holds
+            // currentActor_ (a single Actor*), never an iterator into
+            // monsters_, so nothing here can invalidate what that loop
+            // is holding onto.
+            if (map_.isWalkable(decision.movePosition.x, decision.movePosition.y) &&
+                !isOccupied(decision.movePosition, &actor)) {
+                std::unique_ptr<Monster> summoned =
+                    createMonster(decision.summonType, decision.movePosition, decision.summonTier);
+                summoned->setRewardsEligible(false);
+                scheduler_.add(*summoned);
+                monsters_.push_back(std::move(summoned));
+            }
+            if (decision.abilityIndex < actor.talents().knownTalents().size()) {
+                actor.talents().startCooldown(decision.abilityIndex);
+            }
+            break;
+        }
+
         case AIActionType::Wait:
             break;
     }
@@ -805,12 +817,17 @@ void Application::checkAndHandleDeath(Actor& actor) {
         return;
     }
 
+    auto* defeated = dynamic_cast<Monster*>(&actor);
+    if (defeated && !defeated->claimDeath()) return;
+    if (defeated) rewardMonster(*defeated, &actor == boss_);
+
     if (&actor == boss_) {
         boss_ = nullptr; // must clear before removeDeadMonsters() erases the underlying object
         scheduler_.remove(actor);
         grantXpAndAnnounce(actor.xpReward());
         if (currentFloor_ == kFinalFloor) {
-            log(actor.name(), " falls! You have slain the Goblin Warlord!");
+            log(actor.name(), " falls! Victory is yours!");
+            defeatedBossName_ = actor.name(); // renderGameOver() needs this after actor is gone
             // Deliberately NOT setting mode_ = GameOver here directly --
             // the grantXpAndAnnounce() call just above already ran the
             // full level-up sequence internally, and may have left
@@ -856,6 +873,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
 }
 
 void Application::grantXpAndAnnounce(int amount) {
+    if (amount <= 0) return; // summons must not disturb an already pending level-up sequence
     // Captures level before/after specifically to detect a level-up
     // and announce it -- grantXp() itself is a plain void function
     // (data + logic, no logging; see PlayerLeveling.hpp), so this is
@@ -970,44 +988,6 @@ std::vector<Actor*> Application::aliveAllies(const Actor* exclude) {
     return allies;
 }
 
-Actor* Application::findAdjacentEnemy() {
-    for (auto& m : monsters_) {
-        if (m->stats().hp > 0 && isAdjacent(player_.position(), m->position())) {
-            return m.get();
-        }
-    }
-    return nullptr;
-}
-
-Actor* Application::findNearestVisibleEnemy() {
-    Actor* nearest = nullptr;
-    int nearestDistSq = std::numeric_limits<int>::max();
-    for (auto& m : monsters_) {
-        if (m->stats().hp <= 0) {
-            continue;
-        }
-        if (exploredMap_.at(m->position().x, m->position().y) != Visibility::Visible) {
-            continue;
-        }
-        const int distSq = distanceSquared(player_.position(), m->position());
-        if (distSq < nearestDistSq) {
-            nearestDistSq = distSq;
-            nearest = m.get();
-        }
-    }
-    return nearest;
-}
-
-std::vector<Actor*> Application::actorsWithinRadius(Position center, int radius) {
-    std::vector<Actor*> result;
-    for (auto& m : monsters_) {
-        if (m->stats().hp > 0 && distanceSquared(center, m->position()) <= radius * radius) {
-            result.push_back(m.get());
-        }
-    }
-    return result;
-}
-
 void Application::removeDeadMonsters() {
     monsters_.erase(std::remove_if(monsters_.begin(), monsters_.end(),
                                     [](const std::unique_ptr<Monster>& m) {
@@ -1024,7 +1004,17 @@ void Application::updateFieldOfView() {
 void Application::selectClass(PlayerClass cls) {
     soundManager_.play(SoundEffect::Select);
     playerClass_ = cls;
-    player_.stats() = statsForClass(cls);
+    player_.inventory() = Inventory{};
+    player_.baseStats() = statsForClass(cls);
+    player_.stats() = player_.baseStats();
+    player_.unspentAttributePoints() = 0;
+    player_.statusEffects().active().clear();
+    nextItemId_ = 1;
+    runeChoiceAvailable_ = false;
+    pendingFinalVictory_ = false;
+    pendingHybridChoices_.clear();
+    pendingLevelUpFromLevel_ = 2;
+    loot_.restore(std::random_device{}());
     player_.talents() = talentSetForClass(cls);
     // A fresh class selection is a genuinely new character -- starts at
     // level 1 with 0 XP, same as anyone picking up the game for the
@@ -1041,6 +1031,13 @@ void Application::selectClass(PlayerClass cls) {
 }
 
 void Application::regenerateLevel(unsigned int seed) {
+    runesOpen_ = false;
+    inventoryOpen_ = false;
+    inventorySelection_ = 0;
+    groundItems_.clear();
+    cancelTargeting();
+    mousePixel_.reset();
+    talentPage_ = 0;
     DungeonGenerationParams params; // defaults, then floor-gated below
     // Only specific floors generate with a boss room at all -- every
     // other floor is a pure "clear it, find the door" dungeon. kFinalFloor
@@ -1072,8 +1069,13 @@ void Application::regenerateLevel(unsigned int seed) {
     }
     if (dungeon.hasBossRoom) {
         // The boss always spawns at Base tier regardless of `tier`
-        // above -- see createMonster()'s GoblinWarlord case for why.
-        monsters_.push_back(createMonster(MonsterType::GoblinWarlord, dungeon.bossRoomCenter));
+        // above -- see createMonster()'s GoblinWarlord/Lich cases for
+        // why. Which boss depends on which floor this is: the Lich is
+        // the true final fight, not a placeholder like it was before
+        // this was actually built.
+        const MonsterType bossType =
+            (currentFloor_ == kFinalFloor) ? MonsterType::Lich : MonsterType::GoblinWarlord;
+        monsters_.push_back(createMonster(bossType, dungeon.bossRoomCenter));
         boss_ = monsters_.back().get();
     }
 
@@ -1093,6 +1095,8 @@ void Application::regenerateLevel(unsigned int seed) {
         map_.setTile(doorPosition.x, doorPosition.y, Tile{TileType::Door, true, true});
     }
 
+    spawnFixedItems();
+    spawnFloorChest();
     exploredMap_ = ExploredMap(map_);
 
     scheduler_ = TurnScheduler{};
@@ -1128,24 +1132,33 @@ void Application::saveGame() {
     state.playerLevel = player_.level();
     state.playerXp = player_.xp();
     state.currentFloor = currentFloor_;
-    state.playerStats = player_.stats();
+    state.playerStats = player_.baseStats();
+    state.playerStats.hp = player_.stats().hp;
+    state.playerStats.mana = player_.stats().mana;
+    state.unspentAttributePoints = player_.unspentAttributePoints();
+    state.nextItemId = nextItemId_;
+    state.lootRngState = loot_.state();
+    state.chestPosition = chestPosition_; state.chestExists = chestExists_; state.chestClaimed = chestClaimed_;
+    state.ordinaryDrops = ordinaryDrops_;
+    const auto saveItem = [&](const Item& item, int location) {
+        state.items.push_back({item.definition()->id, item.instanceId(), location,
+                              location == -2 ? item.position() : Position{}, item.rollTier(), item.affixes()});
+    };
+    for (const auto& item : groundItems_) saveItem(*item, -2);
+    for (const auto& item : player_.inventory().items()) saveItem(*item, -1);
+    for (int slot = 0; slot < 3; ++slot) {
+        if (const auto* item = player_.inventory().equipped(static_cast<EquipmentSlot>(slot)))
+            saveItem(*item, slot);
+    }
     state.lastMoveDirection = lastMoveDirection_;
 
-    const std::vector<Talent>& talents = player_.talents().knownTalents();
-    state.playerCooldowns.resize(talents.size());
-    for (std::size_t i = 0; i < talents.size(); ++i) {
-        state.playerCooldowns[i] = player_.talents().cooldownRemaining(i);
-    }
+    const auto& talents = player_.talents().knownTalents();
+    for (std::size_t i = 0; i < talents.size(); ++i)
+        state.playerTalents.push_back({talents[i].id, player_.talents().cooldownRemaining(i)});
+    state.runes = player_.talents().runes();
+    state.runeChoiceAvailable = runeChoiceAvailable_;
     state.playerStatusEffects = player_.statusEffects().active();
-
-    // Prompt 24: only the hybrid picks need saving explicitly -- the
-    // base class's own level-4/level-7 unlocks are re-derived from
-    // playerLevel on load instead (see loadGame() and
-    // SaveGameState::playerHybridPickNames's own comment for why).
     state.playerHybridSpecced = player_.hybridSpecced();
-    for (const Talent& picked : pickedHybridTalents(playerClass_, player_.talents())) {
-        state.playerHybridPickNames.push_back(picked.name);
-    }
 
     for (auto& m : monsters_) {
         SaveGameState::MonsterSaveData data;
@@ -1154,7 +1167,12 @@ void Application::saveGame() {
         data.hp = m->stats().hp;
         data.maxHp = m->stats().maxHp;
         data.isBoss = (m.get() == boss_);
+        data.tier = m->tier();
+        data.rewardsEligible = m->rewardsEligible();
         data.statusEffects = m->statusEffects().active();
+        const auto& known = m->talents().knownTalents();
+        for (std::size_t i = 0; i < known.size(); ++i)
+            data.talents.push_back({known[i].id, m->talents().cooldownRemaining(i)});
         state.monsters.push_back(std::move(data));
     }
 
@@ -1166,12 +1184,64 @@ void Application::saveGame() {
 }
 
 void Application::loadGame() {
+    runesOpen_ = false;
+    inventoryOpen_ = false;
+    inventorySelection_ = 0;
+    cancelTargeting();
+    mousePixel_.reset();
+    talentPage_ = 0;
     const std::optional<SaveGameState> loaded = engine::loadGame(kSaveFilePath);
     if (!loaded.has_value()) {
         log("No valid save file found (", kSaveFilePath, ").");
         return;
     }
     const SaveGameState& state = *loaded;
+    auto catalog = fullKitForClass(state.playerClass);
+    if (isHybridEligible(state.playerClass)) {
+        const auto hybrid = fullKitForClass(hybridPoolClass(state.playerClass));
+        catalog.insert(catalog.end(), hybrid.begin(), hybrid.end());
+    }
+    TalentSet restoredTalents;
+    for (const auto& saved : state.playerTalents) {
+        const auto found = std::find_if(catalog.begin(), catalog.end(), [&](const auto& talent) { return talent.id == saved.id; });
+        if (found == catalog.end()) { log("Save contains an unknown player talent."); return; }
+        restoredTalents.learnTalent(*found);
+        restoredTalents.setCooldownRemaining(restoredTalents.knownTalents().size()-1, saved.cooldown);
+    }
+    if (restoredTalents.empty()) { log("Save contains no player talents."); return; }
+    for (const auto& rune : state.runes) {
+        if (!rune.talentId.empty()) {
+            const auto& known = restoredTalents.knownTalents();
+            const auto found = std::find_if(known.begin(), known.end(), [&](const auto& talent) { return talent.id == rune.talentId; });
+            if (found == known.end() || !runeUnavailableReason(*found, rune.definitionId).empty()) {
+                log("Save contains an incompatible rune attachment."); return;
+            }
+        }
+    }
+    restoredTalents.runes() = state.runes;
+    std::vector<std::unique_ptr<Monster>> restoredMonsters;
+    Monster* restoredBoss = nullptr;
+    for (const auto& savedMonster : state.monsters) {
+        auto monster = createMonster(savedMonster.type, savedMonster.position, savedMonster.tier);
+        const auto& known = monster->talents().knownTalents();
+        if (savedMonster.talents.size() != known.size()) { log("Save contains an incomplete enemy talent kit."); return; }
+        for (const auto& saved : savedMonster.talents) {
+            const auto found = std::find_if(known.begin(), known.end(), [&](const auto& talent) { return talent.id == saved.id; });
+            if (found == known.end()) { log("Save contains an unknown enemy talent."); return; }
+            monster->talents().setCooldownRemaining(static_cast<std::size_t>(found-known.begin()), saved.cooldown);
+        }
+        monster->setRewardsEligible(savedMonster.rewardsEligible);
+        monster->stats().hp = savedMonster.hp;
+        monster->stats().maxHp = savedMonster.maxHp;
+        monster->statusEffects().active() = savedMonster.statusEffects;
+        if (savedMonster.isBoss) {
+            if (restoredBoss) { log("Save contains multiple bosses."); return; }
+            restoredBoss = monster.get();
+        }
+        restoredMonsters.push_back(std::move(monster));
+    }
+
+
 
     // Reachable from ClassSelection now (see processEvents()) -- a
     // load that started there needs to actually switch to Playing, the
@@ -1186,86 +1256,42 @@ void Application::loadGame() {
 
     player_.setPosition(state.playerPosition);
     playerClass_ = state.playerClass;
-    // Reconstruct the correct class's talent list *before* applying
-    // saved cooldowns below -- playerCooldowns is a list of remaining-
-    // cooldown values applied positionally by index (see
-    // TalentSet::setCooldownRemaining's loop below), so it only means
-    // the right thing once player_'s talents actually match the class
-    // the save was made as. Loading a Fighter save while player_ was
-    // still configured as a Spellblade (or vice versa) would otherwise
-    // apply a Slam's cooldown value to whatever the Spellblade's talent
-    // 0 happens to be, silently wrong rather than caught by anything.
-    player_.talents() = talentSetForClass(playerClass_);
+    player_.talents() = std::move(restoredTalents);
+    runeChoiceAvailable_ = state.runeChoiceAvailable;
     player_.level() = state.playerLevel;
     player_.xp() = state.playerXp;
     currentFloor_ = state.currentFloor;
+    player_.inventory() = Inventory{};
+    groundItems_.clear();
+    nextItemId_ = state.nextItemId;
+    loot_.restore(state.lootRngState);
+    chestPosition_ = state.chestPosition; chestExists_ = state.chestExists; chestClaimed_ = state.chestClaimed;
+    ordinaryDrops_ = state.ordinaryDrops;
+    player_.baseStats() = state.playerStats;
     player_.stats() = state.playerStats;
+    player_.unspentAttributePoints() = state.unspentAttributePoints;
+    pendingFinalVictory_ = false;
+    pendingHybridChoices_.clear();
+    pendingLevelUpFromLevel_ = player_.level() + 1;
+    // Validation in loadGame guarantees unique IDs, known definitions and slot compatibility.
+    for (const auto& savedItem : state.items) {
+        auto item = std::make_unique<Item>(*findItemDefinition(savedItem.definitionId),
+                                          savedItem.instanceId, savedItem.position, savedItem.affixes, savedItem.rollTier);
+        if (savedItem.location == -2) groundItems_.push_back(std::move(item));
+        else {
+            player_.inventory().add(std::move(item));
+            if (savedItem.location >= 0)
+                player_.inventory().equip(player_.inventory().items().size() - 1);
+        }
+    }
+    player_.refreshEquipmentStats();
     lastMoveDirection_ = state.lastMoveDirection;
 
-    // Prompt 24 (fixing a real gap found while building it): both of
-    // these must happen *before* the cooldown-restoration loop below,
-    // since that loop needs player_.talents().knownTalents() to already
-    // match its saved size (base kit + unlocks + hybrid picks) for the
-    // positional cooldown indices to mean the right thing.
-    //
-    // Base-class level-4/level-7 unlocks are re-derived from the saved
-    // level, not stored in the save file at all -- fully deterministic,
-    // so storing them again would just be redundant state.
-    if (const std::optional<Talent> levelFour = talentUnlockedAtLevel(playerClass_, 4);
-        player_.level() >= 4 && levelFour.has_value()) {
-        player_.talents().learnTalent(*levelFour);
-    }
-    if (const std::optional<Talent> levelSeven = talentUnlockedAtLevel(playerClass_, 7);
-        player_.level() >= 7 && levelSeven.has_value()) {
-        player_.talents().learnTalent(*levelSeven);
-    }
-    // Hybrid picks genuinely can't be re-derived (which specific
-    // abilities were chosen is a real player decision) -- looked up by
-    // name against the full hybrid pool and re-learned in the same
-    // order they were saved.
     player_.hybridSpecced() = state.playerHybridSpecced;
-    const std::vector<Talent> hybridPool = fullKitForClass(hybridPoolClass(playerClass_));
-    for (const std::string& pickedName : state.playerHybridPickNames) {
-        for (const Talent& candidate : hybridPool) {
-            if (candidate.name == pickedName) {
-                player_.talents().learnTalent(candidate);
-                break;
-            }
-        }
-    }
-
-    for (std::size_t i = 0;
-         i < state.playerCooldowns.size() && i < player_.talents().knownTalents().size(); ++i) {
-        player_.talents().setCooldownRemaining(i, state.playerCooldowns[i]);
-    }
     player_.statusEffects().active() = state.playerStatusEffects;
 
-    boss_ = nullptr;
-    monsters_.clear();
-    // Prompt 22: reconstructed at the tier matching the *saved* player
-    // level, not the Base default createMonster() would otherwise use.
-    // Without this, a loaded Elite/Nightmare monster's hp/maxHp would
-    // still be correctly overwritten below (they're explicit save
-    // fields), but its name and damage output (baked into the
-    // AIBehavior at construction time, not stored directly) would
-    // silently revert to Base tier -- restored hp that doesn't match
-    // restored damage. Not a perfect reconstruction in every case (if
-    // the player leveled up mid-dungeon after these monsters were
-    // originally spawned, this derives a newer tier than they actually
-    // spawned at), but a consistent one: every field on the
-    // reconstructed monster matches some real tier's numbers, not a
-    // mismatched mix of two different tiers' data.
-    const MonsterTier loadedTier = tierForLevel(state.playerLevel);
-    for (const SaveGameState::MonsterSaveData& m : state.monsters) {
-        std::unique_ptr<Monster> monster = createMonster(m.type, m.position, loadedTier);
-        monster->stats().hp = m.hp;
-        monster->stats().maxHp = m.maxHp;
-        monster->statusEffects().active() = m.statusEffects;
-        if (m.isBoss) {
-            boss_ = monster.get();
-        }
-        monsters_.push_back(std::move(monster));
-    }
+    boss_ = restoredBoss;
+    monsters_ = std::move(restoredMonsters);
 
     scheduler_ = TurnScheduler{};
     scheduler_.add(player_);
@@ -1286,6 +1312,7 @@ void Application::loadGame() {
     // handles it in ordinary play, not a special case for loading.
     currentActor_ = &scheduler_.nextTurn();
 
+    if (player_.unspentAttributePoints() > 0) resumeLevelUpSequence();
     log("Game loaded: ", monsters_.size(), " monsters",
         (boss_ != nullptr ? " (boss present)" : ""), ", player at (", player_.position().x, ',',
         player_.position().y, "), ", player_.stats().hp, '/', player_.stats().maxHp, " hp.");
@@ -1332,7 +1359,8 @@ void Application::renderClassSelection() {
 void Application::renderGameOver() {
     if (wonGame_) {
         drawText("Victory!", 60.f, 60.f, 32, sf::Color(255, 215, 0));
-        drawText("You have slain the Goblin Warlord.", 60.f, 120.f, 18, sf::Color(210, 210, 210));
+        drawText("You have slain the " + defeatedBossName_ + ".", 60.f, 120.f, 18,
+                  sf::Color(210, 210, 210));
     } else {
         drawText("You Died", 60.f, 60.f, 32, sf::Color(200, 50, 50));
         drawText("The dungeon claims another.", 60.f, 120.f, 18, sf::Color(210, 210, 210));
@@ -1442,9 +1470,9 @@ void Application::render() {
     // upper bound covers the partially-visible tile at the viewport's
     // trailing edge.
     const int viewStartX = cameraX_;
-    const int viewEndX = std::min(map_.width(), cameraX_ + static_cast<int>(kWindowWidth / kTileSize) + 1);
+    const int viewEndX = std::min(map_.width(), cameraX_ + static_cast<int>(kMapWidth / kTileSize));
     const int viewStartY = cameraY_;
-    const int viewEndY = std::min(map_.height(), cameraY_ + static_cast<int>(kWindowHeight / kTileSize) + 1);
+    const int viewEndY = std::min(map_.height(), cameraY_ + static_cast<int>(kMapHeight / kTileSize));
 
     for (int y = viewStartY; y < viewEndY; ++y) {
         for (int x = viewStartX; x < viewEndX; ++x) {
@@ -1470,6 +1498,7 @@ void Application::render() {
         }
     }
 
+    renderGroundItems();
     for (auto& m : monsters_) {
         if (m->stats().hp <= 0) {
             continue;
@@ -1479,6 +1508,8 @@ void Application::render() {
         }
 
         const sf::Vector2f screenPos = worldToScreen(m->position().x, m->position().y);
+        if (screenPos.x < 0.f || screenPos.x >= kMapWidth ||
+            screenPos.y < kMapTop || screenPos.y >= kMapTop + kMapHeight) continue;
 
         // Elite/Nightmare border (Prompt 22): a slightly larger square
         // drawn first, in the tier's color, so the monster's own type-
@@ -1517,6 +1548,8 @@ void Application::render() {
     playerShape.setPosition(worldToScreen(player_.position().x, player_.position().y));
     playerShape.setFillColor(sf::Color(240, 200, 60));
     window_.draw(playerShape);
+
+    renderTargetingOverlay();
 
     constexpr float kBarWidth = 200.f;
     constexpr float kBarHeight = 14.f;
@@ -1575,45 +1608,10 @@ void Application::render() {
     {
         std::ostringstream oss;
         oss << "Floor " << currentFloor_ << " / " << kFinalFloor;
-        drawText(oss.str(), 10.f, 60.f, 13, sf::Color(180, 180, 200));
+        drawText(oss.str(), 290.f, 46.f, 13, sf::Color(180, 180, 200));
     }
 
-    // Talent list -- names + live cooldown status, replacing "console
-    // only" as the sole way to know what's on cooldown. Dimmed while on
-    // cooldown, full brightness once ready, same "Visible vs Remembered"
-    // dimming *idea* as the map (Prompt 6), applied to UI state instead
-    // of fog-of-war. A semi-transparent backing panel sits behind it --
-    // this corner of the map is visible dungeon floor, not empty
-    // background, and text alone (however legible up close) read as
-    // genuinely unfinished sitting directly on top of tiles with no
-    // separation. Confirmed by actually looking at a screenshot, not
-    // just trusting the draw order would look fine.
-    {
-        constexpr float kTalentListX = 10.f;
-        constexpr float kTalentListY = 86.f; // pushed down again to leave clean room for the
-                                              // floor line now sitting below the level/XP line
-        constexpr float kTalentLineHeight = 16.f;
-        const std::vector<Talent>& talents = player_.talents().knownTalents();
-
-        sf::RectangleShape panel(
-            {230.f, static_cast<float>(talents.size()) * kTalentLineHeight + 6.f});
-        panel.setPosition({kTalentListX - 4.f, kTalentListY - 4.f});
-        panel.setFillColor(sf::Color(0, 0, 0, 160));
-        window_.draw(panel);
-
-        for (std::size_t i = 0; i < talents.size(); ++i) {
-            const bool ready = player_.talents().isReady(i);
-            std::ostringstream oss;
-            oss << (i + 1) << ". " << talents[i].name;
-            if (ready) {
-                oss << " [Ready]";
-            } else {
-                oss << " [" << player_.talents().cooldownRemaining(i) << "]";
-            }
-            drawText(oss.str(), kTalentListX, kTalentListY + static_cast<float>(i) * kTalentLineHeight,
-                      13, ready ? sf::Color(215, 215, 215) : sf::Color(110, 110, 110));
-        }
-    }
+    renderTargetingPanel();
 
     // On-screen combat log -- bottom-left, oldest message at top of the
     // block so new lines settle at the bottom, matching how a chat/log
@@ -1651,21 +1649,23 @@ void Application::render() {
         exploredMap_.at(boss_->position().x, boss_->position().y) == Visibility::Visible) {
         constexpr float kBossBarWidth = 500.f;
         constexpr float kBossBarHeight = 20.f;
-        const float bossX = (static_cast<float>(kWindowWidth) - kBossBarWidth) / 2.f;
+        const float bossX = 370.f;
 
         const float bossHpFraction =
             static_cast<float>(boss_->stats().hp) / static_cast<float>(boss_->stats().maxHp);
         sf::RectangleShape bossBack({kBossBarWidth, kBossBarHeight});
-        bossBack.setPosition({bossX, 10.f});
+        bossBack.setPosition({bossX, 27.f});
         bossBack.setFillColor(sf::Color(35, 30, 10));
         window_.draw(bossBack);
         sf::RectangleShape bossFront({kBossBarWidth * bossHpFraction, kBossBarHeight});
-        bossFront.setPosition({bossX, 10.f});
+        bossFront.setPosition({bossX, 27.f});
         bossFront.setFillColor(sf::Color(255, 215, 0));
         window_.draw(bossFront);
-        drawText(boss_->name(), bossX, 10.f - 18.f, 14, sf::Color(255, 215, 0));
+        drawText(boss_->name(), bossX, 5.f, 14, sf::Color(255, 215, 0));
     }
 
+    if (inventoryOpen_) renderInventory();
+    if (runesOpen_) renderRunes();
     window_.display();
 }
 

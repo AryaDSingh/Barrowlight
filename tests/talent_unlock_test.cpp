@@ -7,12 +7,12 @@
 #include <string>
 
 #include "ai/NullAIBehavior.hpp"
-#include "entities/FighterTalents.hpp"
+#include "entities/MageTalents.hpp"
 #include "entities/Monster.hpp"
 #include "entities/PlayerClassFactory.hpp"
-#include "entities/SorcererTalents.hpp"
 #include "entities/TalentEffects.hpp"
 #include "entities/ThiefTalents.hpp"
+#include "entities/WarriorTalents.hpp"
 
 using namespace engine;
 
@@ -54,25 +54,25 @@ int main() {
     }
 
     // --- Fighter's unlock levels: 4 and 7 only.
-    check(!fighterTalentUnlockedAtLevel(1).has_value(), "Fighter has no unlock at level 1");
-    check(!fighterTalentUnlockedAtLevel(3).has_value(), "Fighter has no unlock at level 3");
-    check(fighterTalentUnlockedAtLevel(4).has_value() &&
-              fighterTalentUnlockedAtLevel(4)->name == "Whirlwind",
+    check(!warriorTalentUnlockedAtLevel(1).has_value(), "Warrior has no unlock at level 1");
+    check(!warriorTalentUnlockedAtLevel(3).has_value(), "Warrior has no unlock at level 3");
+    check(warriorTalentUnlockedAtLevel(4).has_value() &&
+              warriorTalentUnlockedAtLevel(4)->name == "Whirlwind",
           "Fighter unlocks Whirlwind at level 4");
-    check(!fighterTalentUnlockedAtLevel(5).has_value(), "Fighter has no unlock at level 5");
-    check(fighterTalentUnlockedAtLevel(7).has_value() &&
-              fighterTalentUnlockedAtLevel(7)->name == "Undying Rage",
+    check(!warriorTalentUnlockedAtLevel(5).has_value(), "Warrior has no unlock at level 5");
+    check(warriorTalentUnlockedAtLevel(7).has_value() &&
+              warriorTalentUnlockedAtLevel(7)->name == "Undying Rage",
           "Fighter unlocks Undying Rage at level 7");
-    check(!fighterTalentUnlockedAtLevel(10).has_value(), "Fighter has no unlock at level 10");
+    check(!warriorTalentUnlockedAtLevel(10).has_value(), "Warrior has no unlock at level 10");
 
     // --- Sorcerer's unlock levels.
-    check(sorcererTalentUnlockedAtLevel(4).has_value() &&
-              sorcererTalentUnlockedAtLevel(4)->name == "Meteor",
+    check(mageTalentUnlockedAtLevel(4).has_value() &&
+              mageTalentUnlockedAtLevel(4)->name == "Meteor",
           "Sorcerer unlocks Meteor at level 4");
-    check(sorcererTalentUnlockedAtLevel(7).has_value() &&
-              sorcererTalentUnlockedAtLevel(7)->name == "Overload",
+    check(mageTalentUnlockedAtLevel(7).has_value() &&
+              mageTalentUnlockedAtLevel(7)->name == "Overload",
           "Sorcerer unlocks Overload at level 7");
-    check(!sorcererTalentUnlockedAtLevel(6).has_value(), "Sorcerer has no unlock at level 6");
+    check(!mageTalentUnlockedAtLevel(6).has_value(), "Mage has no unlock at level 6");
 
     // --- Thief's unlock levels, including Piercing Shot's crit-bonus mechanic.
     check(thiefTalentUnlockedAtLevel(4).has_value() &&

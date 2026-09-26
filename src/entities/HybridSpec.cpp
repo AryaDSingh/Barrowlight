@@ -23,6 +23,7 @@ PlayerClass hybridPoolClass(PlayerClass cls) {
 
 std::vector<Talent> fullKitForClass(PlayerClass cls) {
     std::vector<Talent> kit = talentSetForClass(cls).knownTalents();
+    if (const auto levelTwo = talentUnlockedAtLevel(cls, 2); levelTwo) kit.push_back(*levelTwo);
     if (const std::optional<Talent> levelFour = talentUnlockedAtLevel(cls, 4);
         levelFour.has_value()) {
         kit.push_back(*levelFour);
@@ -44,7 +45,7 @@ std::vector<Talent> availableHybridPicks(PlayerClass cls, const TalentSet& known
     for (const Talent& candidate : pool) {
         bool alreadyKnown = false;
         for (const Talent& existing : known.knownTalents()) {
-            if (existing.name == candidate.name) {
+            if (existing.id == candidate.id) {
                 alreadyKnown = true;
                 break;
             }
@@ -65,7 +66,7 @@ std::vector<Talent> pickedHybridTalents(PlayerClass cls, const TalentSet& known)
     const std::vector<Talent> pool = fullKitForClass(hybridPoolClass(cls));
     for (const Talent& candidate : pool) {
         for (const Talent& existing : known.knownTalents()) {
-            if (existing.name == candidate.name) {
+            if (existing.id == candidate.id) {
                 picked.push_back(candidate);
                 break;
             }

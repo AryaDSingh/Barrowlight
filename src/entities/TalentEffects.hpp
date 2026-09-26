@@ -6,6 +6,11 @@ namespace engine {
 
 class Actor;
 
+struct TalentDamageEstimate { int normal; int critical; };
+// Pure arithmetic shared by previews and real hits; never rolls combat RNG.
+TalentDamageEstimate estimateTalentDamage(const Talent& talent,
+    const Actor& attacker, const Actor& target);
+
 // Applies `talent`'s damage from `attacker` to `target`'s Stats::hp,
 // including the attacker's attribute bonus (Prompt 14:
 // physicalDamageBonus/magicDamageBonus, chosen by talent.damageType),

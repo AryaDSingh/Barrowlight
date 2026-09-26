@@ -1263,21 +1263,502 @@ transition confirming the boss actually appears, and the floor 5 boss
 kill -> door -> floor 6 sequence confirming defeat doesn't end the run
 and the door becomes reachable immediately after.
 
-## ⬜ Prompt 29+ — open-ended, lower priority
-**The Lich (floor 10's real boss)** -- separate, clearly-scoped work
-building on the skeleton above: a new `MonsterType`, a genuinely new
-"summons skeleton minions" AI mechanic (nothing in this engine currently
-lets a monster spawn new monsters mid-fight, so this needs real new
-plumbing, not a reskin of `BossBehavior`), and a new `MonsterType::Skeleton`
-minion. Once built, it replaces the placeholder Goblin Warlord currently
-occupying floor 10. Renaming FighterTalents/SorcererTalents' files and
-functions to match Warrior/Mage, for consistency with the Prompt 19
-precedent. Additional classes to round out a larger set once the
-3-class pattern is proven. Mixed-tier monster spawning within a single
-dungeon, rather than one uniform tier per level. Packaging/distribution
-for actually publishing. Not sequenced precisely yet -- revisit once
-it's clearer what matters
-most.
+## ⏳ Prompt 29 — The Lich
+The piece explicitly deferred from Prompt 28: floor kFinalFloor's real
+boss, replacing the Goblin Warlord placeholder that had been standing
+in for it.
+
+**A genuinely new mechanic, not a reskin.** Nothing in this engine
+previously let a monster create another monster mid-fight -- every
+existing AIBehavior only ever acted on itself or the player. Needed a
+new `AIActionType::Summon`, `MonsterType`/`MonsterTier` fields on
+`AIDecision` (so LichBehavior decides *what* to summon and Application
+still owns *how* -- the same "AIBehavior decides, Application executes"
+split every other action type already follows, not an exception carved
+out for this one), and real handling in `executeAIDecision()` that
+actually constructs the Monster via the existing `createMonster()` and
+adds it to both `monsters_` and the scheduler. Confirmed safe to do
+mid-turn-processing specifically because `monsters_` is
+`vector<unique_ptr<Monster>>` -- the underlying Monster objects' own
+addresses never move even if the vector itself reallocates, so nothing
+holding a raw pointer into it (which is exactly what
+`processMonsterTurns()`'s own loop does, via `currentActor_`) can be
+invalidated by a mid-loop `push_back`.
+
+**Deliberately no phase structure like BossBehavior.** The summon
+mechanic itself is what makes the fight escalate (more attackers over
+time), so a second, HP-threshold-based escalation axis on top would
+have been redundant rather than additive. Instead: Kiter-style ranged
+behavior (bolt from range, retreat if approached), with summoning
+preferred over bolting whenever it's off cooldown, under its cap (3),
+and there's an open tile to summon into.
+
+**A new `LichBehavior` test was written matching `boss_test.cpp`'s own
+rigor** -- not just relying on live testing, given how much genuinely
+new logic (cooldown gating, the cap held across multiple ready
+cooldowns, falling back gracefully when every neighboring tile is
+blocked, and confirming a blocked attempt doesn't silently consume the
+cap) needed real coverage. Caught a real mistake in the test itself
+during first the run, not the implementation -- a target placed beyond
+the Lich's sight radius, not just beyond attack range, which produced
+a `Wait` decision instead of the expected `Move` and would have been a
+confusing false failure to debug blind.
+
+**Live-verified the complete fight, not just the isolated mechanic:**
+approached a real Lich and watched it summon a Skeleton, bolt for
+exactly the hand-computed 9 damage (6 base + 3 from Intelligence),
+land a critical hit for exactly 13 (round(9 * 1.5)), and watched the
+summoned Skeleton itself deal exactly 3 damage (2 base + 1 from
+Strength) and physically block the player's path to the Lich --
+confirming the "dangerous in numbers if ignored" design intent, not
+just the numbers. Separately verified the multi-level-jump case
+specifically: defeating the Lich from level 5 crossed two level
+thresholds at once (4 attribute points, not 2), and confirmed every
+point plus the resulting talent unlock still resolved correctly before
+Victory appeared, exercising the Prompt 28 fix's more complex case, not
+just the simple one.
+
+**Also fixed while here, not left as a loose end:** two places that
+hardcoded "Goblin Warlord" in player-facing text (the victory log line
+and the GameOver screen) now read generically or from a captured
+`defeatedBossName_`, so the correct boss name shows regardless of
+which floor's fight the player actually won.
+
+## ⏳ Prompt 30 — FighterTalents/SorcererTalents renamed
+The last cosmetic loose end from Prompt 26's class rename, deliberately
+deferred at the time: `FighterTalents.hpp/cpp` -> `WarriorTalents.hpp/cpp`,
+`SorcererTalents.hpp/cpp` -> `MageTalents.hpp/cpp`, `fighterTalents()` ->
+`warriorTalents()`, `fighterTalentUnlockedAtLevel()` ->
+`warriorTalentUnlockedAtLevel()`, `sorcererTalents()` -> `mageTalents()`,
+`sorcererTalentUnlockedAtLevel()` -> `mageTalentUnlockedAtLevel()`, and
+(for full consistency, beyond what the name strictly required)
+`tests/fighter_test.cpp` -> `tests/warrior_test.cpp`,
+`tests/sorcerer_test.cpp` -> `tests/mage_test.cpp`, matching the
+Prompt 19 precedent where the file/test renames happened alongside the
+class rename, not separately.
+
+**Two real, compile-breaking bugs were introduced by the rename itself
+and caught immediately by actually rebuilding, not just editing and
+assuming correct:** `WarriorTalents.cpp` and `MageTalents.cpp` each
+still `#include`d their own *old* header name after the file rename --
+a mistake the rename's own mechanical nature makes easy to make (moving
+a file doesn't automatically fix a self-referential include inside it)
+and easy to catch immediately, simply by attempting a real build
+straight after.
+
+**A second search pass, broader than the first, was needed and
+deliberately run before considering this finished.** The first
+grep for `fighterTalents`/`sorcererTalents` (matching the plural
+"Talents") missed `fighterTalentUnlockedAtLevel`/
+`sorcererTalentUnlockedAtLevel` (singular "Talent" plus a different
+suffix) entirely -- a different, non-overlapping substring, not a
+variant the first search's pattern could have matched. Caught by a
+full clean rebuild surfacing the resulting compile errors directly in
+`talent_unlock_test.cpp`, then closed out with a broader follow-up
+search across the whole codebase (twice, since the second pass itself
+turned up a handful more: a stale cross-reference in `talent_test.cpp`,
+a stray local variable name in `hybrid_spec_test.cpp`, and -- found
+only because the search was thorough enough to surface it --
+`MageTalents.cpp` still describing the pre-Prompt-26 `damageType` field
+in a comment, a leftover staleness from the *attribute redesign*, not
+this rename, fixed while already there rather than left for a third
+pass to find later).
+
+## Phase 3 — Tactical combat and build variety (proposed 2026-09-25)
+
+The next ten prompts develop the requested ToME4/PoE2 direction: deliberate
+turn-based combat, recognizable class identities, skills that can be
+modified, and equipment that makes character-building decisions matter.
+Entries remain **future implementation prompts** until marked done with
+recorded results. The starting files document the Lich
+and class-file renames through Prompt 30; begin this phase from that state.
+Historical completion claims above have not been re-verified for this plan.
+
+Keep the existing three starting classes, ten floors, and level-10 cap for
+this phase. Each prompt must produce something usable in the real game.
+Explain the design and relevant C++ trade-offs, build the changed targets,
+run focused checks, and demonstrate the new behavior before advancing.
+Update README.md and ARCHITECTURE_DECISIONS.md with what was actually built;
+record results here only after checking them. Keep game rules independent
+of SFML and definitions separate from their execution logic. Extract a
+small module when a feature needs it; avoid a speculative engine rewrite.
+
+**Persistence is part of each feature.** Add save/load support when new
+persistent state first appears. Follow the existing version-bump and clear
+old-save rejection policy unless a migration is deliberately implemented.
+Preserve state across floor transitions as well as save/load. Use stable
+definition IDs and unique instance IDs where multiple copies can exist;
+display names and vector positions should not identify new saved content.
+
+The concrete counts and rewards below are initial design proposals, open
+to adjustment when implementing their prompt. Prompt 35 explicitly revisits
+the locked Prompt 24 hybrid rules; its proposed replacement must be settled
+with the user before changing those rules.
+
+## ✅ Prompt 31 — Choose targets and inspect the battlefield
+
+**Prompt:** Give the player deliberate control over talent targeting.
+For targeted attacks, allow cycling through valid visible enemies, show
+the selected target and affected tiles, and confirm or cancel before
+spending a turn. Keep immediate activation for unambiguous self-targeted
+abilities. Add a keyboard inspection panel showing a visible enemy's HP,
+statuses, speed, and a short description of its behavior. Show a talent's
+cost, cooldown, range/targeting rules, and damage estimate with uncertainty
+clearly identified. Add a paged talent menu or equivalent keyboard control
+so every learned talent remains accessible, including a full hybrid kit.
+
+**Why now:** Selecting the target is necessary for later skill modifiers,
+status combinations, and boss mechanics. More abilities also need a usable
+interface before the game adds more ways to acquire them.
+
+**Keep bounded:** Mouse and keyboard, using the existing text renderer. No new
+art dependency or general UI framework. Inspection must not reveal hidden
+actors. Preview calculations must not advance combat RNG or apply effects.
+
+**Done when:** Two enemies in sight can be targeted independently; the
+preview and actual affected tiles agree; cancelling or selecting an invalid
+target spends no turn, mana, or cooldown. All talents in a twelve-talent
+kit can be used. Existing self-casts and movement talents remain usable.
+
+**Result (2026-09-25):** Implemented explicit aiming with mouse/keyboard,
+Tab cycling, confirm/cancel, projectile arrows, AoE and movement previews,
+and a paged talent sidebar. Inspection shows enemy stats, effects, behavior,
+and ability descriptions while keeping remaining cooldowns hidden by default,
+as refined in conversation. A permission parameter supports later revealing
+abilities; an actual Analyze talent remains future design work.
+
+`TalentTargeting` is independent of SFML and supplies both preview and cast
+resolution. Damage estimates share the real damage arithmetic without RNG.
+Transient selection stores coordinates/indexes, and clears on load or floor
+regeneration. Casting copies the selected talent before applying damage,
+because kill XP can append a talent and invalidate references into the kit.
+The sidebar reduces map width; 28-pixel tiles keep the full sight radius
+within the remaining viewport. See README for controls and the deliberately
+changed player projectile/visible-splash rules.
+
+**Verification:** Windows Debug build succeeded. All nineteen pre-existing
+console tests passed, along with the new `targeting_test` and hidden-window
+`application_targeting_test`. Checks cover chosen targets, interception,
+walls/corners, hidden information, movement geometry, damage estimates,
+cancel/invalid-cast resource invariants, one-turn confirmation, mouse/camera
+mapping, casts beyond the ninth talent, and save/load selection reset.
+Rendered snapshots of aiming, blocked shots, area targeting, hybrid page two,
+and Lich inspection were generated for visual review. An initial integration
+test selected Mind Shatter where it meant Overload; correcting that fixture
+made its intended second-page self-buff check pass. This is automated
+integration and render verification, not a full balance playthrough.
+
+## ✅ Prompt 32 — Real inventory and equipment
+
+**Prompt:** Turn Item and Inventory from placeholders into playable
+systems. Start with three equipment slots: weapon, armour, and one charm.
+Create a small set of fixed items with stable definition IDs, ground
+pickup, an inventory screen, equip/unequip, and item comparison. Establish
+base character stats separately from equipment bonuses, and calculate
+effective stats from those sources without repeatedly mutating the base.
+Choose and document which inventory actions consume a turn before wiring
+them into the scheduler. Include a few fixed pickups in ordinary floors.
+
+**Why now:** This creates the item ownership, stat calculation, and UI
+foundation that randomized loot and skill runes will reuse.
+
+**Keep bounded:** Small C++ definition tables are sufficient. Start with
+existing attributes and HP/mana bonuses; shops, crafting, durability,
+encumbrance, and elemental resistances can wait. Armour is an equipment
+slot here; a new physical mitigation formula is outside this prompt.
+
+**Done when:** Pickup transfers ownership exactly once; an occupied slot
+can be replaced without losing either item; repeated equip/unequip never
+accumulates bonuses. Define maximum-pool changes so swapping equipment
+cannot manufacture free HP or mana. Ground items, inventory, equipment,
+and effective stats survive save/load and floor changes correctly.
+
+**Result (2026-09-25):** Implemented nine fixed items, weapon/armour/charm
+slots, unique ownership and instance IDs, G pickup, B inventory with keyboard
+selection/paging, equip/removal and base/current/after comparisons. Three fixed
+supplies appear near each ordinary floor's entrance. Browsing is free;
+successful pickup/equipment changes cost one turn and close the inventory.
+Permanent stats and equipment bonuses are separate; capacity changes clamp
+current pools without refilling them. Save format 6 persists ground items,
+bag order, equipment and instance counters and rejects old saves. Owned gear
+persists between floors; uncollected items leave with the old map.
+Debug `roguelike` builds successfully. Automated tests and interactive
+playthrough were not run in this prompt; runtime verification remains pending.
+
+## ✅ Prompt 33 — Loot with useful affixes and paced rewards
+
+**Prompt:** Add a seeded loot generator using Prompt 32's item model.
+Begin with normal items, magic items carrying one affix, and rare items
+carrying two compatible affixes. Use a small reviewed pool of approximately
+eight affixes, with explicit eligible slots and value ranges. Add bounded
+ordinary-enemy drops, one guaranteed reward chest per floor, and stronger
+boss rewards. Show rolled modifiers and comparisons clearly in the UI.
+Use a dedicated loot RNG stream so opening an inventory or previewing a
+skill cannot change the next drop.
+
+**Why now:** A run should produce several chances to improve or redirect
+a build. This gives equipment a progression role while leaving more
+complex skill-changing items to the next prompt.
+
+**Keep bounded:** No trading economy, crafting currencies, or sprawling
+rarity system. Use the stats already supported by Prompt 32. Derive reward
+strength mainly from floor depth, with boss and elite adjustments, and
+document the intended number of meaningful drops across ten floors.
+
+**Done when:** A known seed produces reproducible item rolls; incompatible
+or duplicate affixes are excluded according to explicit rules; a rare item
+can be compared without guessing which stats it changes. Saving preserves
+the actual rolled items and loot RNG state. Claimed chests cannot grant
+their rewards again after loading, and summoned Skeletons cannot become
+an unlimited source of loot or XP.
+
+**Result (2026-09-25):** Added normal/magic/rare equipment, eight slot-filtered
+affixes with no repeated stat group, depth/tier scaling, dedicated serialized
+loot RNG, two ordinary drops maximum per floor, one claimed-once chest per
+floor and two rare items per boss. Comparisons show actual rolls. Only floor
+one retains fixed entrance supplies. Summons grant neither XP nor loot;
+eligibility and exact monster tier persist. Budget: about 33-37 equipment
+candidates per full run, aiming for 6-10 useful changes pending playtesting.
+The Debug game target builds; runtime tests/playthrough were not run.
+
+## ✅ Prompt 34 — Skill runes that change ability behavior
+
+**Prompt:** Add one support-rune slot per active talent. Introduce stable
+talent IDs and explicit compatibility tags such as melee, projectile,
+area, movement, and damaging; migrate talent-owned saved state from name
+or position lookup to IDs as part of this change. Resolve a temporary
+effective talent from its base definition and equipped rune. Implement
+four initial runes: Chain (one additional valid target at reduced damage),
+Widen (larger existing area at increased mana cost), Venom (poison on a
+successful damaging hit at reduced direct damage), and Swift Passage
+(longer pure movement with a longer cooldown). Pick initial numbers during
+implementation and expose the complete resulting behavior in the preview.
+Add runes to Prompt 33's rewards with an early guaranteed rune choice.
+
+**Why now:** A player can reshape an existing ability around a preferred
+playstyle, making the same starting class support different builds.
+
+**Keep bounded:** One rune per skill; no arbitrary trigger chains or
+scripting language. Centralize compatibility and effective-talent logic
+instead of adding a separate special case to each class. Define how Venom
+interacts with an existing on-hit effect before allowing that combination.
+Equipping and removing runes must follow an explicit turn/cooldown rule.
+
+**Done when:** Each rune visibly changes at least one real class talent,
+invalid combinations explain why they are invalid, and Chain cannot hit
+the same target twice or reach an unseen target. Removing a rune restores
+the original definition and cannot reset a running cooldown. Save/load
+preserves rune ownership and attachment. Attribute scaling currently uses
+cooldown tiers: use the base talent's tier so a rune's cooldown modifier
+does not accidentally change its damage scaling too.
+
+**Result (2026-09-25):** Added stable talent IDs, typed compatibility flags,
+one rune per talent, shared effective-talent resolution, V rune management,
+and Chain/Widen/Venom/Swift Passage. Previews and casts share modified paths,
+radius, costs and movement; cooldown-based damage scaling retains the base
+tier. Changes cost one turn without resetting running cooldowns. First chest
+offers a saved, deferred rune choice; even-floor chests and bosses add random
+runes. User approved Mage Blink at level 2 (3 tiles, 4 mana, cooldown 4), making
+Swift Passage available in a playable kit. The Mage hybrid pool now has seven
+options. Save format 8 persists equipment rolls, loot RNG, chest/drop state,
+talent IDs/cooldowns and rune ownership/attachments; older saves are rejected.
+The Debug game target builds. Existing fixtures were adapted, but automated
+tests and an interactive playthrough were not run; runtime verification and
+balance tuning remain pending.
+
+## ⏳ Prompt 35 — Specialization with a real pure-class or hybrid choice
+
+**Checkpoint (2026-09-25):** Concrete replacement rules and nine proposed native
+masteries are in `PROMPT_35_DESIGN.md`, pending user agreement. Gameplay
+implementation has not started. See `NEXT_STEPS.md` for the upload checkpoint,
+verification limits and the next implementation steps.
+
+**Prompt:** Revisit the existing Warrior/Mage hybrid path with the user,
+using this concrete starting proposal: preserve starting kits and the
+level-4/7 base talent unlocks, but replace the free opposing-kit pick at
+every level from 5 through 10 with three specialization choices at levels
+5, 7, and 9. Each choice either takes a native mastery or learns an eligible
+talent from one chosen secondary class. Limit a character to two borrowed
+talents and one secondary class. Include Warrior, Mage, and Thief in both
+primary and secondary roles. First settle this rule change, then implement
+the agreed design in the existing resumable level-up flow.
+
+Native masteries should change a class mechanic rather than only increase
+a stat. Start with three choices per class, such as a Warrior's Cleave
+knockback, a Mage's stun-duration improvement with a longer cooldown, or
+a Thief's longer Vault Kick retreat. Final effects and values must be
+reviewed against the existing kits. Show borrowed talents' actual scaling
+attributes and equipment/rune compatibility before the player commits.
+
+**Why now:** Staying focused on one class and borrowing another class's
+tools become competing uses of the same reward budget. It also gives Thief
+a deliberate route into multiclassing, explicitly revising Prompt 24's
+decision to exclude it.
+
+**Keep bounded:** No new starting classes or giant passive tree. Hybrid
+names such as Spellblade or Shadowblade can describe combinations without
+requiring additional Player subclasses. Borrowed talents still scale from
+their declared attribute; no automatic free conversion to the primary stat.
+Initially omit respec and clearly communicate permanent choices.
+
+**Done when:** All three classes can finish the specialization sequence
+entirely with native masteries or choose a valid hybrid. Duplicate picks
+and an unintended third class are rejected. Crossing multiple reward
+levels in one XP grant presents every earned choice once, including when
+the final boss kill triggers victory. Save/load restores choices, rune
+attachments, and cooldowns by stable IDs. Record the agreed replacement
+rules in ARCHITECTURE_DECISIONS.md without erasing the historical decision.
+
+## ⬜ Prompt 36 — Ailment combinations and defensive decisions
+
+**Prompt:** Build a small, explicit status-interaction system around the
+existing Poison, Stun, and Empowered effects. Start with two additional
+effects: Marked (a limited-use damage vulnerability) and Guarded (a limited
+amount of incoming-damage absorption). Give each starting class a way to
+use or exploit one of these through a talent or mastery, and add one
+accessible, cooldown-limited cleanse that removes specified debuffs.
+Create at least two useful sequences, such as marking a target before a
+heavy attack, or guarding while poison finishes a nearby threat.
+
+**Why now:** Players need reasons to combine their chosen abilities across
+turns. Defensive tools also make survival depend on decisions alongside
+HP and dodge rolls.
+
+**Keep bounded:** Reuse the existing effect system. A full elemental
+resistance and penetration model is deferred. Define stacking, refresh,
+tick timing, damage rounding, and consumption rules explicitly. State
+whether poison ticks consume Marked or Guarded. Introduce a short stun
+recovery rule so repeated applications cannot permanently deny all turns,
+with boss-specific limits explained in inspection rather than hidden.
+
+**Done when:** Hand-computed example fights match the actual effect order;
+a dodged attack does not consume a successful-hit-only effect; status
+expiry behaves consistently for actors of different speeds. Cleanse and
+guard are useful in real encounters, and save/load preserves remaining
+duration, charges, and absorption. The combat log explains why a combo's
+damage differed from an ordinary hit.
+
+## ⬜ Prompt 37 — Enemy intent and encounters with mixed threats
+
+**Prompt:** Give dangerous enemy actions a readable wind-up. Begin with
+the Bomber's area attack and the Ogre's stun attack: show the intended
+target area, commit to it, then resolve after a clearly documented reaction
+window. Build small encounter groups combining existing roles, such as
+an Archer protected by a melee enemy or a Shaman behind an Ogre. Replace
+uniform-tier populations with floor-budgeted groups containing ordinary
+monsters and occasional elites, with a conservative cap on dangerous
+combinations. Review how this replaces Prompt 22's player-level tier rule.
+
+**Why now:** Equipment, runes, and hybrid tools need varied tactical
+problems. A telegraphed threat makes movement and defensive abilities
+valuable even when dealing immediate damage is tempting.
+
+**Keep bounded:** Use existing enemy types before expanding the roster.
+Intent belongs to game state and must persist through saving. Define a
+reaction window in terms of the scheduler's actual action order: a fast
+enemy must not begin and finish its wind-up before the player can respond.
+Show actual committed actions; do not render a speculative AI choice that
+changes invisibly just before execution.
+
+**Done when:** The player can step out of a shown blast, interrupt an
+eligible wind-up, and inspect an elite's relevant differences. Loading a
+save mid-wind-up restores the same threat. Sampled dungeon seeds respect
+encounter budgets and leave a safe starting area. Floor difficulty does
+not spike solely because the player gained a level in the previous fight.
+
+## ⬜ Prompt 38 — Floor identities and optional risk/reward rooms
+
+**Prompt:** Give the ten-floor run three simple themes using room layouts,
+palette changes, enemy composition, and rewards: an early barracks area,
+a middle ruined sanctum, and late crypts leading to the Lich. Add one
+optional vault room to eligible ordinary floors, with a visible description
+of its increased danger and a choice of three generated item or rune
+rewards after completion. Offer a route around it so entering is deliberate.
+Use the same encounter budgets and reward generation already built.
+
+**Why now:** Exploration should offer decisions about risk and build
+direction. Different floor themes also make progress through the run
+recognizable without needing a large art production step.
+
+**Keep bounded:** Reuse the current room-and-corridor generator and
+simple graphics. No overworld, backtracking campaign, procedural quest
+system, or mandatory vaults. Avoid adding hazards until the room and
+reward loop itself is working.
+
+**Done when:** A sampled seed set keeps every mandatory exit and boss
+reachable, keeps optional-room placement from bypassing protected final
+rooms, and never places a vault in the starting room. Its encounter can
+be completed with each starting class. A reward can be selected only once;
+the offered choices, chosen reward, and encounter completion survive
+saving without rerolling or duplicating the reward.
+
+## ⬜ Prompt 39 — Boss fights that exercise the new builds
+
+**Prompt:** Upgrade both existing boss encounters using the systems above.
+Keep the floor-5 Goblin Warlord's three-phase identity, but telegraph its
+largest attacks and add a recovery opening worth exploiting. Keep the
+floor-10 Lich's ranged summoner identity; visibly announce summon attempts,
+provide fair positioning opportunities, and review its Skeleton cap and
+replacement policy so killing minions has a clear tactical payoff.
+Tune boss control resistance using the visible rules from Prompt 36.
+
+**Why now:** The boss fights should reward targeting, defense, movement,
+and ability combinations learned during the run. This develops the Lich
+already implemented in Prompt 29 instead of scheduling it a second time.
+
+**Keep bounded:** Two existing bosses, no third boss or new phase framework.
+Every starting class must have a viable response without needing a rare
+drop or one required hybrid talent. Check the actual current summon-cap
+semantics before changing them; distinguish a total summon limit from a
+simultaneously-alive limit, and record any deliberate change.
+
+**Done when:** Each starting class can complete both fights with sensible
+gear, and representative pure and hybrid builds have different useful
+answers. Boss attacks cannot resolve without their promised reaction
+window. Summons cannot grant unlimited progression or rewards. Saving
+mid-fight preserves phases, intents, summon bookkeeping, and statuses;
+the Warlord still opens progression and the Lich still triggers victory
+after all earned level-up choices have resolved.
+
+## ⬜ Prompt 40 — Full-run balance and a shareable Windows build
+
+**Prompt:** Play and tune the complete ten-floor run as a coherent game.
+Use a small recorded set of dungeon/loot seeds and a build matrix covering
+all three starting classes, native specialization, and each supported
+hybrid pairing. Record floor-by-floor character level, approximate fight
+length, deaths or dangerous damage spikes, rewards found, and when the
+build's defining choices became available. Tune XP, reward frequency,
+enemy budgets, costs, and cooldowns from those observations. Keep the
+level-10 cap unless play evidence supports a separately explained change.
+
+Check that the specialization choices at levels 5, 7, and 9 arrive early
+enough to use for a meaningful part of the run. Remove obvious dominant
+options and document remaining balance questions instead of claiming
+exhaustive balance from a few playthroughs. Add concise in-game controls
+and descriptions for the new systems, then produce a Windows Release
+package containing the executable, required runtime dependencies, fonts,
+sounds, licenses, and a short start guide.
+
+**Why now:** This is the integration pass for the preceding nine prompts,
+with an actual build someone else can play and give feedback on.
+
+**Done when:** Relevant automated checks and recorded playthroughs pass;
+save/load is exercised at floor transitions, reward choices, specialization
+choices, and boss wind-ups. The packaged build starts from a separate
+folder without the source tree or build-directory asset paths, and clean
+machine/runtime requirements are verified or explicitly documented if that
+environment is unavailable. Update the build instructions and known issues
+with actual results. Creating the package completes this prompt; public
+upload or distribution is a separate action.
+
+## ⬜ Prompt 41+ — revisit after the build-variety phase
+
+Possible later work: additional starting classes, a larger talent-category
+tree, elemental resistances and damage conversion, crafting, more rune
+slots, unique items with complex triggers, new biomes, and additional
+platform packages. Sequence these from play feedback after Prompt 40.
+Keep the first ten-floor run understandable and enjoyable before expanding
+the number of interacting systems further.
 
 ## Decisions locked in before starting Prompt 13
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -8,6 +9,9 @@
 #include "entities/MonsterType.hpp"
 #include "entities/PlayerClass.hpp"
 #include "entities/Stats.hpp"
+#include "entities/Item.hpp"
+#include "entities/Rune.hpp"
+#include "entities/MonsterTier.hpp"
 #include "entities/StatusEffects.hpp"
 #include "world/ExploredMap.hpp"
 #include "world/Map.hpp"
@@ -25,14 +29,15 @@ namespace engine {
 // tracked as state that could go stale. Serializing either would add
 // real complexity for a difference nobody would notice in play (at
 // worst, a loaded boss already past a phase threshold re-announces that
-// phase and re-applies its one-time buff once more -- harmless, since
-// StatusEffects::apply() refreshes rather than stacks).
+// phase and refreshes its one-time buff). Talent cooldowns DO persist by ID,
+// as do summon reward eligibility and exact monster tier. Other AI-internal
+// counters remain a limitation of the current save format.
 struct SaveGameState {
     Map map;
     ExploredMap exploredMap;
 
     Position playerPosition;
-    PlayerClass playerClass = PlayerClass::Spellblade; // which kit playerCooldowns belongs to
+    PlayerClass playerClass = PlayerClass::Spellblade; // starting class; learned talents persist by ID
     int playerLevel = 1; // Prompt 20
     int playerXp = 0;    // progress toward the *next* level, not a cumulative lifetime total
     int currentFloor = 1; // which floor of the multi-floor dungeon progression -- the
@@ -42,32 +47,34 @@ struct SaveGameState {
                            // subsequent door transitions and boss-floor gating pick up
                            // correctly rather than silently resetting to floor 1
                           // -- see PlayerLeveling.hpp
+    // Base maxima/attributes, but CURRENT hp/mana (which may exceed base maxima
+    // while equipped). Rebuild equipment before restoring these current pools.
     Stats playerStats;
-    std::vector<int> playerCooldowns; // parallel to player_.talents().knownTalents() at save
-                                       // time -- NOT just playerClass's default starting kit;
-                                       // see playerHybridPickNames below for why that list can
-                                       // be longer than the default
+    int unspentAttributePoints = 0;
+    struct ItemSaveData {
+        std::string definitionId;
+        std::uint64_t instanceId = 0;
+        int location = -1; // -2 ground, -1 bag, 0 weapon, 1 armour, 2 charm
+        Position position;
+        int rollTier = 0;
+        std::vector<RolledAffix> affixes;
+    };
+    std::vector<ItemSaveData> items;
+    std::uint64_t nextItemId = 1;
+    std::uint64_t lootRngState = 1;
+    Position chestPosition;
+    bool chestExists = false, chestClaimed = false;
+    int ordinaryDrops = 0;
+    struct TalentSaveData {
+        std::string id;
+        int cooldown = 0;
+        bool operator==(const TalentSaveData& other) const { return id == other.id && cooldown == other.cooldown; }
+    };
+    std::vector<TalentSaveData> playerTalents; // learned order, identity and running cooldown
+    std::vector<RuneInstance> runes;
+    bool runeChoiceAvailable = false;
     std::vector<StatusEffectInstance> playerStatusEffects;
-    Position lastMoveDirection; // needed for Blink to resume correctly
-
-    // Prompt 24 (fixing a real gap found while building it): which
-    // hybrid-pool talents (by name) have been learned. Deliberately NOT
-    // storing the base class's own level-4/level-7 unlocks here too --
-    // those are fully deterministic from playerLevel (loadGame() just
-    // re-checks talentUnlockedAtLevel() against the saved level), so
-    // saving them again would be redundant state that could drift out
-    // of sync. Hybrid picks are different: which specific abilities
-    // were chosen is a real, non-derivable player decision, so it's the
-    // one piece of "extra known talents" that actually has to be saved
-    // explicitly. Names, not full Talent structs -- loadGame() looks
-    // each name up against HybridSpec::fullKitForClass() to find the
-    // matching talent, the same "save the minimum that's a genuine
-    // choice, re-derive everything else" approach monster tier
-    // reconstruction already uses. Spaces in a name (e.g. "Arcane
-    // Bolt") are written as underscores on disk -- see SaveGame.cpp --
-    // since no talent name in this project ever contains one naturally,
-    // so the round-trip is unambiguous.
-    std::vector<std::string> playerHybridPickNames;
+    Position lastMoveDirection;
     bool playerHybridSpecced = false;
 
     struct MonsterSaveData {
@@ -76,7 +83,10 @@ struct SaveGameState {
         int hp = 0;
         int maxHp = 0;
         bool isBoss = false;
+        MonsterTier tier = MonsterTier::Base;
+        bool rewardsEligible = true;
         std::vector<StatusEffectInstance> statusEffects;
+        std::vector<TalentSaveData> talents;
     };
     std::vector<MonsterSaveData> monsters;
 };

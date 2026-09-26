@@ -7,15 +7,13 @@
 
 namespace engine {
 
-bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
-    if (rollDodge(target.stats().dexterity)) {
-        return false;
-    }
-
+TalentDamageEstimate estimateTalentDamage(const Talent& talent,
+    const Actor& attacker, const Actor& target) {
     const int statValue = statValueForScalingStat(talent.scalingStat, attacker.stats().strength,
                                                     attacker.stats().dexterity,
                                                     attacker.stats().intelligence);
-    int damage = talent.power + abilityDamageBonus(talent.scalingStat, statValue, talent.cooldownTurns);
+    int damage = talent.power + abilityDamageBonus(talent.scalingStat, statValue,
+        talent.scalingCooldown >= 0 ? talent.scalingCooldown : talent.cooldownTurns);
 
     // Same Empowered check executeAIDecision already applies to monster
     // attacks (Prompt 11) -- missing here until Prompt 15's Rallying Cry
@@ -37,6 +35,15 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
         }
     }
 
+    damage = damage * talent.damagePercent / 100;
+    return {damage, static_cast<int>(static_cast<float>(damage) *
+        critDamageMultiplier(talent.bonusCritDamageMultiplier))};
+}
+
+bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
+    if (rollDodge(target.stats().dexterity)) return false;
+    const auto estimate = estimateTalentDamage(talent, attacker, target);
+    int damage = estimate.normal;
     // Global crit: multiplies the result of everything above (including
     // a conditional multiplier like a low-hp execute) rather than
     // adding to it -- "Base Damage x ability modifier x crit modifier"
@@ -45,8 +52,7 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
     // +20% crit chance/+50% crit damage) -- crit is a property of the
     // one landing the hit, not the one receiving it, unlike dodge.
     if (rollCrit(attacker.stats().dexterity, talent.bonusCritChance)) {
-        damage = static_cast<int>(static_cast<float>(damage) *
-                                   critDamageMultiplier(talent.bonusCritDamageMultiplier));
+        damage = estimate.critical;
     }
 
     target.stats().hp -= damage;

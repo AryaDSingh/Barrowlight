@@ -25,7 +25,7 @@ void check(bool condition, const std::string& description) {
 // A damage result is valid if it matches either the normal hit or the
 // (1.5x, truncated) critical hit -- crit is now global (a flat 5% base
 // chance, always active), so an exact `==` would be genuinely flaky.
-// See fighter_test.cpp's own header comment for the full reasoning.
+// See warrior_test.cpp's own header comment for the full reasoning.
 bool matchesNormalOrCrit(int actualDamage, int normalDamage) {
     const int critDamage = static_cast<int>(static_cast<float>(normalDamage) * 1.5f);
     return actualDamage == normalDamage || actualDamage == critDamage;

@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "entities/Talent.hpp"
+#include "entities/Rune.hpp"
 
 namespace engine {
 
@@ -26,12 +27,18 @@ public:
     // they just unlocked. Safe to call mid-game: this only ever
     // *appends* (never inserts or reorders), so every existing talent's
     // index -- and therefore every place cooldowns are tracked or
-    // referenced by index, including saved cooldown state -- stays
-    // exactly where it was. Prompt 23's level-gated talent unlocks are
+    // referenced by index during live play -- stays
+    // exactly where it was. Saves use stable IDs. Prompt 23's level-gated talent unlocks are
     // the reason this exists.
     void learnTalent(Talent talent);
 
     const std::vector<Talent>& knownTalents() const { return knownTalents_; }
+    Talent effectiveTalent(std::size_t index) const;
+    const RuneInstance* attachedRune(std::size_t index) const;
+    std::vector<RuneInstance>& runes() { return runes_; }
+    const std::vector<RuneInstance>& runes() const { return runes_; }
+    bool attachRune(std::size_t runeIndex, std::size_t talentIndex);
+    bool removeRune(std::size_t talentIndex);
     bool empty() const { return knownTalents_.empty(); }
 
     bool isReady(std::size_t index) const;
@@ -61,6 +68,7 @@ public:
 private:
     std::vector<Talent> knownTalents_;
     std::vector<int> cooldownsRemaining_; // parallel to knownTalents_
+    std::vector<RuneInstance> runes_;
 };
 
 } // namespace engine

@@ -7,6 +7,8 @@
 
 #include "core/Position.hpp"
 #include "entities/AttributeFormulas.hpp"
+#include "entities/MonsterTier.hpp"
+#include "entities/MonsterType.hpp"
 #include "entities/StatusEffects.hpp"
 
 namespace engine {
@@ -19,6 +21,7 @@ enum class AIActionType {
     Attack,      // a basic, uncooldowned attack (see MonsterAttackProfile)
     UseAbility,  // a cooldown-gated special move, from the actor's own TalentSet
     SelfBuff,    // applies effectToApply directly to the acting actor itself
+    Summon,      // spawns a new monster at movePosition -- see summonType/summonTier
     Wait,
 };
 
@@ -36,6 +39,16 @@ struct AIDecision {
                                  // (an ally for Support, the player for AoEBomber)
     std::size_t abilityIndex = 0;   // for UseAbility, which of the actor's own talents
     int attackPower = 0;             // for Attack (or a damaging UseAbility), already resolved
+
+    // For Summon: which monster type to create at movePosition, and at
+    // what tier. Always Base tier in practice today -- the Lich's own
+    // summoned Skeletons aren't meant to individually scale the way a
+    // dungeon's regular roster does (see LichBehavior) -- but tracked
+    // as real data here, not hardcoded in Application's executeAIDecision,
+    // the same "AIBehavior decides, Application just executes" split
+    // every other action type already follows.
+    MonsterType summonType = MonsterType::Skeleton;
+    MonsterTier summonTier = MonsterTier::Base;
 
     // Which attribute attackPower scales with. Defaults to Strength,
     // matching MonsterAttackProfile's own default -- Chaser and Kiter

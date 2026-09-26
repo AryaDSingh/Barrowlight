@@ -89,6 +89,7 @@ std::vector<Talent> spellbladeTalents() {
         /*power=*/3, // +4 from intelligence == 7, matching the original tuned value
     };
     emberBolt.scalingStat = ScalingStat::Intelligence;
+    emberBolt.projectile = true;
     talents.push_back(emberBolt);
 
     Talent fireball{
@@ -106,14 +107,15 @@ std::vector<Talent> spellbladeTalents() {
         /*areaRadius=*/2,
     };
     fireball.scalingStat = ScalingStat::Intelligence;
+    fireball.projectile = true;
     talents.push_back(fireball);
 
     // Blink deals no damage (power stays 0, Movement shape) -- damageType
     // is left at its Physical default since nothing ever reads it here.
     talents.push_back(Talent{
         /*name=*/"Blink",
-        /*description=*/"Teleport a short distance in the direction you're "
-                         "facing. No damage -- pure repositioning.",
+        /*description=*/"Aim at a visible tile to blink toward it, stopping "
+                         "before terrain or actors. No damage.",
         /*tree=*/TalentTree::Flame,
         /*targeting=*/TargetingMode::Self,
         /*shape=*/EffectShape::Movement,
@@ -174,6 +176,15 @@ std::vector<Talent> spellbladeTalents() {
     renewal.effectKind = TalentEffectKind::Heal;
     talents.push_back(renewal);
 
+    talents[0].id = "spellblade.quick_strike";
+    talents[1].id = "spellblade.power_strike";
+    talents[2].id = "spellblade.reckless_lunge";
+    talents[3].id = "spellblade.execution";
+    talents[4].id = "spellblade.ember_bolt";
+    talents[5].id = "spellblade.fireball";
+    talents[6].id = "spellblade.blink";
+    talents[7].id = "spellblade.immolate";
+    talents[8].id = "spellblade.renewal";
     return talents;
 }
 

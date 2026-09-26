@@ -27,8 +27,8 @@ bool isHybridEligible(PlayerClass cls);
 // sentinel return value to signal "not applicable").
 PlayerClass hybridPoolClass(PlayerClass cls);
 
-// Every talent in `cls`'s full kit -- its starting talents plus both
-// level-gated unlocks (level 4 and level 7, see
+// Every talent in `cls`'s full kit -- its starting talents plus
+// level-gated unlocks (Mage: 2/4/7; others: 4/7, see
 // PlayerClassFactory::talentUnlockedAtLevel) -- regardless of what
 // level a character actually is. Used as the hybrid pool's source list;
 // a Fighter specced into the hybrid path can eventually pick every
@@ -38,20 +38,15 @@ std::vector<Talent> fullKitForClass(PlayerClass cls);
 
 // The abilities still available to pick from the hybrid pool, given
 // what's already known -- every talent in fullKitForClass(hybridPoolClass(cls))
-// whose name doesn't already appear in `known`. Ordered the same way
+// whose stable ID doesn't already appear in `known`. Ordered the same way
 // the opposing class's own kit is ordered, so the choice screen
 // presents the same stable sequence across repeated picks rather than
-// shuffling. Empty once every opposing-class talent has been picked
-// (six picks -- level 5 through 10 -- exhausts a six-talent kit
-// exactly).
+// shuffling. Mage now has seven talents; six hybrid picks do not exhaust that pool.
 std::vector<Talent> availableHybridPicks(PlayerClass cls, const TalentSet& known);
 
 // The inverse of availableHybridPicks(): every talent from the hybrid
 // pool that *has* already been picked (appears in both the pool and
-// `known`). Used by Application::saveGame() to know which names to
-// persist -- see SaveGameState::playerHybridPickNames for why only
-// these, not the base class's own level-gated unlocks, need saving at
-// all.
+// `known`). Identity comparison uses IDs; saves now persist the entire learned kit.
 std::vector<Talent> pickedHybridTalents(PlayerClass cls, const TalentSet& known);
 
 } // namespace engine

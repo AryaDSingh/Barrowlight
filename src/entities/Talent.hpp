@@ -78,8 +78,8 @@ struct Talent {
     // Unused for Movement and SelfBuff. Deliberately the LAST-but-two
     // field, not inserted earlier alongside power/areaRadius where it
     // would read more naturally: every talent in
-    // SpellbladeTalents.cpp/FighterTalents.cpp/ThiefTalents.cpp/
-    // SorcererTalents.cpp is constructed with positional (not
+    // SpellbladeTalents.cpp/WarriorTalents.cpp/ThiefTalents.cpp/
+    // MageTalents.cpp is constructed with positional (not
     // designated) aggregate initialization, so inserting a field
     // anywhere but the end would silently shift every value after it in
     // every existing construction that lists that many fields -- worst
@@ -136,6 +136,28 @@ struct Talent {
     // default) means no bonus, every other talent's ordinary behavior.
     float bonusCritChance = 0.f;
     float bonusCritDamageMultiplier = 0.f;
+
+    // Aimed ray, stopped by terrain or the first enemy. Direct spells retain
+    // their visible-target rule. Kept last for aggregate initializer safety.
+    bool projectile = false;
+    std::string id; // persistent identity, independent of display name and learned order
+    unsigned int tags = 0;
+    int scalingCooldown = -1; // effective talents preserve the base damage-scaling tier
+    int damagePercent = 100;
+    bool chain = false;
 };
+
+enum TalentTag : unsigned int { MeleeTag = 1, ProjectileTag = 2, AreaTag = 4,
+    MovementTag = 8, DamagingTag = 16, PureMovementTag = 32 };
+inline unsigned int talentTags(const Talent& talent) {
+    unsigned int tags = 0;
+    if (talent.targeting == TargetingMode::AdjacentEnemy) tags |= MeleeTag;
+    if (talent.projectile) tags |= ProjectileTag;
+    if (talent.shape == EffectShape::AreaAroundSelf || talent.shape == EffectShape::AreaAroundTarget) tags |= AreaTag;
+    if (talent.shape == EffectShape::Movement) tags |= MovementTag | PureMovementTag;
+    if (talent.retreatDistance > 0) tags |= MovementTag;
+    if (talent.effectKind == TalentEffectKind::Damage && talent.shape != EffectShape::Movement) tags |= DamagingTag;
+    return tags;
+}
 
 } // namespace engine

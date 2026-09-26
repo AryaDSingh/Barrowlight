@@ -24,7 +24,8 @@ void grantXp(Player& player, int amount) {
         player.xp() -= xpForNextLevel(player.level());
         player.level() += 1;
 
-        player.stats().maxHp += kMaxHpGrowthPerLevel;
+        player.baseStats().maxHp += kMaxHpGrowthPerLevel;
+        player.refreshEquipmentStats();
         player.unspentAttributePoints() += kAttributePointsPerLevel;
         // Full heal on level-up, same as before -- max mana isn't
         // touched here at all anymore (it only grows from Intelligence

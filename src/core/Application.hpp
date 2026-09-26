@@ -2,6 +2,7 @@
 
 #include <deque>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -14,8 +15,10 @@
 #include "entities/Monster.hpp"
 #include "entities/Player.hpp"
 #include "entities/PlayerClass.hpp"
+#include "entities/LootGenerator.hpp"
 #include "world/ExploredMap.hpp"
 #include "world/Map.hpp"
+#include "world/TalentTargeting.hpp"
 
 namespace engine {
 
@@ -80,14 +83,57 @@ private:
     // consumes no turn.
     bool tryMovePlayer(int dx, int dy);
 
-    // Attempts to activate the player's talent at `talentIndex` (0-7).
+    // Attempts to activate any learned talent at an explicitly chosen tile.
     // Validates cooldown/mana/hp/target before committing anything.
-    bool tryUseTalent(std::size_t talentIndex);
+    bool tryUseTalent(std::size_t talentIndex, Position cursor);
+    void requestTalent(std::size_t talentIndex);
+    void cancelTargeting();
+    void cycleTarget(int direction = 1);
+    bool handleTargetingKey(sf::Keyboard::Key key, bool shift);
+    void handleTargetingMouse(const sf::Event& event);
+    void changeTalentPage(int direction);
+    std::optional<Position> screenToWorld(sf::Vector2i pixel) const;
+    std::optional<std::size_t> talentAtPixel(sf::Vector2i pixel) const;
+    std::vector<Actor*> targetingEnemies() const;
+    TalentTarget targetPreview(std::size_t talentIndex, Position cursor);
+    void renderTargetingOverlay();
+    void renderTargetingPanel();
+    void drawWrapped(const std::string& text, float x, float& y,
+                     std::size_t columns, sf::Color color, float bottom);
 
-    // Walks up to `maxDistance` tiles from the player's position in
-    // `direction` for Blink, stopping just before a wall or an
-    // actor-occupied tile rather than requiring the full distance clear.
-    Position resolveBlinkDestination(Position direction, int maxDistance);
+    // Coordinates/indexes only: no selection can retain an erased Actor*.
+    std::optional<std::size_t> aimingTalent_;
+    std::optional<std::size_t> hoveredTalent_;
+    bool inspecting_ = false;
+    Position targetCursor_;
+    std::optional<sf::Vector2i> mousePixel_;
+    std::size_t talentPage_ = 0;
+
+    friend struct ApplicationTargetingTestAccess;
+
+    bool inventoryOpen_ = false;
+    std::size_t inventorySelection_ = 0; // equipment rows 0-2, followed by bag rows
+    std::vector<std::unique_ptr<Item>> groundItems_;
+    std::uint64_t nextItemId_ = 1;
+    void openInventory();
+    void handleInventoryKey(sf::Keyboard::Key key);
+    void renderInventory();
+    void renderGroundItems();
+    void pickupItem();
+    void finishInventoryTurn();
+    void spawnFixedItems();
+    LootGenerator loot_;
+    Position chestPosition_;
+    bool chestExists_ = false, chestClaimed_ = false;
+    int ordinaryDrops_ = 0;
+    void rewardMonster(Monster& monster, bool boss);
+    void spawnFloorChest();
+    bool runesOpen_ = false, runeChoiceAvailable_ = false;
+    std::size_t runeTalentSelection_ = 0, runeSelection_ = 0;
+    std::string runeFeedback_;
+    void handleRuneKey(sf::Keyboard::Key key);
+    void renderRunes();
+    void giveRune(const std::string& definitionId);
 
     // Recomputes FOV from the player's current position.
     void updateFieldOfView();
@@ -253,14 +299,6 @@ private:
     // costs nothing worth optimizing.
     std::vector<Actor*> aliveAllies(const Actor* exclude);
 
-    // The nearest living monster adjacent to the player, or nullptr.
-    Actor* findAdjacentEnemy();
-    // The nearest living monster currently visible to the player, or nullptr.
-    Actor* findNearestVisibleEnemy();
-    // Every living monster within `radius` of `center` -- real AoE
-    // resolution now that there's more than one monster to find.
-    std::vector<Actor*> actorsWithinRadius(Position center, int radius);
-
     // Erases any monsters_ entries whose hp has dropped to 0 or below.
     // Called once at the end of processMonsterTurns(), never mid-loop.
     void removeDeadMonsters();
@@ -316,6 +354,15 @@ private:
     // checks this once every pending choice from the kill has actually
     // resolved, and only then makes the real mode_ transition.
     bool pendingFinalVictory_ = false;
+
+    // Which boss was actually defeated on the final floor -- set
+    // alongside pendingFinalVictory_, read by renderGameOver() once the
+    // GameOver transition actually happens. Needed because the boss
+    // Actor itself is already gone (boss_ = nullptr, and the underlying
+    // object erased by removeDeadMonsters()) by the time the victory
+    // screen renders; the name has to be captured at the moment of
+    // death, not read back from the (by then nonexistent) boss.
+    std::string defeatedBossName_;
 
     // Prompt 24: what the AbilityChoice screen is currently offering --
     // populated by offerHybridChoiceIfEligible(), read by

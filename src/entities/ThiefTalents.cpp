@@ -87,6 +87,12 @@ std::vector<Talent> thiefTalents() {
     vaultKick.retreatDistance = 3;
     talents.push_back(vaultKick);
 
+    talents[0].projectile = true; // Quick Shot
+    talents[1].projectile = true; // Volley bursts around its first impact.
+    talents[0].id = "thief.quick_shot";
+    talents[1].id = "thief.volley";
+    talents[2].id = "thief.steady_aim";
+    talents[3].id = "thief.vault_kick";
     return talents;
 }
 
@@ -121,7 +127,9 @@ std::optional<Talent> thiefTalentUnlockedAtLevel(int level) {
                           // real Piercing Shot dealt during verification
         };
         piercingShot.bonusCritChance = 0.2f;
+        piercingShot.projectile = true;
         piercingShot.bonusCritDamageMultiplier = 0.5f;
+        piercingShot.id = "thief.piercing_shot";
         return piercingShot;
     }
     if (level == 7) {
@@ -141,6 +149,7 @@ std::optional<Talent> thiefTalentUnlockedAtLevel(int level) {
         };
         adrenaline.effectKind = TalentEffectKind::SelfBuff;
         adrenaline.selfBuffEffect = StatusEffectInstance{StatusEffectType::Empowered, 6, 6};
+        adrenaline.id = "thief.adrenaline";
         return adrenaline;
     }
     return std::nullopt;

@@ -14,7 +14,9 @@ enum class MonsterType {
     Archer,        // Kiter, ranged, maintains distance
     Shaman,        // Support, buffs allies, never attacks
     Bomber,        // AoEBomber, ranged AoE on a cooldown
-    GoblinWarlord, // BossBehavior, phase-based set-piece fight
+    GoblinWarlord, // BossBehavior, phase-based set-piece fight -- floor kFirstBossFloor
+    Lich,          // LichBehavior, ranged + summons Skeleton minions -- floor kFinalFloor
+    Skeleton,      // Chaser, plain melee -- the Lich's summoned minion, not independently spawned
 };
 
 } // namespace engine

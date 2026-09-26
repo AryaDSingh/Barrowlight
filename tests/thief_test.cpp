@@ -8,7 +8,7 @@
 // path Vault Kick shares with every other Damage-kind talent; the
 // retreat itself is verified live (see ARCHITECTURE_DECISIONS.md).
 //
-// Rewritten for the attribute-system redesign -- see fighter_test.cpp's
+// Rewritten for the attribute-system redesign -- see warrior_test.cpp's
 // own header comment for why every damage check now verifies "normal
 // or crit" rather than a single exact value.
 
