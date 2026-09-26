@@ -12,6 +12,19 @@ context; later decisions supersede earlier rules where explicitly stated.
 
 ## Loot and support runes (Prompts 33-34)
 
+**Local follow-up verification:** Removed twelve unused legacy class files
+(Marauder/Fighter/Archer/Sorcerer talent pairs and their tests), after reference
+checks confirmed no active dependencies. Full active-target rebuild succeeds;
+twenty console targets, 28 targeting integration checks and 35 reward checks
+pass locally. Reward tests exercise seeded loot/affix constraints, chest and
+rune ownership, actual modified casts, cooldown/save persistence, ordinary
+drop caps and summon reward exclusion. Inspected rune/inventory screenshots.
+The Widen display now labels base/current/with-selected-rune values, so an
+already-applied bonus cannot be mistaken for a failed modifier. This update
+supersedes the original build-only verification note below; balance playthrough
+remains outstanding. The test initially assumed 1 mana regeneration per turn;
+the implementation's existing value is 2, and the expectation was corrected.
+
 ### Loot identities, random stream and budget
 
 - `LootGenerator` owns an explicitly serialized nonzero xorshift64* state.

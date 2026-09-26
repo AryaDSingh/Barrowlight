@@ -668,3 +668,8 @@ add_executable(application_targeting_test tests/application_targeting_test.cpp $
 target_include_directories(application_targeting_test PRIVATE src)
 target_compile_features(application_targeting_test PRIVATE cxx_std_17)
 target_link_libraries(application_targeting_test PRIVATE SFML::Graphics SFML::Audio)
+
+add_executable(application_rewards_test tests/application_rewards_test.cpp ${APPLICATION_TEST_SOURCES})
+target_include_directories(application_rewards_test PRIVATE src)
+target_compile_features(application_rewards_test PRIVATE cxx_std_17)
+target_link_libraries(application_rewards_test PRIVATE SFML::Graphics SFML::Audio)

@@ -2,6 +2,25 @@
 
 ## Current state
 
+### Latest follow-up: cleanup and local verification completed
+
+- Removed the 12 obsolete Marauder/Fighter/Archer/Sorcerer talent and test
+  files after confirming their references were confined to one another.
+- Rebuilt the game and all active tests locally. Twenty console targets pass,
+  targeting integration passes 28 checks, and the new rewards integration
+  passes 35 checks. See `tests/application_rewards_test.cpp` for exact scope.
+- Widen worked mechanically; its current-to-proposed comparison was unclear
+  when already attached. Rune UI now shows base/current/proposed values and
+  explicitly labels an already-attached rune. Inspected rendered snapshots.
+- Test snapshots/logs are under `build/rewards-checks` and
+  `build/targeting-checks`; these generated artifacts are not committed.
+- Checkpoint branch: `codex/cleanup-runes-verification`.
+- **Next:** settle `PROMPT_35_DESIGN.md` with the user before changing gameplay.
+  No new agreement on Prompt 35 has been received during this follow-up.
+
+The paragraphs below preserve the original checkpoint context; the verification
+update above supersedes its earlier untested status.
+
 Prompts 31-34 are implemented. Prompt 35 has a concrete proposal in
 `PROMPT_35_DESIGN.md`; its replacement rules await user agreement. No Prompt 35
 gameplay code has been implemented. The user's latest request was to proceed
@@ -30,11 +49,10 @@ First-floor chest offers a rune choice through V then 1-4.
 
 - Final Debug game build after Prompts 33-34 succeeded, using VS2022 CMake.
 - `git diff --check` passed at that checkpoint.
-- No tests were added/run and no interactive playthrough was performed for
-  Prompts 32-34. Existing fixtures were adapted to schema/kit changes, not run.
-- Earlier Prompt 31 test results do not verify the newer systems.
+- Follow-up tests cover chest/rune/reward behavior and their save/load paths;
+  see the latest update above. A full run and broader balance testing remain.
 - Current save format is **8**; older saves are deliberately rejected.
-- Loot pacing, rune balance and new UI layouts need gameplay verification.
+- Loot pacing and rune balance still need a complete gameplay evaluation.
 - Saves preserve monster talent cooldowns, tiers and reward flags, but not
   scheduler energies or all AI-internal counters. Summons remain ineligible
   for rewards even if a summon counter restarts after loading.

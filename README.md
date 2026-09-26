@@ -63,9 +63,9 @@ roguelike/
 └── data/                # data-driven content (empty -- see Prompt 9/10 notes)
 ```
 
-There are twenty-two build targets: `roguelike`, twenty console tests
-with no SFML dependency, and `application_targeting_test` (a hidden-window
-SFML integration test that needs a working graphics session). Run them
+There are twenty-three build targets: `roguelike`, twenty console tests
+with no SFML dependency, and `application_targeting_test` / `application_rewards_test`
+(hidden-window SFML integration tests that need a working graphics session). Run them
 after building:
 
 ```bash
@@ -90,6 +90,7 @@ after building:
 ./build/bin/attribute_formulas_test
 ./build/bin/targeting_test
 ./build/bin/application_targeting_test
+./build/bin/application_rewards_test
 ./build/bin/roguelike
 ```
 On Windows with the Visual Studio generator, substitute
@@ -185,9 +186,16 @@ also enters the existing Warrior hybrid pool, which now has seven choices.
 Damage scaling always uses the base talent's cooldown tier. Aiming previews
 use the same modified radius, trajectory, movement and costs as the cast.
 
-Both prompts compile in the Debug game target. Automated tests and an
-interactive playthrough have not been run for these changes; balance values
-are initial tuning.
+Local follow-up verification passed: all twenty console targets, 28 targeting
+checks and 35 reward checks. Reward coverage includes 500 reproducible loot
+rolls, affix constraints, chest claims, deferred rune choices, actual rune
+casts, cooldown preservation, save/load, drop caps and summon exclusions.
+Inventory/rune screenshots were inspected. This is focused integration
+verification, not a complete balance playthrough; values remain initial tuning.
+
+Rune comparisons show **base / current / with selected rune**. For example,
+Cleave with Widen already attached shows radius **1 / 2 / 2**: it is already
+widened, and choosing the same rune again changes nothing.
 
 ### Targeting and inspection (Prompt 31)
 

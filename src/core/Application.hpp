@@ -110,6 +110,7 @@ private:
     std::size_t talentPage_ = 0;
 
     friend struct ApplicationTargetingTestAccess;
+    friend struct ApplicationRewardsTestAccess;
 
     bool inventoryOpen_ = false;
     std::size_t inventorySelection_ = 0; // equipment rows 0-2, followed by bag rows

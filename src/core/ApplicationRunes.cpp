@@ -86,14 +86,17 @@ void Application::renderRunes() {
         else {
             const auto now = kit.effectiveTalent(runeTalentSelection_);
             const auto after = resolveEffectiveTalent(base, rune.definitionId);
-            const auto row = [&](const std::string& label, int before, int next) {
-                drawWrapped(label + ": " + std::to_string(before) + " -> " + std::to_string(next), 595.f, y, 69, normal, 530.f);
+            drawWrapped("Values: BASE / CURRENT / WITH SELECTED RUNE", 595.f, y, 69, accent, 530.f);
+            const auto row = [&](const std::string& label, int original, int before, int next) {
+                drawWrapped(label + ": " + std::to_string(original) + " / " + std::to_string(before) + " / " + std::to_string(next), 595.f, y, 69, normal, 530.f);
             };
-            row("Mana cost", now.manaCost, after.manaCost);
-            row("Cooldown on next cast", now.cooldownTurns, after.cooldownTurns);
-            row("Radius", now.areaRadius, after.areaRadius);
-            row("Movement distance", now.moveDistance, after.moveDistance);
-            row("Direct damage %", now.damagePercent, after.damagePercent);
+            row("Mana cost", base.manaCost, now.manaCost, after.manaCost);
+            row("Cooldown on next cast", base.cooldownTurns, now.cooldownTurns, after.cooldownTurns);
+            row("Radius", base.areaRadius, now.areaRadius, after.areaRadius);
+            row("Movement distance", base.moveDistance, now.moveDistance, after.moveDistance);
+            row("Direct damage %", base.damagePercent, now.damagePercent, after.damagePercent);
+            if (rune.talentId == base.id)
+                drawWrapped("Already attached here. Enter changes nothing; U removes it.", 595.f, y, 69, accent, 530.f);
             drawWrapped("Damage scaling keeps the base talent's cooldown tier. Displaced runes return to the rune bag.", 595.f, y, 69, normal, 530.f);
         }
     } else drawWrapped("No runes owned yet. Open the first floor's chest for a choice. More runes come from even-floor chests and bosses.", 595.f, y, 69, normal, 530.f);

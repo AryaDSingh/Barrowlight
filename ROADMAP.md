@@ -1523,6 +1523,14 @@ The Debug game target builds; runtime tests/playthrough were not run.
 
 ## ✅ Prompt 34 — Skill runes that change ability behavior
 
+**Verification follow-up:** Local active-target rebuild and all twenty console
+tests passed, alongside 28 targeting checks and 35 new rewards checks.
+Chests, affix constraints, rune casts/ownership, cooldown persistence,
+save/load, drop caps and summoned-enemy reward exclusion are covered.
+Rendered inventory/rune screens were inspected. Widen's ambiguous already-
+attached comparison now explicitly shows base/current/proposed values.
+This supersedes the build-only verification status in the original result.
+
 **Prompt:** Add one support-rune slot per active talent. Introduce stable
 talent IDs and explicit compatibility tags such as melee, projectile,
 area, movement, and damaging; migrate talent-owned saved state from name
