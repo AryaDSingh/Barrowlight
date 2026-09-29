@@ -5,8 +5,29 @@ before contradicting it. Claude doesn't retain memory between separate
 conversations — paste this whole file at the start of a fresh session to
 restore context, and ask for it to be updated as new decisions get made.
 
-Last updated: 2026-09-25 (Prompts 33-34). Earlier sections retain their historical
+Last updated: 2026-09-29 (cleanup pass before Prompt 35). Earlier sections retain their historical
 context; later decisions supersede earlier rules where explicitly stated.
+
+---
+
+## Cleanup pass before Prompt 35 (2026-09-29)
+
+- **Application stays one class, split across files by concern.** The
+  existing ApplicationInventory/Loot/Runes/Targeting pattern was extended
+  (Turns, Progression, Render, Save) rather than extracting new classes:
+  functions moved verbatim, so behaviour cannot change, and the class's
+  interface is untouched. Extracting real collaborators (e.g. a turn
+  resolver) remains an option once Prompt 35's level-up rules settle.
+- **Constants live with their only user.** Render-only helpers and layout
+  constants moved into ApplicationRender.cpp; only values used by several
+  files (boss floors, save path) sit in `core/GameRules.hpp`.
+- **Warnings are on for GCC/Clang, minus missing-field-initializers.**
+  Talent kits intentionally rely on aggregate initialization leaving
+  trailing fields defaulted; flagging each of those (~900) would hide real
+  warnings. MSVC flags are unchanged.
+- **drawText() skips text when the font failed to load.** SFML 3 asserts
+  on shaping with an unloaded font in debug builds, so the earlier "draws
+  nothing" assumption was wrong.
 
 ---
 
