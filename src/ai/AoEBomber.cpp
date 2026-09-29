@@ -6,6 +6,7 @@
 #include "entities/Actor.hpp"
 #include "world/FieldOfView.hpp"
 #include "world/Map.hpp"
+#include "world/LineOfFire.hpp"
 #include "world/Pathfinder.hpp"
 
 namespace engine {
@@ -44,7 +45,7 @@ AIDecision AoEBomber::decideAction(const Actor& self, const Map& map, Actor& pla
         return AIDecision{}; // cornered -- holds rather than fighting; it has no basic attack
     }
 
-    if (distSq <= blastRange_ * blastRange_) {
+    if (distSq <= blastRange_ * blastRange_ && hasLineOfFire(map,selfPos,playerPos)) {
         if (!self.talents().knownTalents().empty() && self.talents().isReady(0)) {
             AIDecision decision;
             decision.type = AIActionType::UseAbility;

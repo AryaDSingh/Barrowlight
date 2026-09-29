@@ -15,6 +15,8 @@ class Actor;
 // Deliberately the one place status-effect behavior gets applied, kept
 // out of StatusEffects itself (pure bookkeeping) -- same split as
 // TalentSet / TalentEffects.
+// The final skipped stun turn starts recovery, protecting the next actionable
+// turn (two for bosses). Recovery cannot be cleansed or shortened by another stun.
 bool tickStatusEffects(Actor& actor);
 
 } // namespace engine

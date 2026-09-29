@@ -1,3 +1,7 @@
+#include "entities/ArmourTalents.hpp"
+#include "entities/RunProgression.hpp"
+#include "entities/HiddenCombat.hpp"
+#include "entities/HiddenTrees.hpp"
 #include "core/Application.hpp"
 
 #include <algorithm>
@@ -6,22 +10,28 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <random>
 #include <string>
 #include <vector>
 
 #include "core/SaveGame.hpp"
+#include "ai/BossBehavior.hpp"
 #include "core/PlayLayout.hpp"
 #include "entities/AttributeFormulas.hpp"
 #include "entities/MonsterFactory.hpp"
-#include "entities/HybridSpec.hpp"
+#include "entities/TalentProgression.hpp"
 #include "entities/PlayerClassFactory.hpp"
 #include "entities/PlayerLeveling.hpp"
 #include "entities/StatusEffectLogic.hpp"
+#include "entities/Stealth.hpp"
 #include "entities/TalentEffects.hpp"
 #include "world/DungeonGenerator.hpp"
+#include "world/EncounterPlan.hpp"
+#include "world/FloorTheme.hpp"
 #include "world/FieldOfView.hpp"
+#include "world/LineOfFire.hpp"
 
 namespace engine {
 
@@ -43,7 +53,7 @@ constexpr unsigned int kInitialSeed = 1337;
 // currently reuses GoblinWarlord as a placeholder (see that function's
 // own comment) -- the actual Lich is separate, later work.
 constexpr int kFirstBossFloor = 5;
-constexpr int kFinalFloor = 10;
+constexpr int kFinalFloor = kRunFinalFloor;
 
 // Passive regen, applied once per player turn (see
 // advanceTurnsUntilPlayerCanAct) regardless of what action was taken --
@@ -51,7 +61,8 @@ constexpr int kFinalFloor = 10;
 // leaves them with talents they can see are "off cooldown" but can never
 // actually afford again. Modest on purpose: enough to matter over a
 // multi-turn fight, not enough to make mana cost meaningless.
-constexpr int kManaRegenPerTurn = 2;
+constexpr int kManaRegenOutsideCombat = 2;
+constexpr int kManaRegenInCombat = 1;
 
 // Relative to wherever the executable is launched from -- same
 // reasoning as avoiding data/ file loading elsewhere in this project
@@ -62,14 +73,11 @@ constexpr const char* kSaveFilePath = "savegame.txt";
 
 // Same relative-path reasoning as kSaveFilePath.
 constexpr const char* kFontPath = "assets/fonts/DejaVuSansMono.ttf";
-
-// The full regular roster, in the order rooms get populated. Fewer than
-// 6 non-player, non-boss rooms means a partial roster, not a crash --
-// see regenerateLevel.
-constexpr std::array<MonsterType, 6> kRoster = {
-    MonsterType::Goblin, MonsterType::Spider, MonsterType::Ogre,
-    MonsterType::Archer, MonsterType::Shaman, MonsterType::Bomber,
-};
+const sf::FloatRect kClassCards[]{{{50,155},{920,90}},{{50,265},{920,90}},{{50,375},{920,90}}};
+const sf::FloatRect kAttributeChoices[]{{{50,150},{920,58}},{{50,218},{920,58}},{{50,286},{920,58}}};
+const sf::FloatRect kDeathModeButton{{650,580},{550,42}}, kReviveButton{{60,245},{500,48}};
+const sf::FloatRect kRestartButton{{60,175},{410,48}}, kEndCodexButton{{60,370},{300,44}},
+    kStartLoadButton{{60,580},{260,42}}, kStartCodexButton{{340,580},{260,42}};
 
 sf::Color dim(sf::Color c) {
     constexpr float kDimFactor = 0.35f;
@@ -97,6 +105,17 @@ sf::Color monsterColor(MonsterType type) {
         case MonsterType::Bomber: return sf::Color(230, 110, 30);
         case MonsterType::GoblinWarlord: return sf::Color(255, 215, 0);
         case MonsterType::Lich: return sf::Color(140, 220, 210); // pale, ghostly teal
+        case MonsterType::GoblinRaider: return sf::Color(235,125,70);
+        case MonsterType::SkeletonArcher: return sf::Color(135,210,245);
+        case MonsterType::SkeletonGuard: return sf::Color(170,185,205);
+        case MonsterType::Bonecaller: return sf::Color(180,125,220);
+        case MonsterType::GoblinCaptain: return sf::Color(255,185,60);
+        case MonsterType::OssuaryWarden: return sf::Color(255,185,60);
+        case MonsterType::GoblinBulwark: case MonsterType::CryptSentinel: return sf::Color(110,150,195);
+        case MonsterType::GoblinMedic: case MonsterType::GraveMender: return sf::Color(95,230,140);
+        case MonsterType::GoblinStalker: case MonsterType::CryptShade: return sf::Color(180,110,200);
+        case MonsterType::GoblinSlinger: return sf::Color(225,155,95);
+        case MonsterType::FrostAcolyte: return sf::Color(120,220,250);
         case MonsterType::Skeleton: return sf::Color(220, 220, 200); // bone white
     }
     return sf::Color(190, 190, 190); // unreachable -- all enum values handled above
@@ -136,7 +155,7 @@ Application::Application()
       // PlayerClassFactory for what each class's Stats/TalentSet
       // actually are.
       player_(Position{0, 0}, statsForClass(PlayerClass::Spellblade),
-              talentSetForClass(PlayerClass::Spellblade)) {
+              TalentSet({basicAttack(),basicCleanse()})) {
     // Auto-flush cout after every insertion (see ARCHITECTURE_DECISIONS.md,
     // Prompt 9) -- fixes stdout buffering for every diagnostic/combat-log
     // line at once.
@@ -153,6 +172,7 @@ Application::Application()
                    << " -- on-screen text will not render.\n";
     }
 
+    if (!codex_.load("codex.txt")) log(codex_.error());
     window_.setFramerateLimit(60);
     window_.setKeyRepeatEnabled(false); // A held confirm key must not cast twice.
     // Deliberately no regenerateLevel() call here -- mode_ starts at
@@ -219,211 +239,236 @@ sf::Vector2f Application::worldToScreen(int tileX, int tileY) const {
 }
 
 void Application::processEvents() {
-    while (const std::optional event = window_.pollEvent()) {
-        if (event->is<sf::Event::Closed>()) {
+    while (const auto event=window_.pollEvent()) handleEvent(*event);
+}
+
+void Application::handleEvent(const sf::Event& input) {
+    const auto* event=&input;
+    if (event->is<sf::Event::Closed>()) {
+        window_.close();
+    }
+    if(const auto* moved=event->getIf<sf::Event::MouseMoved>()) mousePixel_=moved->position;
+
+    if (autoExploring_ && (event->is<sf::Event::KeyPressed>() ||
+        event->is<sf::Event::MouseButtonPressed>() || event->is<sf::Event::FocusLost>())) {
+        stopAutoExplore("interrupted by input or focus change.");
+        return;
+    }
+    if (codexOpen_) {
+        if (const auto* key=event->getIf<sf::Event::KeyPressed>()) handleCodexKey(key->code);
+        else handleCodexMouse(*event);
+        return;
+    }
+    if (const auto* click=event->getIf<sf::Event::MouseButtonPressed>(); click && click->button==sf::Mouse::Button::Left) {
+        const auto point=sf::Vector2f(click->position);
+        if(mode_==GameMode::GameOver) {
+            if(kReviveButton.contains(point)) { reviveInTown(); return; }
+            if(kRestartButton.contains(point)) mode_=GameMode::ClassSelection;
+            else if(kEndCodexButton.contains(point)) codexOpen_=true;
+            return;
+        }
+        if(mode_==GameMode::ClassSelection) {
+            if(kDeathModeButton.contains(point)) { adventureMode_=!adventureMode_; return; }
+            if(kStartLoadButton.contains(point)) { loadGame(); return; }
+            if(kStartCodexButton.contains(point)) { codexOpen_=true; return; }
+            for(std::size_t i=0;i<3;++i) if(kClassCards[i].contains(point)) {
+                selectClass(i==0?PlayerClass::Warrior:i==1?PlayerClass::Mage:PlayerClass::Thief);
+                break;
+            }
+            return;
+        }
+        if(mode_==GameMode::AttributeAllocation) {
+            for(std::size_t i=0;i<3;++i) if(kAttributeChoices[i].contains(point)) {
+                allocateAttribute(static_cast<unsigned int>(i));
+                break;
+            }
+            return;
+        }
+    }
+    if (const auto* key=event->getIf<sf::Event::KeyPressed>(); key && key->code==sf::Keyboard::Key::J) {
+        restTurns_=0; cancelTargeting(); codexOpen_=true; return;
+    }
+
+    if (event->is<sf::Event::KeyPressed>() || event->is<sf::Event::MouseButtonPressed>()) {
+        if (restTurns_>0) { restTurns_=0; return; }
+    }
+    if (inventoryOpen_ && !event->is<sf::Event::KeyPressed>()) {
+        handleInventoryMouse(*event);
+        return; // inventory mouse actions must never click through onto the map
+    }
+    if(mode_==GameMode::Town && !event->is<sf::Event::KeyPressed>()) {
+        handleTownMouse(*event);
+        return;
+    }
+    if (mode_ == GameMode::AbilityChoice && !event->is<sf::Event::KeyPressed>()) {
+        handleTreeMouse(*event);
+        return; // closing a menu must not also activate the map underneath
+    }
+    if(exitMenu_ && !event->is<sf::Event::KeyPressed>()) { handleTravelMouse(*event); return; }
+    if(vaultMenu_ && !event->is<sf::Event::KeyPressed>()) { handleVaultMouse(*event); return; }
+    if (mode_ == GameMode::Playing && !inventoryOpen_ && !vaultMenu_ && !exitMenu_) handleTargetingMouse(*event);
+
+    if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
+        if (mode_==GameMode::Town) { handleTownKey(keyPressed->code); return; }
+        if (exitMenu_) {
+            handleTravelKey(keyPressed->code);
+            return;
+        }
+        if (vaultMenu_) { handleVaultKey(keyPressed->code); return; }
+        if (keyPressed->code == sf::Keyboard::Key::Escape) {
+            if (mode_ == GameMode::AbilityChoice) { handleTreeKey(keyPressed->code,keyPressed->shift); return; }
+            if (inventoryOpen_) {
+                inventoryOpen_ = false;
+                return;
+            }
+            if (mode_ == GameMode::Playing && (aimingTalent_ || inspecting_)) {
+                cancelTargeting();
+                return;
+            }
             window_.close();
+            return;
         }
 
-        if (mode_ == GameMode::Playing && !inventoryOpen_ && !runesOpen_) handleTargetingMouse(*event);
+        if (keyPressed->code == sf::Keyboard::Key::F9) {
+            // Reachable from either mode -- a person who wants to
+            // continue a previous run shouldn't have to pick a class
+            // first just to reach a point where loading is possible.
+            // loadGame() determines the actual class from the save
+            // file itself and switches mode_ to Playing on success.
+            loadGame();
+            return;
+        }
 
-        if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
-            if (keyPressed->code == sf::Keyboard::Key::Escape) {
-                if (runesOpen_) { runesOpen_ = false; continue; }
-                if (inventoryOpen_) {
-                    inventoryOpen_ = false;
-                    continue;
-                }
-                if (mode_ == GameMode::Playing && (aimingTalent_ || inspecting_)) {
-                    cancelTargeting();
-                    continue;
-                }
-                window_.close();
-                continue;
+        if (mode_ == GameMode::ClassSelection) {
+            // Deliberately only these keys handled here -- this
+            // screen doesn't need arrow keys, talent keys, or save,
+            // so nothing else in the Playing-mode switch below even
+            // applies yet. As of Prompt 19: only the 3 base classes
+            // are offered here -- Spellblade still exists in
+            // PlayerClassFactory (see PlayerClass.hpp), just not as
+            // a starting option anymore.
+            if (keyPressed->code == sf::Keyboard::Key::M) { adventureMode_=!adventureMode_; return; }
+            if (keyPressed->code == sf::Keyboard::Key::Num1) {
+                selectClass(PlayerClass::Warrior);
+            } else if (keyPressed->code == sf::Keyboard::Key::Num2) {
+                selectClass(PlayerClass::Mage);
+            } else if (keyPressed->code == sf::Keyboard::Key::Num3) {
+                selectClass(PlayerClass::Thief);
             }
+            return;
+        }
 
-            if (keyPressed->code == sf::Keyboard::Key::F9) {
-                // Reachable from either mode -- a person who wants to
-                // continue a previous run shouldn't have to pick a class
-                // first just to reach a point where loading is possible.
-                // loadGame() determines the actual class from the save
-                // file itself and switches mode_ to Playing on success.
-                loadGame();
-                continue;
+        if (mode_ == GameMode::GameOver) {
+            if (keyPressed->code == sf::Keyboard::Key::R) { reviveInTown(); return; }
+            // selectClass() (reached via the ClassSelection screen
+            // this leads back to) does the actual reset -- this
+            // mode transition alone doesn't need to touch
+            // map_/monsters_/player_ itself.
+            if (keyPressed->code == sf::Keyboard::Key::Enter) {
+                mode_ = GameMode::ClassSelection;
             }
+            return;
+        }
 
-            if (mode_ == GameMode::ClassSelection) {
-                // Deliberately only these keys handled here -- this
-                // screen doesn't need arrow keys, talent keys, or save,
-                // so nothing else in the Playing-mode switch below even
-                // applies yet. As of Prompt 19: only the 3 base classes
-                // are offered here -- Spellblade still exists in
-                // PlayerClassFactory (see PlayerClass.hpp), just not as
-                // a starting option anymore.
-                if (keyPressed->code == sf::Keyboard::Key::Num1) {
-                    selectClass(PlayerClass::Warrior);
-                } else if (keyPressed->code == sf::Keyboard::Key::Num2) {
-                    selectClass(PlayerClass::Mage);
-                } else if (keyPressed->code == sf::Keyboard::Key::Num3) {
-                    selectClass(PlayerClass::Thief);
-                }
-                continue;
-            }
+        if (mode_ == GameMode::AbilityChoice) {
+            handleTreeKey(keyPressed->code, keyPressed->shift);
+            return;
+        }
+        if (keyPressed->code == sf::Keyboard::Key::F5) { saveGame(); return; }
 
-            if (mode_ == GameMode::GameOver) {
-                // selectClass() (reached via the ClassSelection screen
-                // this leads back to) does the actual reset -- this
-                // mode transition alone doesn't need to touch
-                // map_/monsters_/player_ itself.
-                if (keyPressed->code == sf::Keyboard::Key::Enter) {
-                    mode_ = GameMode::ClassSelection;
-                }
-                continue;
+        if (mode_ == GameMode::AttributeAllocation) {
+            if (keyPressed->code == sf::Keyboard::Key::Num1) {
+                allocateAttribute(0);
+            } else if (keyPressed->code == sf::Keyboard::Key::Num2) {
+                allocateAttribute(1);
+            } else if (keyPressed->code == sf::Keyboard::Key::Num3) {
+                allocateAttribute(2);
             }
+            return;
+        }
 
-            if (mode_ == GameMode::AbilityChoice) {
-                // Keys 1-N pick that option (N == pendingHybridChoices_
-                // .size(), at most 6); 0 declines, only meaningful
-                // during the one-time spec-in decision.
-                std::optional<std::size_t> pickedIndex;
-                static constexpr std::array<sf::Keyboard::Key, 7> kChoiceKeys{
-                    sf::Keyboard::Key::Num1, sf::Keyboard::Key::Num2, sf::Keyboard::Key::Num3,
-                    sf::Keyboard::Key::Num4, sf::Keyboard::Key::Num5, sf::Keyboard::Key::Num6,
-                    sf::Keyboard::Key::Num7,
-                };
-                for (std::size_t i = 0; i < kChoiceKeys.size(); ++i) {
-                    if (keyPressed->code == kChoiceKeys[i] && i < pendingHybridChoices_.size()) {
-                        pickedIndex = i;
-                        break;
-                    }
-                }
+        if (inventoryOpen_) {
+            handleInventoryKey(keyPressed->code);
+            return;
+        }
+        if (keyPressed->code == sf::Keyboard::Key::B) {
+            openInventory();
+            return;
+        }
+        if (keyPressed->code == sf::Keyboard::Key::T) { openTalentTrees(); return; }
+        if (keyPressed->code == sf::Keyboard::Key::C) {
+            for (std::size_t i=0;i<player_.talents().knownTalents().size();++i)
+                if (player_.talents().knownTalents()[i].id=="basic.cleanse") { requestTalent(i); break; }
+            return;
+        }
+        if (keyPressed->code == sf::Keyboard::Key::Space) {
+            player_.statusEffects().apply({StatusEffectType::Opening,2,0});
+            finishInventoryTurn(); return;
+        }
+        if (keyPressed->code == sf::Keyboard::Key::G) {
+            pickupItem();
+            return;
+        }
+        if (handleTargetingKey(keyPressed->code, keyPressed->shift)) return;
 
-                if (pickedIndex.has_value()) {
-                    const Talent& chosen = pendingHybridChoices_[*pickedIndex];
-                    player_.talents().learnTalent(chosen);
-                    player_.hybridSpecced() = true;
-                    log(pendingHybridChoiceIsSpecIn_ ? "You spec into the hybrid path -- learned "
-                                                      : "Learned ",
-                        chosen.name, "!");
-                    soundManager_.play(SoundEffect::Select);
-                    mode_ = GameMode::Playing;
-                    resumeLevelUpSequence();
-                } else if (pendingHybridChoiceIsSpecIn_ &&
-                           keyPressed->code == sf::Keyboard::Key::Num0) {
-                    log("You decide to stay on your current path.");
-                    soundManager_.play(SoundEffect::Select);
-                    mode_ = GameMode::Playing;
-                    resumeLevelUpSequence();
-                }
-                continue;
-            }
-
-            if (mode_ == GameMode::AttributeAllocation) {
-                bool allocated = false;
-                if (keyPressed->code == sf::Keyboard::Key::Num1) {
-                    player_.baseStats().strength += 1;
-                    player_.baseStats().maxHp += 1;
-                    log("+1 Strength.");
-                    allocated = true;
-                } else if (keyPressed->code == sf::Keyboard::Key::Num2) {
-                    player_.baseStats().dexterity += 1;
-                    log("+1 Dexterity.");
-                    allocated = true;
-                } else if (keyPressed->code == sf::Keyboard::Key::Num3) {
-                    player_.baseStats().intelligence += 1;
-                    player_.baseStats().maxMana += 1;
-                    log("+1 Intelligence.");
-                    allocated = true;
-                }
-
-                if (allocated) {
-                    player_.refreshEquipmentStats();
-                    player_.unspentAttributePoints() -= 1;
-                    soundManager_.play(SoundEffect::Select);
-                    // Tentatively resume -- resumeLevelUpSequence() puts
-                    // mode_ straight back to AttributeAllocation if
-                    // there are still points left from this level-up,
-                    // so the same screen naturally reappears for the
-                    // next point rather than needing a separate loop
-                    // here.
-                    mode_ = GameMode::Playing;
-                    resumeLevelUpSequence();
-                }
-                continue;
-            }
-
-            if (runesOpen_) { handleRuneKey(keyPressed->code); continue; }
-            if (inventoryOpen_) {
-                handleInventoryKey(keyPressed->code);
-                continue;
-            }
-            if (keyPressed->code == sf::Keyboard::Key::B) {
-                openInventory();
-                continue;
-            }
-            if (keyPressed->code == sf::Keyboard::Key::V) {
-                cancelTargeting(); mousePixel_.reset(); runeFeedback_.clear();
-                runesOpen_ = true;
-                continue;
-            }
-            if (keyPressed->code == sf::Keyboard::Key::G) {
-                pickupItem();
-                continue;
-            }
-            if (handleTargetingKey(keyPressed->code, keyPressed->shift)) continue;
-
-            switch (keyPressed->code) {
-                case sf::Keyboard::Key::Up:
-                case sf::Keyboard::Key::W:
-                    tryMovePlayer(0, -1);
-                    break;
-                case sf::Keyboard::Key::Down:
-                case sf::Keyboard::Key::S:
-                    tryMovePlayer(0, 1);
-                    break;
-                case sf::Keyboard::Key::Left:
-                case sf::Keyboard::Key::A:
-                    tryMovePlayer(-1, 0);
-                    break;
-                case sf::Keyboard::Key::Right:
-                case sf::Keyboard::Key::D:
-                    tryMovePlayer(1, 0);
-                    break;
-                case sf::Keyboard::Key::R:
-                    regenerateLevel(std::random_device{}());
-                    break;
-                case sf::Keyboard::Key::Num1:
-                    requestTalent(talentPage_ * 9);
-                    break;
-                case sf::Keyboard::Key::Num2:
-                    requestTalent(talentPage_ * 9 + 1);
-                    break;
-                case sf::Keyboard::Key::Num3:
-                    requestTalent(talentPage_ * 9 + 2);
-                    break;
-                case sf::Keyboard::Key::Num4:
-                    requestTalent(talentPage_ * 9 + 3);
-                    break;
-                case sf::Keyboard::Key::Num5:
-                    requestTalent(talentPage_ * 9 + 4);
-                    break;
-                case sf::Keyboard::Key::Num6:
-                    requestTalent(talentPage_ * 9 + 5);
-                    break;
-                case sf::Keyboard::Key::Num7:
-                    requestTalent(talentPage_ * 9 + 6);
-                    break;
-                case sf::Keyboard::Key::Num8:
-                    requestTalent(talentPage_ * 9 + 7);
-                    break;
-                case sf::Keyboard::Key::Num9:
-                    requestTalent(talentPage_ * 9 + 8);
-                    break;
-                case sf::Keyboard::Key::F5:
-                    saveGame();
-                    break;
-                default:
-                    break;
-            }
+        switch (keyPressed->code) {
+            case sf::Keyboard::Key::Up:
+            case sf::Keyboard::Key::W:
+                tryMovePlayer(0, -1);
+                break;
+            case sf::Keyboard::Key::Down:
+            case sf::Keyboard::Key::S:
+                tryMovePlayer(0, 1);
+                break;
+            case sf::Keyboard::Key::Left:
+            case sf::Keyboard::Key::A:
+                tryMovePlayer(-1, 0);
+                break;
+            case sf::Keyboard::Key::Right:
+            case sf::Keyboard::Key::D:
+                tryMovePlayer(1, 0);
+                break;
+            case sf::Keyboard::Key::H:
+                returnToTown();
+                break;
+            case sf::Keyboard::Key::Z:
+                startAutoExplore();
+                break;
+            case sf::Keyboard::Key::R:
+                startRest();
+                break;
+            case sf::Keyboard::Key::Num1:
+                requestHotbar(talentPage_ * 9);
+                break;
+            case sf::Keyboard::Key::Num2:
+                requestHotbar(talentPage_ * 9 + 1);
+                break;
+            case sf::Keyboard::Key::Num3:
+                requestHotbar(talentPage_ * 9 + 2);
+                break;
+            case sf::Keyboard::Key::Num4:
+                requestHotbar(talentPage_ * 9 + 3);
+                break;
+            case sf::Keyboard::Key::Num5:
+                requestHotbar(talentPage_ * 9 + 4);
+                break;
+            case sf::Keyboard::Key::Num6:
+                requestHotbar(talentPage_ * 9 + 5);
+                break;
+            case sf::Keyboard::Key::Num7:
+                requestHotbar(talentPage_ * 9 + 6);
+                break;
+            case sf::Keyboard::Key::Num8:
+                requestHotbar(talentPage_ * 9 + 7);
+                break;
+            case sf::Keyboard::Key::Num9:
+                requestHotbar(talentPage_ * 9 + 8);
+                break;
+            case sf::Keyboard::Key::F5:
+                saveGame();
+                break;
+            default:
+                break;
         }
     }
 }
@@ -467,25 +512,14 @@ bool Application::tryMovePlayer(int dx, int dy) {
     }
 
     Actor* blocker = actorAt(target, &player_);
+    if (auto* ally=dynamic_cast<Monster*>(blocker); ally && ally->allied) {
+        ally->setPosition(current); player_.setPosition(target); finishInventoryTurn(); return true;
+    }
     if (blocker != nullptr) {
-        // Bumping into another actor doesn't move the player and isn't an
-        // attack (no bump-to-attack in this game -- combat only happens
-        // through talents), but it's still a genuine action, and treating
-        // it as a complete no-op (as it was before this fix) starves
-        // monsters of turns: a monster mid-approach needs its own next
-        // turn to notice it's now adjacent and attack (its *current*
-        // decision was already computed using its pre-move position --
-        // see ARCHITECTURE_DECISIONS.md, "Combat pacing"), and if the
-        // player's only remaining input is repeatedly bumping the same
-        // direction, that turn would otherwise never come. So this still
-        // consumes a turn -- everyone else, including the actor just
-        // bumped, gets to act -- even though the player doesn't move.
-        log("You bump into ", blocker->name(), ".");
         lastMoveDirection_ = Position{dx, dy};
-        currentActor_ = &scheduler_.nextTurn();
-        processMonsterTurns();
-        advanceTurnsUntilPlayerCanAct();
-        return true;
+        for (std::size_t i=0;i<player_.talents().knownTalents().size();++i)
+            if (player_.talents().knownTalents()[i].id=="basic.attack") return tryUseTalent(i,target);
+        return false;
     }
 
     player_.setPosition(target);
@@ -494,6 +528,7 @@ bool Application::tryMovePlayer(int dx, int dy) {
             log("You see ", item->name(), ". G: pick up (1 turn).");
     }
     lastMoveDirection_ = Position{dx, dy};
+    advanceEnemyIntents();
     player_.talents().tickCooldowns();
     updateFieldOfView();
 
@@ -510,12 +545,8 @@ bool Application::tryMovePlayer(int dx, int dy) {
     // it occupies (and blocks) this exact position like any other
     // actor, so no separate "is the boss defeated" check is needed
     // here at all.
-    if (mode_ == GameMode::Playing && map_.tileAt(target.x, target.y).type == TileType::Door) {
-        currentFloor_ += 1;
-        log("You step through the door into floor ", currentFloor_, ".");
-        regenerateLevel(std::random_device{}()); // fresh layout, same convention as the R key --
-                                                   // not tied deterministically to floor number,
-                                                   // so replaying the same run still varies
+    if (!autoExploring_ && mode_==GameMode::Playing && target.x==floorExit_.x && target.y==floorExit_.y) {
+        cancelTargeting(); exitMenu_=true;
     }
 
     return true;
@@ -531,7 +562,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         return false;
     }
     // Own a copy: killing a target can grant a talent and reallocate the kit.
-    const Talent talent = player_.talents().effectiveTalent(talentIndex);
+    Talent talent = combatTalent(player_,player_.talents().effectiveTalent(talentIndex));
 
     const auto unavailable = talentUnavailableReason(player_, talentIndex);
     if (!unavailable.empty()) {
@@ -539,7 +570,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         return false;
     }
 
-    const TalentTarget target = targetPreview(talentIndex, cursor);
+    const TalentTarget target = targetPreview(talentIndex, cursor, true);
     if (!target.valid) {
         log(target.message);
         return false;
@@ -548,13 +579,24 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     const Actor* chainedTarget = target.chainedTarget;
     const Position blinkDestination = target.destination;
 
+    const auto* equippedWeapon=player_.inventory().equipped(EquipmentSlot::Weapon);
+    talent.committedBloodlust=equippedWeapon && equippedWeapon->definition()->weaponKind==WeaponKind::TwoHanded &&
+        player_.stats().hp*2<=player_.stats().maxHp ? player_.talents().passiveValue(PassiveKind::Bloodlust) : 0;
+    const Position beforeMovement=player_.position();
+    const int wasConcealed=player_.statusEffects().magnitudeOf(StatusEffectType::Concealed);
+    bool landedAny=false, killedAny=false;
     // Commit point: validation and preview above are side-effect free.
+    if (talent.effectKind==TalentEffectKind::Damage) combatThisTurn_=true;
     cancelTargeting();
 
     player_.stats().mana -= talent.manaCost;
     player_.stats().hp -= talent.hpCost;
 
-    if (talent.shape == EffectShape::Movement) {
+    if (talent.boneSwap) {
+        if (!affected.empty()) { affected.front()->setPosition(beforeMovement); player_.setPosition(blinkDestination); applyMovementTalents(beforeMovement); }
+    } else if (talent.summonCount) {
+        summonMinions(talent);
+    } else if (talent.shape == EffectShape::Movement) {
         player_.setPosition(blinkDestination);
         log(player_.name(), " uses ", talent.name, ", blinks to (", blinkDestination.x, ',',
             blinkDestination.y, ")");
@@ -569,14 +611,43 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             applyTalentSelfBuff(talent, *target);
         }
         log(player_.name(), " uses ", talent.name, "!");
+        if (talent.restoreMana) log("Mana: ",player_.stats().mana,"/",player_.stats().maxMana);
+        if (talent.restoreHpPercent) log("HP: ",player_.stats().hp,"/",player_.stats().maxHp);
+        if (talent.cleanse) log("Poison, Burn, Chill, Marked and curses removed. Other effects remain.");
     } else {
+        if (affected.empty()) log(player_.name(), " uses ", talent.name, " on empty ground.");
         for (Actor* target : affected) {
             Talent hitTalent = talent;
             if (target == chainedTarget) hitTalent.damagePercent /= 2;
+            std::string combo;
+            if (target->statusEffects().has(StatusEffectType::Marked)) combo+="Marked +25%; charge consumed. ";
+            if (talent.consumeBurn && target->statusEffects().has(StatusEffectType::Burn)) combo+="Burn consumed: +50%. ";
+            if (talent.consumeShock && target->statusEffects().has(StatusEffectType::Shock)) combo+="Shock consumed: +50%. ";
+            if (talent.consumeChill && target->statusEffects().has(StatusEffectType::Chill)) combo+="Chill consumed: +50%. ";
+            if (target->statusEffects().has(StatusEffectType::Guard)) combo+="Guard reduces direct damage. ";
+            const bool couldStun=target->statusEffects().canReceiveStun();
+            const int hpBefore=target->stats().hp;
             if (applyTalentDamage(hitTalent, player_, *target)) {
+                landedAny=true; killedAny=killedAny || target->stats().hp<=0;
+                if (!combo.empty()) log(target->name(), ": ", combo, "Hit dealt ",hpBefore-target->stats().hp," damage.");
+                if (!couldStun && (talent.consumeChill || (talent.onHitEffect && talent.onHitEffect->type==StatusEffectType::Stun)))
+                    log(target->name(), " is protected from another stun.");
+                if (talent.onHitEffect && talent.onHitEffect->type==StatusEffectType::Marked && target->stats().hp>0)
+                    log(target->name(), " is Marked: next direct hit +25%.");
                 log(player_.name(), " uses ", talent.name, " on ", target->name(), " (",
                     target->stats().hp, "/", target->stats().maxHp, " hp left)");
                 soundManager_.play(SoundEffect::Hit);
+                if (target->stats().hp>0 && talent.pushDistance>0) {
+                    const auto from=player_.position(), origin=target->position();
+                    const Position direction{(origin.x>from.x)-(origin.x<from.x),(origin.y>from.y)-(origin.y<from.y)};
+                    for (int step=0;step<talent.pushDistance;++step) {
+                        const auto pos=target->position();
+                        const Position dest{pos.x+direction.x,pos.y+direction.y};
+                        if (!map_.isWalkable(dest.x,dest.y) || isOccupied(dest,target) ||
+                            (dest.x!=pos.x && dest.y!=pos.y && (!map_.isWalkable(dest.x,pos.y) || !map_.isWalkable(pos.x,dest.y)))) break;
+                        target->setPosition(dest);
+                    }
+                }
                 checkAndHandleDeath(*target);
             } else {
                 log(target->name(), " dodges ", player_.name(), "'s ", talent.name, "!");
@@ -584,16 +655,9 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             }
         }
 
-        // Vault Kick (Archer, Prompt 16): moves the caster away from
-        // the target after the damage step above, regardless of
-        // whether that damage landed -- the retreat is the caster's own
-        // follow-through motion, not an on-hit effect a dodge would
-        // block. affected[0] rather than a loop: retreatDistance-bearing
-        // talents are always AdjacentEnemy + SingleTarget (exactly one
-        // target), never an AoE shape, so there's only ever one
-        // position to retreat away from.
-        if (talent.retreatDistance > 0 && !affected.empty()) {
-            const Position targetPos = affected[0]->position();
+        // Retreat follows the aimed direction even when the kick hits air.
+        if (talent.retreatDistance > 0) {
+            const Position targetPos = cursor;
             const Position awayDirection{player_.position().x - targetPos.x,
                                           player_.position().y - targetPos.y};
             const Position retreatDestination = target.destination;
@@ -604,7 +668,11 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         }
     }
 
+    afterHiddenCast(talent,landedAny,killedAny,wasConcealed);
+    if (talent.selfBuffEffect && !talent.returnConcealed && talent.effectKind!=TalentEffectKind::SelfBuff) player_.statusEffects().apply(*talent.selfBuffEffect);
+    if (talent.shape==EffectShape::Movement || talent.retreatDistance>0) { applyMovementTalents(beforeMovement); }
     player_.talents().startCooldown(talentIndex);
+    advanceEnemyIntents();
     player_.talents().tickCooldowns();
     updateFieldOfView(); // in case Blink moved the player
 
@@ -614,11 +682,40 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     return true;
 }
 
+void Application::advanceEnemyIntents() {
+    for (auto& m:monsters_) {
+        if (m->allied && m->remainingLife>0 && --m->remainingLife==0) { m->stats().hp=0; scheduler_.remove(*m); log("A temporary skeleton dissolves."); }
+        if (m->intent() && m->intent()->playerActionsRemaining>0) --m->intent()->playerActionsRemaining;
+        if (m->recoveryActions>0) --m->recoveryActions;
+    }
+    removeDeadMonsters();
+}
+
 void Application::processMonsterTurns() {
-    while (window_.isOpen() && currentActor_ != &player_) {
+    while (window_.isOpen() && currentActor_ != &player_ && mode_!=GameMode::GameOver) {
         Actor* actor = currentActor_;
 
+        auto* monster=dynamic_cast<Monster*>(actor);
+        bool interrupted=false;
+        if (monster && monster->intent()) {
+            const auto& intent=*monster->intent();
+            if (actor->statusEffects().has(StatusEffectType::Stun) ||
+                actor->position().x!=intent.origin.x || actor->position().y!=intent.origin.y) {
+                log(actor->name(), "'s wind-up is interrupted!");
+                monster->intent().reset();
+                if (monster->type()==MonsterType::GoblinWarlord || monster->type()==MonsterType::Lich) monster->recoveryActions=1;
+                interrupted=true;
+            }
+        }
         const bool hadPoison = actor->statusEffects().has(StatusEffectType::Poison);
+        const int chillMagnitude=actor->statusEffects().magnitudeOf(StatusEffectType::Chill);
+        bool chilledMove=false;
+        for (const auto& e:actor->statusEffects().active()) if (e.type==StatusEffectType::Chill) chilledMove=e.turnsRemaining%2==1;
+        for (const auto& effect:actor->statusEffects().active()) {
+            if (isCurse(effect.type) && monster && monster->allied) combatThisTurn_=true;
+            if (effect.type==StatusEffectType::Doom && effect.turnsRemaining==1)
+                log(actor->name()," suffers ",effect.magnitude," damage from Doom!");
+        }
         const bool stunned = tickStatusEffects(*actor);
         if (hadPoison && actor->stats().hp > 0) {
             log(actor->name(), " takes poison damage (", actor->stats().hp, "/",
@@ -629,10 +726,94 @@ void Application::processMonsterTurns() {
         if (actor->stats().hp > 0) {
             if (stunned) {
                 log(actor->name(), " is stunned and loses a turn!");
+            } else if (interrupted) {
+                // Displacement cancels the attack and spends this enemy action.
+            } else if (monster && monster->recoveryActions>0) {
+                // A full player action is guaranteed before the boss acts again.
+            } else if (monster && monster->intent()) {
+                if (monster->intent()->playerActionsRemaining==0) {
+                    const EnemyIntent intent=*monster->intent();
+                    monster->intent().reset();
+                    if (monster->type()==MonsterType::GoblinWarlord || monster->type()==MonsterType::SkeletonGuard || intent.kind==IntentKind::Summon) {
+                        monster->recoveryActions=1;
+                        log(actor->name(), " will recover for one player action after this attack.");
+                    }
+                    if (intent.kind==IntentKind::Summon) {
+                        AIDecision summon;
+                        summon.type=AIActionType::Summon; summon.movePosition=intent.target;
+                        // The committed attempt count is saved, so the reinforcement
+                        // order survives interruption, loading, and floor travel.
+                        summon.summonType=monster->summonsCommitted==2?MonsterType::SkeletonArcher:MonsterType::SkeletonGuard;
+                        summon.abilityIndex=actor->talents().knownTalents().size(); // cooldown reserved at commitment
+                        if (isOccupied(intent.target,actor)) log("The occupied ritual tile disrupts the summon!");
+                        else { log(actor->name(), " completes its ritual!"); executeAIDecision(*actor,summon,chillMagnitude); }
+                    } else {
+                        log(actor->name(), " releases its committed attack!");
+                        if (intent.contains(player_.position()) && hasLineOfFire(map_,intent.target,player_.position())) {
+                            AIDecision hit;
+                            hit.type=AIActionType::Attack; hit.target=&player_; hit.attackPower=intent.attackPower;
+                            if (intent.kind==IntentKind::MagicStrike) hit.scalingStat=ScalingStat::Intelligence;
+                            else if (intent.kind==IntentKind::StunStrike) hit.effectToApply=StatusEffectInstance{StatusEffectType::Stun,1,0};
+                            executeAIDecision(*actor,hit,chillMagnitude);
+                        } else log("You escaped the marked area.");
+                        std::vector<Actor*> victims;
+                        for (auto& m:monsters_) if (m.get()!=actor && m->stats().hp>0 && intent.contains(m->position()) && hasLineOfFire(map_,intent.target,m->position())) victims.push_back(m.get());
+                        for (auto* ally:victims) {
+                            if (mode_==GameMode::GameOver || actor->stats().hp<=0) break;
+                            if (ally->stats().hp<=0) continue;
+                            AIDecision hit; hit.type=AIActionType::Attack; hit.target=ally; hit.attackPower=intent.attackPower;
+                            if (intent.kind==IntentKind::MagicStrike) hit.scalingStat=ScalingStat::Intelligence;
+                            if (intent.kind==IntentKind::StunStrike) hit.effectToApply=StatusEffectInstance{StatusEffectType::Stun,1,0};
+                            executeAIDecision(*actor,hit,chillMagnitude);
+                        }
+                    }
+                }
+            } else if (monster && monster->allied) {
+                actMinion(*monster,chilledMove);
             } else if (actor->ai() != nullptr) {
-                const AIDecision decision =
-                    actor->ai()->decideAction(*actor, map_, player_, aliveAllies(actor));
-                executeAIDecision(*actor, decision);
+                bool hidden=player_.statusEffects().has(StatusEffectType::Concealed);
+                if (hidden) {
+                    const float chance=enemyStealthDetectionChance(*actor);
+                    // Exactly one check on this enemy's real, non-stunned turn.
+                    // Previewing, waiting at a menu and out-of-sight enemies never roll.
+                    if (chance>0.f && rollChance(chance)) {
+                        player_.statusEffects().remove(StatusEffectType::Concealed);
+                        hidden=false;
+                        log(actor->name(), " spots you! Concealment breaks.");
+                    }
+                }
+                if (monster) {
+                    auto* opponent=nearestOpponent(*actor,hidden);
+                    const AIDecision decision=enemyDecision(*monster,opponent);
+                    const bool warlord=monster && monster->type()==MonsterType::GoblinWarlord;
+                    const bool lich=monster && monster->type()==MonsterType::Lich;
+                    const bool blast=monster && (monster->type()==MonsterType::Bomber || monster->type()==MonsterType::OssuaryWarden || warlord) && decision.type==AIActionType::UseAbility;
+                    const bool slam=monster && monster->type()==MonsterType::Ogre && decision.type==AIActionType::Attack &&
+                        decision.effectToApply && decision.effectToApply->type==StatusEffectType::Stun;
+                    const bool guard=monster && monster->type()==MonsterType::SkeletonGuard;
+                    const bool heavy=decision.type==AIActionType::Attack && (guard || (warlord && actor->stats().hp*10<=actor->stats().maxHp*3));
+                    const bool bolt=lich && decision.type==AIActionType::Attack;
+                    const bool summon=lich && decision.type==AIActionType::Summon;
+                    if (blast || slam || heavy || bolt || summon) {
+                        const Position aim=summon?decision.movePosition:opponent->position();
+                        // Both caster and warning tile must be visible before commitment.
+                        const auto* allyTarget=dynamic_cast<const Monster*>(opponent);
+                        if ((allyTarget && allyTarget->allied) ||
+                            (exploredMap_.at(actor->position().x,actor->position().y)==Visibility::Visible &&
+                             exploredMap_.at(aim.x,aim.y)==Visibility::Visible)) {
+                            const auto kind=summon?IntentKind::Summon:blast||bolt?IntentKind::MagicStrike:heavy?IntentKind::HeavyStrike:IntentKind::StunStrike;
+                            const int radius=blast?2:heavy?1:0;
+                            const int warning=blast?3:(summon || heavy)?2:1;
+                            monster->intent()=EnemyIntent{actor->position(),aim,radius,warning,decision.attackPower,kind};
+                            if (!decision.announcement.empty()) log(decision.announcement);
+                            if (blast || summon) actor->talents().startCooldown(decision.abilityIndex);
+                            if (summon) {
+                                ++monster->summonsCommitted;
+                                log("Ritual: 2 actions to interrupt or occupy the purple tile. Attempt ",monster->summonsCommitted,"/3.");
+                            } else log(actor->name()," prepares a strike: ",warning," action(s) to leave the marked tiles. It can hit other enemies.");
+                        }
+                    } else if (!(chilledMove && decision.type==AIActionType::Move)) executeAIDecision(*actor,decision,chillMagnitude);
+                }
             }
             actor->talents().tickCooldowns();
         }
@@ -649,29 +830,43 @@ void Application::advanceTurnsUntilPlayerCanAct() {
     constexpr int kMaxStunSkips = 50;
 
     for (int i = 0; i < kMaxStunSkips && window_.isOpen(); ++i) {
+        const int manaRegen=combatThisTurn_ || dangerNearby() ? kManaRegenInCombat : kManaRegenOutsideCombat;
         player_.stats().mana =
-            std::min(player_.stats().mana + kManaRegenPerTurn, player_.stats().maxMana);
+            std::min(player_.stats().mana + manaRegen, player_.stats().maxMana);
 
         const bool hadPoison = player_.statusEffects().has(StatusEffectType::Poison);
+        if (hadPoison || player_.statusEffects().has(StatusEffectType::Burn) ||
+            player_.statusEffects().has(StatusEffectType::ManaDrain) || player_.statusEffects().has(StatusEffectType::Doom)) combatThisTurn_=true;
+        for (const auto& effect:player_.statusEffects().active()) {
+            if (effect.type==StatusEffectType::Doom && effect.turnsRemaining==1)
+                log("Doom erupts for ",effect.magnitude," damage!");
+        }
         const bool stunned = tickStatusEffects(player_);
         if (hadPoison && player_.stats().hp > 0) {
             log("Poison deals damage (", player_.stats().hp, "/", player_.stats().maxHp,
                 " hp left)");
         }
         checkAndHandleDeath(player_);
-        if (!window_.isOpen()) {
+        if (!window_.isOpen() || mode_==GameMode::GameOver) {
             return;
         }
         if (!stunned) {
+            recordQuietTurn();
             return; // genuinely the player's turn now
         }
         log("You are stunned and lose a turn!");
+        player_.talents().tickCooldowns();
         currentActor_ = &scheduler_.nextTurn();
         processMonsterTurns();
     }
 }
 
-void Application::executeAIDecision(Actor& actor, const AIDecision& decision) {
+void Application::executeAIDecision(Actor& actor, const AIDecision& decision, int chillMagnitude) {
+    if (decision.type==AIActionType::Attack || decision.type==AIActionType::UseAbility) {
+        const auto* attacker=dynamic_cast<const Monster*>(&actor);
+        const auto* target=dynamic_cast<const Monster*>(decision.target);
+        if (decision.target==&player_ || (attacker && attacker->allied) || (target && target->allied)) combatThisTurn_=true;
+    }
     if (!decision.announcement.empty()) {
         log(decision.announcement);
     }
@@ -690,9 +885,17 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision) {
                 break;
             }
 
+            if(decision.healAmount>0 && decision.target->stats().hp>0) {
+                const int healed=std::min(decision.healAmount,decision.target->stats().maxHp-decision.target->stats().hp);
+                decision.target->stats().hp+=healed;
+                if(auto* patient=dynamic_cast<Monster*>(decision.target)) patient->lastObservedHp=patient->stats().hp;
+                if(auto* healer=dynamic_cast<Monster*>(&actor)) --healer->tactics.heals;
+                if(exploredMap_.at(actor.position().x,actor.position().y)==Visibility::Visible)
+                    log(actor.name()," heals ",decision.target->name()," for ",healed," HP.");
+            }
             bool dodged = false;
             if (decision.attackPower > 0) {
-                dodged = rollDodge(decision.target->stats().dexterity);
+                dodged = rollChance(std::min(.60f,dodgeChance(decision.target->stats().dexterity)+(decision.target->statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(*decision.target))/100.f));
                 if (dodged) {
                     log(decision.target->name(), " dodges ", actor.name(), "'s attack!");
                     soundManager_.play(SoundEffect::Dodge);
@@ -712,12 +915,22 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision) {
                     // Global crit (per design: every creature, player and
                     // monster alike, rolls it) -- multiplies the result of
                     // everything above.
+                    if (chillMagnitude>0) damage=damage*(100-chillMagnitude)/100;
+                    const bool marked=decision.target->statusEffects().has(StatusEffectType::Marked);
+                    if (marked) damage=damage*(100+kMarkedDamagePercent)/100;
                     bool crit = false;
                     if (rollCrit(actor.stats().dexterity)) {
                         crit = true;
                         damage = static_cast<int>(static_cast<float>(damage) * critDamageMultiplier());
                     }
+                    int guard=decision.target->statusEffects().magnitudeOf(StatusEffectType::Guard);
+                    if (guard && decision.target->inventory().equipped(EquipmentSlot::OffHand)) guard+=decision.target->talents().passiveValue(PassiveKind::ShieldTraining);
+                    guard+=armourGuardBonus(*decision.target);
+                    damage=std::max(0,damage-guard);
                     decision.target->stats().hp -= damage;
+                    if (marked) { decision.target->statusEffects().consumeMark(); log("Marked consumed: +25% direct damage before Guard."); }
+                    if (guard) log("Guard reduced the incoming hit by up to ",guard," damage.");
+                    if (damage>0) decision.target->statusEffects().remove(StatusEffectType::Concealed);
                     log(actor.name(), crit ? " critically hits " : " hits ", decision.target->name(),
                         " for ", damage, " (", decision.target->stats().hp, "/",
                         decision.target->stats().maxHp, " hp left)");
@@ -729,12 +942,18 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision) {
             // A dodged hit lands no on-hit effect either -- avoiding the
             // blow avoids the poison that would have ridden in on it.
             if (!dodged && decision.effectToApply.has_value() && decision.target->stats().hp > 0) {
-                decision.target->statusEffects().apply(*decision.effectToApply);
-                log(decision.target->name(), " is affected by ",
-                    (decision.effectToApply->type == StatusEffectType::Poison    ? "poison"
-                     : decision.effectToApply->type == StatusEffectType::Stun ? "a stun"
-                                                                               : "a buff"),
-                    "!");
+                const bool blocked=decision.effectToApply->type==StatusEffectType::Stun && !decision.target->statusEffects().canReceiveStun();
+                const bool armourBlocked=decision.effectToApply->type==StatusEffectType::Stun && !blocked && armourResistsStun(*decision.target);
+                if (!armourBlocked) decision.target->statusEffects().apply(*decision.effectToApply);
+                if (armourBlocked) log(decision.target->name(), " resists stun with Unyielding!");
+                else if (blocked) log(decision.target->name(), " resists stun: recovery or an existing stun prevents reapplication.");
+                else {
+                    log(decision.target->name(), " is affected by ",statusName(decision.effectToApply->type),"!");
+                    if (decision.effectToApply->type==StatusEffectType::Doom)
+                        log("Doom: ",decision.effectToApply->magnitude," delayed HP damage. C removes it; Guard and dodge do not prevent it.");
+                    if (decision.effectToApply->type==StatusEffectType::ManaDrain)
+                        log("Mana Drain: loses ",decision.effectToApply->magnitude," mana each tick. C removes it.");
+                }
             }
 
             if (decision.type == AIActionType::UseAbility &&
@@ -769,7 +988,9 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision) {
                 !isOccupied(decision.movePosition, &actor)) {
                 std::unique_ptr<Monster> summoned =
                     createMonster(decision.summonType, decision.movePosition, decision.summonTier);
+                scaleDungeonMonster(*summoned,currentFloor_);
                 summoned->setRewardsEligible(false);
+                summoned->recoveryActions=1; // no immediate attack before a player response
                 scheduler_.add(*summoned);
                 monsters_.push_back(std::move(summoned));
             }
@@ -800,12 +1021,26 @@ void Application::checkAndHandleDeath(Actor& actor) {
     }
 
     if (actor.stats().hp > 0) {
+        if(auto* m=dynamic_cast<Monster*>(&actor); m && !m->allied) {
+            if(m->stats().hp<m->lastObservedHp) {
+                m->tactics.concealed=false;
+                if(m->tactics.alert==0) alertEnemyGroup(*m,m->position());
+            }
+            m->lastObservedHp=m->stats().hp;
+        }
         return;
     }
 
     soundManager_.play(SoundEffect::Death);
 
     if (&actor == &player_) {
+        if (player_.talents().passiveValue(PassiveKind::Deathless) &&
+            std::find(player_.deathlessSpentFloors.begin(),player_.deathlessSpentFloors.end(),currentFloor_)==player_.deathlessSpentFloors.end()) {
+            player_.deathlessSpentFloors.push_back(currentFloor_); player_.stats().hp=1;
+            const int guard=player_.talents().passiveValue(PassiveKind::Deathless)-1;
+            if (guard) player_.statusEffects().apply({StatusEffectType::Guard,2,guard});
+            log("Deathless saves you at 1 HP! Spent on this floor."); return;
+        }
         log("You have died!");
         // As of Prompt 17: a real GameOver screen instead of closing
         // the window outright. selectClass() (reachable from the
@@ -819,7 +1054,16 @@ void Application::checkAndHandleDeath(Actor& actor) {
 
     auto* defeated = dynamic_cast<Monster*>(&actor);
     if (defeated && !defeated->claimDeath()) return;
-    if (defeated) rewardMonster(*defeated, &actor == boss_);
+    if (defeated && defeated->allied) {
+        scheduler_.remove(actor);
+        const int explosion=player_.talents().passiveValue(PassiveKind::GravePact);
+        if (explosion) for (auto& enemy:monsters_) if (!enemy->allied && enemy->stats().hp>0 &&
+            std::abs(enemy->position().x-actor.position().x)+std::abs(enemy->position().y-actor.position().y)<=1) {
+            enemy->stats().hp-=explosion; checkAndHandleDeath(*enemy);
+        }
+        return;
+    }
+    if (defeated) { discoverMonsterLore(*defeated); rewardMonster(*defeated, &actor == boss_); }
 
     if (&actor == boss_) {
         boss_ = nullptr; // must clear before removeDeadMonsters() erases the underlying object
@@ -890,98 +1134,23 @@ void Application::grantXpAndAnnounce(int amount) {
         soundManager_.play(SoundEffect::LevelUp);
     }
 
-    pendingLevelUpFromLevel_ = levelBefore + 1;
+    if (player_.level()>levelBefore) progressionReviewPending_=true;
     resumeLevelUpSequence();
 }
 
 void Application::resumeLevelUpSequence() {
-    // Attribute allocation always resolves first, before any talent
-    // unlocks or hybrid choices for the levels just gained -- a
-    // deliberate ordering choice (see ARCHITECTURE_DECISIONS.md), not
-    // an arbitrary one: it keeps every pause for a single XP grant in
-    // one predictable sequence rather than interleaving two different
-    // kinds of choice level-by-level.
-    if (player_.unspentAttributePoints() > 0) {
-        mode_ = GameMode::AttributeAllocation;
-        return; // paused; the AttributeAllocation key handling calls this again once resolved
-    }
-    processLevelUpEffects(pendingLevelUpFromLevel_);
-
-    // The sequence has now genuinely reached its own end -- either
-    // nothing was ever pending, or every attribute point and hybrid
-    // choice this XP grant produced has actually been offered and
-    // resolved. Only now is it safe to make the deferred final-boss
-    // victory transition (see checkAndHandleDeath) -- doing it any
-    // earlier risked silently skipping a choice the player had genuinely
-    // earned.
-    if (mode_ == GameMode::Playing && pendingFinalVictory_) {
-        pendingFinalVictory_ = false;
-        mode_ = GameMode::GameOver;
-        wonGame_ = true;
-    }
-}
-
-void Application::processLevelUpEffects(int fromLevel) {
-    // Prompt 23/24: checks every level actually crossed, not just the
-    // final level reached -- a multi-level jump (the boss's XP against
-    // an early character) must not skip a talent unlock or a hybrid
-    // choice sitting at an intermediate level just because the grant
-    // blew past it in one step.
-    for (int level = fromLevel; level <= player_.level(); ++level) {
-        if (const std::optional<Talent> unlocked = talentUnlockedAtLevel(playerClass_, level);
-            unlocked.has_value()) {
-            player_.talents().learnTalent(*unlocked);
-            log("New talent unlocked: ", unlocked->name, "!");
-        }
-
-        offerHybridChoiceIfEligible(level);
-        if (mode_ == GameMode::AbilityChoice) {
-            // Paused for a real decision -- stop here. pendingLevelUpFromLevel_
-            // is updated so resumeLevelUpSequence() (called by the
-            // AbilityChoice key handling once the person responds)
-            // continues from the *next* level, not from the start of
-            // this call -- any further level in this same grant still
-            // gets checked rather than silently skipped.
-            pendingLevelUpFromLevel_ = level + 1;
-            return;
-        }
-    }
-}
-
-void Application::offerHybridChoiceIfEligible(int level) {
-    if (!isHybridEligible(playerClass_)) {
-        return; // Thief/Spellblade -- no hybrid path at all, see HybridSpec.hpp
-    }
-
-    if (level == 5 && !player_.hybridSpecced()) {
-        // The one-time spec-in decision -- level 5 is crossed exactly
-        // once per character (levels only ever go up), so there's no
-        // need for a separate "already declined" flag: if they decline
-        // here, hybridSpecced() stays false and level 5 simply never
-        // comes around again for this character.
-        pendingHybridChoices_ = availableHybridPicks(playerClass_, player_.talents());
-        pendingHybridChoiceIsSpecIn_ = true;
-        pendingHybridChoiceLevel_ = level;
-        mode_ = GameMode::AbilityChoice;
-        return;
-    }
-
-    if (level >= 6 && level <= 10 && player_.hybridSpecced()) {
-        const std::vector<Talent> available = availableHybridPicks(playerClass_, player_.talents());
-        if (available.empty()) {
-            return; // the whole opposing kit has already been picked -- nothing left to offer
-        }
-        pendingHybridChoices_ = available;
-        pendingHybridChoiceIsSpecIn_ = false;
-        pendingHybridChoiceLevel_ = level;
-        mode_ = GameMode::AbilityChoice;
+    if (mode_==GameMode::GameOver) return;
+    if (player_.unspentAttributePoints()>0) { mode_=GameMode::AttributeAllocation; return; }
+    if (progressionReviewPending_) { openTalentTrees(); return; }
+    if (pendingFinalVictory_) {
+        pendingFinalVictory_=false; mode_=GameMode::GameOver; wonGame_=true;
     }
 }
 
 std::vector<Actor*> Application::aliveAllies(const Actor* exclude) {
     std::vector<Actor*> allies;
     for (auto& m : monsters_) {
-        if (m.get() != exclude && m->stats().hp > 0) {
+        if (m.get() != exclude && m->stats().hp > 0 && !m->allied) {
             allies.push_back(m.get());
         }
     }
@@ -1003,6 +1172,7 @@ void Application::updateFieldOfView() {
 
 void Application::selectClass(PlayerClass cls) {
     soundManager_.play(SoundEffect::Select);
+    extraLives_=adventureMode_?2:0;
     playerClass_ = cls;
     player_.inventory() = Inventory{};
     player_.baseStats() = statsForClass(cls);
@@ -1010,12 +1180,14 @@ void Application::selectClass(PlayerClass cls) {
     player_.unspentAttributePoints() = 0;
     player_.statusEffects().active().clear();
     nextItemId_ = 1;
-    runeChoiceAvailable_ = false;
+    player_.trees().clear();
+    player_.bloodRelic=false; player_.animationRelic=false; player_.deathlessSpentFloors.clear();
+    player_.treePoints()=1; player_.abilityPoints()=3;
     pendingFinalVictory_ = false;
-    pendingHybridChoices_.clear();
-    pendingLevelUpFromLevel_ = 2;
+
+    progressionReviewPending_=true;
     loot_.restore(std::random_device{}());
-    player_.talents() = talentSetForClass(cls);
+    player_.talents() = TalentSet({basicAttack(),basicCleanse()});
     // A fresh class selection is a genuinely new character -- starts at
     // level 1 with 0 XP, same as anyone picking up the game for the
     // first time, regardless of what level a previous run (via this
@@ -1024,48 +1196,65 @@ void Application::selectClass(PlayerClass cls) {
     // these to anything else.
     player_.level() = 1;
     player_.xp() = 0;
-    player_.hybridSpecced() = false;
+
+    floorCache_.clear(); gold_=0; quietTurns_=0; restTurns_=0; exitMenu_=false; combatThisTurn_=false;
     currentFloor_ = 1;
+    dungeonMenu_=false;
     mode_ = GameMode::Playing;
     regenerateLevel(kInitialSeed);
+    treeSelection_=0;
+    while (treeSelection_+1<kTalentTrees.size() && !startingTreeAllowed(cls,kTalentTrees[treeSelection_].tree)) ++treeSelection_;
+    abilitySelection_=0; openTalentTrees();
 }
 
 void Application::regenerateLevel(unsigned int seed) {
-    runesOpen_ = false;
+    autoExploring_=false; exploreSeenInterests_.clear();
     inventoryOpen_ = false;
+    vaultMenu_=0;
     inventorySelection_ = 0;
     groundItems_.clear();
     cancelTargeting();
     mousePixel_.reset();
     talentPage_ = 0;
-    DungeonGenerationParams params; // defaults, then floor-gated below
+    const auto theme=floorTheme(currentFloor_);
+    DungeonGenerationParams params;
+    params.minRoomSize=theme.minRoomSize;
+    params.maxRoomSize=theme.maxRoomSize;
     // Only specific floors generate with a boss room at all -- every
     // other floor is a pure "clear it, find the door" dungeon. kFinalFloor
     // (10) is a placeholder using the same GoblinWarlord as
     // kFirstBossFloor (5) for now -- the actual Lich (see ROADMAP.md)
     // is a separate, later piece of work; this gets the full 10-floor
     // structure and victory gating correct end to end first.
-    params.includeBossRoom = (currentFloor_ == kFirstBossFloor || currentFloor_ == kFinalFloor);
+    params.includeBossRoom = (currentFloor_ == kFirstBossFloor || currentFloor_ == 10 || currentFloor_ == kFinalFloor);
+    params.includeVault=currentFloor_>=3 && !params.includeBossRoom && nextItemId_<=std::numeric_limits<std::uint64_t>::max()-3;
     const GeneratedDungeon dungeon = generateDungeon(params, seed);
+    vaultExists_=dungeon.hasVault; vaultOpened_=false; vaultClaimed_=false;
+    vaultCenter_=dungeon.vaultCenter; vaultEntrance_=dungeon.vaultEntrance;
+    vaultRewards_.clear();
 
     map_ = dungeon.map;
 
     player_.setPosition(dungeon.playerStart);
-    player_.stats().hp = player_.stats().maxHp;
-    player_.stats().mana = player_.stats().maxMana;
-    player_.talents().resetCooldowns();
+    floorEntrance_=dungeon.playerStart; floorExit_={-1,-1};
 
     boss_ = nullptr; // clear before repopulating -- see checkAndHandleDeath for why this matters
     monsters_.clear();
-    // Prompt 22: the tier every regular monster in this dungeon spawns
-    // at, derived from the player's current level. Computed once per
-    // regeneration, not per monster -- every monster in a given dungeon
-    // is the same tier as every other (see MonsterTier.hpp's own
-    // comment for why a simpler uniform-tier-per-level-band was chosen
-    // over mixed-tier spawning within one dungeon).
-    const MonsterTier tier = tierForLevel(player_.level());
-    for (std::size_t i = 0; i < dungeon.otherRoomCenters.size() && i < kRoster.size(); ++i) {
-        monsters_.push_back(createMonster(kRoster[i], dungeon.otherRoomCenters[i], tier));
+    for (const auto& spawn:planEncounters(dungeon,currentFloor_))
+        monsters_.push_back(createMonster(spawn.type,spawn.position,spawn.tier));
+    if (vaultExists_) {
+        auto guard=createMonster(MonsterType::Goblin,{vaultCenter_.x-1,vaultCenter_.y},MonsterTier::Elite);
+        guard->vaultGuard=true; monsters_.push_back(std::move(guard));
+        guard=createMonster(MonsterType::Archer,{vaultCenter_.x+1,vaultCenter_.y});
+        guard->vaultGuard=true; monsters_.push_back(std::move(guard));
+        const auto lootTheme=currentFloor_<=3?LootTheme::Barracks:currentFloor_<=6?LootTheme::Sanctum:LootTheme::Crypts;
+        for (int i=0;i<3;++i) {
+            auto reward=loot_.generate(currentFloor_,1,nextItemId_++,vaultCenter_,ItemRarity::Rare,lootTheme);
+            // Prefer different bases without an unbounded generation loop.
+            for (int retry=0;retry<16 && std::any_of(vaultRewards_.begin(),vaultRewards_.end(),[&](const auto& item){return item->definition()==reward->definition();});++retry)
+                reward=loot_.generate(currentFloor_,1,reward->instanceId(),vaultCenter_,ItemRarity::Rare,lootTheme);
+            vaultRewards_.push_back(std::move(reward));
+        }
     }
     if (dungeon.hasBossRoom) {
         // The boss always spawns at Base tier regardless of `tier`
@@ -1074,8 +1263,20 @@ void Application::regenerateLevel(unsigned int seed) {
         // the true final fight, not a placeholder like it was before
         // this was actually built.
         const MonsterType bossType =
-            (currentFloor_ == kFinalFloor) ? MonsterType::Lich : MonsterType::GoblinWarlord;
-        monsters_.push_back(createMonster(bossType, dungeon.bossRoomCenter));
+            (currentFloor_ >= 10) ? MonsterType::Lich : MonsterType::GoblinWarlord;
+        Position bossPosition=dungeon.bossRoomCenter;
+        auto startDistance=[&](Position p) {
+            const int dx=p.x-dungeon.playerStart.x,dy=p.y-dungeon.playerStart.y;
+            return dx*dx+dy*dy;
+        };
+        // The central 7x7 is guaranteed floor in every generated boss room.
+        // If its center is near the start, use its far side to prevent an
+        // opening attack. Keep the progression door under the boss below.
+        if (startDistance(bossPosition)<=64)
+            for (int y=dungeon.bossRoomCenter.y-3;y<=dungeon.bossRoomCenter.y+3;++y)
+                for (int x=dungeon.bossRoomCenter.x-3;x<=dungeon.bossRoomCenter.x+3;++x)
+                    if (map_.isWalkable(x,y) && startDistance({x,y})>startDistance(bossPosition)) bossPosition={x,y};
+        monsters_.push_back(createMonster(bossType, bossPosition));
         boss_ = monsters_.back().get();
     }
 
@@ -1091,13 +1292,16 @@ void Application::regenerateLevel(unsigned int seed) {
     // branch instead.
     if (currentFloor_ != kFinalFloor) {
         const Position doorPosition =
-            dungeon.hasBossRoom ? dungeon.bossRoomCenter : dungeon.otherRoomCenters.back();
+            dungeon.hasBossRoom ? boss_->position() : dungeon.otherRoomCenters.back();
+        floorExit_=doorPosition;
         map_.setTile(doorPosition.x, doorPosition.y, Tile{TileType::Door, true, true});
     }
 
+    for (auto& m:monsters_) scaleDungeonMonster(*m,currentFloor_);
     spawnFixedItems();
     spawnFloorChest();
     exploredMap_ = ExploredMap(map_);
+    log("Entering ", theme.name, ". ", theme.description);
 
     scheduler_ = TurnScheduler{};
     scheduler_.add(player_);
@@ -1106,8 +1310,7 @@ void Application::regenerateLevel(unsigned int seed) {
     }
 
     currentActor_ = &scheduler_.nextTurn();
-    processMonsterTurns();
-    advanceTurnsUntilPlayerCanAct();
+    // Arrival is not a wait action: no healing, cooldown ticks or quiet turns.
     updateFieldOfView();
 
     std::cout << "Generated dungeon (seed " << seed << ", floor " << currentFloor_
@@ -1123,13 +1326,15 @@ void Application::regenerateLevel(unsigned int seed) {
     // sitting in the on-screen log for the rest of the run.
 }
 
-void Application::saveGame() {
+SaveGameState Application::captureState(bool includeFloors) {
     SaveGameState state;
+    state.adventureMode=adventureMode_; state.extraLives=extraLives_;
     state.map = map_;
     state.exploredMap = exploredMap_;
     state.playerPosition = player_.position();
     state.playerClass = playerClass_;
     state.playerLevel = player_.level();
+    state.bloodRelic=player_.bloodRelic; state.animationRelic=player_.animationRelic; state.deathlessSpentFloors=player_.deathlessSpentFloors;
     state.playerXp = player_.xp();
     state.currentFloor = currentFloor_;
     state.playerStats = player_.baseStats();
@@ -1140,13 +1345,16 @@ void Application::saveGame() {
     state.lootRngState = loot_.state();
     state.chestPosition = chestPosition_; state.chestExists = chestExists_; state.chestClaimed = chestClaimed_;
     state.ordinaryDrops = ordinaryDrops_;
+    state.vaultExists=vaultExists_; state.vaultOpened=vaultOpened_; state.vaultClaimed=vaultClaimed_;
+    state.vaultCenter=vaultCenter_; state.vaultEntrance=vaultEntrance_;
     const auto saveItem = [&](const Item& item, int location) {
         state.items.push_back({item.definition()->id, item.instanceId(), location,
                               location == -2 ? item.position() : Position{}, item.rollTier(), item.affixes()});
     };
+    for (std::size_t i=0;i<vaultRewards_.size();++i) saveItem(*vaultRewards_[i],-3-static_cast<int>(i));
     for (const auto& item : groundItems_) saveItem(*item, -2);
     for (const auto& item : player_.inventory().items()) saveItem(*item, -1);
-    for (int slot = 0; slot < 3; ++slot) {
+    for (int slot = 0; slot < kEquipmentSlotCount; ++slot) {
         if (const auto* item = player_.inventory().equipped(static_cast<EquipmentSlot>(slot)))
             saveItem(*item, slot);
     }
@@ -1154,21 +1362,30 @@ void Application::saveGame() {
 
     const auto& talents = player_.talents().knownTalents();
     for (std::size_t i = 0; i < talents.size(); ++i)
-        state.playerTalents.push_back({talents[i].id, player_.talents().cooldownRemaining(i)});
-    state.runes = player_.talents().runes();
-    state.runeChoiceAvailable = runeChoiceAvailable_;
+        state.playerTalents.push_back({talents[i].id, player_.talents().cooldownRemaining(i), player_.talents().rank(i)});
+    state.treePoints=player_.treePoints(); state.abilityPoints=player_.abilityPoints();
+    state.trees=player_.trees(); state.hotbar=player_.talents().hotbar();
+    state.progressionReviewPending=progressionReviewPending_; state.pendingFinalVictory=pendingFinalVictory_;
+    state.defeatedBossName=defeatedBossName_;
     state.playerStatusEffects = player_.statusEffects().active();
-    state.playerHybridSpecced = player_.hybridSpecced();
 
     for (auto& m : monsters_) {
         SaveGameState::MonsterSaveData data;
+        data.tactics=m->tactics;
         data.type = m->type();
+        data.allied=m->allied; data.summonRank=m->summonRank; data.summonIntelligence=m->summonIntelligence; data.remainingLife=m->remainingLife;
         data.position = m->position();
         data.hp = m->stats().hp;
         data.maxHp = m->stats().maxHp;
         data.isBoss = (m.get() == boss_);
         data.tier = m->tier();
         data.rewardsEligible = m->rewardsEligible();
+        data.intent = m->intent();
+        data.vaultGuard = m->vaultGuard;
+        data.recoveryActions=m->recoveryActions; data.summonsCommitted=m->summonsCommitted;
+        if (const auto* behavior=dynamic_cast<const BossBehavior*>(m->ai())) {
+            data.announcedPhase=behavior->announcedPhase(); data.enraged=behavior->enraged();
+        }
         data.statusEffects = m->statusEffects().active();
         const auto& known = m->talents().knownTalents();
         for (std::size_t i = 0; i < known.size(); ++i)
@@ -1176,66 +1393,68 @@ void Application::saveGame() {
         state.monsters.push_back(std::move(data));
     }
 
-    if (engine::saveGame(state, kSaveFilePath)) {
-        log("Game saved.");
-    } else {
-        log("Failed to save game (could not write ", kSaveFilePath, ").");
-    }
+    state.floorEntrance=floorEntrance_; state.floorExit=floorExit_;
+    state.gold=gold_; state.quietTurns=quietTurns_; state.inTown=mode_==GameMode::Town;
+    if (includeFloors) for (const auto& entry:floorCache_) if (entry.first!=currentFloor_) state.savedFloors.push_back(entry.second);
+    return state;
+}
+
+void Application::saveGame() {
+    if (engine::saveGame(captureState(),kSaveFilePath)) log("Game saved, including visited floors.");
+    else log("Failed to save game.");
 }
 
 void Application::loadGame() {
-    runesOpen_ = false;
-    inventoryOpen_ = false;
-    inventorySelection_ = 0;
-    cancelTargeting();
-    mousePixel_.reset();
-    talentPage_ = 0;
-    const std::optional<SaveGameState> loaded = engine::loadGame(kSaveFilePath);
-    if (!loaded.has_value()) {
-        log("No valid save file found (", kSaveFilePath, ").");
-        return;
-    }
-    const SaveGameState& state = *loaded;
-    auto catalog = fullKitForClass(state.playerClass);
-    if (isHybridEligible(state.playerClass)) {
-        const auto hybrid = fullKitForClass(hybridPoolClass(state.playerClass));
-        catalog.insert(catalog.end(), hybrid.begin(), hybrid.end());
-    }
+    const auto loaded=engine::loadGame(kSaveFilePath);
+    if (!loaded) { log("No valid save file found."); return; }
+    restoreState(*loaded);
+}
+
+bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
+    if(state.extraLives<0 || state.extraLives>2 || (!state.adventureMode && state.extraLives!=0)) { log("Invalid death-mode state."); return false; }
+    autoExploring_=false; exploreSeenInterests_.clear();
+    inventoryDragSource_.reset();
+    inventoryOpen_=false; vaultMenu_=0; exitMenu_=false; restTurns_=0;
+    inventorySelection_=0; cancelTargeting(); mousePixel_.reset(); talentPage_=0;
     TalentSet restoredTalents;
-    for (const auto& saved : state.playerTalents) {
-        const auto found = std::find_if(catalog.begin(), catalog.end(), [&](const auto& talent) { return talent.id == saved.id; });
-        if (found == catalog.end()) { log("Save contains an unknown player talent."); return; }
-        restoredTalents.learnTalent(*found);
-        restoredTalents.setCooldownRemaining(restoredTalents.knownTalents().size()-1, saved.cooldown);
+    for (const auto& saved:state.playerTalents) {
+        const auto* d=findTalentDefinition(saved.id);
+        if (!d && saved.id!="basic.attack" && saved.id!="basic.cleanse") { log("Unknown saved ability."); return false; }
+        restoredTalents.learnTalent(d ? d->ranks[0] : saved.id=="basic.cleanse" ? basicCleanse() : basicAttack());
+        const auto index=restoredTalents.knownTalents().size()-1;
+        restoredTalents.setRank(index,saved.rank);
+        restoredTalents.setCooldownRemaining(index,saved.cooldown);
     }
-    if (restoredTalents.empty()) { log("Save contains no player talents."); return; }
-    for (const auto& rune : state.runes) {
-        if (!rune.talentId.empty()) {
-            const auto& known = restoredTalents.knownTalents();
-            const auto found = std::find_if(known.begin(), known.end(), [&](const auto& talent) { return talent.id == rune.talentId; });
-            if (found == known.end() || !runeUnavailableReason(*found, rune.definitionId).empty()) {
-                log("Save contains an incompatible rune attachment."); return;
-            }
-        }
-    }
-    restoredTalents.runes() = state.runes;
+    restoredTalents.hotbar()=state.hotbar;
     std::vector<std::unique_ptr<Monster>> restoredMonsters;
     Monster* restoredBoss = nullptr;
     for (const auto& savedMonster : state.monsters) {
         auto monster = createMonster(savedMonster.type, savedMonster.position, savedMonster.tier);
+        if (savedMonster.allied) {
+            configureMinion(*monster,savedMonster.summonRank,savedMonster.summonIntelligence);
+            monster->remainingLife=savedMonster.remainingLife;
+        } else scaleDungeonMonster(*monster,state.currentFloor);
         const auto& known = monster->talents().knownTalents();
-        if (savedMonster.talents.size() != known.size()) { log("Save contains an incomplete enemy talent kit."); return; }
+        if (savedMonster.talents.size() != known.size()) { log("Save contains an incomplete enemy talent kit."); return false; }
         for (const auto& saved : savedMonster.talents) {
             const auto found = std::find_if(known.begin(), known.end(), [&](const auto& talent) { return talent.id == saved.id; });
-            if (found == known.end()) { log("Save contains an unknown enemy talent."); return; }
+            if (found == known.end()) { log("Save contains an unknown enemy talent."); return false; }
             monster->talents().setCooldownRemaining(static_cast<std::size_t>(found-known.begin()), saved.cooldown);
         }
+        monster->tactics=savedMonster.tactics;
         monster->setRewardsEligible(savedMonster.rewardsEligible);
+        monster->intent() = savedMonster.intent;
+        monster->vaultGuard = savedMonster.vaultGuard;
+        monster->recoveryActions=savedMonster.recoveryActions; monster->summonsCommitted=savedMonster.summonsCommitted;
+        if (auto* behavior=dynamic_cast<BossBehavior*>(monster->ai())) behavior->restoreState(savedMonster.announcedPhase,savedMonster.enraged);
         monster->stats().hp = savedMonster.hp;
+        monster->lastObservedHp=savedMonster.hp;
         monster->stats().maxHp = savedMonster.maxHp;
         monster->statusEffects().active() = savedMonster.statusEffects;
+        for (auto& effect:monster->statusEffects().active()) if (effect.type==StatusEffectType::Stun)
+            effect.turnsRemaining=std::min(effect.turnsRemaining,monster->statusEffects().maxStunDuration());
         if (savedMonster.isBoss) {
-            if (restoredBoss) { log("Save contains multiple bosses."); return; }
+            if (restoredBoss) { log("Save contains multiple bosses."); return false; }
             restoredBoss = monster.get();
         }
         restoredMonsters.push_back(std::move(monster));
@@ -1257,37 +1476,43 @@ void Application::loadGame() {
     player_.setPosition(state.playerPosition);
     playerClass_ = state.playerClass;
     player_.talents() = std::move(restoredTalents);
-    runeChoiceAvailable_ = state.runeChoiceAvailable;
+    player_.trees()=state.trees; player_.treePoints()=state.treePoints; player_.abilityPoints()=state.abilityPoints;
+    progressionReviewPending_=state.progressionReviewPending;
+    defeatedBossName_=state.defeatedBossName;
+    adventureMode_=state.adventureMode; extraLives_=state.extraLives;
     player_.level() = state.playerLevel;
+    player_.bloodRelic=state.bloodRelic; player_.animationRelic=state.animationRelic; player_.deathlessSpentFloors=state.deathlessSpentFloors;
     player_.xp() = state.playerXp;
     currentFloor_ = state.currentFloor;
+    dungeonMenu_=false;
     player_.inventory() = Inventory{};
     groundItems_.clear();
     nextItemId_ = state.nextItemId;
     loot_.restore(state.lootRngState);
     chestPosition_ = state.chestPosition; chestExists_ = state.chestExists; chestClaimed_ = state.chestClaimed;
     ordinaryDrops_ = state.ordinaryDrops;
+    vaultExists_=state.vaultExists; vaultOpened_=state.vaultOpened; vaultClaimed_=state.vaultClaimed;
+    vaultCenter_=state.vaultCenter; vaultEntrance_=state.vaultEntrance;
+    vaultRewards_.clear(); if (vaultExists_ && !vaultClaimed_) vaultRewards_.resize(3);
     player_.baseStats() = state.playerStats;
     player_.stats() = state.playerStats;
     player_.unspentAttributePoints() = state.unspentAttributePoints;
-    pendingFinalVictory_ = false;
-    pendingHybridChoices_.clear();
-    pendingLevelUpFromLevel_ = player_.level() + 1;
+    pendingFinalVictory_ = state.pendingFinalVictory;
     // Validation in loadGame guarantees unique IDs, known definitions and slot compatibility.
     for (const auto& savedItem : state.items) {
         auto item = std::make_unique<Item>(*findItemDefinition(savedItem.definitionId),
                                           savedItem.instanceId, savedItem.position, savedItem.affixes, savedItem.rollTier);
-        if (savedItem.location == -2) groundItems_.push_back(std::move(item));
+        if (savedItem.location<=-3) vaultRewards_[static_cast<std::size_t>(-3-savedItem.location)]=std::move(item);
+        else if (savedItem.location == -2) groundItems_.push_back(std::move(item));
         else {
             player_.inventory().add(std::move(item));
             if (savedItem.location >= 0)
-                player_.inventory().equip(player_.inventory().items().size() - 1);
+                player_.inventory().equip(player_.inventory().items().size() - 1,static_cast<EquipmentSlot>(savedItem.location));
         }
     }
     player_.refreshEquipmentStats();
     lastMoveDirection_ = state.lastMoveDirection;
 
-    player_.hybridSpecced() = state.playerHybridSpecced;
     player_.statusEffects().active() = state.playerStatusEffects;
 
     boss_ = restoredBoss;
@@ -1312,51 +1537,97 @@ void Application::loadGame() {
     // handles it in ordinary play, not a special case for loading.
     currentActor_ = &scheduler_.nextTurn();
 
-    if (player_.unspentAttributePoints() > 0) resumeLevelUpSequence();
+    if (player_.stats().hp<=0) { mode_=GameMode::GameOver; wonGame_=false; }
+    else resumeLevelUpSequence();
     log("Game loaded: ", monsters_.size(), " monsters",
         (boss_ != nullptr ? " (boss present)" : ""), ", player at (", player_.position().x, ',',
         player_.position().y, "), ", player_.stats().hp, '/', player_.stats().maxHp, " hp.");
+    floorEntrance_=state.floorEntrance; floorExit_=state.floorExit;
+    gold_=state.gold; quietTurns_=state.quietTurns; combatThisTurn_=false;
+    if (includeFloors) {
+        floorCache_.clear();
+        for (const auto& floor:state.savedFloors) floorCache_[floor.currentFloor]=floor;
+    }
+    if (state.inTown && mode_==GameMode::Playing) mode_=GameMode::Town;
+    enforceMinionCap(); refreshHiddenDiscoveries();
+    updateFieldOfView();
+    return true;
 }
 
 void Application::update() {
-    // Nothing here yet -- movement and talents are applied directly in
-    // processEvents() since this is a turn-based game with no
-    // time-based simulation to advance between player inputs.
+    if (autoExploring_) { stepAutoExplore(); return; }
+    if (codexOpen_) return;
+    if (restTurns_<=0) return;
+    if (mode_!=GameMode::Playing || inventoryOpen_ || vaultMenu_ || exitMenu_ || dangerNearby()) {
+        restTurns_=0; log("Rest stopped."); return;
+    }
+    bool ready=quietTurns_>=10 && player_.stats().hp>=player_.stats().maxHp && player_.stats().mana>=player_.stats().maxMana;
+    for (std::size_t i=0;i<player_.talents().knownTalents().size();++i) ready=ready && player_.talents().isReady(i);
+    if (ready) { restTurns_=0; log("Rest complete: fully recovered. Waystone ready."); return; }
+    if (restClock_.getElapsedTime().asMilliseconds()<60) return;
+    restClock_.restart(); --restTurns_;
+    player_.statusEffects().apply({StatusEffectType::Opening,2,0});
+    finishInventoryTurn();
 }
 
 void Application::renderClassSelection() {
-    drawText("Choose your class", 60.f, 60.f, 28, sf::Color(230, 230, 230));
+    const sf::Color colors[]{sf::Color(230,150,110),sf::Color(130,170,240),sf::Color(130,220,160)};
+    const char* names[]{"1. Warrior","2. Mage","3. Thief"};
+    const char* stats[]{"STR 6 / DEX 2 / INT 2   HP 30 / Mana 10","STR 2 / DEX 2 / INT 6   HP 20 / Mana 20","STR 2 / DEX 6 / INT 2   HP 25 / Mana 15"};
+    const char* pools[]{"One-Handed, Two-Handed, Shield","Fire, Ice, Lightning, Arcane","Stealth, Bow, Acrobatics"};
+    drawText("Choose your starting class",60,60,30,sf::Color(110,220,220));
+    drawText("Class determines your starting attributes and first tree choices.",60,110,18,sf::Color(220,220,230));
+    for(std::size_t i=0;i<3;++i) {
+        sf::RectangleShape card(kClassCards[i].size); card.setPosition(kClassCards[i].position);
+        const bool hover=mousePixel_ && kClassCards[i].contains(sf::Vector2f(*mousePixel_));
+        card.setFillColor(hover?sf::Color(42,57,70):sf::Color(24,32,44));
+        card.setOutlineThickness(hover?2.f:1.f); card.setOutlineColor(colors[i]); window_.draw(card);
+        drawText(names[i],70,164+110.f*i,21,colors[i]);
+        drawText(stats[i],300,164+110.f*i,17,sf::Color(225,228,238));
+        drawText(pools[i],90,198+110.f*i,16,sf::Color(190,198,214));
+    }
+    drawText("Start with 1 tree point and 3 ability points. Other core trees open at level 5; hidden trees require discovery.",60,490,17,sf::Color(220,220,230));
+    drawText("Click a class or press 1-3. J: Codex   F9: load a version-9 through 22 save.",60,535,16,sf::Color(190,190,210));
+    for(const auto& rect:{kStartLoadButton,kStartCodexButton,kDeathModeButton}) {
+        sf::RectangleShape button(rect.size); button.setPosition(rect.position);
+        button.setFillColor(mousePixel_ && rect.contains(sf::Vector2f(*mousePixel_))?sf::Color(44,65,80):sf::Color(28,40,55)); window_.draw(button);
+    }
+    drawText(adventureMode_?"[M] Adventure: 2 extra lives":"[M] Roguelike: one life",660,590,17,sf::Color::White);
+    drawText("Choose mode before clicking a class. Revival returns you to town with your gear.",60,675,15,sf::Color(190,190,210));
+    drawText("Load adventure [F9]",70,590,17,sf::Color::White);
+    drawText("Open Codex [J]",350,590,17,sf::Color::White);
+    if(!logMessages_.empty()) { float y=640; drawWrapped(logMessages_.back(),60,y,135,sf::Color(230,200,150),710); }
+}
 
-    drawText("1. Fighter", 60.f, 130.f, 20, sf::Color(230, 120, 90));
-    drawText("Pure Strength. A free spammable basic attack, hp as the", 80.f, 158.f, 14,
-             sf::Color(190, 190, 190));
-    drawText("resource that matters, and the hardest single hit of any", 80.f, 176.f, 14,
-             sf::Color(190, 190, 190));
-    drawText("base class.", 80.f, 194.f, 14, sf::Color(190, 190, 190));
-
-    drawText("2. Sorcerer", 60.f, 230.f, 20, sf::Color(170, 120, 230));
-    drawText("Pure Intelligence. The largest mana pool of any class and", 80.f, 258.f, 14,
-             sf::Color(190, 190, 190));
-    drawText("the lowest hp -- a true glass cannon. Mind Shatter can", 80.f, 276.f, 14,
-             sf::Color(190, 190, 190));
-    drawText("stun an enemy, turning a status effect only monsters", 80.f, 294.f, 14,
-             sf::Color(190, 190, 190));
-    drawText("could inflict before now back around on them.", 80.f, 312.f, 14,
-             sf::Color(190, 190, 190));
-
-    drawText("3. Thief", 60.f, 348.f, 20, sf::Color(120, 230, 140));
-    drawText("Pure Dexterity. Low hp, but the highest possible dodge", 80.f, 376.f, 14,
-             sf::Color(190, 190, 190));
-    drawText("chance -- survives by not getting hit at all. Vault Kick", 80.f, 394.f, 14,
-             sf::Color(190, 190, 190));
-    drawText("lets you strike an adjacent enemy and leap back out of", 80.f, 412.f, 14,
-             sf::Color(190, 190, 190));
-    drawText("melee range in the same motion.", 80.f, 430.f, 14, sf::Color(190, 190, 190));
-
-    drawText("Press 1, 2 or 3 to begin.", 60.f, 478.f, 16, sf::Color(150, 150, 150));
+void Application::allocateAttribute(unsigned int attribute) {
+    if(mode_!=GameMode::AttributeAllocation || player_.unspentAttributePoints()<=0 || attribute>2) return;
+    if(attribute==0) {
+        ++player_.baseStats().strength; ++player_.baseStats().maxHp; log("+1 Strength.");
+    } else if(attribute==1) {
+        ++player_.baseStats().dexterity; log("+1 Dexterity.");
+    } else {
+        ++player_.baseStats().intelligence; ++player_.baseStats().maxMana; log("+1 Intelligence.");
+    }
+    player_.refreshEquipmentStats();
+    --player_.unspentAttributePoints();
+    soundManager_.play(SoundEffect::Select);
+    mode_=GameMode::Playing;
+    resumeLevelUpSequence();
 }
 
 void Application::renderGameOver() {
+    for(const auto& rect:{kRestartButton,kEndCodexButton}) {
+        sf::RectangleShape button(rect.size); button.setPosition(rect.position);
+        button.setFillColor(mousePixel_ && rect.contains(sf::Vector2f(*mousePixel_))?sf::Color(44,65,80):sf::Color(28,40,55)); window_.draw(button);
+    }
+    drawText("Open Codex [J]",70,382,17,sf::Color(110,220,220));
+    if(!wonGame_ && adventureMode_ && extraLives_>0) {
+        sf::RectangleShape button(kReviveButton.size); button.setPosition(kReviveButton.position);
+        button.setFillColor(sf::Color(35,70,70)); window_.draw(button);
+        drawText("Revive in town [R] - "+std::to_string(extraLives_)+" remaining",70,259,18,sf::Color::White);
+        drawText("Full recovery. Keep gear and progress. Spend one extra life.",60,315,16,sf::Color(190,210,210));
+    } else if(!wonGame_) drawText("No lives remain. This character has ended.",60,260,18,sf::Color(200,170,170));
+    drawText("Collected lore survives this adventure.",60,430,16,sf::Color(170,190,205));
     if (wonGame_) {
         drawText("Victory!", 60.f, 60.f, 32, sf::Color(255, 215, 0));
         drawText("You have slain the " + defeatedBossName_ + ".", 60.f, 120.f, 18,
@@ -1365,47 +1636,13 @@ void Application::renderGameOver() {
         drawText("You Died", 60.f, 60.f, 32, sf::Color(200, 50, 50));
         drawText("The dungeon claims another.", 60.f, 120.f, 18, sf::Color(210, 210, 210));
     }
-    drawText("Press Enter to return to class selection.", 60.f, 180.f, 16,
+    drawText("Choose a new character [Enter]", 70.f, 189.f, 18,
               sf::Color(150, 150, 150));
-}
-
-void Application::renderAbilityChoice() {
-    const PlayerClass poolClass = hybridPoolClass(playerClass_);
-    const char* poolClassName = poolClass == PlayerClass::Mage ? "Mage" : "Warrior";
-
-    if (pendingHybridChoiceIsSpecIn_) {
-        drawText("A new path opens...", 60.f, 60.f, 28, sf::Color(230, 230, 230));
-        drawText("You've grown strong enough to begin drawing on a second discipline.",
-                 60.f, 104.f, 15, sf::Color(190, 190, 190));
-        std::ostringstream oss;
-        oss << "Spec into the hybrid path? Pick a " << poolClassName
-            << " ability now, and one more every level from here on.";
-        drawText(oss.str(), 60.f, 124.f, 15, sf::Color(190, 190, 190));
-    } else {
-        drawText("Choose your next ability", 60.f, 60.f, 28, sf::Color(230, 230, 230));
-        std::ostringstream oss;
-        oss << "Pick one more " << poolClassName << " ability to add to your kit.";
-        drawText(oss.str(), 60.f, 104.f, 15, sf::Color(190, 190, 190));
-    }
-
-    float y = 170.f;
-    for (std::size_t i = 0; i < pendingHybridChoices_.size(); ++i) {
-        const Talent& talent = pendingHybridChoices_[i];
-        std::ostringstream label;
-        label << (i + 1) << ". " << talent.name;
-        drawText(label.str(), 60.f, y, 18, sf::Color(120, 200, 230));
-        drawText(talent.description, 80.f, y + 24.f, 14, sf::Color(180, 180, 180));
-        y += 60.f;
-    }
-
-    if (pendingHybridChoiceIsSpecIn_) {
-        drawText("0. No thanks -- stay on your current path", 60.f, y + 10.f, 16,
-                 sf::Color(150, 150, 150));
-    }
 }
 
 void Application::renderAttributeAllocation() {
     drawText("Level up!", 60.f, 60.f, 28, sf::Color(230, 230, 230));
+    drawText("Click an option or press 1-3. Each click spends one attribute point.",60.f,132.f,15,sf::Color(165,180,200));
 
     std::ostringstream subtitle;
     subtitle << "You have " << player_.unspentAttributePoints()
@@ -1415,28 +1652,28 @@ void Application::renderAttributeAllocation() {
 
     const Stats& stats = player_.stats();
 
-    std::ostringstream strLine;
-    strLine << "1. Strength (currently " << stats.strength << ")";
-    drawText(strLine.str(), 60.f, 160.f, 18, sf::Color(230, 140, 100));
-    drawText("+1 Max HP. Scales Strength-based abilities.", 80.f, 184.f, 14,
-             sf::Color(180, 180, 180));
-
-    std::ostringstream dexLine;
-    dexLine << "2. Dexterity (currently " << stats.dexterity << ")";
-    drawText(dexLine.str(), 60.f, 224.f, 18, sf::Color(120, 220, 140));
-    drawText("+0.5% Dodge (cap 25%), +0.5% Crit. Scales Dexterity-based abilities.", 80.f,
-             248.f, 14, sf::Color(180, 180, 180));
-
-    std::ostringstream intLine;
-    intLine << "3. Intelligence (currently " << stats.intelligence << ")";
-    drawText(intLine.str(), 60.f, 288.f, 18, sf::Color(140, 170, 230));
-    drawText("+1 Max Mana. Scales Intelligence-based abilities.", 80.f, 312.f, 14,
-             sf::Color(180, 180, 180));
+    const std::string labels[]{"1. Strength (currently "+std::to_string(stats.strength)+")",
+        "2. Dexterity (currently "+std::to_string(stats.dexterity)+")",
+        "3. Intelligence (currently "+std::to_string(stats.intelligence)+")"};
+    const char* details[]{"+1 Max HP. Scales Strength-based abilities.",
+        "+0.5% Dodge (cap 25%), +0.5% Crit. Scales Dexterity-based abilities.",
+        "+1 Max Mana. Scales Intelligence-based abilities."};
+    const sf::Color colors[]{sf::Color(230,140,100),sf::Color(120,220,140),sf::Color(140,170,230)};
+    for(std::size_t i=0;i<3;++i) {
+        sf::RectangleShape option(kAttributeChoices[i].size); option.setPosition(kAttributeChoices[i].position);
+        const bool hover=mousePixel_ && kAttributeChoices[i].contains(sf::Vector2f(*mousePixel_));
+        option.setFillColor(hover?sf::Color(42,57,70):sf::Color(24,32,44));
+        option.setOutlineThickness(hover?2.f:1.f); option.setOutlineColor(colors[i]); window_.draw(option);
+        drawText(labels[i],65,157+68.f*i,18,colors[i]);
+        drawText(details[i],80,183+68.f*i,14,sf::Color(195,201,215));
+    }
 }
 
 void Application::render() {
     window_.clear(sf::Color(10, 10, 14));
 
+    if (codexOpen_) { renderCodex(); window_.display(); return; }
+    if (mode_==GameMode::Town) { renderTown(); window_.display(); return; }
     if (mode_ == GameMode::ClassSelection) {
         renderClassSelection();
         window_.display();
@@ -1450,7 +1687,7 @@ void Application::render() {
     }
 
     if (mode_ == GameMode::AbilityChoice) {
-        renderAbilityChoice();
+        renderTalentTrees();
         window_.display();
         return;
     }
@@ -1469,6 +1706,8 @@ void Application::render() {
     // separate "is this tile on screen" check per tile. +1 on each
     // upper bound covers the partially-visible tile at the viewport's
     // trailing edge.
+    const auto theme=floorTheme(currentFloor_);
+    auto themeColor=[](ThemeColor c) { return sf::Color(c.r,c.g,c.b); };
     const int viewStartX = cameraX_;
     const int viewEndX = std::min(map_.width(), cameraX_ + static_cast<int>(kMapWidth / kTileSize));
     const int viewStartY = cameraY_;
@@ -1484,11 +1723,11 @@ void Application::render() {
             const TileType tileType = map_.tileAt(x, y).type;
             sf::Color baseColor;
             if (tileType == TileType::Wall) {
-                baseColor = sf::Color(45, 45, 52);
+                baseColor = themeColor(theme.wall);
             } else if (tileType == TileType::Door) {
-                baseColor = sf::Color(180, 40, 40); // red -- the floor-transition door
+                baseColor = themeColor(theme.door);
             } else {
-                baseColor = sf::Color(90, 90, 100);
+                baseColor = themeColor(theme.floor);
             }
 
             sf::RectangleShape tileShape({kTileSize - 1.f, kTileSize - 1.f});
@@ -1503,7 +1742,7 @@ void Application::render() {
         if (m->stats().hp <= 0) {
             continue;
         }
-        if (exploredMap_.at(m->position().x, m->position().y) != Visibility::Visible) {
+        if (m->tactics.concealed || exploredMap_.at(m->position().x, m->position().y) != Visibility::Visible) {
             continue; // only draw what the player can currently see -- see Prompt 7 notes
         }
 
@@ -1516,7 +1755,7 @@ void Application::render() {
         // colored tile (drawn on top, its normal size) reads as sitting
         // inside a visible outline. Base tier returns nullopt -- nothing
         // extra drawn, looks exactly as it always has.
-        if (const std::optional<sf::Color> borderColor = tierBorderColor(m->tier());
+        if (const std::optional<sf::Color> borderColor = isUniqueMonster(m->type()) ? std::optional<sf::Color>(sf::Color(255,190,60)) : tierBorderColor(m->tier());
             borderColor.has_value()) {
             constexpr float kBorderThickness = 3.f;
             sf::RectangleShape border(
@@ -1528,7 +1767,7 @@ void Application::render() {
 
         sf::RectangleShape monsterShape({kTileSize - 1.f, kTileSize - 1.f});
         monsterShape.setPosition(screenPos);
-        monsterShape.setFillColor(monsterColor(m->type()));
+        monsterShape.setFillColor(m->allied ? sf::Color(90,220,220) : monsterColor(m->type()));
         window_.draw(monsterShape);
 
         const float hpFraction =
@@ -1542,12 +1781,31 @@ void Application::render() {
         hpFront.setPosition({screenPos.x, screenPos.y - 6.f});
         hpFront.setFillColor(sf::Color(220, 60, 60));
         window_.draw(hpFront);
+        if(m->tactics.retreat>0) drawText("Retreat",screenPos.x-8,screenPos.y+14,10,sf::Color(255,220,90));
     }
 
     sf::RectangleShape playerShape({kTileSize - 1.f, kTileSize - 1.f});
     playerShape.setPosition(worldToScreen(player_.position().x, player_.position().y));
     playerShape.setFillColor(sf::Color(240, 200, 60));
     window_.draw(playerShape);
+
+    // Visible committed danger remains visible even if the caster leaves sight.
+    for (const auto& m:monsters_) if (m->stats().hp>0 && m->intent()) {
+        const auto& intent=*m->intent();
+        for (int y=intent.target.y-intent.radius;y<=intent.target.y+intent.radius;++y)
+            for (int x=intent.target.x-intent.radius;x<=intent.target.x+intent.radius;++x) {
+                if (!intent.contains({x,y}) || !map_.isWalkable(x,y) || !hasLineOfFire(map_,intent.target,{x,y}) ||
+                    exploredMap_.at(x,y)!=Visibility::Visible || x<viewStartX || x>=viewEndX || y<viewStartY || y>=viewEndY) continue;
+                sf::RectangleShape warning({kTileSize-3.f,kTileSize-3.f});
+                warning.setPosition(worldToScreen(x,y));
+                warning.setFillColor(intent.kind==IntentKind::Summon ? sf::Color(195,100,255,160) : intent.radius ? sf::Color(255,145,30,145) : sf::Color(255,55,55,170));
+                warning.setOutlineThickness(-2.f);
+                warning.setOutlineColor(sf::Color::Yellow);
+                window_.draw(warning);
+                const auto at=worldToScreen(x,y);
+                drawText(std::to_string(intent.playerActionsRemaining),at.x+2,at.y,12,sf::Color::White);
+            }
+    }
 
     renderTargetingOverlay();
 
@@ -1588,13 +1846,15 @@ void Application::render() {
         drawText(oss.str(), 10.f + kBarWidth + 8.f, 28.f, 13, sf::Color::White);
     }
 
+    drawText(adventureMode_?"Adventure | Lives +"+std::to_string(extraLives_):"Roguelike | One life",980,46,12,sf::Color(180,200,210));
+
     // Level/XP -- Prompt 20. "MAX" instead of a fraction once level 10
     // is reached, since grantXp() zeroes xp() there and "X/0" would
     // read as a bug, not a deliberate cap.
     {
         std::ostringstream oss;
         oss << "Level " << player_.level();
-        if (player_.level() < 10) {
+        if (player_.level() < kRunMaxLevel) {
             oss << "  (" << player_.xp() << '/' << xpForNextLevel(player_.level()) << " XP)";
         } else {
             oss << "  (MAX)";
@@ -1607,39 +1867,12 @@ void Application::render() {
     // more fact about where the character currently stands.
     {
         std::ostringstream oss;
-        oss << "Floor " << currentFloor_ << " / " << kFinalFloor;
+        oss << dungeonName(dungeonIndex(currentFloor_)) << " " << (currentFloor_-1)%10+1 << "/10 | Depth level " << currentFloor_ << " - " << theme.name;
         drawText(oss.str(), 290.f, 46.f, 13, sf::Color(180, 180, 200));
     }
 
     renderTargetingPanel();
-
-    // On-screen combat log -- bottom-left, oldest message at top of the
-    // block so new lines settle at the bottom, matching how a chat/log
-    // window conventionally reads. Same backing-panel reasoning as the
-    // talent list above.
-    {
-        constexpr float kLogX = 10.f;
-        constexpr float kLogLineHeight = 16.f;
-        const float logBottomY =
-            static_cast<float>(kWindowHeight) - 10.f - kLogLineHeight;
-        float logY = logBottomY - static_cast<float>(logMessages_.size() - 1) * kLogLineHeight;
-        if (logMessages_.empty()) {
-            logY = logBottomY;
-        }
-
-        if (!logMessages_.empty()) {
-            sf::RectangleShape panel(
-                {600.f, static_cast<float>(logMessages_.size()) * kLogLineHeight + 6.f});
-            panel.setPosition({kLogX - 4.f, logY - 4.f});
-            panel.setFillColor(sf::Color(0, 0, 0, 160));
-            window_.draw(panel);
-        }
-
-        for (const std::string& message : logMessages_) {
-            drawText(message, kLogX, logY, 13, sf::Color(210, 210, 210));
-            logY += kLogLineHeight;
-        }
-    }
+    renderBattleHud();
 
     // A prominent, top-center boss bar -- distinct from the small
     // floating per-monster bars -- only shown when the boss is alive AND
@@ -1664,8 +1897,9 @@ void Application::render() {
         drawText(boss_->name(), bossX, 5.f, 14, sf::Color(255, 215, 0));
     }
 
+    renderTravel();
+    renderVault();
     if (inventoryOpen_) renderInventory();
-    if (runesOpen_) renderRunes();
     window_.display();
 }
 

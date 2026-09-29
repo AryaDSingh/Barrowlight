@@ -1,9 +1,10 @@
 #include "entities/PlayerLeveling.hpp"
+#include "entities/RunProgression.hpp"
 
 namespace engine {
 
 namespace {
-constexpr int kMaxLevel = 10;
+constexpr int kMaxLevel = kRunMaxLevel;
 constexpr int kXpPerLevelStep = 20;
 constexpr int kMaxHpGrowthPerLevel = 1;
 constexpr int kAttributePointsPerLevel = 2;
@@ -27,6 +28,8 @@ void grantXp(Player& player, int amount) {
         player.baseStats().maxHp += kMaxHpGrowthPerLevel;
         player.refreshEquipmentStats();
         player.unspentAttributePoints() += kAttributePointsPerLevel;
+        ++player.abilityPoints();
+        if (grantsTreePoint(player.level())) ++player.treePoints();
         // Full heal on level-up, same as before -- max mana isn't
         // touched here at all anymore (it only grows from Intelligence
         // points the player actually chooses to spend), but a fresh

@@ -7,6 +7,7 @@
 #include "entities/Actor.hpp"
 #include "world/FieldOfView.hpp"
 #include "world/Map.hpp"
+#include "world/LineOfFire.hpp"
 #include "world/Pathfinder.hpp"
 
 namespace engine {
@@ -19,7 +20,7 @@ Kiter::Kiter(MonsterAttackProfile attackProfile, int attackRange, int tooCloseRa
       sightRadius_(sightRadius) {}
 
 AIDecision Kiter::decideAction(const Actor& self, const Map& map, Actor& player,
-                                const std::vector<Actor*>& /*allies*/) {
+                                const std::vector<Actor*>& allies) {
     const Position selfPos = self.position();
     const Position playerPos = player.position();
 
@@ -53,18 +54,22 @@ AIDecision Kiter::decideAction(const Actor& self, const Map& map, Actor& player,
 
     if (distSq <= tooCloseRange_ * tooCloseRange_) {
         // Too close -- retreat directly away from the player.
-        const Position retreat = retreatStep(selfPos, playerPos);
-        if (map.isWalkable(retreat.x, retreat.y)) {
-            AIDecision decision;
-            decision.type = AIActionType::Move;
-            decision.movePosition = retreat;
-            return decision;
+        Position retreat=selfPos;
+        int best=distSq;
+        for(const Position p:{Position{selfPos.x+1,selfPos.y},Position{selfPos.x-1,selfPos.y},Position{selfPos.x,selfPos.y+1},Position{selfPos.x,selfPos.y-1}}) {
+            if(!map.isWalkable(p.x,p.y) || std::any_of(allies.begin(),allies.end(),[&](const Actor* a){return a && a->stats().hp>0 && a->position().x==p.x && a->position().y==p.y;})) continue;
+            const int distance=distanceSquared(p,playerPos);
+            if(distance>best) { best=distance; retreat=p; }
+        }
+        if(best>distSq) {
+            AIDecision decision; decision.type=AIActionType::Move;
+            decision.movePosition=retreat; return decision;
         }
         // Cornered -- fight rather than do nothing.
-        return makeAttack();
+        if (hasLineOfFire(map,selfPos,playerPos)) return makeAttack();
     }
 
-    if (distSq <= attackRange_ * attackRange_) {
+    if (distSq <= attackRange_ * attackRange_ && hasLineOfFire(map,selfPos,playerPos)) {
         return makeAttack();
     }
 

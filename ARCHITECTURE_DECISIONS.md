@@ -2422,3 +2422,108 @@ constructing a direct test before touching any code.
   already well-tested Prompt 7 code.
 - `SFML_BUILD_AUDIO` / `SFML_BUILD_NETWORK` are off -- flip back on when
   sound is wanted.
+
+
+## Prompt 35: tree progression replaces fixed player kits (2026-09-26)
+
+User-approved direction: class defines initial access; attributes unchanged;
+trees define builds; equipment enables/modifies actions. PROMPT_35_DESIGN.md is
+canonical, superseding borrowed talents/native masteries and player runes.
+
+TalentCatalog holds stable IDs and rank profiles. TalentProgression validates
+purchases. Player owns access/balances; TalentSet owns ranks/cooldowns/hotbar.
+Effective talents are shared by previews/casts; cooldown upgrades preserve their
+original damage-scaling tier and running cooldowns. Monster kits stay independent.
+
+Universal basic attack/wait, weapon categories and shield slot support tree
+starts. Training gear has no stat bonuses. Conflicting equips fail without a
+turn. Runes are removed, with generic chain targeting retained.
+
+Version 9 rejects old saves and persists tree ownership, specialization, ranks,
+point balances, cooldowns, hotbar and pending review/victory. IDs, budgets and
+prerequisites are validated before live restore. Scheduler/AI-counter limitations
+remain. Legacy kit adapters remain for isolated fixtures; live progression does
+not grant their kits. Debug game build succeeds; no tests added/run or gameplay
+verification this iteration. Existing fixtures migrated where removed APIs require
+it; obsolete rune checks removed. Balance remains provisional.
+
+
+### Stealth follow-up: contested concealment (2026-09-26)
+
+Replaced static adjacent detection with a pure probability function in Stealth.hpp:
+rank and capped effective player DEX reduce detection; capped enemy DEX increases
+it; distance reduces it. Only enemies within four tiles and their actual field of
+view can roll, once per non-stunned turn. Detection removes Concealment globally.
+The pure probability is shared by enemy inspection, which never draws randomness.
+Concealed magnitude stores source ability rank (legacy zero clamps to rank 1).
+Conceal's mana/cooldown/duration stay fixed across ranks to budget for the stronger
+hiding benefit. No type-specific archer exception: spiders and Lich benefit from
+their existing DEX too. Formula/examples in PROMPT_35_DESIGN.md. Build-only evidence;
+no new tests or runtime verification for this change.
+
+
+## Prompt 36 - status combinations and defensive actions (2026-09-26)
+
+Reused flat Guard instead of adding another absorption system. Marked is a single
+refreshable charge (+25% next landed direct hit, three affected-actor turns);
+dodges/DOT do not consume it. Universal Cleanse uses normal talent preflight and
+commitment (C, no points/mana, one turn, cooldown eight) and removes only Poison,
+Burn, Chill and Marked. StatusEffects centrally rejects stun refreshes and stuns
+during recovery. The final skipped turn grants one turn of recovery, or two for
+bosses whose maximum stun duration is one. Monster definitions restore these
+rules; live recovery duration persists in the status vector. Player cooldowns
+also tick during skipped stun turns.
+
+Version 10 retains the prior serialization layout and migrates version 9 by
+adding basic.cleanse without spending points or replacing bindings. Version 8
+and older are rejected. Full ordering/examples: PROMPT_36_DESIGN.md. No tests
+added/run; build evidence only, with runtime verification outstanding.
+
+## Prompt 37 - Committed enemy intent and floor budgets
+
+EnemyIntent is pointer-free Monster state, separate from speculative AIDecision.
+Bomber/Ogre commitments resolve only after two/one voluntary player actions,
+respectively, on the caster's next turn. Stun skips cannot spend this window.
+Committed areas do not retarget; stun/displacement interrupt. Version 11 saves
+persist intent; versions 9/10 load with no intent. Scheduler energy remains a
+known persistence limitation, but cannot bypass the remaining reaction window.
+
+EncounterPlan replaces player-level uniform tiers with floor budgets, atomic
+pairs, a safe opening radius and capped elite/support/control populations.
+Existing saves keep their monsters; later floors use the new plan. See
+PROMPT_37_DESIGN.md for exact costs, caps and verification still pending.
+
+## Prompt 38 - Optional sealed vaults
+
+A vault is a leaf room added after all shortcuts, requiring untouched wall
+space including its perimeter. One solid entrance opens only after the player
+reads a warning and confirms. Guards are tagged Monster state; completion is
+derived from surviving guards. Seven encounter points plus elite/Archer slots
+are reserved, preserving floor budgets. The three reward instances are created
+once with the floor; the UI chooses an existing instance instead of rerolling.
+Version 12 persists gate/claim state, guard membership and offered items; 9-11
+load with no vault in the current map. See PROMPT_38_DESIGN.md for full rules.
+
+## Prompt 39 - Boss intent and persistent ritual budget
+
+EnemyIntent now distinguishes stun, magic, heavy melee and summoning. Boss
+recovery and new-summon readiness use the same voluntary-player-action clock.
+LichBehavior only proposes summons; Application spends one of three lifetime
+attempts when committing a visible warning. Occupied ritual tiles fizzle without
+retargeting. Version 13 stores kinds, recovery, ritual count and Warlord phase/
+enrage bookkeeping. Legacy Lich saves exhaust the unknowable ritual budget to
+avoid load-based replenishment. Full rules: PROMPT_39_DESIGN.md.
+
+## Town/travel - Persistent campaign snapshots
+
+Application capture/restore is separated from disk I/O. Departed floor snapshots
+reuse SaveGameState without recursive child worlds; travel imports world fields
+only and retains current character/inventory/economy/RNG/ID state. Inactive floors
+pause, avoiding offscreen battles and loot farming. Version 14 stores the active
+floor plus at most nine cached snapshots, stairs, gold, town flag and quiet-turn
+counter. Existing 9-13 saves have no recoverable earlier floors.
+
+Universal H Waystone requires ten quiet completed actions and current safety.
+R is bounded frame-paced waiting with danger/input interruption, replacing debug
+regeneration. Stairs require safety but no ten-turn wait. Town services do not
+advance dungeon time. See TOWN_TRAVEL_DESIGN.md for rules and pending checks.

@@ -6,6 +6,7 @@
 #include "entities/Actor.hpp"
 #include "world/FieldOfView.hpp"
 #include "world/Map.hpp"
+#include "world/LineOfFire.hpp"
 #include "world/Pathfinder.hpp"
 
 namespace engine {
@@ -76,59 +77,18 @@ AIDecision BossBehavior::decidePhase1(const Actor& self, const Map& map, Actor& 
 }
 
 AIDecision BossBehavior::decidePhase2(const Actor& self, const Map& map, Actor& player) {
-    const Position selfPos = self.position();
-    const Position playerPos = player.position();
-
-    const std::vector<Position> visible = computeFieldOfView(map, selfPos, sightRadius_);
-    const bool targetVisible =
-        std::find_if(visible.begin(), visible.end(), [&](const Position& p) {
-            return p.x == playerPos.x && p.y == playerPos.y;
-        }) != visible.end();
-
-    if (!targetVisible) {
-        return AIDecision{};
-    }
-
-    const int distSq = distanceSquared(selfPos, playerPos);
-
-    if (distSq <= tooCloseRange_ * tooCloseRange_) {
-        const Position retreat = retreatStep(selfPos, playerPos);
-        if (map.isWalkable(retreat.x, retreat.y)) {
-            AIDecision decision;
-            decision.type = AIActionType::Move;
-            decision.movePosition = retreat;
-            return decision;
-        }
-        // Cornered -- fall back to a melee swing rather than doing nothing.
+    const Position selfPos=self.position(), target=player.position();
+    if (distanceSquared(selfPos,target)<=blastRange_*blastRange_ &&
+        hasLineOfFire(map,selfPos,target) && !self.talents().knownTalents().empty() && self.talents().isReady(0)) {
         AIDecision decision;
-        decision.type = AIActionType::Attack;
-        decision.target = &player;
-        decision.attackPower = meleeProfile_.power;
-        decision.scalingStat = meleeProfile_.scalingStat;
+        decision.type=AIActionType::UseAbility; decision.target=&player;
+        decision.abilityIndex=0; decision.attackPower=blastPower_;
+        decision.scalingStat=ScalingStat::Intelligence;
         return decision;
     }
-
-    if (distSq <= blastRange_ * blastRange_) {
-        if (!self.talents().knownTalents().empty() && self.talents().isReady(0)) {
-            AIDecision decision;
-            decision.type = AIActionType::UseAbility;
-            decision.target = &player;
-            decision.abilityIndex = 0;
-            decision.attackPower = blastPower_;
-            decision.scalingStat = ScalingStat::Intelligence; // a magical blast, not a physical hit -- same as AoEBomber's
-            return decision;
-        }
-        return AIDecision{}; // in range, still recharging
-    }
-
-    const std::optional<std::vector<Position>> path = findPath(map, selfPos, playerPos);
-    if (!path || path->size() < 2) {
-        return AIDecision{};
-    }
-    AIDecision decision;
-    decision.type = AIActionType::Move;
-    decision.movePosition = (*path)[1];
-    return decision;
+    // Keep contesting space while Fury recharges instead of idling at range
+    // or repeatedly trying to retreat into the Warlord's own guards.
+    return meleeApproach(self,map,player);
 }
 
 AIDecision BossBehavior::decidePhase3(const Actor& self, const Map& map, Actor& player) {

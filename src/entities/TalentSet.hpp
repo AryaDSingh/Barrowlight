@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "entities/Talent.hpp"
-#include "entities/Rune.hpp"
+#include "entities/TalentCatalog.hpp"
 
 namespace engine {
 
@@ -34,11 +34,34 @@ public:
 
     const std::vector<Talent>& knownTalents() const { return knownTalents_; }
     Talent effectiveTalent(std::size_t index) const;
-    const RuneInstance* attachedRune(std::size_t index) const;
-    std::vector<RuneInstance>& runes() { return runes_; }
-    const std::vector<RuneInstance>& runes() const { return runes_; }
-    bool attachRune(std::size_t runeIndex, std::size_t talentIndex);
-    bool removeRune(std::size_t talentIndex);
+    int rank(std::size_t index) const { return index < ranks_.size() ? ranks_[index] : 0; }
+    void setRank(std::size_t index, int value) { if (index < ranks_.size()) ranks_[index] = std::clamp(value, 1, 3); }
+    int rankOf(const std::string& id) const {
+        for (std::size_t i=0; i<knownTalents_.size(); ++i) if (knownTalents_[i].id==id) return rank(i);
+        return 0;
+    }
+    int passiveValue(PassiveKind kind) const {
+        int value=0;
+        for (std::size_t i=0;i<knownTalents_.size();++i) {
+            const auto* d=findTalentDefinition(knownTalents_[i].id);
+            const auto& t=d ? d->ranks[rank(i)-1] : knownTalents_[i];
+            if (t.passiveKind==kind) value+=t.passiveMagnitude;
+        }
+        return value;
+    }
+    std::vector<std::string>& hotbar() { return hotbar_; }
+    const std::vector<std::string>& hotbar() const { return hotbar_; }
+    std::optional<std::size_t> hotbarIndex(std::size_t slot) const {
+        if (slot >= hotbar_.size()) return std::nullopt;
+        for (std::size_t i=0;i<knownTalents_.size();++i) if (knownTalents_[i].id==hotbar_[slot] && !knownTalents_[i].passive) return i;
+        return std::nullopt;
+    }
+    void bind(const std::string& id, std::size_t slot) {
+        if (slot>=18) return;
+        hotbar_.resize(18);
+        for (auto& binding:hotbar_) if (binding==id) binding.clear();
+        hotbar_[slot]=id;
+    }
     bool empty() const { return knownTalents_.empty(); }
 
     bool isReady(std::size_t index) const;
@@ -68,7 +91,8 @@ public:
 private:
     std::vector<Talent> knownTalents_;
     std::vector<int> cooldownsRemaining_; // parallel to knownTalents_
-    std::vector<RuneInstance> runes_;
+    std::vector<int> ranks_;
+    std::vector<std::string> hotbar_;
 };
 
 } // namespace engine

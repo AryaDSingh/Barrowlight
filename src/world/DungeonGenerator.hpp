@@ -33,10 +33,13 @@ struct DungeonGenerationParams {
     // have a boss fight, so most floors generate as a pure "clear it,
     // find the door" dungeon with no boss room attempted at all.
     bool includeBossRoom = true;
+    bool includeVault = false;
 };
 
 struct GeneratedDungeon {
     Map map;
+    bool hasVault = false;
+    Position vaultCenter{}, vaultEntrance{};
     Position playerStart;                    // room 0's center
     std::vector<Position> otherRoomCenters;   // every regular room's center (not the boss
                                                // room), in placement order -- lets the caller

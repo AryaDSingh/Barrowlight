@@ -10,7 +10,8 @@ namespace engine {
 
 enum class TalentTree {
     Blade,
-    Flame,
+    Flame, // legacy enemy/reserved definitions
+    OneHanded, TwoHanded, Shield, Bow, Stealth, Acrobatics, Fire, Ice, Lightning, Arcane, Cloth, LightArmour, HeavyArmour, Spellblade, Animation, BloodMagic, ShadowArcher,
 };
 
 enum class TargetingMode {
@@ -47,6 +48,12 @@ enum class TalentEffectKind {
 // "data-driven" even without an external file: logic and data are
 // cleanly separated, the data table is trivially swappable for a file
 // loader later, but no such loader exists yet.
+enum class WeaponRequirement { None, OneHanded, TwoHanded, Shield, Bow, Melee };
+enum class ArmourRequirement { None, Cloth, Light, Heavy };
+inline bool isMagicTree(TalentTree tree) { return tree >= TalentTree::Fire && tree <= TalentTree::Arcane; }
+
+enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship, Ambush, Footwork, Kindle, StaticCharge, Frostbite, ArcaneEfficiency, ClothWard, Spellweave, LightEvasion, LightPrecision, HeavyBrace, HeavyResolve, BattleRhythm, GravePact, Deathless, Unseen };
+
 struct Talent {
     std::string name;
     std::string description;
@@ -145,10 +152,39 @@ struct Talent {
     int scalingCooldown = -1; // effective talents preserve the base damage-scaling tier
     int damagePercent = 100;
     bool chain = false;
+    bool passive = false;
+    PassiveKind passiveKind = PassiveKind::None;
+    int passiveMagnitude = 0;
+    WeaponRequirement weaponRequirement = WeaponRequirement::None;
+    int pushDistance = 0;
+    bool consumeShock = false, consumeChill = false, consumeBurn = false;
+    int statusBonusPercent = 0;
+    bool requiresStealth = false;
+    int movementBurn = 0;
+    bool cleanse = false;
+    int committedBloodlust = -1; // frozen at cast commitment so HP costs cannot change the preview
+
+    ArmourRequirement armourRequirement = ArmourRequirement::None;
+    int restoreMana = 0;
+    int restoreHpPercent = 0;
+    int imbueElement=0; // 1 fire, 2 ice, 3 lightning, 4 arcane
+    bool spellstrike=false, releaseAilments=false, boneSwap=false;
+    int summonCount=0, summonDuration=0, summonRank=1;
+    int drainPercent=0, stayHiddenPercent=0;
+    bool huntersMark=false, returnConcealed=false;
+    int committedRhythm=-1;
+
 };
 
 enum TalentTag : unsigned int { MeleeTag = 1, ProjectileTag = 2, AreaTag = 4,
     MovementTag = 8, DamagingTag = 16, PureMovementTag = 32 };
+inline bool isSpell(const Talent& t) {
+    return isMagicTree(t.tree) || t.spellstrike || t.tree==TalentTree::Animation || t.tree==TalentTree::BloodMagic;
+}
+inline bool isMeleeAttack(const Talent& t) {
+    return t.effectKind==TalentEffectKind::Damage && (t.targeting==TargetingMode::AdjacentEnemy ||
+        (t.shape==EffectShape::AreaAroundSelf && !isSpell(t) && t.scalingStat==ScalingStat::Strength));
+}
 inline unsigned int talentTags(const Talent& talent) {
     unsigned int tags = 0;
     if (talent.targeting == TargetingMode::AdjacentEnemy) tags |= MeleeTag;

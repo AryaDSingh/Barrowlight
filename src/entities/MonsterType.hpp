@@ -16,7 +16,18 @@ enum class MonsterType {
     Bomber,        // AoEBomber, ranged AoE on a cooldown
     GoblinWarlord, // BossBehavior, phase-based set-piece fight -- floor kFirstBossFloor
     Lich,          // LichBehavior, ranged + summons Skeleton minions -- floor kFinalFloor
-    Skeleton,      // Chaser, plain melee -- the Lich's summoned minion, not independently spawned
+    Skeleton,      // Chaser, plain melee -- Crypt inhabitant or Lich summon
+    GoblinRaider,
+    SkeletonArcher,
+    SkeletonGuard,
+    Bonecaller,
+    GoblinCaptain, // named encounter: Grik the Packleader
+    OssuaryWarden, // named encounter: Veyra the Ashkeeper
+    GoblinBulwark, GoblinMedic, GoblinStalker, GoblinSlinger,
+    CryptSentinel, GraveMender, CryptShade, FrostAcolyte,
 };
 
+inline bool isUniqueMonster(MonsterType type) {
+    return type==MonsterType::GoblinCaptain || type==MonsterType::OssuaryWarden;
+}
 } // namespace engine

@@ -9,12 +9,36 @@
 namespace engine {
 
 // Fixed equipment definitions plus uniquely identified, movable item instances.
-enum class EquipmentSlot { Weapon, Armour, Charm };
+// Preserve the original four serialized slot numbers.
+enum class EquipmentSlot { Weapon, Armour, Charm, OffHand, Head, Cloak, Hands, Belt, Feet, Ring1, Ring2 };
+inline constexpr int kEquipmentSlotCount=11;
+inline bool ringSlot(EquipmentSlot s) { return s==EquipmentSlot::Ring1 || s==EquipmentSlot::Ring2; }
+inline bool slotAccepts(EquipmentSlot target,EquipmentSlot item) { return target==item || (ringSlot(target) && ringSlot(item)); }
+inline bool armourSlot(EquipmentSlot s) { return s==EquipmentSlot::Armour || s==EquipmentSlot::Head || s==EquipmentSlot::Hands || s==EquipmentSlot::Feet; }
+enum class ArmourKind { Unarmoured, Cloth, Light, Heavy };
+inline const char* armourName(ArmourKind kind) {
+    switch (kind) {
+        case ArmourKind::Cloth: return "Cloth";
+        case ArmourKind::Light: return "Light armour";
+        case ArmourKind::Heavy: return "Heavy armour";
+        default: return "Unarmoured";
+    }
+}
+
+enum class WeaponKind { None, OneHanded, TwoHanded, Bow, Staff, Shield };
 inline const char* slotName(EquipmentSlot slot) {
     switch (slot) {
-        case EquipmentSlot::Weapon: return "Weapon";
-        case EquipmentSlot::Armour: return "Armour";
-        case EquipmentSlot::Charm: return "Charm";
+        case EquipmentSlot::Weapon: return "Main hand";
+        case EquipmentSlot::Armour: return "Body";
+        case EquipmentSlot::Charm: return "Amulet";
+        case EquipmentSlot::OffHand: return "Off-hand";
+        case EquipmentSlot::Head: return "Head";
+        case EquipmentSlot::Cloak: return "Cloak";
+        case EquipmentSlot::Hands: return "Hands";
+        case EquipmentSlot::Belt: return "Belt";
+        case EquipmentSlot::Feet: return "Feet";
+        case EquipmentSlot::Ring1: return "Ring 1";
+        case EquipmentSlot::Ring2: return "Ring 2";
     }
     return "Unknown";
 }
@@ -37,11 +61,11 @@ struct AffixDefinition {
 };
 inline constexpr std::array<AffixDefinition, 8> kAffixes{{
     {"might", "Strength", BonusStat::Strength, 5, 2, 4, 1},
-    {"agility", "Dexterity", BonusStat::Dexterity, 7, 1, 3, 1},
+    {"agility", "Dexterity", BonusStat::Dexterity, 7 | 2032, 1, 3, 1},
     {"knowledge", "Intelligence", BonusStat::Intelligence, 5, 2, 4, 1},
-    {"vitality", "Max HP", BonusStat::Hp, 6, 3, 6, 2},
-    {"reservoir", "Max mana", BonusStat::Mana, 6, 3, 6, 2},
-    {"brawn", "Strength", BonusStat::Strength, 2, 1, 2, 1},
+    {"vitality", "Max HP", BonusStat::Hp, 14 | 2032, 3, 6, 2},
+    {"reservoir", "Max mana", BonusStat::Mana, 14 | 2032, 3, 6, 2},
+    {"brawn", "Strength", BonusStat::Strength, 10, 1, 2, 1},
     {"insight", "Intelligence", BonusStat::Intelligence, 2, 1, 2, 1},
     {"vigor", "Max HP", BonusStat::Hp, 1, 2, 3, 2},
 }};
@@ -65,21 +89,52 @@ struct ItemDefinition {
     const char* name;
     EquipmentSlot slot;
     ItemBonuses bonuses;
+    WeaponKind weaponKind = WeaponKind::None;
+    ArmourKind armourKind = ArmourKind::Unarmoured;
 };
 
+inline std::string equipmentTypeName(const ItemDefinition& item) {
+    return armourSlot(item.slot) ? std::string(slotName(item.slot))+" / "+armourName(item.armourKind) : slotName(item.slot);
+}
+
 // IDs are persistent identities. Display names can change independently.
-inline constexpr std::array<ItemDefinition, 9> kItemDefinitions{{
-    {"iron_sword", "Iron Sword", EquipmentSlot::Weapon, {5, 0, 0, 0, 0}},
-    {"ash_staff", "Ash Staff", EquipmentSlot::Weapon, {0, 0, 5, 0, 3}},
-    {"hunting_bow", "Hunting Bow", EquipmentSlot::Weapon, {0, 5, 0, 0, 0}},
-    {"chain_coat", "Chain Coat", EquipmentSlot::Armour, {0, 0, 0, 6, 0}},
-    {"scout_leathers", "Scout Leathers", EquipmentSlot::Armour, {0, 3, 0, 3, 0}},
-    {"woven_robes", "Woven Robes", EquipmentSlot::Armour, {0, 0, 2, 0, 6}},
-    {"vitality_charm", "Vitality Charm", EquipmentSlot::Charm, {2, 0, 0, 4, 0}},
-    {"focus_charm", "Focus Charm", EquipmentSlot::Charm, {0, 0, 2, 0, 5}},
-    {"agility_charm", "Agility Charm", EquipmentSlot::Charm, {0, 3, 0, 2, 0}},
+inline constexpr std::array<ItemDefinition, 28> kItemDefinitions{{
+    {"iron_sword", "Iron Sword", EquipmentSlot::Weapon, {5, 0, 0, 0, 0}, WeaponKind::OneHanded},
+    {"ash_staff", "Ash Staff", EquipmentSlot::Weapon, {0, 0, 5, 0, 3}, WeaponKind::Staff},
+    {"hunting_bow", "Hunting Bow", EquipmentSlot::Weapon, {0, 5, 0, 0, 0}, WeaponKind::Bow},
+    {"chain_coat", "Chain Coat", EquipmentSlot::Armour, {0, 0, 0, 6, 0}, WeaponKind::None, ArmourKind::Heavy},
+    {"scout_leathers", "Scout Leathers", EquipmentSlot::Armour, {0, 3, 0, 3, 0}, WeaponKind::None, ArmourKind::Light},
+    {"woven_robes", "Woven Robes", EquipmentSlot::Armour, {0, 0, 2, 0, 6}, WeaponKind::None, ArmourKind::Cloth},
+    {"vitality_charm", "Vitality Amulet", EquipmentSlot::Charm, {2, 0, 0, 4, 0}},
+    {"focus_charm", "Focus Amulet", EquipmentSlot::Charm, {0, 0, 2, 0, 5}},
+    {"agility_charm", "Agility Amulet", EquipmentSlot::Charm, {0, 3, 0, 2, 0}},
+    {"greatsword", "Greatsword", EquipmentSlot::Weapon, {5,0,0,0,0}, WeaponKind::TwoHanded},
+    {"wooden_shield", "Wooden Shield", EquipmentSlot::OffHand, {0,0,0,4,0}, WeaponKind::Shield},
+    {"training_sword", "Training Sword", EquipmentSlot::Weapon, {}, WeaponKind::OneHanded},
+    {"training_greatsword", "Training Greatsword", EquipmentSlot::Weapon, {}, WeaponKind::TwoHanded},
+    {"training_bow", "Training Bow", EquipmentSlot::Weapon, {}, WeaponKind::Bow},
+    {"training_shield", "Training Shield", EquipmentSlot::OffHand, {}, WeaponKind::Shield},
+    {"cloth_hood", "Cloth Hood", EquipmentSlot::Head, {0,0,0,0,1}, WeaponKind::None, ArmourKind::Cloth},
+    {"leather_cap", "Leather Cap", EquipmentSlot::Head, {0,0,0,1,0}, WeaponKind::None, ArmourKind::Light},
+    {"iron_helm", "Iron Helm", EquipmentSlot::Head, {0,0,0,2,0}, WeaponKind::None, ArmourKind::Heavy},
+    {"cloth_gloves", "Cloth Gloves", EquipmentSlot::Hands, {0,0,0,0,1}, WeaponKind::None, ArmourKind::Cloth},
+    {"leather_gloves", "Leather Gloves", EquipmentSlot::Hands, {0,1,0,0,0}, WeaponKind::None, ArmourKind::Light},
+    {"iron_gauntlets", "Iron Gauntlets", EquipmentSlot::Hands, {1,0,0,0,0}, WeaponKind::None, ArmourKind::Heavy},
+    {"cloth_slippers", "Cloth Slippers", EquipmentSlot::Feet, {0,0,0,0,1}, WeaponKind::None, ArmourKind::Cloth},
+    {"leather_boots", "Leather Boots", EquipmentSlot::Feet, {0,0,0,1,0}, WeaponKind::None, ArmourKind::Light},
+    {"iron_boots", "Iron Boots", EquipmentSlot::Feet, {0,0,0,2,0}, WeaponKind::None, ArmourKind::Heavy},
+    {"traveler_cloak", "Traveler Cloak", EquipmentSlot::Cloak, {0,0,0,2,0}},
+    {"sturdy_belt", "Sturdy Belt", EquipmentSlot::Belt, {0,0,0,2,0}},
+    {"copper_ring", "Copper Ring", EquipmentSlot::Ring1, {1,0,0,0,0}},
+    {"silver_ring", "Silver Ring", EquipmentSlot::Ring1, {0,0,1,0,0}},
 }};
 
+inline bool trainingItem(const ItemDefinition& d) { return std::string_view(d.id).find("training_")==0; }
+inline std::vector<const ItemDefinition*> rewardItemDefinitions() {
+    std::vector<const ItemDefinition*> result;
+    for(const auto& d:kItemDefinitions) if(!trainingItem(d)) result.push_back(&d);
+    return result;
+}
 inline const ItemDefinition* findItemDefinition(std::string_view id) {
     for (const auto& definition : kItemDefinitions)
         if (id == definition.id) return &definition;

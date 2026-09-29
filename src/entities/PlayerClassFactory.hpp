@@ -18,22 +18,9 @@ namespace engine {
 // ARCHITECTURE_DECISIONS.md, "The attribute-system redesign").
 Stats statsForClass(PlayerClass cls);
 
-// The starting TalentSet for `cls` -- spellbladeTalents() or
-// warriorTalents(), wrapped. Mirrors MonsterFactory::createMonster()'s
-// "one factory function, a switch over an enum, data plugged in per
-// case" shape exactly, just for player classes instead of monster
-// types.
+// Legacy adapters for pre-tree combat fixtures. Live creation uses basicAttack()
+// and startingTreeAllowed() from TalentCatalog; it never grants these fixed kits.
 TalentSet talentSetForClass(PlayerClass cls);
-
-// Prompt 23: the talent `cls` unlocks at exactly `level`, if any --
-// dispatches to warriorTalentUnlockedAtLevel()/
-// mageTalentUnlockedAtLevel()/thiefTalentUnlockedAtLevel(), the
-// same per-class-function-behind-one-dispatcher shape
-// talentSetForClass() already uses. Spellblade always returns nullopt
-// here -- it's reserved for its own separate unlock mechanism (see
-// MetaProgress.hpp), not level-gated talents the way the three base
-// classes are, and by the time it's playable at all its full 9-talent
-// kit is already known from the start (see talentSetForClass()).
 std::optional<Talent> talentUnlockedAtLevel(PlayerClass cls, int level);
 
 } // namespace engine

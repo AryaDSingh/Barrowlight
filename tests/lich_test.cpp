@@ -107,8 +107,8 @@ int main() {
         auto lich = makeLich(Position{2, 2}, /*maxSummons=*/3);
         Player target(Position{6, 2}, Stats{}, TalentSet{});
         const AIDecision decision = lich->ai()->decideAction(*lich, map, target, {});
-        check(decision.type == AIActionType::Summon && decision.summonType == MonsterType::Skeleton,
-              "summons a Skeleton when in range, ready, and under the cap");
+        check(decision.type == AIActionType::Summon && decision.summonType == MonsterType::SkeletonGuard,
+              "summons a Skeleton Guard when in range, ready, and under the cap");
         check(decision.abilityIndex == 0 && !decision.announcement.empty(),
               "the summon decision references ability 0 (the cooldown to start) and announces itself");
     }
@@ -123,10 +123,12 @@ int main() {
 
         const AIDecision first = lich->ai()->decideAction(*lich, map, target, {});
         check(first.type == AIActionType::Summon, "cap test: first summon succeeds");
+        ++lich->summonsCommitted; // Application reserves a successful commitment.
         lich->talents().setCooldownRemaining(0, 0); // simulate the cooldown coming back up
 
         const AIDecision second = lich->ai()->decideAction(*lich, map, target, {});
         check(second.type == AIActionType::Summon, "cap test: second summon succeeds (at the cap of 2)");
+        ++lich->summonsCommitted;
         lich->talents().setCooldownRemaining(0, 0);
 
         const AIDecision third = lich->ai()->decideAction(*lich, map, target, {});

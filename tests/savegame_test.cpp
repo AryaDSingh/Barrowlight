@@ -55,8 +55,9 @@ int main() {
                                                     // its default would go uncaught otherwise
     original.playerLevel = 4; // deliberately not the default (1) -- same reasoning as playerClass
     original.playerXp = 37;   // deliberately not the default (0)
+    original.floorEntrance={1,1}; original.floorExit={3,2};
     original.currentFloor = 6; // deliberately not the default (1)
-    original.playerHybridSpecced = true; // deliberately not the default (false)
+    original.trees={{"one_handed",false}}; original.treePoints=0; original.abilityPoints=0;
     original.playerStats.hp = 17;
     original.playerStats.maxHp = 30;
     original.playerStats.mana = 9;
@@ -70,10 +71,9 @@ int main() {
                                               // version of this test never set a non-default
                                               // value here either
     original.playerStats.speed = 100;
-    original.playerTalents = {{"warrior.slam",0}, {"warrior.cleave",3},
-        {"warrior.rallying_cry",1}, {"warrior.berserkers_fury",0},
-        {"warrior.whirlwind",0}, {"warrior.undying_rage",4},
-        {"mage.arcane_bolt",0}, {"mage.mind_shatter",2}};
+    original.playerTalents={{"basic.attack",0,1},{"one_handed.quick_strike",0,2},
+        {"one_handed.parry",3,2},{"one_handed.riposte",0,2},{"basic.cleanse",0,1}};
+    original.hotbar={"basic.attack","one_handed.quick_strike","one_handed.parry"};
     original.playerStatusEffects = {
         StatusEffectInstance{StatusEffectType::Poison, 2, 3},
     };
@@ -137,19 +137,17 @@ int main() {
     check(loaded.playerLevel == 4 && loaded.playerXp == 37,
           "player level and XP match (not left at the level-1/0-XP defaults)");
     check(loaded.currentFloor == 6, "current floor matches (not left at the default of 1)");
-    check(loaded.playerHybridSpecced == true,
-          "player hybrid-specced flag matches (not left at the false default)");
-    check(loaded.playerTalents.size() == 8 &&
-              loaded.playerTalents[6].id == "mage.arcane_bolt" &&
-              loaded.playerTalents[7].id == "mage.mind_shatter",
-          "borrowed talents preserve stable IDs");
+    check(loaded.trees.size()==1 && loaded.trees[0].id=="one_handed",
+          "Unlocked tree identity matches");
+    check(loaded.playerTalents.size()==5 && loaded.playerTalents[1].id=="one_handed.quick_strike" &&
+          loaded.playerTalents[3].id=="one_handed.riposte", "Learned active and passive identities match");
     check(loaded.playerStats.hp == 17 && loaded.playerStats.maxHp == 30 &&
               loaded.playerStats.mana == 9 && loaded.playerStats.maxMana == 20 &&
               loaded.playerStats.strength == 12 && loaded.playerStats.dexterity == 14 &&
               loaded.playerStats.intelligence == 18 && loaded.playerStats.speed == 100,
           "every player stat field matches exactly");
     check(loaded.playerTalents == original.playerTalents,
-          "all 8 talent identities and cooldowns match exactly");
+          "all talent identities, ranks and cooldowns match exactly");
     check(loaded.lastMoveDirection.x == 1 && loaded.lastMoveDirection.y == 0,
           "lastMoveDirection matches (needed for Blink to resume correctly)");
 

@@ -4,6 +4,20 @@
 #include "entities/Item.hpp"
 
 namespace engine {
+enum class LootTheme { General, Barracks, Sanctum, Crypts };
+inline bool favoredByTheme(const ItemDefinition& item, LootTheme theme) {
+    switch (theme) {
+        case LootTheme::Barracks:
+            return item.weaponKind==WeaponKind::OneHanded || item.weaponKind==WeaponKind::TwoHanded ||
+                item.weaponKind==WeaponKind::Bow || item.weaponKind==WeaponKind::Shield ||
+                std::string_view(item.id)=="chain_coat" || std::string_view(item.id)=="scout_leathers";
+        case LootTheme::Sanctum:
+            return item.weaponKind==WeaponKind::Staff || std::string_view(item.id)=="woven_robes" ||
+                std::string_view(item.id)=="focus_charm";
+        case LootTheme::Crypts: return item.slot==EquipmentSlot::Charm || ringSlot(item.slot);
+        default: return false;
+    }
+}
 // An independent, explicitly serialized stream. Only committed rewards draw from it.
 // xorshift64* has fixed unsigned arithmetic, independent of standard-library distributions.
 class LootGenerator {
@@ -16,8 +30,21 @@ public:
         return static_cast<unsigned int>((state_ * UINT64_C(2685821657736338717)) % bound);
     }
     std::unique_ptr<Item> generate(int floor, int quality, std::uint64_t id, Position position,
-                                   ItemRarity minimum = ItemRarity::Normal) {
-        const auto& definition = kItemDefinitions[roll(static_cast<unsigned int>(kItemDefinitions.size()))];
+                                   ItemRarity minimum = ItemRarity::Normal,
+                                   LootTheme theme = LootTheme::General) {
+        // Gentle bias: favored bases have twice the weight, all normal bases
+        // remain possible. Training equipment stays outside the reward pool.
+        const auto bases=rewardItemDefinitions();
+        unsigned totalWeight=0;
+        for(const auto* d:bases) totalWeight+=favoredByTheme(*d,theme)?2:1;
+        unsigned choice=roll(totalWeight);
+        std::size_t selected=0;
+        for(;selected+1<bases.size();++selected) {
+            const unsigned weight=favoredByTheme(*bases[selected],theme)?2:1;
+            if(choice<weight) break;
+            choice-=weight;
+        }
+        const auto& definition=*bases[selected];
         const int tier = std::clamp((floor - 1) / 3 + quality, 0, 5);
         const unsigned int rarityRoll = roll(100);
         int count = rarityRoll < static_cast<unsigned>(15 + tier * 5) ? 2 : rarityRoll < 75 ? 1 : 0;

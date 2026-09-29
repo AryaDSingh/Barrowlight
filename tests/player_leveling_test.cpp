@@ -88,28 +88,28 @@ int main() {
               "4 level-ups grant 2 points each == 8 unspent attribute points");
     }
 
-    // --- grantXp: capped at level 10, doesn't overshoot.
+    // --- grantXp: capped at level 20, doesn't overshoot.
     {
         Player player = makePlayer();
-        grantXp(player, 100000); // an absurdly large grant -- should still stop at 10
-        check(player.level() == 10, "an enormous XP grant still caps at level 10, not beyond");
+        grantXp(player, 100000); // an absurdly large grant -- should still stop at 20
+        check(player.level() == 20, "an enormous XP grant still caps at level 20, not beyond");
         check(player.xp() == 0,
               "XP is zeroed once capped, not left holding a huge leftover that reads as a bug");
-        check(player.stats().maxHp == 30 + 9 * 1,
-              "9 level-ups (1 through 10) grew maxHp by 1 each, capped correctly at the 9th");
-        check(player.unspentAttributePoints() == 9 * 2,
-              "9 level-ups granted 2 points each == 18 unspent attribute points, none lost to the cap");
+        check(player.stats().maxHp == 30 + 19 * 1,
+              "19 level-ups (1 through 20) grew maxHp by 1 each, capped correctly at the 19th");
+        check(player.unspentAttributePoints() == 19 * 2,
+              "19 level-ups granted 2 points each == 38 unspent attribute points, none lost to the cap");
     }
 
-    // --- grantXp: already at level 10, further XP does nothing.
+    // --- grantXp: already at level 20, further XP does nothing.
     {
         Player player = makePlayer();
         grantXp(player, 100000);
-        check(player.level() == 10, "sanity check -- player is capped at 10 before the next grant");
+        check(player.level() == 20, "sanity check -- player is capped at 20 before the next grant");
         const int hpBefore = player.stats().maxHp;
         const int pointsBefore = player.unspentAttributePoints();
         grantXp(player, 500);
-        check(player.level() == 10, "granting more XP at the cap doesn't do anything further");
+        check(player.level() == 20, "granting more XP at the cap doesn't do anything further");
         check(player.xp() == 0, "XP stays at 0 once capped, doesn't start accumulating again");
         check(player.stats().maxHp == hpBefore, "maxHp doesn't grow further once capped");
         check(player.unspentAttributePoints() == pointsBefore,

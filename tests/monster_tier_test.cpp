@@ -41,8 +41,8 @@ int main() {
     check(std::string(namePrefixForTier(MonsterTier::Base)).empty(),
           "Base name prefix is empty -- a Base monster's name is unchanged");
     check(std::string(namePrefixForTier(MonsterTier::Elite)) == "Elite ", "Elite prefix is 'Elite '");
-    check(std::string(namePrefixForTier(MonsterTier::Nightmare)) == "Nightmare ",
-          "Nightmare prefix is 'Nightmare '");
+    check(std::string(namePrefixForTier(MonsterTier::Nightmare)) == "Rare ",
+          "Nightmare display prefix is 'Rare '");
 
     // --- createMonster(): Goblin, whose attribute bonus is exactly 0
     // (strength=10, the baseline) -- the simple case where scaled
@@ -62,7 +62,7 @@ int main() {
 
         auto nightmare =
             createMonster(MonsterType::Goblin, Position{0, 0}, MonsterTier::Nightmare);
-        check(nightmare->name() == "Nightmare Goblin", "Nightmare Goblin's name is prefixed correctly");
+        check(nightmare->name() == "Rare Goblin", "Nightmare Goblin's name is prefixed correctly");
         check(nightmare->stats().maxHp == 44, "Nightmare Goblin hp == round(20 * 2.2) == 44");
         check(nightmare->xpReward() == 40, "Nightmare Goblin XP == round(10 * 4.0) == 40");
     }
@@ -98,7 +98,7 @@ int main() {
             createMonster(MonsterType::GoblinWarlord, Position{0, 0}, MonsterTier::Nightmare);
         check(boss->name() == "Goblin Warlord",
               "the boss's name is never prefixed, even if Nightmare tier is explicitly requested");
-        check(boss->stats().maxHp == 90,
+        check(boss->stats().maxHp == 115,
               "the boss's hp is never scaled, even if Nightmare tier is explicitly requested");
         check(boss->xpReward() == 200,
               "the boss's XP reward is never scaled, even if Nightmare tier is explicitly requested");

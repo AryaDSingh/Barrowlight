@@ -196,6 +196,29 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     }
 
     GeneratedDungeon result;
+    // Add a sealed leaf room only after all shortcuts. Its entire perimeter
+    // must be untouched wall: opening its one entrance cannot create a bypass.
+    if (params.includeVault && !params.includeBossRoom) {
+        for (std::size_t i=1;i+1<rooms.size() && !result.hasVault;++i) {
+            const auto& source=rooms[i];
+            const auto c=source.center();
+            for (const Position d:std::vector<Position>{{1,0},{-1,0},{0,1},{0,-1}}) {
+                Position gate=d.x ? Position{d.x>0?source.x2:source.x1-1,c.y} :
+                    Position{c.x,d.y>0?source.y2:source.y1-1};
+                Position center{gate.x+d.x*3,gate.y+d.y*3};
+                Room vault{center.x-2,center.y-2,center.x+3,center.y+3};
+                bool clear=true;
+                for (int y=vault.y1-1;y<=vault.y2 && clear;++y)
+                    for (int x=vault.x1-1;x<=vault.x2;++x)
+                        if (x<1 || y<1 || x>=map.width()-1 || y>=map.height()-1 ||
+                            map.tileAt(x,y).type!=TileType::Wall) { clear=false; break; }
+                if (!clear) continue;
+                carveRoom(map,vault); // gate stays solid until explicitly opened
+                result.hasVault=true; result.vaultCenter=center; result.vaultEntrance=gate;
+                break;
+            }
+        }
+    }
     result.map = std::move(map);
     result.playerStart = rooms.front().center();
     for (std::size_t i = 1; i < rooms.size(); ++i) {
@@ -205,7 +228,7 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     if (bossRoom.has_value()) {
         result.bossRoomCenter = bossRoom->center();
     }
-    result.roomCount = static_cast<int>(rooms.size()) + (bossRoom.has_value() ? 1 : 0);
+    result.roomCount = static_cast<int>(rooms.size()) + (bossRoom.has_value() ? 1 : 0) + (result.hasVault ? 1 : 0);
     return result;
 }
 

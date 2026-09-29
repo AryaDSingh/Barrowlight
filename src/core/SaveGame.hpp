@@ -7,10 +7,13 @@
 
 #include "core/Position.hpp"
 #include "entities/MonsterType.hpp"
+#include "entities/EnemyIntent.hpp"
+#include "entities/EnemyTactics.hpp"
 #include "entities/PlayerClass.hpp"
 #include "entities/Stats.hpp"
 #include "entities/Item.hpp"
-#include "entities/Rune.hpp"
+#include "entities/DungeonProgression.hpp"
+#include "entities/Player.hpp"
 #include "entities/MonsterTier.hpp"
 #include "entities/StatusEffects.hpp"
 #include "world/ExploredMap.hpp"
@@ -33,6 +36,17 @@ namespace engine {
 // as do summon reward eligibility and exact monster tier. Other AI-internal
 // counters remain a limitation of the current save format.
 struct SaveGameState {
+    bool adventureMode=false;
+    int extraLives=0;
+    DungeonLevels dungeonLevels{}; // Legacy version-19 entry levels; ignored by gameplay, cleared on migration.
+    // Inactive floor snapshots contain no further snapshots. Their character
+    // fields are archival only; travel restores world fields, never character loot.
+    std::vector<SaveGameState> savedFloors;
+    Position floorEntrance{}, floorExit{};
+    bool inTown=false;
+    int gold=0, quietTurns=0;
+    bool bloodRelic=false, animationRelic=false;
+    std::vector<int> deathlessSpentFloors;
     Map map;
     ExploredMap exploredMap;
 
@@ -54,7 +68,7 @@ struct SaveGameState {
     struct ItemSaveData {
         std::string definitionId;
         std::uint64_t instanceId = 0;
-        int location = -1; // -2 ground, -1 bag, 0 weapon, 1 armour, 2 charm
+        int location = -1; // -2 ground, -1 bag; nonnegative values are persistent EquipmentSlot IDs
         Position position;
         int rollTier = 0;
         std::vector<RolledAffix> affixes;
@@ -65,19 +79,25 @@ struct SaveGameState {
     Position chestPosition;
     bool chestExists = false, chestClaimed = false;
     int ordinaryDrops = 0;
+    bool vaultExists=false, vaultOpened=false, vaultClaimed=false;
+    Position vaultCenter{}, vaultEntrance{};
     struct TalentSaveData {
         std::string id;
         int cooldown = 0;
-        bool operator==(const TalentSaveData& other) const { return id == other.id && cooldown == other.cooldown; }
+        int rank = 1;
+        bool operator==(const TalentSaveData& other) const { return id == other.id && cooldown == other.cooldown && rank == other.rank; }
     };
     std::vector<TalentSaveData> playerTalents; // learned order, identity and running cooldown
-    std::vector<RuneInstance> runes;
-    bool runeChoiceAvailable = false;
+    int treePoints=1, abilityPoints=3;
+    std::vector<Player::TreeAccess> trees;
+    std::vector<std::string> hotbar;
+    bool progressionReviewPending=false, pendingFinalVictory=false;
+    std::string defeatedBossName;
     std::vector<StatusEffectInstance> playerStatusEffects;
     Position lastMoveDirection;
-    bool playerHybridSpecced = false;
 
     struct MonsterSaveData {
+        EnemyTactics tactics;
         MonsterType type; // reconstructed via MonsterFactory::createMonster()
         Position position;
         int hp = 0;
@@ -85,6 +105,12 @@ struct SaveGameState {
         bool isBoss = false;
         MonsterTier tier = MonsterTier::Base;
         bool rewardsEligible = true;
+        bool allied=false;
+        int summonRank=1, summonIntelligence=0, remainingLife=0;
+        bool vaultGuard = false;
+        int recoveryActions=0, summonsCommitted=0, announcedPhase=1;
+        bool enraged=false;
+        std::optional<EnemyIntent> intent;
         std::vector<StatusEffectInstance> statusEffects;
         std::vector<TalentSaveData> talents;
     };

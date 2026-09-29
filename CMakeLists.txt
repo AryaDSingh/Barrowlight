@@ -59,7 +59,10 @@ set(ENTITY_HEADERS
     src/entities/Entity.hpp
     src/entities/Item.hpp
     src/entities/LootGenerator.hpp
-    src/entities/Rune.hpp
+    src/entities/EnemyIntent.hpp
+    src/entities/Stealth.hpp
+    src/entities/TalentCatalog.hpp
+    src/entities/TalentProgression.hpp
     src/entities/Feature.hpp
     src/entities/Stats.hpp
     src/entities/AttributeFormulas.hpp
@@ -97,6 +100,8 @@ set(CORE_HEADERS
 )
 
 set(WORLD_HEADERS
+    src/world/FloorTheme.hpp
+    src/world/EncounterPlan.hpp
     src/world/Tile.hpp
     src/world/Map.hpp
     src/world/TalentTargeting.hpp
@@ -129,8 +134,12 @@ add_executable(roguelike
     src/core/Application.cpp
     src/core/ApplicationTargeting.cpp
     src/core/ApplicationInventory.cpp
+    src/core/ApplicationTravel.cpp
+    src/core/ApplicationExplore.cpp
     src/core/ApplicationLoot.cpp
-    src/core/ApplicationRunes.cpp
+    src/core/ApplicationHidden.cpp
+    src/core/ApplicationCodex.cpp
+    src/core/ApplicationTalents.cpp
     src/world/TalentTargeting.cpp
     src/entities/MonsterInspection.cpp
     src/core/TurnScheduler.cpp

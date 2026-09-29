@@ -1574,79 +1574,38 @@ The Debug game target builds. Existing fixtures were adapted, but automated
 tests and an interactive playthrough were not run; runtime verification and
 balance tuning remain pending.
 
-## ⏳ Prompt 35 — Specialization with a real pure-class or hybrid choice
+## Prompt 35 - Talent trees (implemented; runtime/balance verification pending)
 
-**Checkpoint (2026-09-25):** Concrete replacement rules and nine proposed native
-masteries are in `PROMPT_35_DESIGN.md`, pending user agreement. Gameplay
-implementation has not started. See `NEXT_STEPS.md` for the upload checkpoint,
-verification limits and the next implementation steps.
+The user approved replacing the borrowed-talent/native-mastery proposal with
+ten trees. Current rules: PROMPT_35_DESIGN.md. Starting attributes unchanged;
+1 initial tree point, 3 ability points; 2 attribute points and 1 ability point
+per level, plus tree points at 5/7/9. Unlock or specialize trees; talents have
+three ranks. Runes removed. Four equipment slots include shields.
 
-**Prompt:** Revisit the existing Warrior/Mage hybrid path with the user,
-using this concrete starting proposal: preserve starting kits and the
-level-4/7 base talent unlocks, but replace the free opposing-kit pick at
-every level from 5 through 10 with three specialization choices at levels
-5, 7, and 9. Each choice either takes a native mastery or learns an eligible
-talent from one chosen secondary class. Limit a character to two borrowed
-talents and one secondary class. Include Warrior, Mage, and Thief in both
-primary and secondary roles. First settle this rule change, then implement
-the agreed design in the existing resumable level-up flow.
+Catalog, progression, browser/hotbar, ten trees, statuses/passives, equipment
+requirements and version-9 persistence are implemented. Debug game compilation
+succeeded. No runtime tests or balance playthroughs were performed this iteration.
+Previous Prompt 34 results do not validate it. See NEXT_STEPS.md.
 
-Native masteries should change a class mechanic rather than only increase
-a stat. Start with three choices per class, such as a Warrior's Cleave
-knockback, a Mage's stun-duration improvement with a longer cooldown, or
-a Thief's longer Vault Kick retreat. Final effects and values must be
-reviewed against the existing kits. Show borrowed talents' actual scaling
-attributes and equipment/rune compatibility before the player commits.
+The old Prompt 36+ text below predates this change. Reconcile overlapping ailment
+and guard mechanics and rune reward references before implementing it.
 
-**Why now:** Staying focused on one class and borrowing another class's
-tools become competing uses of the same reward budget. It also gives Thief
-a deliberate route into multiclassing, explicitly revising Prompt 24's
-decision to exclude it.
+## Prompt 36 - Ailment combinations (implemented; runtime verification pending)
 
-**Keep bounded:** No new starting classes or giant passive tree. Hybrid
-names such as Spellblade or Shadowblade can describe combinations without
-requiring additional Player subclasses. Borrowed talents still scale from
-their declared attribute; no automatic free conversion to the primary stat.
-Initially omit respec and clearly communicate permanent choices.
+Adapted to the current tree system: one-charge Marked (+25% direct damage),
+Shield Bash/Volley/Arcane Bolt setup abilities, universal C Cleanse, non-refreshable
+stuns, recovery immunity and explicit boss limits. Existing flat Guard is reused;
+no second Guarded status or finite absorption pool is added. Damage-over-time
+ignores Guard/Marked; dodges do not consume Marked. Logs explain consumed combos.
 
-**Done when:** All three classes can finish the specialization sequence
-entirely with native masteries or choose a valid hybrid. Duplicate picks
-and an unintended third class are rejected. Crossing multiple reward
-levels in one XP grant presents every earned choice once, including when
-the final boss kill triggers victory. Save/load restores choices, rune
-attachments, and cooldowns by stable IDs. Record the agreed replacement
-rules in ARCHITECTURE_DECISIONS.md without erasing the historical decision.
-
-## ⬜ Prompt 36 — Ailment combinations and defensive decisions
-
-**Prompt:** Build a small, explicit status-interaction system around the
-existing Poison, Stun, and Empowered effects. Start with two additional
-effects: Marked (a limited-use damage vulnerability) and Guarded (a limited
-amount of incoming-damage absorption). Give each starting class a way to
-use or exploit one of these through a talent or mastery, and add one
-accessible, cooldown-limited cleanse that removes specified debuffs.
-Create at least two useful sequences, such as marking a target before a
-heavy attack, or guarding while poison finishes a nearby threat.
-
-**Why now:** Players need reasons to combine their chosen abilities across
-turns. Defensive tools also make survival depend on decisions alongside
-HP and dodge rolls.
-
-**Keep bounded:** Reuse the existing effect system. A full elemental
-resistance and penetration model is deferred. Define stacking, refresh,
-tick timing, damage rounding, and consumption rules explicitly. State
-whether poison ticks consume Marked or Guarded. Introduce a short stun
-recovery rule so repeated applications cannot permanently deny all turns,
-with boss-specific limits explained in inspection rather than hidden.
-
-**Done when:** Hand-computed example fights match the actual effect order;
-a dodged attack does not consume a successful-hit-only effect; status
-expiry behaves consistently for actors of different speeds. Cleanse and
-guard are useful in real encounters, and save/load preserves remaining
-duration, charges, and absorption. The combat log explains why a combo's
-damage differed from an ordinary hit.
+Version 10 saves persist statuses/cooldowns and accept migrated version-9 tree
+saves. Full rules and arithmetic examples: PROMPT_36_DESIGN.md. Game compilation
+only; runtime, save-migration and balance verification remain outstanding.
 
 ## ⬜ Prompt 37 — Enemy intent and encounters with mixed threats
+
+**Implemented locally; runtime verification pending.** See PROMPT_37_DESIGN.md
+for the reaction-window contract, encounter budgets and version-11 persistence.
 
 **Prompt:** Give dangerous enemy actions a readable wind-up. Begin with
 the Bomber's area attack and the Ogre's stun attack: show the intended
@@ -1657,7 +1616,7 @@ uniform-tier populations with floor-budgeted groups containing ordinary
 monsters and occasional elites, with a conservative cap on dangerous
 combinations. Review how this replaces Prompt 22's player-level tier rule.
 
-**Why now:** Equipment, runes, and hybrid tools need varied tactical
+**Why now:** Equipment, talent trees, and hybrid builds need varied tactical
 problems. A telegraphed threat makes movement and defensive abilities
 valuable even when dealing immediate damage is tempting.
 
@@ -1675,6 +1634,10 @@ encounter budgets and leave a safe starting area. Floor difficulty does
 not spike solely because the player gained a level in the previous fight.
 
 ## ⬜ Prompt 38 — Floor identities and optional risk/reward rooms
+
+**Implemented locally; runtime verification pending.** Three themes, regional
+chest rewards and optional sealed vaults with persisted reward choices. See
+PROMPT_38_DESIGN.md for current rules and pending acceptance checks.
 
 **Prompt:** Give the ten-floor run three simple themes using room layouts,
 palette changes, enemy composition, and rewards: an early barracks area,
@@ -1701,6 +1664,9 @@ the offered choices, chosen reward, and encounter completion survive
 saving without rerolling or duplicating the reward.
 
 ## ⬜ Prompt 39 — Boss fights that exercise the new builds
+
+**Implemented locally; runtime verification pending.** See PROMPT_39_DESIGN.md
+for boss warnings, recovery, lifetime ritual limits and save migration.
 
 **Prompt:** Upgrade both existing boss encounters using the systems above.
 Keep the floor-5 Goblin Warlord's three-phase identity, but telegraph its

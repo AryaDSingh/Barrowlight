@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <cmath>
 #include "entities/Actor.hpp"
+#include "entities/ArmourTalents.hpp"
+#include "entities/HiddenCombat.hpp"
 #include "world/ExploredMap.hpp"
+#include "world/LineOfFire.hpp"
 
 namespace engine {
 namespace {
@@ -12,33 +15,31 @@ int distanceSquared(Position a, Position b) {
     const int dx = a.x - b.x, dy = a.y - b.y;
     return dx * dx + dy * dy;
 }
-std::vector<Position> line(Position from, Position to) {
-    std::vector<Position> result{from};
-    const int dx = std::abs(to.x - from.x), dy = -std::abs(to.y - from.y);
-    const int sx = from.x < to.x ? 1 : -1, sy = from.y < to.y ? 1 : -1;
-    int error = dx + dy;
-    while (!same(from, to)) {
-        const int twice = 2 * error;
-        if (twice >= dy) { error += dy; from.x += sx; }
-        if (twice <= dx) { error += dx; from.y += sy; }
-        result.push_back(from);
-    }
-    return result;
-}
-bool open(const Map& map, Position p) {
-    return map.inBounds(p.x, p.y) && map.tileAt(p.x, p.y).transparent;
-}
-bool cornerBlocked(const Map& map, Position a, Position b) {
-    return a.x != b.x && a.y != b.y &&
-        (!open(map, {a.x, b.y}) || !open(map, {b.x, a.y}));
-}
+
 }
 
 std::string talentUnavailableReason(const Actor& caster, std::size_t index) {
     const auto& known = caster.talents().knownTalents();
     if (index >= known.size()) return "No talent in this slot.";
     if (!caster.talents().isReady(index)) return "Ability is on cooldown.";
-    const Talent effective = caster.talents().effectiveTalent(index);
+    const Talent effective = combatTalent(caster,caster.talents().effectiveTalent(index));
+    if (effective.id=="spellblade.imbue") return "Bind an Imbue variant in the talent browser (V selects element).";
+    if (effective.cleanse && std::none_of(caster.statusEffects().active().begin(),caster.statusEffects().active().end(),
+        [](const auto& e){return isCleansable(e.type);})) return "No removable ailments. Cleanse was not spent.";
+    if (effective.passive) return "Passive abilities do not need to be cast.";
+    if (!armourMatches(caster,effective.armourRequirement)) return armourRequirementText(effective.armourRequirement);
+    if (effective.requiresStealth && !caster.statusEffects().has(StatusEffectType::Concealed)) return "Requires Concealment.";
+    const auto* weapon=caster.inventory().equipped(EquipmentSlot::Weapon);
+    const auto* shield=caster.inventory().equipped(EquipmentSlot::OffHand);
+    const auto kind=weapon && weapon->definition() ? weapon->definition()->weaponKind : WeaponKind::None;
+    switch (effective.weaponRequirement) {
+    case WeaponRequirement::Melee: if (!hasMeleeWeapon(caster)) return "Equip a one- or two-handed melee weapon (not a bow or staff)."; break;
+    case WeaponRequirement::OneHanded: if (kind!=WeaponKind::OneHanded) return "Equip a one-handed weapon."; break;
+    case WeaponRequirement::TwoHanded: if (kind!=WeaponKind::TwoHanded) return "Equip a two-handed weapon."; break;
+    case WeaponRequirement::Bow: if (kind!=WeaponKind::Bow) return "Equip a bow."; break;
+    case WeaponRequirement::Shield: if (!shield) return "Equip a shield."; break;
+    default: break;
+    }
     if (caster.stats().mana < effective.manaCost) return "Not enough mana.";
     if (effective.hpCost > 0 && caster.stats().hp <= effective.hpCost)
         return "Not enough HP to safely cast.";
@@ -62,6 +63,14 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
         return nullptr;
     };
 
+    auto movementArea = [&] {
+        if (!talent.movementBurn || same(result.destination,start)) return;
+        for (const Position d:std::vector<Position>{{1,0},{-1,0},{0,1},{0,-1}}) {
+            Position p{result.destination.x+d.x,result.destination.y+d.y};
+            if (visible(p) && map.isWalkable(p.x,p.y)) result.area.push_back(p);
+        }
+    };
+
     if (talent.targeting == TargetingMode::Self &&
         talent.shape == EffectShape::SingleTarget) {
         result.affected.push_back(&caster);
@@ -78,14 +87,13 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
     Actor* anchor = nullptr;
     if (talent.shape == EffectShape::Movement || talent.projectile) {
         result.path.push_back(start);
-        const auto ray = line(start, cursor);
+        const auto ray = fireLine(start, cursor);
         for (std::size_t i = 1; i < ray.size(); ++i) {
             const Position p = ray[i];
             if (talent.shape == EffectShape::Movement &&
                 i > static_cast<std::size_t>(std::max(0, talent.moveDistance))) break;
-            if (!visible(p)) { result.message = "Path leaves your field of view."; break; }
             result.path.push_back(p);
-            if (!open(map, p) || cornerBlocked(map, ray[i - 1], p) ||
+            if (!fireTileOpen(map, p) || fireCornerBlocked(map, ray[i - 1], p) ||
                 (talent.shape == EffectShape::Movement && !map.isWalkable(p.x, p.y))) {
                 result.blockedAt = p;
                 result.message = "Path blocked by terrain.";
@@ -107,9 +115,11 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
             result.valid = !same(result.destination, start);
             if (!result.valid && result.message.empty()) result.message = "Choose a different tile.";
             result.area.push_back(result.destination);
+            movementArea();
             return result;
         }
     } else if (talent.shape != EffectShape::AreaAroundSelf) {
+        if (!hasLineOfFire(map,start,cursor)) { result.message="Line of fire blocked by terrain."; return result; }
         anchor = enemyAt(cursor);
         if (talent.targeting == TargetingMode::AdjacentEnemy &&
             std::abs(cursor.x - start.x) + std::abs(cursor.y - start.y) != 1) {
@@ -118,11 +128,17 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
         }
     }
 
-    if (talent.shape != EffectShape::AreaAroundSelf && !anchor) {
-        if (result.message.empty()) result.message = "Choose a visible enemy.";
-        return result;
+    if (talent.shape != EffectShape::AreaAroundSelf) {
+        if (result.blockedAt) return result;
+        // Empty ground is a real cast target. Preserve terrain and visibility
+        // restrictions, and projectile interception by the first visible enemy.
+        if (!anchor && !map.isWalkable(cursor.x,cursor.y)) {
+            result.message = "Choose a visible ground tile.";
+            return result;
+        }
     }
-    const Position center = anchor ? anchor->position() : start;
+    const Position center = talent.shape==EffectShape::AreaAroundSelf ? start :
+        anchor ? anchor->position() : cursor;
     if (talent.shape == EffectShape::AreaAroundSelf ||
         talent.shape == EffectShape::AreaAroundTarget) {
         const int radius = std::max(0, talent.areaRadius);
@@ -130,16 +146,16 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
             for (int x = center.x - radius; x <= center.x + radius; ++x) {
                 const Position p{x, y};
                 if (!visible(p) || !map.isWalkable(x, y) ||
-                    distanceSquared(center, p) > radius * radius) continue;
+                    distanceSquared(center, p) > radius * radius || !hasLineOfFire(map,center,p)) continue;
                 result.area.push_back(p);
                 if (Actor* enemy = enemyAt(p)) result.affected.push_back(enemy);
             }
     } else {
         result.area.push_back(center);
-        result.affected.push_back(anchor);
+        if (anchor) result.affected.push_back(anchor);
     }
-    result.valid = !result.affected.empty();
-    if (!result.valid) result.message = "No enemies in the affected area.";
+    result.valid = true;
+    if (result.affected.empty()) result.message = "Empty ground: cast will still spend its turn, cost and cooldown.";
 
     if (talent.chain && anchor && result.valid) {
         // Nearest visible secondary target, stable coordinate tie-break. No RNG.
@@ -154,10 +170,10 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
             return a->position().y != b->position().y ? a->position().y < b->position().y : a->position().x < b->position().x;
         });
         for (Actor* enemy : candidates) {
-            const auto ray = line(center, enemy->position());
+            const auto ray = fireLine(center, enemy->position());
             bool clear = true;
             for (std::size_t i = 1; i < ray.size(); ++i) {
-                if (!visible(ray[i]) || !open(map, ray[i]) || cornerBlocked(map, ray[i-1], ray[i]) ||
+                if (!fireTileOpen(map, ray[i]) || fireCornerBlocked(map, ray[i-1], ray[i]) ||
                     (i + 1 < ray.size() && enemyAt(ray[i]))) { clear = false; break; }
             }
             if (!clear) continue;
@@ -167,7 +183,7 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
         }
     }
 
-    if (anchor && talent.retreatDistance > 0) {
+    if (talent.retreatDistance > 0) {
         const Position direction{start.x - center.x, start.y - center.y};
         result.movementPath.push_back(start);
         for (int i = 0; i < talent.retreatDistance; ++i) {
@@ -178,6 +194,7 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
             result.destination = p;
         }
     }
+    if (talent.retreatDistance>0) movementArea();
     return result;
 }
 } // namespace engine

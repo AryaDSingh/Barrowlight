@@ -38,6 +38,7 @@ struct AIDecision {
     Actor* target = nullptr;    // for Attack (always the player today) / UseAbility
                                  // (an ally for Support, the player for AoEBomber)
     std::size_t abilityIndex = 0;   // for UseAbility, which of the actor's own talents
+    int healAmount = 0;
     int attackPower = 0;             // for Attack (or a damaging UseAbility), already resolved
 
     // For Summon: which monster type to create at movePosition, and at

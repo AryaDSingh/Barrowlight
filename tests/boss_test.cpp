@@ -108,8 +108,8 @@ int main() {
         auto boss = makeBoss(Position{2, 2}, 50);
         Player target(Position{3, 2}, Stats{}, TalentSet{}); // distance 1, within tooCloseRange(2)
         const AIDecision decision = boss->ai()->decideAction(*boss, map, target, {});
-        check(decision.type == AIActionType::Move && decision.movePosition.x == 1,
-              "Phase 2: retreats when the target is too close");
+        check(decision.type == AIActionType::UseAbility && decision.abilityIndex == 0,
+              "Phase 2: commits Fury instead of retreating from an adjacent target");
     }
 
     // hp = 27 is exactly 30% of 90 -- the phase 3 threshold. First call

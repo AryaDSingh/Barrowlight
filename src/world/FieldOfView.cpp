@@ -1,4 +1,6 @@
 #include "world/FieldOfView.hpp"
+#include "world/LineOfFire.hpp"
+#include <algorithm>
 
 namespace engine {
 
@@ -99,6 +101,16 @@ std::vector<Position> computeFieldOfView(const Map& map, Position origin, int ra
         castLight(map, origin, radius, 1, 1.0, 0.0, m[0], m[1], m[2], m[3], visible);
     }
 
+    // Keep shadowcasting's wall faces, but use the shared symmetric geometry
+    // for open cells. Equal-radius actors see the same clear firing lanes.
+    visible.erase(std::remove_if(visible.begin(),visible.end(),[&](Position p) {
+        return fireTileOpen(map,p);
+    }),visible.end());
+    for (int y=std::max(0,origin.y-radius);y<=std::min(map.height()-1,origin.y+radius);++y)
+        for (int x=std::max(0,origin.x-radius);x<=std::min(map.width()-1,origin.x+radius);++x) {
+            const int dx=x-origin.x,dy=y-origin.y;
+            if (dx*dx+dy*dy<=radius*radius && hasLineOfFire(map,origin,{x,y})) visible.push_back({x,y});
+        }
     return visible;
 }
 

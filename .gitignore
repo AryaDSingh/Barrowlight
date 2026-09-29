@@ -5,6 +5,9 @@ cmake-build-*/
 
 # Runtime save files
 savegame.txt
+codex.txt
+codex.txt.tmp
+codex.txt.bak
 *_test_output.txt
 *_test_garbage.txt
 

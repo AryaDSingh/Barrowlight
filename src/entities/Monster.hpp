@@ -5,6 +5,8 @@
 #include <utility>
 
 #include "entities/Actor.hpp"
+#include "entities/EnemyTactics.hpp"
+#include "entities/EnemyIntent.hpp"
 #include "entities/MonsterTier.hpp"
 #include "entities/MonsterType.hpp"
 
@@ -28,9 +30,18 @@ public:
     Monster(MonsterType type, std::string name, char glyph, Position position, Stats stats,
             std::unique_ptr<AIBehavior> ai, TalentSet talents = TalentSet{})
         : Actor(std::move(name), glyph, position, stats, std::move(ai), std::move(talents)),
-          type_(type) {}
+          type_(type) { lastObservedHp=stats.hp; tactics.home=position; tactics.lastKnown=position; tactics.concealed=enemyAmbusher(type); }
 
+    int lastObservedHp=0; // transient damage observation; rebuilt on load
+    EnemyTactics tactics;
+    bool allied=false;
+    int summonRank=1, summonIntelligence=0, remainingLife=0; // 0 permanent; positive temporary
+    bool vaultGuard=false;
+    int recoveryActions=0;
+    int summonsCommitted=0;
     MonsterType type() const { return type_; }
+    std::optional<EnemyIntent>& intent() { return intent_; }
+    const std::optional<EnemyIntent>& intent() const { return intent_; }
 
     // Which Elite/Nightmare tier this monster was created at (Prompt
     // 22) -- Base by default, set explicitly by MonsterFactory
@@ -51,6 +62,7 @@ public:
 
 private:
     MonsterType type_;
+    std::optional<EnemyIntent> intent_;
     MonsterTier tier_ = MonsterTier::Base;
     bool rewardsEligible_ = true;
     bool deathClaimed_ = false;

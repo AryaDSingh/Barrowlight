@@ -30,16 +30,7 @@ namespace engine {
 // data and behavior everywhere else (Stats/AttributeFormulas, Talent/
 // TalentEffects).
 //
-// As of Prompt 24: hybridSpecced_ tracks the Fighter/Sorcerer hybrid
-// path (see HybridSpec.hpp) -- an in-run choice, not a class change.
-// The character's playerClass_ (tracked on Application, not here) and
-// Stats stay exactly what they always were; this only affects which
-// talents can be picked as the character continues leveling. Deliberately
-// no separate "which abilities have been picked from the pool" list --
-// that's always derivable by checking which of the opposing class's
-// talent names already appear in this Player's own knownTalents(), so
-// there's nothing here that could drift out of sync with the real
-// talent list.
+// Tree ownership and point balances are permanent progression; TalentSet owns ranks/cooldowns.
 class Player : public Actor {
 public:
     Player(Position position, Stats stats, TalentSet talents)
@@ -50,7 +41,7 @@ public:
     const Stats& baseStats() const { return baseStats_; }
     Stats effectiveStats() const {
         Stats result = baseStats_;
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < kEquipmentSlotCount; ++i) {
             const auto* item = inventory().equipped(static_cast<EquipmentSlot>(i));
             if (!item) continue;
             const auto b = item->bonuses();
@@ -63,8 +54,8 @@ public:
         return result;
     }
     void refreshEquipmentStats() { stats() = effectiveStats(); }
-    bool equip(std::size_t index) {
-        if (!inventory().equip(index)) return false;
+    bool equip(std::size_t index, std::optional<EquipmentSlot> target={}) {
+        if (!inventory().equip(index,target)) return false;
         refreshEquipmentStats(); return true;
     }
     bool unequip(EquipmentSlot slot) {
@@ -72,15 +63,21 @@ public:
         refreshEquipmentStats(); return true;
     }
 
+    bool bloodRelic=false, animationRelic=false;
+    std::vector<int> deathlessSpentFloors;
     int& level() { return level_; }
     int level() const { return level_; }
 
     int& xp() { return xp_; }
     int xp() const { return xp_; }
 
-    bool& hybridSpecced() { return hybridSpecced_; }
-    bool hybridSpecced() const { return hybridSpecced_; }
-
+    struct TreeAccess { std::string id; bool specialized=false; };
+    std::vector<TreeAccess>& trees() { return trees_; }
+    const std::vector<TreeAccess>& trees() const { return trees_; }
+    int& treePoints() { return treePoints_; }
+    int treePoints() const { return treePoints_; }
+    int& abilityPoints() { return abilityPoints_; }
+    int abilityPoints() const { return abilityPoints_; }
     // How many attribute points this character has earned (2 per
     // level, see PlayerLeveling.hpp) but not yet spent. Decremented as
     // each point is allocated to Strength/Dexterity/Intelligence via
@@ -93,7 +90,8 @@ private:
     Stats baseStats_;
     int level_ = 1;
     int xp_ = 0;
-    bool hybridSpecced_ = false;
+    std::vector<TreeAccess> trees_;
+    int treePoints_ = 1, abilityPoints_ = 3;
     int unspentAttributePoints_ = 0;
 };
 

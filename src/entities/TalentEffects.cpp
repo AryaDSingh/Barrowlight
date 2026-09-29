@@ -3,6 +3,8 @@
 #include <algorithm>
 
 #include "entities/Actor.hpp"
+#include "entities/ArmourTalents.hpp"
+#include "entities/HiddenCombat.hpp"
 #include "entities/AttributeFormulas.hpp"
 
 namespace engine {
@@ -35,13 +37,40 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
         }
     }
 
-    damage = damage * talent.damagePercent / 100;
-    return {damage, static_cast<int>(static_cast<float>(damage) *
-        critDamageMultiplier(talent.bonusCritDamageMultiplier))};
+    const auto& kit=attacker.talents();
+    const auto* weapon=attacker.inventory().equipped(EquipmentSlot::Weapon);
+    const auto kind=weapon && weapon->definition() ? weapon->definition()->weaponKind : WeaponKind::None;
+    if (attacker.statusEffects().has(StatusEffectType::Concealed)) damage+=kit.passiveValue(PassiveKind::Ambush);
+    if (target.statusEffects().has(StatusEffectType::Chill)) damage+=kit.passiveValue(PassiveKind::Frostbite);
+    if (kind==WeaponKind::OneHanded && attacker.statusEffects().has(StatusEffectType::Guard) && talent.targeting==TargetingMode::AdjacentEnemy)
+        damage+=kit.passiveValue(PassiveKind::Riposte);
+    if (talent.committedBloodlust>=0) damage+=talent.committedBloodlust;
+    else if (kind==WeaponKind::TwoHanded && attacker.stats().hp*2<=attacker.stats().maxHp) damage+=kit.passiveValue(PassiveKind::Bloodlust);
+    if (isSpell(talent) && (target.statusEffects().has(StatusEffectType::Burn) ||
+        target.statusEffects().has(StatusEffectType::Chill) || target.statusEffects().has(StatusEffectType::Shock)))
+        damage+=armourPassive(attacker,PassiveKind::Spellweave);
+    damage+=talent.committedRhythm>=0?talent.committedRhythm:(isMeleeAttack(talent) && hasMeleeWeapon(attacker)?attacker.statusEffects().magnitudeOf(StatusEffectType::BattleRhythm):0);
+    int percent=talent.damagePercent;
+    if (talent.releaseAilments) {
+        int count=0; for (const auto& e:target.statusEffects().active()) if (releasableAilment(e.type)) ++count;
+        percent=percent*(100+25*count)/100;
+    }
+    if ((talent.consumeShock && target.statusEffects().has(StatusEffectType::Shock)) ||
+        (talent.consumeChill && target.statusEffects().has(StatusEffectType::Chill)) ||
+        (talent.consumeBurn && target.statusEffects().has(StatusEffectType::Burn))) percent=percent*(100+talent.statusBonusPercent)/100;
+    damage=damage*percent/100;
+    if (attacker.statusEffects().has(StatusEffectType::Chill)) damage=damage*(100-attacker.statusEffects().magnitudeOf(StatusEffectType::Chill))/100;
+    if (target.statusEffects().magnitudeOf(StatusEffectType::Marked)>0) damage=damage*(100+kMarkedDamagePercent)/100;
+    int guard=target.statusEffects().magnitudeOf(StatusEffectType::Guard);
+    if (guard && target.inventory().equipped(EquipmentSlot::OffHand)) guard+=target.talents().passiveValue(PassiveKind::ShieldTraining);
+    guard+=armourGuardBonus(target);
+    const int critical=std::max(0,static_cast<int>(damage*critDamageMultiplier(talent.bonusCritDamageMultiplier))-guard);
+    damage=std::max(0,damage-guard);
+    return {damage,critical};
 }
 
 bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
-    if (rollDodge(target.stats().dexterity)) return false;
+    if (rollChance(std::min(.60f,dodgeChance(target.stats().dexterity)+(target.statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(target))/100.f))) return false;
     const auto estimate = estimateTalentDamage(talent, attacker, target);
     int damage = estimate.normal;
     // Global crit: multiplies the result of everything above (including
@@ -51,11 +80,36 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
     // Dexterity plus any talent-specific bonus (Piercing Shot's own
     // +20% crit chance/+50% crit damage) -- crit is a property of the
     // one landing the hit, not the one receiving it, unlike dodge.
-    if (rollCrit(attacker.stats().dexterity, talent.bonusCritChance)) {
+    const float aim=talent.tree==TalentTree::Bow && attacker.statusEffects().has(StatusEffectType::Opening) ?
+        attacker.talents().passiveValue(PassiveKind::Marksmanship)/100.f : 0.f;
+    if (rollCrit(attacker.stats().dexterity, talent.bonusCritChance+aim+armourCritBonus(attacker)/100.f)) {
         damage = estimate.critical;
     }
 
+    const int actualDamage=std::min(std::max(0,target.stats().hp),damage);
+    const int wither=target.statusEffects().magnitudeOf(StatusEffectType::Wither);
     target.stats().hp -= damage;
+    if (actualDamage>0) attacker.stats().hp=std::min(attacker.stats().maxHp,attacker.stats().hp+
+        actualDamage*talent.drainPercent/100+std::min(actualDamage,wither));
+    if (talent.releaseAilments) {
+        auto& effects=target.statusEffects().active();
+        effects.erase(std::remove_if(effects.begin(),effects.end(),[](const auto& e){return releasableAilment(e.type);}),effects.end());
+    }
+    if (talent.spellstrike && target.stats().hp>0) {
+        const int burn=attacker.talents().passiveValue(PassiveKind::Kindle);
+        const int shock=attacker.talents().passiveValue(PassiveKind::StaticCharge);
+        if (burn) target.statusEffects().apply({StatusEffectType::Burn,2,burn});
+        if (shock) target.statusEffects().apply({StatusEffectType::Shock,shock,0});
+    }
+    target.statusEffects().consumeMark();
+    if (isMeleeAttack(talent)) applyImbueHit(attacker,target);
+    if (damage>0) target.statusEffects().remove(StatusEffectType::Concealed);
+    if (talent.consumeShock) target.statusEffects().remove(StatusEffectType::Shock);
+    if (talent.consumeBurn) target.statusEffects().remove(StatusEffectType::Burn);
+    if (talent.consumeChill && target.statusEffects().has(StatusEffectType::Chill)) {
+        target.statusEffects().remove(StatusEffectType::Chill);
+        if (target.stats().hp>0 && !armourResistsStun(target)) target.statusEffects().apply({StatusEffectType::Stun,1,0});
+    }
 
     // Sorcerer's Mind Shatter (Prompt 19): a status effect applied to
     // the *target* on a successful hit, mirroring how
@@ -65,7 +119,8 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
     // already dead has no meaning.
     if (talent.onHitEffect.has_value() && target.stats().hp > 0 &&
         rollChance(talent.onHitChance)) {
-        target.statusEffects().apply(*talent.onHitEffect);
+        if (talent.onHitEffect->type!=StatusEffectType::Stun || !armourResistsStun(target))
+            target.statusEffects().apply(*talent.onHitEffect);
     }
 
     return true;
@@ -88,6 +143,19 @@ void applyTalentHeal(const Talent& talent, Actor& caster, Actor& target) {
 }
 
 void applyTalentSelfBuff(const Talent& talent, Actor& caster) {
+    if (!armourMatches(caster,talent.armourRequirement)) return;
+    if (talent.restoreMana>0) caster.stats().mana=std::min(caster.stats().maxMana,caster.stats().mana+talent.restoreMana);
+    if (talent.restoreHpPercent>0) caster.stats().hp=std::min(caster.stats().maxHp,
+        caster.stats().hp+(caster.stats().maxHp*talent.restoreHpPercent+99)/100);
+    if (talent.cleanse) {
+        auto& effects=caster.statusEffects().active();
+        effects.erase(std::remove_if(effects.begin(),effects.end(),[](const auto& e){return isCleansable(e.type);}),effects.end());
+    }
+    if (talent.imbueElement) {
+        for (int i=0;i<4;++i) caster.statusEffects().remove(static_cast<StatusEffectType>(static_cast<int>(StatusEffectType::FlameBlade)+i));
+    }
+    if (talent.huntersMark) caster.statusEffects().apply({StatusEffectType::Marked,3,1});
+    if (talent.id=="stealth.conceal") caster.statusEffects().apply({StatusEffectType::UnseenReady,10000,1});
     if (talent.selfBuffEffect.has_value()) {
         caster.statusEffects().apply(*talent.selfBuffEffect);
     }

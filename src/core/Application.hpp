@@ -2,6 +2,7 @@
 
 #include <deque>
 #include <memory>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -10,6 +11,8 @@
 #include <SFML/Graphics.hpp>
 
 #include "core/SoundManager.hpp"
+#include "core/Codex.hpp"
+#include "core/SaveGame.hpp"
 #include "core/TurnScheduler.hpp"
 #include "entities/AIBehavior.hpp"
 #include "entities/Monster.hpp"
@@ -30,11 +33,11 @@ namespace engine {
 // project's established minimal-but-real UI approach (Prompt 13), just
 // applied to one more screen.
 enum class GameMode {
+    Town,
     ClassSelection,
     Playing,
     GameOver,             // either death or victory -- see Application::wonGame_
-    AbilityChoice,        // the Fighter/Sorcerer... now Warrior/Mage hybrid path's pick-one
-                           // screen -- see Application::pendingHybridChoices_
+    AbilityChoice,        // Tree browser: unlock, specialize, learn and rank up.
     AttributeAllocation,  // spending earned attribute points -- see
                            // Application::offerAttributeAllocationIfPending()
 };
@@ -75,6 +78,7 @@ public:
 
 private:
     void processEvents();
+    void handleEvent(const sf::Event& event);
     void update();
     void render();
 
@@ -95,7 +99,7 @@ private:
     std::optional<Position> screenToWorld(sf::Vector2i pixel) const;
     std::optional<std::size_t> talentAtPixel(sf::Vector2i pixel) const;
     std::vector<Actor*> targetingEnemies() const;
-    TalentTarget targetPreview(std::size_t talentIndex, Position cursor);
+    TalentTarget targetPreview(std::size_t talentIndex, Position cursor, bool includeConcealed=false);
     void renderTargetingOverlay();
     void renderTargetingPanel();
     void drawWrapped(const std::string& text, float x, float& y,
@@ -105,6 +109,11 @@ private:
     std::optional<std::size_t> aimingTalent_;
     std::optional<std::size_t> hoveredTalent_;
     bool inspecting_ = false;
+    int inspectionScroll_=0;
+    int statusPage_=0, combatLogScroll_=0;
+    void renderBattleHud();
+    std::optional<StatusEffectInstance> hoveredStatus() const;
+    std::optional<Position> inspectionAnchor_;
     Position targetCursor_;
     std::optional<sf::Vector2i> mousePixel_;
     std::size_t talentPage_ = 0;
@@ -112,13 +121,38 @@ private:
     friend struct ApplicationTargetingTestAccess;
     friend struct ApplicationRewardsTestAccess;
 
+    Codex codex_;
+    bool codexOpen_=false;
+    int codexSelection_=0;
+    void discoverLore(const char* id);
+    void refreshHiddenDiscoveries();
+    void scaleDeepMonster(Monster& monster,int floor);
+    void configureMinion(Monster& monster,int rank,int intelligence);
+    int minionCap() const;
+    void enforceMinionCap();
+    void dissolveMinions();
+    void summonMinions(const Talent& talent);
+    Actor* nearestOpponent(Actor& actor,bool playerHidden);
+    void actMinion(Monster& minion,bool chilledMove);
+    void afterHiddenCast(const Talent& talent,bool landed,bool killed,int concealed);
+    std::size_t imbueSelection_=0;
+
+    void discoverMonsterLore(const Monster& monster);
+    void handleCodexKey(sf::Keyboard::Key key);
+    void handleCodexMouse(const sf::Event& event);
+    void renderCodex();
+
     bool inventoryOpen_ = false;
-    std::size_t inventorySelection_ = 0; // equipment rows 0-2, followed by bag rows
+    std::size_t inventorySelection_ = 0; // equipment slots, followed by bag rows
+    std::size_t inventoryBagPage_ = 0;
+    std::optional<std::size_t> inventoryDragSource_;
+    std::optional<EquipmentSlot> inventoryEquipTarget_;
     std::vector<std::unique_ptr<Item>> groundItems_;
     std::uint64_t nextItemId_ = 1;
     void openInventory();
     void handleInventoryKey(sf::Keyboard::Key key);
     void renderInventory();
+    void handleInventoryMouse(const sf::Event& event);
     void renderGroundItems();
     void pickupItem();
     void finishInventoryTurn();
@@ -129,12 +163,27 @@ private:
     int ordinaryDrops_ = 0;
     void rewardMonster(Monster& monster, bool boss);
     void spawnFloorChest();
-    bool runesOpen_ = false, runeChoiceAvailable_ = false;
-    std::size_t runeTalentSelection_ = 0, runeSelection_ = 0;
-    std::string runeFeedback_;
-    void handleRuneKey(sf::Keyboard::Key key);
-    void renderRunes();
-    void giveRune(const std::string& definitionId);
+    bool vaultExists_=false, vaultOpened_=false, vaultClaimed_=false;
+    Position vaultCenter_{}, vaultEntrance_{};
+    std::vector<std::unique_ptr<Item>> vaultRewards_;
+    int vaultMenu_=0; // 0 closed, 1 entrance warning, 2 reward choice
+    std::size_t vaultSelection_=0;
+    bool vaultCleared() const;
+    bool interactVault();
+    void handleVaultKey(sf::Keyboard::Key key);
+    void handleVaultMouse(const sf::Event& event);
+    void renderVault();
+    std::size_t treeSelection_ = 0, abilitySelection_ = 0;
+    std::string treeFeedback_;
+    bool bindingTalent_=false;
+    bool progressionReviewPending_ = false;
+    void openTalentTrees();
+    void handleTreeKey(sf::Keyboard::Key key, bool shift);
+    void handleTreeMouse(const sf::Event& event);
+    void renderTalentTrees();
+    void closeTalentTrees();
+    void requestHotbar(std::size_t slot);
+    void applyMovementTalents(Position previous);
 
     // Recomputes FOV from the player's current position.
     void updateFieldOfView();
@@ -153,6 +202,7 @@ private:
     // actually takes effect -- processEvents() only reads input and
     // calls this, it doesn't touch player_ itself.
     void selectClass(PlayerClass cls);
+    void allocateAttribute(unsigned int attribute);
 
     // Draws the ClassSelection screen: a plain text menu, not a
     // separate scene graph -- this project's established minimal HUD
@@ -165,48 +215,6 @@ private:
     // -- replaces the whole view rather than overlaying the game world.
     void renderGameOver();
 
-    // Draws the AbilityChoice screen (Prompt 24): lists
-    // pendingHybridChoices_ with number-key selection, framed
-    // differently depending on pendingHybridChoiceIsSpecIn_. Same
-    // standalone-screen approach as renderClassSelection/renderGameOver.
-    void renderAbilityChoice();
-
-    // Prompt 24: called from grantXpAndAnnounce() for every level
-    // crossed on a level-up. If `level` is a level where a hybrid pick
-    // is actually available for playerClass_ (level 5, the one-time
-    // spec-in decision; or level 6-10 once already specced, as long as
-    // the opposing class's pool isn't fully picked yet), populates
-    // pendingHybridChoices_/pendingHybridChoiceIsSpecIn_/
-    // pendingHybridChoiceLevel_ and switches mode_ to AbilityChoice,
-    // pausing normal play until the person chooses. A no-op for Thief/
-    // Spellblade (not hybrid-eligible at all, see
-    // HybridSpec::isHybridEligible) and for every level outside 5-10 or
-    // where the pool is already exhausted.
-    void offerHybridChoiceIfEligible(int level);
-
-    // Grants every base-class talent unlock and offers every hybrid
-    // choice from `fromLevel` through player_.level(), inclusive --
-    // the actual body of what grantXpAndAnnounce() used to do inline,
-    // pulled into its own resumable method once hybrid choices needed
-    // to be able to pause partway through. Stops (returns) the instant
-    // offerHybridChoiceIfEligible() switches mode_ to AbilityChoice --
-    // the AbilityChoice key handling in processEvents() is responsible
-    // for calling this again (with fromLevel == the paused level + 1)
-    // once the person responds, so a single big XP grant that crosses
-    // both a hybrid-choice level and a later base-class unlock level
-    // doesn't lose track of the later one while waiting on the choice.
-    void processLevelUpEffects(int fromLevel);
-
-    // The single "what happens next in the level-up sequence" decision
-    // point -- called once from grantXpAndAnnounce() to kick the whole
-    // sequence off, and again from both the AttributeAllocation and
-    // AbilityChoice key handling once each respective pause resolves.
-    // Attribute allocation always resolves first: if
-    // player_.unspentAttributePoints() > 0, switches mode_ to
-    // AttributeAllocation and returns (paused); only once every point
-    // is spent does this fall through to processLevelUpEffects(),
-    // covering talent unlocks and hybrid choices for whatever levels
-    // were actually crossed.
     void resumeLevelUpSequence();
 
     // Draws the AttributeAllocation screen: how many points remain,
@@ -235,6 +243,45 @@ private:
     // SaveGameState and writes it via engine::saveGame(). Prints whether
     // it succeeded; never throws or crashes on I/O failure.
     void saveGame();
+    SaveGameState captureState(bool includeFloors=true);
+    bool restoreState(const SaveGameState& state, bool includeFloors=true);
+    std::map<int,SaveGameState> floorCache_;
+    bool adventureMode_=false;
+    int extraLives_=0;
+    void reviveInTown();
+    bool dungeonMenu_=false;
+    int dungeonSelection_=0, dungeonDepth_=1;
+    void renderDungeonSelection();
+    void handleDungeonKey(sf::Keyboard::Key key);
+    void handleDungeonMouse(const sf::Event& event);
+    AIDecision enemyDecision(Monster& monster, Actor* opponent);
+    void alertEnemyGroup(Monster& source, Position target);
+    void scaleDungeonMonster(Monster& monster,int floor);
+    Position floorEntrance_{}, floorExit_{};
+    int gold_=0, quietTurns_=0, restTurns_=0;
+    bool combatThisTurn_=false, exitMenu_=false, selling_=false;
+    std::size_t shopSelection_=0;
+    sf::Clock restClock_;
+    bool autoExploring_=false;
+    int exploreStepsLeft_=0;
+    sf::Clock exploreClock_;
+    std::vector<std::string> exploreSeenInterests_;
+    void startAutoExplore();
+    void stepAutoExplore();
+    void stopAutoExplore(const char* reason);
+    std::vector<std::string> visibleExploreInterests() const;
+    bool dangerNearby() const;
+    void recordQuietTurn();
+    void startRest();
+    void returnToTown();
+    void travelFloor(int destination,bool fromTown=false);
+    bool interactStairs();
+    void handleTownKey(sf::Keyboard::Key key);
+    void handleTownMouse(const sf::Event& event);
+    void renderTown();
+    void renderTravel();
+    void handleTravelKey(sf::Keyboard::Key key);
+    void handleTravelMouse(const sf::Event& event);
 
     // Reads a save file via engine::loadGame() and, if valid, replaces
     // map_/player_/monsters_/boss_/exploredMap_/scheduler_ with the
@@ -247,6 +294,8 @@ private:
     // Runs turns (status-effect ticks, AI decisions) until it's the
     // player's turn again.
     void processMonsterTurns();
+    void advanceEnemyIntents();
+    float enemyStealthDetectionChance(const Actor& enemy) const;
 
     // Once it's genuinely the player's turn per the scheduler, this
     // handles their own status effects (poison, stun) -- a stunned
@@ -261,7 +310,7 @@ private:
     // transition), and checks for death. `actor` is whoever made the
     // decision (never the player -- only monsters have an AIBehavior to
     // execute here).
-    void executeAIDecision(Actor& actor, const AIDecision& decision);
+    void executeAIDecision(Actor& actor, const AIDecision& decision, int chillMagnitude = 0);
 
     // If `actor`'s hp has dropped to 0 or below, handles it: for the
     // player, prints a message and switches to the GameOver screen
@@ -365,31 +414,6 @@ private:
     // death, not read back from the (by then nonexistent) boss.
     std::string defeatedBossName_;
 
-    // Prompt 24: what the AbilityChoice screen is currently offering --
-    // populated by offerHybridChoiceIfEligible(), read by
-    // renderAbilityChoice() and the AbilityChoice key handling in
-    // processEvents(). Meaningless outside mode_ == AbilityChoice.
-    // pendingHybridChoiceIsSpecIn_ distinguishes the one-time level-5
-    // "commit to the hybrid path or don't" framing (decline is offered)
-    // from every later pick (level 6-10, no decline -- already
-    // committed).
-    std::vector<Talent> pendingHybridChoices_;
-    bool pendingHybridChoiceIsSpecIn_ = false;
-    // The level that triggered the currently-pending choice -- stored
-    // so processLevelUpEffects() can resume from the *next* level once
-    // the person responds, rather than losing track of any further
-    // levels a single big XP grant also crossed (the boss's reward
-    // against an early character, same scenario PlayerLeveling's
-    // grantXp() loop exists for, can cross both a hybrid-choice level
-    // and a base-class unlock level in one grant).
-    int pendingHybridChoiceLevel_ = 0;
-
-    // The level to resume processLevelUpEffects() from once every
-    // pending pause (attribute allocation, then any hybrid choices) for
-    // the current XP grant has been resolved -- see
-    // resumeLevelUpSequence(). Set once per grantXpAndAnnounce() call,
-    // at levelBefore + 1.
-    int pendingLevelUpFromLevel_ = 0;
 
     // Top-left of the viewport, in tile units -- see updateCamera().
     // Recomputed every frame in Playing mode; 0,0 elsewhere (harmless,

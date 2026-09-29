@@ -26,6 +26,10 @@ public:
     AIDecision decideAction(const Actor& self, const Map& map, Actor& player,
                              const std::vector<Actor*>& allies) override;
 
+    int announcedPhase() const { return announcedPhase_; }
+    bool enraged() const { return enraged_; }
+    void restoreState(int phase, bool enraged) { announcedPhase_=phase; enraged_=enraged; }
+
 private:
     static constexpr int kDefaultSightRadius = 10;
     static constexpr float kPhase2Threshold = 0.6f;

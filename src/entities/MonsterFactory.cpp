@@ -198,7 +198,7 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
             Talent blast;
             blast.name = "Blast";
             blast.id = "bomber.blast";
-            blast.description = "An area burst, on a real cooldown.";
+            blast.description = "Committed radius-2 blast. Three player actions to escape; stun or push interrupts.";
             blast.cooldownTurns = 5;
             blast.scalingStat = ScalingStat::Intelligence;
             abilities.push_back(blast);
@@ -214,86 +214,147 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
             break;
         }
         case MonsterType::GoblinWarlord: {
-            // Powerful on both axes it uses (melee Strength, blast
-            // Intelligence), Dexterity-light (0% dodge -- a boss
-            // dodging hits would read as frustrating, not tense, in a
-            // climactic fight, matching the original tuned identity
-            // exactly). Deliberately ignores `tier` entirely (Prompt
-            // 22) -- it's already the game's separately-tuned hardest
-            // fight; scaling it further at high character levels risks
-            // making the climactic encounter absurd rather than harder.
-            // meleeProfile.power == 4 + 2 (14/5 == 2) == 6; blastPower
-            // == 8 + 2 (10/5 == 2) == 10 -- both the Prompt 21
-            // rebalanced totals, unchanged. enrageBonus is untouched --
-            // it's a flat Empowered status bonus layered on top of
-            // whatever a hit already does, orthogonal to the attribute
-            // formulas.
+            // Three phases: melee, advancing blast pressure, then a committed
+            // enraged cleave. Boss stats are independent of ordinary rarity tiers.
             constexpr int kStrength = 14;
             constexpr int kIntelligence = 10;
             MonsterAttackProfile meleeProfile;
-            meleeProfile.power = 4;
+            meleeProfile.power = 5;
 
             std::vector<Talent> abilities;
             Talent fury;
             fury.name = "Warlord's Fury";
             fury.id = "warlord.fury";
-            fury.description = "A desperate magical blast, unlocked once wounded.";
+            fury.description = "Below 60% HP: radius-2 blast with three actions to escape; keeps advancing between casts.";
             fury.cooldownTurns = 4;
             fury.scalingStat = ScalingStat::Intelligence;
             abilities.push_back(fury);
 
             monster = std::make_unique<Monster>(
                 type, "Goblin Warlord", 'W', position,
-                makeStats(90, kStrength, /*dex=*/0, kIntelligence),
+                makeStats(115, kStrength, /*dex=*/0, kIntelligence),
                 std::make_unique<BossBehavior>(meleeProfile, /*blastPower=*/8,
                                                 /*blastRange=*/5, /*tooCloseRange=*/2,
-                                                /*enrageBonus=*/6),
+                                                /*enrageBonus=*/4),
                 TalentSet(abilities));
             break;
         }
         case MonsterType::Lich: {
-            // The floor kFinalFloor boss -- tougher than the Goblin
-            // Warlord across the board (110 hp vs. 90), entirely
-            // ranged, and the first monster in the roster with a real
-            // Dexterity investment (20 -> 10% dodge, "hard to pin down"
-            // fitting a spellcaster better than the Warlord's
-            // deliberate 0%). Deliberately ignores `tier` for the same
-            // reason the Warlord does -- it's already the separately-
-            // tuned hardest fight in the game. boltProfile.power == 6 +
-            // 3 (16/5 == 3) == 9 total -- a bit harder-hitting than the
-            // Warlord's own blast (10), matching a later, tougher
-            // encounter. The single ability in its talent set exists
-            // purely to track the summon cooldown (LichBehavior checks
-            // isReady(0)) -- there's no separate damage number attached
-            // to it the way Warlord's Fury or Bomber's Blast have,
-            // since summoning doesn't deal damage itself.
+            // The Lich combines finite reinforcement rituals, readable bolts,
+            // and a cleansable curse on its own persisted cooldown.
             constexpr int kStrength = 4;
             constexpr int kDexterity = 20;
             constexpr int kIntelligence = 16;
             MonsterAttackProfile boltProfile;
-            boltProfile.power = 6;
+            boltProfile.power = 7;
             boltProfile.scalingStat = ScalingStat::Intelligence;
 
             std::vector<Talent> abilities;
             Talent raiseSkeleton;
             raiseSkeleton.name = "Raise Skeleton";
             raiseSkeleton.id = "lich.raise_skeleton";
-            raiseSkeleton.description = "Summons a skeleton minion, on a real cooldown.";
+            raiseSkeleton.description = "Three rituals total: Guard, Archer, Guard. Occupy the marked tile or interrupt. No summon XP/loot.";
             raiseSkeleton.cooldownTurns = 5;
             abilities.push_back(raiseSkeleton);
+            Talent hex;
+            hex.id="lich.hex"; hex.name="Grave Hex";
+            hex.description="Clear sight/range 6. Mana Drain: 2 mana/tick for 4 ticks. At 60% HP, Doom instead: 10 + INT/4 delayed damage, four actions to cleanse. C removes both.";
+            hex.cooldownTurns=10;
+            abilities.push_back(hex);
 
             monster = std::make_unique<Monster>(
-                type, "Lich", 'L', position, makeStats(110, kStrength, kDexterity, kIntelligence),
+                type, "Lich", 'L', position, makeStats(150, kStrength, kDexterity, kIntelligence),
                 std::make_unique<LichBehavior>(boltProfile, /*attackRange=*/6,
                                                 /*tooCloseRange=*/2, /*maxSummons=*/3),
                 TalentSet(abilities));
             break;
         }
+        case MonsterType::GoblinRaider:
+        case MonsterType::GoblinCaptain: {
+            const bool captain=type==MonsterType::GoblinCaptain;
+            MonsterAttackProfile profile;
+            profile.power=scaledPower(captain?7:5,1,tier);
+            profile.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,3,0};
+            profile.onHitChance=1.f;
+            monster=std::make_unique<Monster>(type,
+                captain?"Grik the Packleader":tieredName("Goblin Raider",tier), captain?'G':'r',position,
+                makeStats(scaledHp(captain?55:24,tier),8,12,2),std::make_unique<Chaser>(profile));
+            break;
+        }
+        case MonsterType::SkeletonArcher: {
+            MonsterAttackProfile profile;
+            profile.power=scaledPower(5,1,tier);
+            profile.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,2,20};
+            profile.onHitChance=1.f;
+            monster=std::make_unique<Monster>(type,tieredName("Skeleton Archer",tier),'v',position,
+                makeStats(scaledHp(24,tier),5,18,4),std::make_unique<Kiter>(profile,6,2));
+            break;
+        }
+        case MonsterType::SkeletonGuard: {
+            MonsterAttackProfile profile;
+            profile.power=scaledPower(8,2,tier);
+            monster=std::make_unique<Monster>(type,tieredName("Skeleton Guard",tier),'K',position,
+                makeStats(scaledHp(42,tier),10,0,2),std::make_unique<Chaser>(profile));
+            break;
+        }
+        case MonsterType::Bonecaller: {
+            Talent rally;
+            rally.id="bonecaller.rally"; rally.name="Grave Rally";
+            rally.description="Empowers a nearby ally with +3 damage for 3 turns.";
+            rally.cooldownTurns=4;
+            monster=std::make_unique<Monster>(type,tieredName("Bonecaller",tier),'n',position,
+                makeStats(scaledHp(25,tier),2,0,16),std::make_unique<Support>(3,3,5),
+                TalentSet(std::vector<Talent>{rally}));
+            break;
+        }
+        case MonsterType::OssuaryWarden: {
+            Talent blast;
+            blast.id="ashkeeper.blast"; blast.name="Ashfall";
+            blast.description="Radius-2 blast: three actions to escape. Also strikes other enemies.";
+            blast.cooldownTurns=5; blast.scalingStat=ScalingStat::Intelligence;
+            monster=std::make_unique<Monster>(type,"Veyra the Ashkeeper",'V',position,
+                makeStats(scaledHp(65,tier),2,0,20),
+                std::make_unique<AoEBomber>(scaledPower(12,4,tier),6,1),
+                TalentSet(std::vector<Talent>{blast}));
+            break;
+        }
+        case MonsterType::GoblinBulwark:
+        case MonsterType::CryptSentinel:
+        case MonsterType::GoblinMedic:
+        case MonsterType::GraveMender:
+        case MonsterType::GoblinStalker:
+        case MonsterType::CryptShade:
+        case MonsterType::GoblinSlinger:
+        case MonsterType::FrostAcolyte: {
+            const bool tank=enemyTank(type), healer=enemyHealer(type), ambush=enemyAmbusher(type);
+            const bool crypt=type==MonsterType::CryptSentinel || type==MonsterType::GraveMender || type==MonsterType::CryptShade || type==MonsterType::FrostAcolyte;
+            const char* name=type==MonsterType::GoblinBulwark?"Goblin Bulwark":type==MonsterType::CryptSentinel?"Crypt Sentinel":
+                type==MonsterType::GoblinMedic?"Goblin Medic":type==MonsterType::GraveMender?"Grave Mender":
+                type==MonsterType::GoblinStalker?"Goblin Stalker":type==MonsterType::CryptShade?"Crypt Shade":
+                type==MonsterType::GoblinSlinger?"Goblin Slinger":"Frost Acolyte";
+            const int strength=tank?12:ambush?8:4;
+            MonsterAttackProfile profile;
+            profile.power=scaledPower(tank?6:ambush?5:4,strength/5,tier);
+            if(type==MonsterType::FrostAcolyte) { profile.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,2,20}; profile.onHitChance=1.f; }
+            if(type==MonsterType::GoblinSlinger) { profile.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,2,0}; profile.onHitChance=.5f; }
+            std::unique_ptr<AIBehavior> ai;
+            std::vector<Talent> talents;
+            if(healer) {
+                Talent heal; heal.id="enemy.mend"; heal.name="Mend Ally";
+                heal.description="Heals one visible ally within 5 tiles for 18% max HP. 3 casts per life; 6-turn cooldown.";
+                heal.cooldownTurns=6; talents.push_back(heal);
+                ai=std::make_unique<Support>(0,0,0);
+            } else if(tank || ambush) ai=std::make_unique<Chaser>(profile);
+            else ai=std::make_unique<Kiter>(profile,6,3);
+            monster=std::make_unique<Monster>(type,tieredName(name,tier),tank?'T':healer?'+':ambush?'q':'f',position,
+                makeStats(scaledHp((tank?44:healer?22:ambush?20:22)+(crypt?8:0),tier),strength,ambush?24:8,healer?16:4),
+                std::move(ai),TalentSet(talents));
+            break;
+        }
         case MonsterType::Skeleton: {
-            // The Lich's summoned minion -- never independently placed
-            // by a dungeon's regular roster, only ever created via
-            // AIActionType::Summon (see Application::executeAIDecision).
-            // Deliberately weaker than a regular Goblin (15 hp vs. 20,
+            // Lich minion, also placed naturally in Crypt opening groups.
+            // Summons lose rewards in Application; natural spawns retain them.
+            // Same base HP as a Goblin (20), with lower damage (
             // 3 total damage vs. 4) -- individually modest, dangerous
             // in numbers if left unchecked while focusing the Lich
             // itself, which is the whole point of the mechanic. Plain
@@ -306,10 +367,10 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
             // does.
             constexpr int kStrength = 5;
             MonsterAttackProfile profile;
-            profile.power = 2; // +1 from strength (5/5 == 1) == 3 total
+            profile.power = scaledPower(3,1,tier); // Preserve allied skeleton damage; natural elites scale correctly.
             monster = std::make_unique<Monster>(
                 type, tieredName("Skeleton", tier), 'z', position,
-                makeStats(scaledHp(15, tier), kStrength, /*dex=*/0, /*int=*/0),
+                makeStats(scaledHp(20, tier), kStrength, /*dex=*/0, /*int=*/0),
                 std::make_unique<Chaser>(profile));
             break;
         }
@@ -325,6 +386,8 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
         // Application's rendering for the Elite/Nightmare border.
         monster->setTier(tier);
     }
+    if (type==MonsterType::GoblinWarlord || type==MonsterType::Lich)
+        monster->statusEffects().setStunRules(1,2);
     return monster;
 }
 
@@ -366,6 +429,16 @@ int xpRewardForType(MonsterType type, MonsterTier tier) {
             // further XP could matter. Same "always Base tier" reasoning
             // as GoblinWarlord.
             return 300;
+        case MonsterType::GoblinBulwark: case MonsterType::CryptSentinel: baseReward=24; break;
+        case MonsterType::GoblinMedic: case MonsterType::GraveMender: baseReward=22; break;
+        case MonsterType::GoblinStalker: case MonsterType::CryptShade: baseReward=19; break;
+        case MonsterType::GoblinSlinger: case MonsterType::FrostAcolyte: baseReward=18; break;
+        case MonsterType::GoblinRaider: baseReward=14; break;
+        case MonsterType::SkeletonArcher: baseReward=16; break;
+        case MonsterType::SkeletonGuard: baseReward=22; break;
+        case MonsterType::Bonecaller: baseReward=18; break;
+        case MonsterType::GoblinCaptain: baseReward=65; break;
+        case MonsterType::OssuaryWarden: baseReward=80; break;
         case MonsterType::Skeleton:
             baseReward = 5; // a modest fraction of Goblin's 10 -- a minion, not a real kill goal
             break;

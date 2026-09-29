@@ -1,0 +1,236 @@
+#include "core/Application.hpp"
+#include "world/LineOfFire.hpp"
+#include <queue>
+#include "entities/HiddenTrees.hpp"
+#include "entities/HiddenCombat.hpp"
+#include "entities/MonsterFactory.hpp"
+#include "world/FieldOfView.hpp"
+#include "world/Pathfinder.hpp"
+#include <algorithm>
+#include <cmath>
+
+namespace engine {
+void Application::alertEnemyGroup(Monster& source,Position target) {
+    // Only direct sightings/damage call this. Recipients never relay an alert.
+    if(source.tactics.alert==0 && !source.tactics.concealed && exploredMap_.at(source.position().x,source.position().y)==Visibility::Visible)
+        log(source.name()," alerts nearby allies!");
+    for(auto& ally:monsters_) {
+        if(ally->allied || ally->stats().hp<=0) continue;
+        const int dx=ally->position().x-source.position().x, dy=ally->position().y-source.position().y;
+        if(dx*dx+dy*dy>25 || !hasLineOfFire(map_,source.position(),ally->position())) continue;
+        ally->tactics.alert=8; ally->tactics.lastKnown=target;
+    }
+    source.tactics.alert=8; source.tactics.lastKnown=target;
+}
+
+AIDecision Application::enemyDecision(Monster& m,Actor* opponent) {
+    auto& t=m.tactics;
+    const auto here=m.position();
+    const auto distance=[](Position a,Position b){return std::abs(a.x-b.x)+std::abs(a.y-b.y);};
+    const bool visible=exploredMap_.at(here.x,here.y)==Visibility::Visible && !t.concealed;
+    const bool boss=m.type()==MonsterType::GoblinWarlord || m.type()==MonsterType::Lich;
+    if(opponent) {
+        alertEnemyGroup(m,opponent->position());
+        if(t.concealed && distance(here,opponent->position())<=3) {
+            t.concealed=false;
+            if(exploredMap_.at(here.x,here.y)==Visibility::Visible) log(m.name()," emerges from stealth! Preparing to strike.");
+            return {}; // reveal spends the ambusher's action
+        }
+    } else if(t.alert>0) --t.alert;
+    auto moveToward=[&](Position goal) {
+        AIDecision d;
+        const auto path=findPath(map_,here,goal);
+        if(path && path->size()>1 && !isOccupied((*path)[1],&m)) { d.type=AIActionType::Move; d.movePosition=(*path)[1]; }
+        return d;
+    };
+    if(!boss && !t.retreated && m.stats().hp*100<=m.stats().maxHp*30 && t.alert>0) {
+        t.retreated=true; t.retreat=3;
+        if(visible) log(m.name()," will retreat to cover!");
+        return {};
+    }
+    if(t.retreat>0) {
+        --t.retreat;
+        // Search reachable nearby cover, rather than stepping blindly into a wall.
+        std::queue<std::pair<Position,Position>> queue;
+        std::vector<Position> seen{here};
+        queue.push({here,here});
+        Position step=here; int best=-10000;
+        while(!queue.empty()) {
+            const auto [p,first]=queue.front(); queue.pop();
+            const int score=(!hasLineOfFire(map_,t.lastKnown,p)?100:0)+distance(p,t.lastKnown)*3-distance(p,here);
+            if(distance(p,t.lastKnown)>distance(here,t.lastKnown) || !hasLineOfFire(map_,t.lastKnown,p))
+                if(score>best) { best=score; step=first; }
+            for(const Position n: {Position{p.x+1,p.y},Position{p.x-1,p.y},Position{p.x,p.y+1},Position{p.x,p.y-1}}) {
+                if(distance(n,here)>4 || !map_.isWalkable(n.x,n.y) || isOccupied(n,&m) ||
+                    std::any_of(seen.begin(),seen.end(),[&](Position q){return q.x==n.x && q.y==n.y;})) continue;
+                seen.push_back(n); queue.push({n,distance(p,here)==0?n:first});
+            }
+        }
+        if(step.x!=here.x || step.y!=here.y) { AIDecision d; d.type=AIActionType::Move; d.movePosition=step; return d; }
+    }
+    if(!opponent) {
+        if(t.alert>0) return moveToward(t.lastKnown);
+        if(boss || m.vaultGuard) return {};
+        // Short, deterministic local circuits; never a floor-wide random walk.
+        t.patrol=(t.patrol+1)%24;
+        if(t.patrol%2) return {};
+        const Position offsets[]{{2,0},{0,2},{-2,0},{0,-2}};
+        const auto offset=offsets[t.patrol/6];
+        Position goal{t.home.x+offset.x,t.home.y+offset.y};
+        if(!map_.isWalkable(goal.x,goal.y)) goal=t.home;
+        auto d=moveToward(goal);
+        if(d.type==AIActionType::Move && distance(d.movePosition,t.home)>4) return AIDecision{};
+        return d;
+    }
+    auto allies=aliveAllies(&m);
+    allies.erase(std::remove_if(allies.begin(),allies.end(),[&](Actor* a){return distance(here,a->position())>5 || !hasLineOfFire(map_,here,a->position());}),allies.end());
+    if(enemyHealer(m.type()) && t.heals>0 && m.talents().isReady(0)) {
+        Actor* wounded=nullptr;
+        for(auto* a:allies) if(a->stats().hp*100<a->stats().maxHp*70 &&
+            (!wounded || a->stats().hp*wounded->stats().maxHp<wounded->stats().hp*a->stats().maxHp)) wounded=a;
+        if(wounded) {
+            AIDecision d; d.type=AIActionType::UseAbility; d.target=wounded; d.abilityIndex=0;
+            d.healAmount=std::max(2,wounded->stats().maxHp*18/100); return d;
+        }
+    }
+    // Keep support and skirmishers behind the healthiest nearby frontliner.
+    Actor* tank=nullptr;
+    for(auto* a:allies) if(auto* other=dynamic_cast<Monster*>(a); other && enemyTank(other->type()) && a->stats().hp*2>a->stats().maxHp &&
+        (!tank || a->stats().hp>tank->stats().hp)) tank=a;
+    if(enemyBackline(m.type()) && tank && distance(here,opponent->position())<=distance(tank->position(),opponent->position())) {
+        Position best=here; int score=distance(here,opponent->position());
+        for(const Position p:{Position{here.x+1,here.y},Position{here.x-1,here.y},Position{here.x,here.y+1},Position{here.x,here.y-1}})
+            if(map_.isWalkable(p.x,p.y) && !isOccupied(p,&m) && distance(p,tank->position())<=4 && distance(p,opponent->position())>score) {
+                best=p; score=distance(p,opponent->position());
+            }
+        if(best.x!=here.x || best.y!=here.y) { AIDecision d; d.type=AIActionType::Move; d.movePosition=best; return d; }
+    }
+    if(enemyHealer(m.type())) {
+        // Empty-handed medics stay with the group, never cast a zero-strength buff.
+        return tank && distance(here,tank->position())>2?moveToward(tank->position()):AIDecision{};
+    }
+    std::stable_sort(allies.begin(),allies.end(),[](Actor* a,Actor* b) {
+        const auto* ma=dynamic_cast<const Monster*>(a); const auto* mb=dynamic_cast<const Monster*>(b);
+        const bool ta=ma && enemyTank(ma->type()), tb=mb && enemyTank(mb->type());
+        return ta!=tb?ta:a->stats().hp>b->stats().hp;
+    });
+    auto decision=m.ai()->decideAction(m,map_,*opponent,allies);
+    if(decision.type==AIActionType::Wait && enemyBackline(m.type()) && tank && distance(here,tank->position())>2) return moveToward(tank->position());
+    return decision;
+}
+
+void Application::scaleDungeonMonster(Monster& m,int floor) {
+    scaleDeepMonster(m,floor);
+    if(m.allied) return;
+    const int bonus=dungeonDepthBonus(floor);
+    m.stats().maxHp=m.stats().maxHp*(100+8*bonus)/100;
+    m.stats().hp=m.stats().maxHp;
+    m.stats().strength+=bonus/2; m.stats().intelligence+=bonus/2;
+    m.setXpReward(m.xpReward()*(100+5*bonus)/100);
+    m.lastObservedHp=m.stats().hp;
+}
+void Application::scaleDeepMonster(Monster& m,int floor) {
+    if (floor<=10 || m.allied) return;
+    const int depth=floor-10;
+    m.stats().maxHp+=depth*2; m.stats().hp=m.stats().maxHp;
+    m.stats().strength+=depth/3; m.stats().intelligence+=depth/3;
+    m.setXpReward(m.xpReward()*2+depth*3);
+}
+void Application::configureMinion(Monster& m,int rank,int intelligence) {
+    m.allied=true; m.summonRank=rank; m.summonIntelligence=intelligence;
+    m.setRewardsEligible(false);
+    m.stats().maxHp=12+4*rank+intelligence; m.stats().hp=m.stats().maxHp;
+    m.stats().strength=2+rank+intelligence/5; m.stats().dexterity=2;
+    m.stats().intelligence=0; m.stats().speed=100;
+}
+int Application::minionCap() const { return std::clamp(1+player_.stats().intelligence/10,1,5); }
+void Application::enforceMinionCap() {
+    int count=0; for (const auto& m:monsters_) if (m->allied && m->stats().hp>0 && !m->remainingLife) ++count;
+    for (auto& m:monsters_) if (count>minionCap() && m->allied && m->stats().hp>0 && !m->remainingLife) {
+        m->stats().hp=0; scheduler_.remove(*m); --count; log("Your oldest skeleton dissolves: minion cap fell.");
+    }
+    removeDeadMonsters();
+}
+void Application::dissolveMinions() {
+    for (auto& m:monsters_) if (m->allied) { m->stats().hp=0; scheduler_.remove(*m); }
+    removeDeadMonsters();
+}
+void Application::summonMinions(const Talent& t) {
+    int permanent=0; bool army=false;
+    for (const auto& m:monsters_) if (m->allied && m->stats().hp>0) { if (m->remainingLife) army=true; else ++permanent; }
+    if (t.summonDuration && army) { log("Your existing army prevents another army. Cast spent."); return; }
+    int remaining=t.summonDuration?t.summonCount:std::min(t.summonCount,minionCap()-permanent);
+    const auto p=player_.position(); int raised=0;
+    for (const Position d:std::vector<Position>{{1,0},{0,1},{-1,0},{0,-1}}) {
+        const Position pos{p.x+d.x,p.y+d.y};
+        if (remaining<=0) break;
+        if (!map_.isWalkable(pos.x,pos.y) || isOccupied(pos,nullptr)) continue;
+        auto m=createMonster(MonsterType::Skeleton,pos);
+        configureMinion(*m,t.summonRank,player_.stats().intelligence);
+        m->remainingLife=t.summonDuration?t.summonDuration+1:0;
+        scheduler_.add(*m); monsters_.push_back(std::move(m)); --remaining; ++raised;
+    }
+    log("Raised ",raised," skeleton(s). Permanent minion cap: ",minionCap(),".");
+}
+Actor* Application::nearestOpponent(Actor& actor,bool playerHidden) {
+    const auto* monster=dynamic_cast<const Monster*>(&actor);
+    const bool allied=monster && monster->allied;
+    const auto visible=computeFieldOfView(map_,actor.position(),8);
+    Actor* nearest=nullptr; int best=100000;
+    auto consider=[&](Actor& target) {
+        if (target.stats().hp<=0) return;
+        const auto p=target.position();
+        if (std::none_of(visible.begin(),visible.end(),[&](Position q){return p.x==q.x && p.y==q.y;})) return;
+        const int distance=std::abs(p.x-actor.position().x)+std::abs(p.y-actor.position().y);
+        if (distance<best) { best=distance; nearest=&target; }
+    };
+    if (!allied && !playerHidden) consider(player_);
+    for (auto& other:monsters_) if (other.get()!=&actor && other->allied!=allied) consider(*other);
+    return nearest;
+}
+void Application::actMinion(Monster& minion,bool chilledMove) {
+    if (auto* enemy=nearestOpponent(minion,false)) {
+        auto decision=minion.ai()->decideAction(minion,map_,*enemy,{});
+        if (!(chilledMove && decision.type==AIActionType::Move))
+            executeAIDecision(minion,decision,minion.statusEffects().magnitudeOf(StatusEffectType::Chill));
+        return;
+    }
+    if (chilledMove) return;
+    const auto pos=minion.position(), player=player_.position();
+    if (std::abs(pos.x-player.x)+std::abs(pos.y-player.y)<=1) return;
+    const auto path=findPath(map_,pos,player);
+    if (path && path->size()>1 && !isOccupied((*path)[1],&minion)) minion.setPosition((*path)[1]);
+}
+void Application::afterHiddenCast(const Talent& t,bool landed,bool killed,int concealed) {
+    if (isMeleeAttack(t) && hasMeleeWeapon(player_)) {
+        player_.statusEffects().remove(StatusEffectType::BattleRhythm);
+        if (landed && player_.talents().passiveValue(PassiveKind::BattleRhythm)) {
+            std::optional<std::size_t> choice; int longest=0;
+            for (std::size_t i=0;i<player_.talents().knownTalents().size();++i) {
+                const auto candidate=player_.talents().effectiveTalent(i);
+                const int cd=player_.talents().cooldownRemaining(i);
+                if (candidate.id!=t.id && !candidate.passive && isSpell(candidate) && cd>longest) { longest=cd; choice=i; }
+            }
+            if (choice) player_.talents().setCooldownRemaining(*choice,longest-1);
+        }
+    }
+    if (isSpell(t) && player_.talents().passiveValue(PassiveKind::BattleRhythm))
+        player_.statusEffects().apply({StatusEffectType::BattleRhythm,10000,player_.talents().passiveValue(PassiveKind::BattleRhythm)});
+    const bool offensive=(t.effectKind==TalentEffectKind::Damage && t.shape!=EffectShape::Movement) || t.huntersMark || t.id=="blood_magic.wither";
+    bool remain=concealed && t.stayHiddenPercent && rollChance(t.stayHiddenPercent/100.f);
+    if (offensive && !remain) player_.statusEffects().remove(StatusEffectType::Concealed);
+    if (t.returnConcealed && t.selfBuffEffect) player_.statusEffects().apply(*t.selfBuffEffect);
+    if (killed && concealed && player_.talents().passiveValue(PassiveKind::Unseen) && player_.statusEffects().has(StatusEffectType::UnseenReady)) {
+        player_.statusEffects().remove(StatusEffectType::UnseenReady);
+        player_.statusEffects().apply({StatusEffectType::Concealed,
+            player_.talents().passiveValue(PassiveKind::Unseen),concealed});
+    }
+}
+void Application::refreshHiddenDiscoveries() {
+    synchronizeImbues(player_);
+    for (int i=0;i<4;++i) if (hiddenTreeAvailable(player_,kHiddenIds[i]) && codex_.reveal(kHiddenIds[i])) {
+        log("Hidden tree discovered: ",kHiddenNames[i],"! T: unlock with a tree point. J: read the condition.");
+        if (!codex_.save("codex.txt")) log(codex_.error());
+    }
+}
+} // namespace engine

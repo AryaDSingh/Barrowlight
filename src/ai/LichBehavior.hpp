@@ -35,13 +35,12 @@ private:
     int tooCloseRange_;
     // Capped, not unlimited -- an endless stream of skeletons would
     // make the fight a war of attrition rather than a real encounter.
-    // Counts summons actually made, not skeletons currently alive: even
-    // if the player kills every skeleton immediately, the Lich doesn't
-    // get more attempts than this once it's used them all.
+    // Counts committed ritual attempts, including interruptions/fizzles.
+    // Killing a skeleton never replenishes this lifetime budget.
     int maxSummons_;
     int sightRadius_;
 
-    int summonsUsed_ = 0;
+    // Committed attempts live on Monster and persist in saves.
 };
 
 } // namespace engine

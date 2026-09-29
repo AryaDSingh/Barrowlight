@@ -88,6 +88,7 @@ Stats statsForClass(PlayerClass cls) {
     return stats;
 }
 
+// Legacy kit adapters retained for existing isolated combat fixtures. Live creation uses basicAttack().
 TalentSet talentSetForClass(PlayerClass cls) {
     switch (cls) {
         case PlayerClass::Spellblade:

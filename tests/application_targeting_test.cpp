@@ -33,9 +33,10 @@ struct ApplicationTargetingTestAccess {
         auto setup = [&] {
             app.cancelTargeting(); app.mousePixel_.reset(); app.talentPage_=0;
             app.mode_=GameMode::Playing; app.playerClass_=PlayerClass::Mage;
+            app.floorEntrance_={1,1}; app.floorExit_={48,28};
             app.currentFloor_=1; app.boss_=nullptr; app.pendingFinalVictory_=false;
-            app.player_.level()=1; app.player_.xp()=0; app.player_.hybridSpecced()=false;
-            app.player_.unspentAttributePoints()=0;
+            app.player_.level()=1; app.player_.xp()=0;
+            app.player_.unspentAttributePoints()=0; app.progressionReviewPending_=false;
             app.player_.setPosition({20,12});
             app.player_.stats()=statsForClass(PlayerClass::Mage);
             app.player_.stats().hp=app.player_.stats().maxHp=100;
@@ -144,12 +145,12 @@ struct ApplicationTargetingTestAccess {
 
         setup();
         app.playerClass_=PlayerClass::Warrior;
-        app.player_.level()=10; app.player_.hybridSpecced()=true;
+        app.player_.level()=10;
         app.player_.talents()=TalentSet(fullKitForClass(PlayerClass::Warrior));
         for(const auto& talent:fullKitForClass(PlayerClass::Mage)) app.player_.talents().learnTalent(talent);
         app.handleTargetingKey(sf::Keyboard::Key::PageDown,false);
-        check(app.talentPage_==1 && app.talentAtPixel({930,50})==std::optional<std::size_t>(9) &&
-            app.talentAtPixel({930,90})==std::optional<std::size_t>(11),
+        check(app.talentPage_==1 && app.talentAtPixel({30,680})==std::optional<std::size_t>(9) &&
+            app.talentAtPixel({186,680})==std::optional<std::size_t>(11),
             "Second talent page maps to learned abilities 10 through 12");
         app.requestTalent(11); app.targetCursor_={23,12};
         snapshot("hybrid-page-two.png");
@@ -159,12 +160,18 @@ struct ApplicationTargetingTestAccess {
         check(app.player_.statusEffects().has(StatusEffectType::Empowered),
             "A hybrid self-buff on the second page remains usable");
         app.player_.talents().resetCooldowns(); app.requestTalent(6);
+        app.player_.trees()={{"one_handed",false},{"arcane",false}};
+        app.player_.treePoints()=2; app.player_.abilityPoints()=6;
+        app.player_.talents()=TalentSet({basicAttack(),findTalentDefinition("one_handed.quick_strike")->ranks[0],findTalentDefinition("arcane.bolt")->ranks[0],basicCleanse()});
+        app.player_.talents().setRank(1,3); app.player_.talents().setRank(2,3);
         std::filesystem::current_path(outputPath);
-        app.saveGame(); app.loadGame();
+        app.saveGame();
+        check(loadGame("savegame.txt").has_value(),"Targeting fixture is a valid loadable save");
+        app.loadGame();
         std::filesystem::current_path(originalPath);
         check(!app.aimingTalent_ && !app.inspecting_ && app.talentPage_==0 &&
-            app.player_.talents().knownTalents().size()==13,
-            "Loading clears transient selection while preserving the full hybrid kit");
+            app.player_.talents().knownTalents().size()==4,
+            "Loading clears transient selection while preserving learned tree abilities");
         setup();
         app.monsters_.clear();
         auto lich=createMonster(MonsterType::Lich,{23,12});

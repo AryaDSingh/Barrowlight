@@ -1,0 +1,49 @@
+#pragma once
+
+#include "entities/Actor.hpp"
+
+namespace engine {
+inline bool armourMatches(const Actor& actor, ArmourRequirement requirement) {
+    const auto kind=actor.inventory().armourKind();
+    switch (requirement) {
+    case ArmourRequirement::Cloth: return kind==ArmourKind::Cloth || kind==ArmourKind::Unarmoured;
+    case ArmourRequirement::Light: return kind==ArmourKind::Light;
+    case ArmourRequirement::Heavy: return kind==ArmourKind::Heavy;
+    default: return true;
+    }
+}
+inline const char* armourRequirementText(ArmourRequirement requirement) {
+    switch (requirement) {
+    case ArmourRequirement::Cloth: return "Requires cloth or no armour.";
+    case ArmourRequirement::Light: return "Requires light armour.";
+    case ArmourRequirement::Heavy: return "Requires heavy armour.";
+    default: return "";
+    }
+}
+// Read equipment at the moment of use; no cached buffs can survive an armour swap.
+inline int armourPassive(const Actor& actor, PassiveKind kind) {
+    ArmourRequirement requirement=ArmourRequirement::None;
+    switch (kind) {
+    case PassiveKind::ClothWard: case PassiveKind::Spellweave: requirement=ArmourRequirement::Cloth; break;
+    case PassiveKind::LightEvasion: case PassiveKind::LightPrecision: requirement=ArmourRequirement::Light; break;
+    case PassiveKind::HeavyBrace: case PassiveKind::HeavyResolve: requirement=ArmourRequirement::Heavy; break;
+    default: return 0;
+    }
+    return armourMatches(actor,requirement) ? actor.talents().passiveValue(kind) : 0;
+}
+inline int armourDodgeBonus(const Actor& actor) {
+    int bonus=actor.stats().maxMana>0 && actor.stats().mana*2>=actor.stats().maxMana ? armourPassive(actor,PassiveKind::ClothWard) : 0;
+    if (actor.statusEffects().has(StatusEffectType::Opening)) bonus+=armourPassive(actor,PassiveKind::LightEvasion);
+    return bonus;
+}
+inline int armourCritBonus(const Actor& actor) {
+    return actor.statusEffects().has(StatusEffectType::Opening) ? armourPassive(actor,PassiveKind::LightPrecision) : 0;
+}
+inline int armourGuardBonus(const Actor& actor) {
+    return actor.statusEffects().has(StatusEffectType::Opening) ? armourPassive(actor,PassiveKind::HeavyBrace) : 0;
+}
+inline bool armourResistsStun(const Actor& actor) {
+    const int chance=armourPassive(actor,PassiveKind::HeavyResolve);
+    return chance>0 && rollChance(chance/100.f);
+}
+} // namespace engine

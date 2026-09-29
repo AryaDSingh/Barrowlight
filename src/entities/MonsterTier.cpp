@@ -55,7 +55,7 @@ const char* namePrefixForTier(MonsterTier tier) {
         case MonsterTier::Elite:
             return "Elite ";
         case MonsterTier::Nightmare:
-            return "Nightmare ";
+            return "Rare ";
     }
     return ""; // unreachable
 }
