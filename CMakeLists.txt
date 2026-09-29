@@ -100,6 +100,7 @@ set(ENTITY_HEADERS
 set(CORE_HEADERS
     src/core/Application.hpp
     src/core/PlayLayout.hpp
+    src/core/GameRules.hpp
     src/core/TurnScheduler.hpp
     src/core/SaveGame.hpp
     src/core/SoundManager.hpp
@@ -140,6 +141,10 @@ add_executable(roguelike
     src/core/ApplicationInventory.cpp
     src/core/ApplicationLoot.cpp
     src/core/ApplicationRunes.cpp
+    src/core/ApplicationRender.cpp
+    src/core/ApplicationSave.cpp
+    src/core/ApplicationProgression.cpp
+    src/core/ApplicationTurns.cpp
     src/world/TalentTargeting.cpp
     src/entities/MonsterInspection.cpp
     src/core/TurnScheduler.cpp
