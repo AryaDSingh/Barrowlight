@@ -10,86 +10,47 @@ See `ARCHITECTURE_DECISIONS.md` for what's been decided and why, and
 
 ```
 roguelike/
-├── CMakeLists.txt      # build config; fetches SFML via FetchContent
+├── CMakeLists.txt             # build config; fetches SFML via FetchContent
 ├── ARCHITECTURE_DECISIONS.md  # what's been decided, and why
 ├── ROADMAP.md                 # planned build sequence + progress
+├── NEXT_STEPS.md              # latest development checkpoint
 ├── src/
-│   ├── main.cpp         # entry point -- deliberately trivial
+│   ├── main.cpp               # entry point -- deliberately trivial
 │   ├── core/
-│   │   ├── Position.hpp             # shared grid-coordinate type
-│   │   ├── Application.hpp/.cpp     # owns window, map, roster, scheduler, FOV, combat
-│   │   ├── TurnScheduler.hpp/.cpp   # energy/speed-based turn order
-│   │   └── SaveGame.hpp/.cpp        # save/load -- entirely SFML-independent
-│   ├── entities/         # Entity/Actor/Item/Feature hierarchy + components
-│   │   ├── (Entity, Actor, Player, Monster, Item, Feature, Stats,
-│   │   │    Inventory -- header-only)
-│   │   ├── AIBehavior.hpp                # abstract interface + AIDecision; see ai/
-│   │   ├── Talent.hpp                    # a talent/ability's data
-│   │   ├── TalentSet.hpp/.cpp            # known talents + per-talent cooldown tracking
-│   │   ├── TalentEffects.hpp/.cpp        # generic damage application
-│   │   ├── SpellbladeTalents.hpp/.cpp    # the Spellblade's 8-talent kit, as data
-│   │   ├── StatusEffects.hpp/.cpp        # Poison/Stun/Empowered bookkeeping
-│   │   ├── StatusEffectLogic.hpp/.cpp    # the tick function (damage, stun-detection, expiry)
-│   │   ├── MonsterAttackProfile.hpp      # flat-damage attack data for simple attackers
-│   │   ├── MonsterType.hpp               # the roster enum (own file -- see Prompt 12 notes)
-│   │   └── MonsterFactory.hpp/.cpp       # the 6-enemy roster + boss, as data
-│   ├── ai/
-│   │   ├── AIUtils.hpp            # shared geometry helpers (isAdjacent, distanceSquared, ...)
-│   │   ├── NullAIBehavior.hpp     # never acts -- a real behavior, and a test placeholder
-│   │   ├── Chaser.hpp/.cpp        # melee rusher + attack -- Goblin, Spider, Ogre
-│   │   ├── Kiter.hpp/.cpp         # ranged, maintains distance -- Archer
-│   │   ├── Support.hpp/.cpp       # buffs allies, never attacks -- Shaman
-│   │   ├── AoEBomber.hpp/.cpp     # ranged AoE on a cooldown -- Bomber
-│   │   └── BossBehavior.hpp/.cpp  # 3-phase set-piece fight -- Goblin Warlord
-│   └── world/
-│       ├── Tile.hpp                 # a single grid cell (type/walkable/transparent)
-│       ├── Map.hpp/.cpp             # grid of tiles + ASCII-art level parser (test maps)
-│       ├── FieldOfView.hpp/.cpp     # recursive shadowcasting (pure function)
-│       ├── ExploredMap.hpp/.cpp     # Hidden/Remembered/Visible tracking over time
-│       ├── Pathfinder.hpp/.cpp      # A*, 4-directional (pure function)
-│       └── DungeonGenerator.hpp/.cpp  # rooms + corridors + a boss room (pure function)
-├── tests/
-│   ├── entity_smoke_test.cpp        # entity hierarchy, no SFML linked
-│   ├── turn_scheduler_test.cpp      # turn order by speed, no SFML linked
-│   ├── fov_test.cpp                 # prints an ASCII FOV grid, no SFML linked
-│   ├── pathfinder_test.cpp          # prints an ASCII path around a forced detour
-│   ├── chaser_test.cpp              # traces Chaser's own decisions turn by turn
-│   ├── dungeon_test.cpp             # connectivity across 10 seeds + boss room success rate
-│   ├── talent_test.cpp              # hand-computed damage/cooldown/conditional values
-│   ├── monster_ai_test.cpp          # StatusEffects tick logic + Kiter/Support/AoEBomber
-│   ├── boss_test.cpp                # phase transitions + per-phase decisions, hand-computed
-│   └── savegame_test.cpp            # full round-trip, field by field, + error handling
-├── assets/              # textures, fonts (still empty -- see Prompt 5 notes)
-└── data/                # data-driven content (empty -- see Prompt 9/10 notes)
+│   │   ├── Application.hpp/.cpp        # owns window, map, roster, scheduler; input + level setup
+│   │   ├── ApplicationTurns.cpp        # monster turns, AI decisions, death handling
+│   │   ├── ApplicationProgression.cpp  # XP, level-up sequence, hybrid choice
+│   │   ├── ApplicationRender.cpp       # HUD, map and menu-screen drawing
+│   │   ├── ApplicationSave.cpp         # F5/F9: Application state <-> SaveGameState
+│   │   ├── ApplicationTargeting.cpp    # mouse/keyboard aiming and previews
+│   │   ├── ApplicationInventory.cpp    # bag/equipment screen and pickups
+│   │   ├── ApplicationLoot.cpp         # chests and monster rewards
+│   │   ├── ApplicationRunes.cpp        # rune management screen
+│   │   ├── GameRules.hpp / PlayLayout.hpp  # shared constants / screen layout
+│   │   ├── TurnScheduler.hpp/.cpp      # energy/speed-based turn order
+│   │   ├── SaveGame.hpp/.cpp           # versioned save format -- SFML-independent
+│   │   └── SoundManager.hpp/.cpp       # optional sound effects
+│   ├── entities/   # Entity/Actor/Player/Monster/Item hierarchy and components:
+│   │               # Stats, Inventory, TalentSet, StatusEffects, class talent
+│   │               # kits (Warrior/Mage/Thief/Spellblade), HybridSpec,
+│   │               # PlayerLeveling, AttributeFormulas, MonsterFactory/Tier,
+│   │               # Item/LootGenerator (equipment + affixes), Rune (supports)
+│   ├── ai/         # AIBehavior strategies: Chaser, Kiter, Support, AoEBomber,
+│   │               # BossBehavior (Goblin Warlord), LichBehavior, NullAIBehavior
+│   └── world/      # Tile, Map, FieldOfView (shadowcasting), ExploredMap,
+│                   # Pathfinder (A*), DungeonGenerator, TalentTargeting
+├── tests/          # one console test per system; see the list below
+└── assets/         # font (DejaVu Sans Mono) and sound effects
 ```
 
-There are twenty-two build targets: `roguelike`, twenty console tests
-with no SFML dependency, and `application_targeting_test` (a hidden-window
-SFML integration test that needs a working graphics session). Run them
-after building:
+There are twenty-four build targets: `roguelike`, twenty-two console
+tests with no SFML dependency, and `application_targeting_test` (a
+hidden-window SFML integration test that needs a working graphics
+session). Every test prints `[ok]`/`[FAIL]` per check and exits non-zero
+on failure. Run them after building, from the repository root:
 
 ```bash
-./build/bin/entity_smoke_test
-./build/bin/turn_scheduler_test
-./build/bin/fov_test
-./build/bin/pathfinder_test
-./build/bin/chaser_test
-./build/bin/dungeon_test
-./build/bin/talent_test
-./build/bin/warrior_test
-./build/bin/thief_test
-./build/bin/mage_test
-./build/bin/player_leveling_test
-./build/bin/monster_tier_test
-./build/bin/talent_unlock_test
-./build/bin/hybrid_spec_test
-./build/bin/monster_ai_test
-./build/bin/boss_test
-./build/bin/lich_test
-./build/bin/savegame_test
-./build/bin/attribute_formulas_test
-./build/bin/targeting_test
-./build/bin/application_targeting_test
+for t in build/bin/*_test; do "$t" > /dev/null || echo "FAILED: $t"; done
 ./build/bin/roguelike
 ```
 On Windows with the Visual Studio generator, substitute
@@ -449,8 +410,8 @@ block your path and add up if ignored while you focus the Lich itself.
 ### Linux (Debian/Ubuntu)
 
 SFML needs a few system dev packages for windowing, graphics, and text
-rendering (this list omits Audio/Network deps since those modules are
-disabled in `CMakeLists.txt` for now):
+rendering. Audio needs nothing extra: `SFML_USE_SYSTEM_DEPS` is off, so
+SFML builds its own audio codecs, and the Network module is disabled:
 
 ```bash
 sudo apt update

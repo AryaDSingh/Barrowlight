@@ -42,6 +42,15 @@ FetchContent_Declare(SFML
     SYSTEM)
 FetchContent_MakeAvailable(SFML)
 
+# Warnings for this project's own targets (SFML was added above, so it is
+# unaffected). missing-field-initializers is off because talent kits rely
+# on aggregate initialization leaving trailing Talent fields at their
+# defaults -- see the "Kept last for aggregate initializer safety" note in
+# Talent.hpp. MSVC keeps its defaults.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(-Wall -Wextra -Wpedantic -Wno-missing-field-initializers)
+endif()
+
 # ---------------------------------------------------------------------------
 # Entity/Actor headers
 # ---------------------------------------------------------------------------
@@ -91,6 +100,7 @@ set(ENTITY_HEADERS
 set(CORE_HEADERS
     src/core/Application.hpp
     src/core/PlayLayout.hpp
+    src/core/GameRules.hpp
     src/core/TurnScheduler.hpp
     src/core/SaveGame.hpp
     src/core/SoundManager.hpp
@@ -131,6 +141,10 @@ add_executable(roguelike
     src/core/ApplicationInventory.cpp
     src/core/ApplicationLoot.cpp
     src/core/ApplicationRunes.cpp
+    src/core/ApplicationRender.cpp
+    src/core/ApplicationSave.cpp
+    src/core/ApplicationProgression.cpp
+    src/core/ApplicationTurns.cpp
     src/world/TalentTargeting.cpp
     src/entities/MonsterInspection.cpp
     src/core/TurnScheduler.cpp
@@ -627,6 +641,47 @@ add_executable(savegame_test
 
 target_include_directories(savegame_test PRIVATE src)
 target_compile_features(savegame_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# Loot and equipment test
+# ---------------------------------------------------------------------------
+# Prompts 32-33: Inventory slot/bag ownership, Player effective stats, and
+# LootGenerator's determinism, tier formula, affix rules and rarity weights.
+
+add_executable(loot_test
+    tests/loot_test.cpp
+    src/entities/TalentSet.cpp
+    src/entities/StatusEffects.cpp
+    ${COMMON_HEADERS}
+    ${ENTITY_HEADERS}
+)
+
+target_include_directories(loot_test PRIVATE src)
+target_compile_features(loot_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# Support rune test
+# ---------------------------------------------------------------------------
+# Prompt 34: rune compatibility against the real class kits, effective
+# talent resolution, and TalentSet's one-rune-per-talent bookkeeping.
+
+add_executable(rune_test
+    tests/rune_test.cpp
+    src/entities/TalentSet.cpp
+    src/entities/TalentEffects.cpp
+    src/entities/AttributeFormulas.cpp
+    src/entities/SpellbladeTalents.cpp
+    src/entities/WarriorTalents.cpp
+    src/entities/MageTalents.cpp
+    src/entities/ThiefTalents.cpp
+    src/entities/PlayerClassFactory.cpp
+    src/entities/StatusEffects.cpp
+    ${COMMON_HEADERS}
+    ${ENTITY_HEADERS}
+)
+
+target_include_directories(rune_test PRIVATE src)
+target_compile_features(rune_test PRIVATE cxx_std_17)
 
 # ---------------------------------------------------------------------------
 # Attribute formulas test
