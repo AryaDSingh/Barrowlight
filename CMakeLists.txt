@@ -42,6 +42,15 @@ FetchContent_Declare(SFML
     SYSTEM)
 FetchContent_MakeAvailable(SFML)
 
+# Warnings for this project's own targets (SFML was added above, so it is
+# unaffected). missing-field-initializers is off because talent kits rely
+# on aggregate initialization leaving trailing Talent fields at their
+# defaults -- see the "Kept last for aggregate initializer safety" note in
+# Talent.hpp. MSVC keeps its defaults.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(-Wall -Wextra -Wpedantic -Wno-missing-field-initializers)
+endif()
+
 # ---------------------------------------------------------------------------
 # Entity/Actor headers
 # ---------------------------------------------------------------------------
