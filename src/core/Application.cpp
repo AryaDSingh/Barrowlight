@@ -142,13 +142,15 @@ Application::Application()
     // line at once.
     std::cout << std::unitbuf;
 
-    // A missing/unreadable font doesn't crash the game -- sf::Text just
-    // silently draws nothing with an unloaded sf::Font, so the rest of
-    // the HUD (bars, tiles, console output) still works. Logged once,
+    // A missing/unreadable font doesn't crash the game -- drawText()
+    // skips text entirely without a loaded font (SFML 3 asserts on
+    // shaping text with one in debug builds), so the rest of the HUD
+    // (bars, tiles, console output) still works. Logged once,
     // plainly, rather than treated as fatal. Raw std::cout here, not
     // log() -- logMessages_ is empty and meaningless before the window
     // and constructor have even finished.
-    if (!font_.openFromFile(kFontPath)) {
+    fontLoaded_ = font_.openFromFile(kFontPath);
+    if (!fontLoaded_) {
         std::cout << "Warning: failed to load font at " << kFontPath
                    << " -- on-screen text will not render.\n";
     }
@@ -182,6 +184,7 @@ void Application::logImpl(const std::string& message) {
 
 void Application::drawText(const std::string& text, float x, float y, unsigned int size,
                             sf::Color color) {
+    if (!fontLoaded_) return;
     sf::Text sfText(font_);
     sfText.setString(text);
     sfText.setCharacterSize(size);
@@ -1327,14 +1330,14 @@ void Application::update() {
 void Application::renderClassSelection() {
     drawText("Choose your class", 60.f, 60.f, 28, sf::Color(230, 230, 230));
 
-    drawText("1. Fighter", 60.f, 130.f, 20, sf::Color(230, 120, 90));
+    drawText("1. Warrior", 60.f, 130.f, 20, sf::Color(230, 120, 90));
     drawText("Pure Strength. A free spammable basic attack, hp as the", 80.f, 158.f, 14,
              sf::Color(190, 190, 190));
     drawText("resource that matters, and the hardest single hit of any", 80.f, 176.f, 14,
              sf::Color(190, 190, 190));
     drawText("base class.", 80.f, 194.f, 14, sf::Color(190, 190, 190));
 
-    drawText("2. Sorcerer", 60.f, 230.f, 20, sf::Color(170, 120, 230));
+    drawText("2. Mage", 60.f, 230.f, 20, sf::Color(170, 120, 230));
     drawText("Pure Intelligence. The largest mana pool of any class and", 80.f, 258.f, 14,
              sf::Color(190, 190, 190));
     drawText("the lowest hp -- a true glass cannon. Mind Shatter can", 80.f, 276.f, 14,

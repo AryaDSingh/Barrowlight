@@ -332,6 +332,7 @@ private:
 
     sf::RenderWindow window_;
     sf::Font font_;
+    bool fontLoaded_ = false;
     SoundManager soundManager_; // Prompt 25 -- see SoundManager.hpp for the "sound is a
                                 // presentation detail, never a hard requirement" design
     GameMode mode_ = GameMode::ClassSelection;
