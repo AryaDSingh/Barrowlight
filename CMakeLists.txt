@@ -629,6 +629,47 @@ target_include_directories(savegame_test PRIVATE src)
 target_compile_features(savegame_test PRIVATE cxx_std_17)
 
 # ---------------------------------------------------------------------------
+# Loot and equipment test
+# ---------------------------------------------------------------------------
+# Prompts 32-33: Inventory slot/bag ownership, Player effective stats, and
+# LootGenerator's determinism, tier formula, affix rules and rarity weights.
+
+add_executable(loot_test
+    tests/loot_test.cpp
+    src/entities/TalentSet.cpp
+    src/entities/StatusEffects.cpp
+    ${COMMON_HEADERS}
+    ${ENTITY_HEADERS}
+)
+
+target_include_directories(loot_test PRIVATE src)
+target_compile_features(loot_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
+# Support rune test
+# ---------------------------------------------------------------------------
+# Prompt 34: rune compatibility against the real class kits, effective
+# talent resolution, and TalentSet's one-rune-per-talent bookkeeping.
+
+add_executable(rune_test
+    tests/rune_test.cpp
+    src/entities/TalentSet.cpp
+    src/entities/TalentEffects.cpp
+    src/entities/AttributeFormulas.cpp
+    src/entities/SpellbladeTalents.cpp
+    src/entities/WarriorTalents.cpp
+    src/entities/MageTalents.cpp
+    src/entities/ThiefTalents.cpp
+    src/entities/PlayerClassFactory.cpp
+    src/entities/StatusEffects.cpp
+    ${COMMON_HEADERS}
+    ${ENTITY_HEADERS}
+)
+
+target_include_directories(rune_test PRIVATE src)
+target_compile_features(rune_test PRIVATE cxx_std_17)
+
+# ---------------------------------------------------------------------------
 # Attribute formulas test
 # ---------------------------------------------------------------------------
 # The lightest test target in the project -- AttributeFormulas has no
