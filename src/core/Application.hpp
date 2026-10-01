@@ -412,6 +412,12 @@ private:
                                 // presentation detail, never a hard requirement" design
     SpriteAtlas sprites_; // same policy: a missing sheet falls back to flat-colored squares
     sf::Clock animationClock_; // drives purely cosmetic animation (torch flicker)
+    // Lighting (see renderLighting): a radial light texture and the map-sized
+    // light map it is accumulated into, both created on first use.
+    std::optional<sf::Texture> lightBlob_;
+    std::optional<sf::RenderTexture> lightMap_;
+    void renderLighting(const std::vector<std::pair<sf::Vector2f, sf::Color>>& lights);
+    void drawActorShadow(sf::Vector2f tileTopLeft);
     GameMode mode_ = GameMode::ClassSelection;
     PlayerClass playerClass_ = PlayerClass::Spellblade; // meaningless until selectClass() runs
     bool wonGame_ = false; // meaningless unless mode_ == GameOver -- see checkAndHandleDeath

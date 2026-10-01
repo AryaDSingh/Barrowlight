@@ -30,6 +30,19 @@ const sf::Texture* SpriteAtlas::texture(const char* sheet) {
     return byPointer_[sheet] = &textures_.emplace(sheet, std::move(loaded)).first->second;
 }
 
+void SpriteAtlas::append(sf::VertexArray& triangles, const SpriteFrame& frame, sf::Vector2f topLeft, float size,
+                         sf::Color tint) {
+    const float w = static_cast<float>(frame.rect.size.x), h = static_cast<float>(frame.rect.size.y);
+    const float scale = size / std::max(w, h);
+    const float left = topLeft.x + (size - w * scale) / 2.f, top = topLeft.y + (size - h * scale);
+    const float right = left + w * scale, bottom = top + h * scale;
+    const float u0 = static_cast<float>(frame.rect.position.x), v0 = static_cast<float>(frame.rect.position.y);
+    const float u1 = u0 + w, v1 = v0 + h;
+    const sf::Vertex tl{{left, top}, tint, {u0, v0}}, tr{{right, top}, tint, {u1, v0}},
+                     br{{right, bottom}, tint, {u1, v1}}, bl{{left, bottom}, tint, {u0, v1}};
+    for (const auto& v : {tl, tr, br, tl, br, bl}) triangles.append(v);
+}
+
 bool SpriteAtlas::draw(sf::RenderTarget& target, const SpriteFrame& frame, sf::Vector2f topLeft,
                        float size, sf::Color tint) {
     const sf::Texture* tex = texture(frame.sheet);

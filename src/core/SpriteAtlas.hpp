@@ -33,8 +33,14 @@ public:
     bool draw(sf::RenderTarget& target, const SpriteFrame& frame, sf::Vector2f topLeft, float size,
               sf::Color tint = sf::Color::White);
 
-private:
+    // Batching: the sheet's texture (nullptr if missing), and the quad
+    // draw() would emit for a frame, appended to a triangle list instead.
+    // Many sprites from one sheet then go out in a single draw call.
     const sf::Texture* texture(const char* sheet);
+    static void append(sf::VertexArray& triangles, const SpriteFrame& frame, sf::Vector2f topLeft, float size,
+                       sf::Color tint = sf::Color::White);
+
+private:
 
     std::map<std::string, sf::Texture> textures_;
     // Sheet names are string literals, so their address identifies them:

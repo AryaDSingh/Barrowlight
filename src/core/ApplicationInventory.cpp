@@ -171,11 +171,12 @@ void Application::renderGroundItems() {
         if (exploredMap_.at(p.x, p.y) != Visibility::Visible) continue;
         const auto screen = worldToScreen(p.x, p.y);
         if (!onMap(screen)) continue;
-        sf::CircleShape marker(6.f, 4);
-        marker.setPosition({screen.x + 7.f, screen.y + 7.f});
-        marker.setFillColor(item->rarity() == ItemRarity::Rare ? sf::Color(255,211,95) :
-                            item->rarity() == ItemRarity::Magic ? sf::Color(110,165,255) : sf::Color(210,210,215));
-        window_.draw(marker);
+        const sf::Color color = item->rarity() == ItemRarity::Rare ? ui::kRare :
+                                item->rarity() == ItemRarity::Magic ? ui::kMagic : sf::Color(225,218,200);
+        sf::CircleShape glow(11.f); glow.setOrigin({11.f, 11.f});
+        glow.setPosition({screen.x + 14.f, screen.y + 15.f});
+        glow.setFillColor(sf::Color(color.r, color.g, color.b, 55)); window_.draw(glow);
+        ui_.icon(window_, itemIcon(*item->definition()), {{screen.x + 5.f, screen.y + 5.f}, {18.f, 18.f}}, color);
     }
     for (const auto& item : groundItems_) {
         if (item->position().x == player_.position().x && item->position().y == player_.position().y) {

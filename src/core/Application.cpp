@@ -77,11 +77,11 @@ constexpr const char* kSaveFilePath = "savegame.txt";
 
 // Menu hit areas live in core/ScreenLayout.hpp (shared with the UI tests).
 
+// Remembered (explored, not currently seen) tiles: darker and cooler, so
+// they read as memory rather than as the lit present.
 sf::Color dim(sf::Color c) {
-    constexpr float kDimFactor = 0.35f;
-    return sf::Color(static_cast<std::uint8_t>(c.r * kDimFactor),
-                      static_cast<std::uint8_t>(c.g * kDimFactor),
-                      static_cast<std::uint8_t>(c.b * kDimFactor));
+    return sf::Color(static_cast<std::uint8_t>(c.r * 0.30f), static_cast<std::uint8_t>(c.g * 0.33f),
+                     static_cast<std::uint8_t>(std::min(255.f, c.b * 0.46f)), c.a);
 }
 
 // Fallback when a monster's sprite sheet fails to load (see monsterLook())
@@ -150,7 +150,13 @@ constexpr SpriteFrame idleFrame(const char* sheet, int row = 0, int w = 32, int 
     return {sheet, sf::IntRect({0, row * h}, {w, h})};
 }
 constexpr const char* kTileset = "calciumtrice/tiles/dungeon_tileset_calciumtrice.png";
-constexpr SpriteFrame kWallFrame{kTileset, sf::IntRect({16, 64}, {16, 16})};
+// Brick wall faces (16x32): six variants, picked per tile. The short form is
+// the lower half, for walls with open floor behind them too.
+SpriteFrame wallFaceFrame(int x, int y, bool tall) {
+    const int variant = static_cast<int>((static_cast<unsigned>(x) * 92821u ^ static_cast<unsigned>(y) * 68917u) % 6u);
+    return tall ? SpriteFrame{kTileset, sf::IntRect({variant * 16, 64}, {16, 32})}
+                : SpriteFrame{kTileset, sf::IntRect({variant * 16, 80}, {16, 16})};
+}
 // Door tiles are floor transitions, so they use the tileset's stairway.
 constexpr SpriteFrame kDoorFrame{kTileset, sf::IntRect({112, 64}, {16, 32})};
 
@@ -328,6 +334,76 @@ void Application::drawText(const std::string& text, float x, float y, unsigned i
 }
 
 SpriteFrame Application::playerSpriteFrame() const { return playerFrame(playerClass_); }
+
+// A soft oval at the feet keeps sprites from floating over the floor.
+void Application::drawActorShadow(sf::Vector2f tileTopLeft) {
+    sf::CircleShape shadow(kTileSize * 0.36f, 18);
+    shadow.setOrigin({kTileSize * 0.36f, kTileSize * 0.36f});
+    shadow.setScale({1.f, 0.38f});
+    shadow.setPosition({tileTopLeft.x + kTileSize / 2, tileTopLeft.y + kTileSize - 3});
+    shadow.setFillColor(sf::Color(0, 0, 0, 105));
+    window_.draw(shadow);
+}
+
+// Darkness with pools of light: the map is multiplied by a light map that
+// starts at a dim ambient level, plus additive radial lights (the player's
+// own, torches, stairs, an unused shrine). Remembered areas stay readable.
+void Application::renderLighting(const std::vector<std::pair<sf::Vector2f, sf::Color>>& lights) {
+    if (!lightBlob_) {
+        constexpr unsigned kSize = 128;
+        sf::Image blob(sf::Vector2u{kSize, kSize}, sf::Color::Transparent);
+        for (unsigned y = 0; y < kSize; ++y)
+            for (unsigned x = 0; x < kSize; ++x) {
+                const float dx = (x + 0.5f) / kSize * 2 - 1, dy = (y + 0.5f) / kSize * 2 - 1;
+                const float d = std::min(1.f, std::sqrt(dx * dx + dy * dy));
+                const float falloff = (1 - d) * (1 - d);
+                blob.setPixel({x, y}, sf::Color(255, 255, 255, static_cast<std::uint8_t>(255 * falloff)));
+            }
+        lightBlob_.emplace();
+        if (!lightBlob_->loadFromImage(blob)) { lightBlob_.reset(); return; }
+        lightBlob_->setSmooth(true);
+        lightMap_.emplace(sf::Vector2u{static_cast<unsigned>(kMapWidth), static_cast<unsigned>(kMapHeight)});
+    }
+    auto& target = *lightMap_;
+    const sf::Color ambient(170, 160, 182);
+    target.clear(ambient);
+    const float now = animationClock_.getElapsedTime().asSeconds();
+    const auto addLight = [&](sf::Vector2f center, sf::Color color, float radiusTiles) {
+        sf::Sprite light(*lightBlob_);
+        const float scale = radiusTiles * kTileSize * 2 / 128.f;
+        light.setOrigin({64, 64});
+        light.setScale({scale, scale});
+        light.setPosition({center.x - kMapLeft, center.y - kMapTop});
+        light.setColor(color);
+        target.draw(light, sf::BlendAdd);
+    };
+    const auto player = worldToScreen(player_.position().x, player_.position().y);
+    addLight({player.x + kTileSize / 2, player.y + kTileSize / 2}, sf::Color(255, 236, 205), 8.5f);
+    for (const auto& [center, color] : lights) {
+        // Fire flickers; other lights hold steady.
+        const bool fire = color.g < 200 && color.r > 200;
+        const float flicker = fire ? 0.9f + 0.1f * std::sin(now * 9.f + center.x * 0.37f) : 1.f;
+        addLight(center, color, (fire ? 3.4f : 2.4f) * flicker);
+    }
+    target.display();
+    sf::Sprite overlay(target.getTexture());
+    overlay.setPosition({kMapLeft, kMapTop});
+    window_.draw(overlay, sf::BlendMultiply);
+
+    // A soft vignette pulls the eye toward the middle of the map.
+    sf::VertexArray edges(sf::PrimitiveType::Triangles);
+    const float l = kMapLeft, t = kMapTop, r = kMapLeft + kMapWidth, b = kMapTop + kMapHeight, e = 70.f;
+    const sf::Color edge(0, 0, 0, 120), none(0, 0, 0, 0);
+    const auto strip = [&](sf::Vector2f p0, sf::Vector2f p1, sf::Vector2f p2, sf::Vector2f p3) {
+        for (const auto& v : {sf::Vertex{p0, edge}, sf::Vertex{p1, edge}, sf::Vertex{p2, none},
+                              sf::Vertex{p0, edge}, sf::Vertex{p2, none}, sf::Vertex{p3, none}}) edges.append(v);
+    };
+    strip({l, t}, {r, t}, {r, t + e}, {l, t + e});
+    strip({l, b}, {r, b}, {r, b - e}, {l, b - e});
+    strip({l, t}, {l, b}, {l + e, b}, {l + e, t});
+    strip({r, t}, {r, b}, {r - e, b}, {r - e, t});
+    window_.draw(edges);
+}
 
 void Application::updateCamera() {
     // Viewport size in whole tiles -- derived from the window/tile
@@ -1848,59 +1924,132 @@ void Application::render() {
     const int viewStartY = cameraY_;
     const int viewEndY = std::min(map_.height(), cameraY_ + static_cast<int>(kMapHeight / kTileSize));
 
-    for (int y = viewStartY; y < viewEndY; ++y) {
+    // Everything on the map is drawn through a view clipped to the map
+    // rectangle, so tall wall faces and light never spill onto the HUD.
+    sf::View mapView(sf::FloatRect({kMapLeft, kMapTop}, {static_cast<float>(kMapWidth), static_cast<float>(kMapHeight)}));
+    mapView.setViewport(sf::FloatRect({kMapLeft / kWindowWidth, kMapTop / kWindowHeight},
+                                      {kMapWidth / static_cast<float>(kWindowWidth), kMapHeight / static_cast<float>(kWindowHeight)}));
+    window_.setView(mapView);
+    // One extra row: a wall just below the view still shows its tall face.
+    const int drawEndY = std::min(map_.height(), viewEndY + 1);
+
+    const auto isWallAt = [&](int x, int y) {
+        if (!map_.inBounds(x, y)) return true;
+        if (landmark_ != LandmarkKind::None && x == landmarkAltar_.x && y == landmarkAltar_.y) return false;
+        return map_.tileAt(x, y).type == TileType::Wall;
+    };
+    const auto shadeFor = [](Visibility vis, sf::Color c) { return vis == Visibility::Visible ? c : dim(c); };
+    const sf::Color wallTop = themeColor(theme.wall);
+
+    // --- Pass 1: floors, wall tops (seen from above) and contact shadows -------
+    sf::VertexArray tops(sf::PrimitiveType::Triangles), shadows(sf::PrimitiveType::Triangles);
+    // Floors, wall faces and decorations all come from the dungeon tileset,
+    // so each pass is one batched draw call.
+    const sf::Texture* tileset = sprites_.texture(kTileset);
+    sf::VertexArray floors(sf::PrimitiveType::Triangles), details(sf::PrimitiveType::Triangles), feet(sf::PrimitiveType::Triangles);
+    const auto quad = [](sf::VertexArray& va, sf::Vector2f p, sf::Vector2f s, sf::Color a, sf::Color b, bool vertical) {
+        // a at the start edge, b at the far edge (top->bottom if vertical, else left->right)
+        const sf::Vector2f tl = p, tr{p.x + s.x, p.y}, br{p.x + s.x, p.y + s.y}, bl{p.x, p.y + s.y};
+        const sf::Color ctl = a, ctr = vertical ? a : b, cbr = b, cbl = vertical ? b : a;
+        for (const auto& v : {sf::Vertex{tl, ctl}, sf::Vertex{tr, ctr}, sf::Vertex{br, cbr},
+                              sf::Vertex{tl, ctl}, sf::Vertex{br, cbr}, sf::Vertex{bl, cbl}})
+            va.append(v);
+    };
+    for (int y = viewStartY; y < drawEndY; ++y) {
         for (int x = viewStartX; x < viewEndX; ++x) {
             const Visibility vis = exploredMap_.at(x, y);
-            if (vis == Visibility::Hidden) {
+            if (vis == Visibility::Hidden) continue;
+            const sf::Vector2f at = worldToScreen(x, y);
+            if (isWallAt(x, y)) {
+                // A dark top, slightly varied, with a lit rim wherever it meets
+                // open floor to the side or behind.
+                const int vary = static_cast<int>(decorHash(x, y, 7) % 9) - 4;
+                const auto top = [&](float f) {
+                    return sf::Color(static_cast<std::uint8_t>(std::clamp(wallTop.r * f + vary, 0.f, 255.f)),
+                                     static_cast<std::uint8_t>(std::clamp(wallTop.g * f + vary, 0.f, 255.f)),
+                                     static_cast<std::uint8_t>(std::clamp(wallTop.b * f + vary, 0.f, 255.f)));
+                };
+                const sf::Color fill = shadeFor(vis, top(1.05f)), rim = shadeFor(vis, top(2.0f));
+                quad(tops, at, {kTileSize, kTileSize}, fill, fill, true);
+                if (!isWallAt(x - 1, y)) quad(tops, at, {2, kTileSize}, rim, rim, true);
+                if (!isWallAt(x + 1, y)) quad(tops, {at.x + kTileSize - 2, at.y}, {2, kTileSize}, rim, rim, true);
+                if (!isWallAt(x, y - 1)) quad(tops, at, {kTileSize, 2}, rim, rim, true);
                 continue;
             }
-
-            const bool altarTile = landmark_ != LandmarkKind::None && x == landmarkAltar_.x && y == landmarkAltar_.y;
-            const TileType tileType = altarTile ? TileType::Floor : map_.tileAt(x, y).type;
-            sf::Color baseColor;
-            if (tileType == TileType::Wall) {
-                baseColor = themeColor(theme.wall);
-            } else if (tileType == TileType::Door) {
-                baseColor = themeColor(theme.door);
-            } else {
-                baseColor = themeColor(theme.floor);
-            }
-
-            const sf::Vector2f at = worldToScreen(x, y);
-            const auto shade = [vis](sf::Color c) { return vis == Visibility::Visible ? c : dim(c); };
-            // Doors stand on a floor tile; the tint boosts match each
-            // texture's average brightness (see themeTint()).
-            bool drawn = tileType == TileType::Wall
-                ? sprites_.draw(window_, kWallFrame, at, kTileSize, shade(themeTint(baseColor, 2.0f)))
-                : sprites_.draw(window_, floorFrame(x, y), at, kTileSize,
-                                shade(themeTint(themeColor(theme.floor), 1.25f)));
-            if (drawn && tileType == TileType::Door)
-                drawn = sprites_.draw(window_, kDoorFrame, at, kTileSize, shade(themeTint(baseColor, 1.6f)));
-            if (!drawn) {
+            if (tileset) SpriteAtlas::append(floors, floorFrame(x, y), at, kTileSize,
+                                             shadeFor(vis, themeTint(themeColor(theme.floor), 1.25f)));
+            else {
                 sf::RectangleShape tileShape({kTileSize - 1.f, kTileSize - 1.f});
                 tileShape.setPosition(at);
-                tileShape.setFillColor(shade(baseColor));
+                tileShape.setFillColor(shadeFor(vis, themeColor(theme.floor)));
                 window_.draw(tileShape);
             }
+            // Soft shadow along every wall edge: walls feel solid and rooms gain depth.
+            const sf::Color dark(0, 0, 0, 120), clear(0, 0, 0, 0);
+            if (isWallAt(x, y - 1)) quad(shadows, at, {kTileSize, 11}, dark, clear, true);
+            if (isWallAt(x - 1, y)) quad(shadows, at, {8, kTileSize}, sf::Color(0, 0, 0, 90), clear, false);
+            if (isWallAt(x + 1, y)) quad(shadows, {at.x + kTileSize - 8, at.y}, {8, kTileSize}, clear, sf::Color(0, 0, 0, 90), false);
+        }
+    }
+    if (tileset) window_.draw(floors, sf::RenderStates(tileset));
+    window_.draw(tops);
+    window_.draw(shadows);
 
+    // --- Pass 2, top to bottom: wall faces, stairs and decorations -------------
+    std::vector<std::pair<sf::Vector2f, sf::Color>> lights;
+    const float now = animationClock_.getElapsedTime().asSeconds();
+    for (int y = viewStartY; y < drawEndY; ++y) {
+        for (int x = viewStartX; x < viewEndX; ++x) {
+            const Visibility vis = exploredMap_.at(x, y);
+            if (vis == Visibility::Hidden) continue;
+            const sf::Vector2f at = worldToScreen(x, y);
+            const auto shade = [&](sf::Color c) { return shadeFor(vis, c); };
+            const bool altarTile = landmark_ != LandmarkKind::None && x == landmarkAltar_.x && y == landmarkAltar_.y;
+            const bool wall = isWallAt(x, y);
+            const bool face = wall && !isWallAt(x, y + 1);
+            if (face) {
+                // Walls facing the camera show their bricks: two tiles tall
+                // when there's wall behind to rise into, one tile otherwise.
+                const auto frame = wallFaceFrame(x, y, isWallAt(x, y - 1));
+                const float height = frame.rect.size.y > 16 ? kTileSize * 2 : kTileSize;
+                SpriteAtlas::append(details, frame, {at.x, at.y + kTileSize - height}, height,
+                                    shade(themeTint(themeColor(theme.wall), 2.1f)));
+                // Darker foot where the wall meets the floor.
+                quad(feet, {at.x, at.y + kTileSize - 3}, {kTileSize, 3}, sf::Color(0, 0, 0, 110), sf::Color(0, 0, 0, 110), true);
+            }
+            if (!wall && map_.tileAt(x, y).type == TileType::Door) {
+                if (tileset) SpriteAtlas::append(details, kDoorFrame, at, kTileSize, shade(themeTint(themeColor(theme.door), 1.6f)));
+                else {
+                    sf::RectangleShape door({kTileSize - 1.f, kTileSize - 1.f}); door.setPosition(at);
+                    door.setFillColor(shade(themeColor(theme.door))); window_.draw(door);
+                }
+                if (vis == Visibility::Visible) lights.push_back({{at.x + kTileSize / 2, at.y + kTileSize / 2}, sf::Color(120, 160, 255)});
+            }
             switch (altarTile ? Decor::None : decorAt(map_, x, y, currentFloor_, theme.region)) {
                 case Decor::Torch:
-                    // Raised a little so it sits on the wall face, not at its foot.
-                    sprites_.draw(window_, torchFrame(x, y, animationClock_.getElapsedTime().asSeconds()),
-                                  {at.x, at.y - kTileSize * 0.3f}, kTileSize, shade(sf::Color::White));
+                    SpriteAtlas::append(details, torchFrame(x, y, now), {at.x, at.y - kTileSize * 0.45f}, kTileSize, shade(sf::Color::White));
+                    if (vis == Visibility::Visible) lights.push_back({{at.x + kTileSize / 2, at.y}, sf::Color(255, 160, 80)});
                     break;
                 case Decor::Banner:
-                    sprites_.draw(window_, bannerFrame(theme.region, x), at, kTileSize, shade(sf::Color::White));
+                    SpriteAtlas::append(details, bannerFrame(theme.region, x), {at.x, at.y - kTileSize * 0.9f}, kTileSize * 1.8f,
+                                        shade(sf::Color::White));
                     break;
-                case Decor::Bones: sprites_.draw(window_, kBonesFrame, at, kTileSize, shade(sf::Color(150, 145, 135, 190))); break;
-                case Decor::Rubble: sprites_.draw(window_, kRubbleFrame, at, kTileSize, shade(sf::Color(190, 180, 170))); break;
-                case Decor::Cobweb: sprites_.draw(window_, kCobwebFrame, at, kTileSize, shade(sf::Color(150, 150, 155, 110))); break;
+                case Decor::Bones: SpriteAtlas::append(details, kBonesFrame, at, kTileSize, shade(sf::Color(150, 145, 135, 190))); break;
+                case Decor::Rubble: SpriteAtlas::append(details, kRubbleFrame, at, kTileSize, shade(sf::Color(190, 180, 170))); break;
+                case Decor::Cobweb: SpriteAtlas::append(details, kCobwebFrame, at, kTileSize, shade(sf::Color(150, 150, 155, 110))); break;
                 case Decor::None: break;
             }
         }
     }
+    if (tileset) window_.draw(details, sf::RenderStates(tileset));
+    window_.draw(feet);
 
     renderLandmark();
+    if (landmark_ != LandmarkKind::None && !landmarkUsed_ &&
+        exploredMap_.at(landmarkAltar_.x, landmarkAltar_.y) == Visibility::Visible) {
+        const auto at = worldToScreen(landmarkAltar_.x, landmarkAltar_.y);
+        lights.push_back({{at.x + kTileSize / 2, at.y + kTileSize / 2}, sf::Color(255, 205, 120)});
+    }
     renderGroundItems();
     for (auto& m : monsters_) {
         if (m->stats().hp <= 0) {
@@ -1929,6 +2078,7 @@ void Application::render() {
             window_.draw(border);
         }
 
+        drawActorShadow(screenPos);
         const MonsterLook look = monsterLook(m->type());
         // Sized relative to a 32px character frame, so the 48px minotaur
         // stands taller than its tile instead of shrinking to fit it.
@@ -1960,12 +2110,15 @@ void Application::render() {
     }
 
     const sf::Vector2f playerPos = worldToScreen(player_.position().x, player_.position().y);
+    drawActorShadow(playerPos);
     if (!sprites_.draw(window_, playerFrame(playerClass_), playerPos, kTileSize)) {
         sf::RectangleShape playerShape({kTileSize - 1.f, kTileSize - 1.f});
         playerShape.setPosition(playerPos);
         playerShape.setFillColor(sf::Color(240, 200, 60));
         window_.draw(playerShape);
     }
+
+    renderLighting(lights);
 
     // Visible committed danger remains visible even if the caster leaves sight.
     for (const auto& m:monsters_) if (m->stats().hp>0 && m->intent()) {
@@ -1986,6 +2139,7 @@ void Application::render() {
     }
 
     renderTargetingOverlay();
+    window_.setView(window_.getDefaultView());
     renderBattleHud();
 
     // Frame around the map, drawn over the tile edges.
