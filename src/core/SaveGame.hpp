@@ -133,6 +133,9 @@ struct SaveGameState {
 // general-purpose serialization library would be new build complexity
 // for no real benefit. Returns false on any I/O failure.
 bool saveGame(const SaveGameState& state, const std::string& path);
+// Writes an older format's layout (for migration tests); fields newer than
+// `version` are left out exactly as that version's files lacked them.
+bool saveGameAsVersion(const SaveGameState& state, const std::string& path, int version);
 
 // Reads a save file written by saveGame(). Returns std::nullopt (not an
 // exception) if the file doesn't exist or is malformed -- "no valid

@@ -249,12 +249,15 @@ bool readStatusEffects(std::istream& in, std::vector<StatusEffectInstance>& effe
 
 } // namespace
 
-static bool writeSaveState(std::ostream& out, const SaveGameState& state, int depth=0) {
+// `version` lets tests write genuine older layouts (each field is written
+// under the same version threshold the reader uses); the game always writes
+// kSaveFormatVersion.
+static bool writeSaveState(std::ostream& out, const SaveGameState& state, int depth=0, int version=kSaveFormatVersion) {
     if (state.extraLives<0 || state.extraLives>2 || (!state.adventureMode && state.extraLives!=0)) return false;
     if (!validDungeonLevels(state.dungeonLevels) || !validItems(state) || !validProgression(state) || state.savedFloors.size()>=kRunFinalFloor ||
         (depth>0 && !state.savedFloors.empty())) return false;
 
-    out << "ROGUELIKE_SAVE " << kSaveFormatVersion << '\n';
+    out << "ROGUELIKE_SAVE " << version << '\n';
 
     const int width = state.map.width();
     const int height = state.map.height();
@@ -296,19 +299,23 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
             << static_cast<int>(m.tier) << ' ' << m.rewardsEligible << '\n';
         writeStatusEffects(out, m.statusEffects);
         writeTalentStates(out, m.talents);
-        out << m.vaultGuard << '\n';
-        out << m.recoveryActions << ' ' << m.summonsCommitted << ' ' << m.announcedPhase << ' ' << m.enraged << '\n';
-        out << m.intent.has_value();
-        if (m.intent) {
-            const auto& intent=*m.intent;
-            out << ' ' << intent.origin.x << ' ' << intent.origin.y << ' ' << intent.target.x << ' ' << intent.target.y
-                << ' ' << intent.radius << ' ' << intent.playerActionsRemaining << ' ' << intent.attackPower << ' ' << static_cast<int>(intent.kind);
+        if (version>=12) out << m.vaultGuard << '\n';
+        if (version>=13) out << m.recoveryActions << ' ' << m.summonsCommitted << ' ' << m.announcedPhase << ' ' << m.enraged << '\n';
+        if (version>=11) {
+            out << m.intent.has_value();
+            if (m.intent) {
+                const auto& intent=*m.intent;
+                out << ' ' << intent.origin.x << ' ' << intent.origin.y << ' ' << intent.target.x << ' ' << intent.target.y
+                    << ' ' << intent.radius << ' ' << intent.playerActionsRemaining << ' ' << intent.attackPower;
+                if (version>=13) out << ' ' << static_cast<int>(intent.kind);
+            }
+            out << '\n';
         }
-        out << '\n';
-        out << m.allied << ' ' << m.summonRank << ' ' << m.summonIntelligence << ' ' << m.remainingLife << '\n';
+        if (version>=15) out << m.allied << ' ' << m.summonRank << ' ' << m.summonIntelligence << ' ' << m.remainingLife << '\n';
         const auto& t=m.tactics;
-        out << t.home.x << ' ' << t.home.y << ' ' << t.lastKnown.x << ' ' << t.lastKnown.y << ' '
-            << t.alert << ' ' << t.patrol << ' ' << t.retreat << ' ' << t.heals << ' ' << t.retreated << ' ' << t.concealed << '\n';
+        if (version>=22)
+            out << t.home.x << ' ' << t.home.y << ' ' << t.lastKnown.x << ' ' << t.lastKnown.y << ' '
+                << t.alert << ' ' << t.patrol << ' ' << t.retreat << ' ' << t.heals << ' ' << t.retreated << ' ' << t.concealed << '\n';
     }
 
     out << state.unspentAttributePoints << ' ' << state.nextItemId << ' ' << state.items.size() << '\n';
@@ -325,19 +332,27 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
     out << state.hotbar.size() << '\n';
     for (const auto& id:state.hotbar) out << (id.empty()?"-":id) << '\n';
     out << state.progressionReviewPending << ' ' << state.pendingFinalVictory << ' ' << std::quoted(state.defeatedBossName) << '\n';
-    out << state.vaultExists << ' ' << state.vaultOpened << ' ' << state.vaultClaimed << ' '
-        << state.vaultCenter.x << ' ' << state.vaultCenter.y << ' ' << state.vaultEntrance.x << ' ' << state.vaultEntrance.y << '\n';
-    out << state.floorEntrance.x << ' ' << state.floorEntrance.y << ' ' << state.floorExit.x << ' ' << state.floorExit.y
-        << ' ' << state.inTown << ' ' << state.gold << ' ' << state.quietTurns << ' ' << state.savedFloors.size() << '\n';
-    for (const auto& floor:state.savedFloors) if (!writeSaveState(out,floor,depth+1)) return false;
-    out << state.bloodRelic << ' ' << state.animationRelic << ' ' << state.deathlessSpentFloors.size();
-    for (int floor:state.deathlessSpentFloors) out << ' ' << floor;
-    out << '\n' << state.dungeonLevels[0] << ' ' << state.dungeonLevels[1] << '\n';
-    out << state.adventureMode << ' ' << state.extraLives << '\n';
-    out << state.landmark << ' ' << state.landmarkAltar.x << ' ' << state.landmarkAltar.y << ' ' << state.landmarkUsed << '\n';
-    out << state.props.size();
-    for (const auto& prop : state.props) out << ' ' << static_cast<int>(prop.kind) << ' ' << prop.pos.x << ' ' << prop.pos.y;
-    out << '\n';
+    if (version>=12)
+        out << state.vaultExists << ' ' << state.vaultOpened << ' ' << state.vaultClaimed << ' '
+            << state.vaultCenter.x << ' ' << state.vaultCenter.y << ' ' << state.vaultEntrance.x << ' ' << state.vaultEntrance.y << '\n';
+    if (version>=14) {
+        out << state.floorEntrance.x << ' ' << state.floorEntrance.y << ' ' << state.floorExit.x << ' ' << state.floorExit.y
+            << ' ' << state.inTown << ' ' << state.gold << ' ' << state.quietTurns << ' ' << state.savedFloors.size() << '\n';
+        for (const auto& floor:state.savedFloors) if (!writeSaveState(out,floor,depth+1,version)) return false;
+    }
+    if (version>=15) {
+        out << state.bloodRelic << ' ' << state.animationRelic << ' ' << state.deathlessSpentFloors.size();
+        for (int floor:state.deathlessSpentFloors) out << ' ' << floor;
+        out << '\n';
+    }
+    if (version>=19) out << state.dungeonLevels[0] << ' ' << state.dungeonLevels[1] << '\n';
+    if (version>=21) out << state.adventureMode << ' ' << state.extraLives << '\n';
+    if (version>=23) out << state.landmark << ' ' << state.landmarkAltar.x << ' ' << state.landmarkAltar.y << ' ' << state.landmarkUsed << '\n';
+    if (version>=24) {
+        out << state.props.size();
+        for (const auto& prop : state.props) out << ' ' << static_cast<int>(prop.kind) << ' ' << prop.pos.x << ' ' << prop.pos.y;
+        out << '\n';
+    }
     return static_cast<bool>(out);
 }
 
@@ -643,8 +658,12 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 }
 
 bool saveGame(const SaveGameState& state, const std::string& path) {
+    return saveGameAsVersion(state, path, kSaveFormatVersion);
+}
+
+bool saveGameAsVersion(const SaveGameState& state, const std::string& path, int version) {
     std::ostringstream payload;
-    if (!writeSaveState(payload,state)) return false;
+    if (!writeSaveState(payload,state,0,version)) return false;
     std::ofstream out(path);
     if (!out.is_open()) return false;
     out << payload.str();

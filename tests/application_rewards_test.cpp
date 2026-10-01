@@ -240,10 +240,7 @@ struct ApplicationRewardsTestAccess {
         auto legacy=app.captureState(false); legacy.playerStatusEffects.clear();
         legacy.monsters[0].talents.pop_back();
         const auto legacyPath=output/"legacy16.txt";
-        check(saveGame(legacy,legacyPath.string()),"Write representative pre-Hex save fixture");
-        { std::ifstream in(legacyPath); std::stringstream text; text<<in.rdbuf();
-          auto contents=text.str(); contents.replace(0,std::string("ROGUELIKE_SAVE 17").size(),"ROGUELIKE_SAVE 16");
-          std::ofstream out(legacyPath); out<<contents; }
+        check(saveGameAsVersion(legacy,legacyPath.string(),16),"Write representative pre-Hex save fixture");
         const auto migrated=loadGame(legacyPath.string());
         check(migrated && app.restoreState(*migrated) && app.monsters_[0]->talents().cooldownRemaining(1)==10,
             "Version-16 Lich migrates with a ten-turn Hex grace period");
@@ -560,11 +557,14 @@ struct ApplicationRewardsTestAccess {
         setup(PlayerClass::Mage); app.mode_=GameMode::Town; app.travelFloor(20,true);
         check(app.currentFloor_==20 && app.boss_,"Underleveled entry and deepest choice are allowed");
         auto oldState=app.captureState(false); const auto oldPath=output/"legacy18.txt";
-        check(saveGame(oldState,oldPath.string()),"Write migration fixture for a pre-lock save");
-        { std::ifstream in(oldPath); std::stringstream data; data<<in.rdbuf(); auto contents=data.str();
-          contents.replace(0,std::string("ROGUELIKE_SAVE 21").size(),"ROGUELIKE_SAVE 18");
-          for(int line=0;line<2;++line) { const auto lastLine=contents.rfind('\n',contents.size()-2); contents.erase(lastLine+1); }
-          std::ofstream out(oldPath); out<<contents; }
+        // A real version-18 save can't hold monster kinds added in version 22.
+        const auto version18Monsters=[](auto& monsters) {
+            monsters.erase(std::remove_if(monsters.begin(),monsters.end(),[](const auto& m){
+                return static_cast<int>(m.type)>static_cast<int>(MonsterType::OssuaryWarden); }),monsters.end());
+        };
+        version18Monsters(oldState.monsters);
+        for(auto& floor:oldState.savedFloors) version18Monsters(floor.monsters);
+        check(saveGameAsVersion(oldState,oldPath.string(),18),"Write migration fixture for a pre-lock save");
         const auto oldLoaded=loadGame(oldPath.string());
         check(oldLoaded && oldLoaded->dungeonLevels[1]==0 && app.restoreState(*oldLoaded),"Version 18 migrates to depth-based difficulty");
 
