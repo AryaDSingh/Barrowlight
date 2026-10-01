@@ -462,6 +462,24 @@ struct ApplicationRewardsTestAccess {
         roundTrip();
         check(app.landmark_==LandmarkKind::Shrine && app.landmarkUsed_ && app.landmarkAltar_.x==11,"Save/load keeps the landmark and its state");
 
+        // The other landmarks: one offer each, all spent by using them.
+        setup(PlayerClass::Mage);
+        app.landmarkAltar_={11,10}; app.map_.setTile(11,10,Tile{TileType::Wall,false,false}); app.updateFieldOfView();
+        app.landmark_=LandmarkKind::HealingFountain; app.player_.stats().hp=30;
+        app.player_.statusEffects().apply({StatusEffectType::Poison,5,2});
+        app.pickupItem(); snapshot("ui-fountain.png"); clickOn(screen::shrineChoice(1));
+        check(app.landmarkUsed_ && app.player_.stats().hp==app.player_.stats().maxHp && !app.player_.statusEffects().has(StatusEffectType::Poison),
+            "The healing fountain restores life and washes away poison");
+        app.landmark_=LandmarkKind::BloodFont; app.landmarkUsed_=false;
+        const int maxBefore=app.player_.baseStats().maxHp;
+        app.pickupItem(); app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Enter});
+        check(app.landmarkUsed_ && app.player_.baseStats().maxHp==maxBefore+4 && app.player_.stats().hp<app.player_.stats().maxHp,
+            "The blood font trades current life for permanent maximum life");
+        app.landmark_=LandmarkKind::RitualCircle; app.landmarkUsed_=false;
+        app.pickupItem(); clickOn(screen::shrineChoice(1));
+        check(app.landmarkUsed_ && app.player_.unspentAttributePoints()==1 && app.player_.statusEffects().has(StatusEffectType::Doom) &&
+            app.mode_==GameMode::AttributeAllocation,"The ritual circle grants an attribute point and lays a Doom curse");
+
         setup(PlayerClass::Mage);
         app.vaultExists_=true; app.vaultEntrance_={11,10}; app.vaultMenu_=1;
         snapshot("ui-vault-warning.png"); clickOn(screen::vaultCancel(1));

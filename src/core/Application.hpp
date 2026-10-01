@@ -291,8 +291,9 @@ private:
     int propIndexAt(int x, int y) const;
     bool nearAltar() const;
     void openShrine();
-    std::string blessingCost(int choice) const;
-    bool canAffordBlessing(int choice) const;
+    struct LandmarkChoice { std::string name, icon, effect, cost; bool affordable; };
+    std::vector<LandmarkChoice> landmarkChoices() const;
+    sf::Color landmarkLightColor() const;
     void chooseBlessing(int choice);
     void handleShrineKey(sf::Keyboard::Key key);
     void handleShrineMouse(const sf::Event& event);

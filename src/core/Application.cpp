@@ -1993,7 +1993,7 @@ void Application::render() {
 
     const auto isWallAt = [&](int x, int y) {
         if (!map_.inBounds(x, y)) return true;
-        if (landmark_ != LandmarkKind::None && x == landmarkAltar_.x && y == landmarkAltar_.y) return false;
+        if (landmarkAltarIsFloor(landmark_) && x == landmarkAltar_.x && y == landmarkAltar_.y) return false;
         if (propIndexAt(x, y) >= 0) return false;
         return map_.tileAt(x, y).type == TileType::Wall;
     };
@@ -2047,15 +2047,16 @@ void Application::render() {
                 continue;
             }
             if (floorTexture) SpriteAtlas::append(floors, floorFrame(x, y, theme.region), at, kTileSize, shadeFor(vis, floorTint));
-            if (wallTexture && landmark_ != LandmarkKind::None &&
-                std::abs(x - landmarkAltar_.x) <= 1 && std::abs(y - landmarkAltar_.y) <= 1)
-                SpriteAtlas::append(dais, {kEvilDungeon, sf::IntRect({96, 0}, {32, 32})}, at, kTileSize, shadeFor(vis, sf::Color(235, 215, 185)));
             else {
                 sf::RectangleShape tileShape({kTileSize - 1.f, kTileSize - 1.f});
                 tileShape.setPosition(at);
                 tileShape.setFillColor(shadeFor(vis, themeColor(theme.floor)));
                 window_.draw(tileShape);
             }
+            // The shrine's statue stands on a raised stone dais.
+            if (wallTexture && landmark_ == LandmarkKind::Shrine &&
+                std::abs(x - landmarkAltar_.x) <= 1 && std::abs(y - landmarkAltar_.y) <= 1)
+                SpriteAtlas::append(dais, {kEvilDungeon, sf::IntRect({96, 0}, {32, 32})}, at, kTileSize, shadeFor(vis, sf::Color(235, 215, 185)));
             // Soft shadow along every wall edge: walls feel solid and rooms gain depth.
             const sf::Color dark(0, 0, 0, 120), clear(0, 0, 0, 0);
             if (isWallAt(x, y - 1)) quad(shadows, at, {kTileSize, 11}, dark, clear, true);
@@ -2135,10 +2136,12 @@ void Application::render() {
     if (landmark_ != LandmarkKind::None && !landmarkUsed_ &&
         exploredMap_.at(landmarkAltar_.x, landmarkAltar_.y) == Visibility::Visible) {
         const auto at = worldToScreen(landmarkAltar_.x, landmarkAltar_.y);
-        lights.push_back({{at.x + kTileSize / 2, at.y + kTileSize / 2}, sf::Color(255, 205, 120)});
+        // Fountains light the floor they spill onto.
+        const float below = landmarkAltarIsFloor(landmark_) ? 0.5f : 1.5f;
+        lights.push_back({{at.x + kTileSize / 2, at.y + kTileSize * below}, landmarkLightColor()});
     }
     // Braziers burn on the four pillars that frame a landmark altar.
-    if (landmark_ != LandmarkKind::None)
+    if (landmark_ == LandmarkKind::Shrine)
         for (const Position offset : {Position{-3, -1}, Position{3, -1}, Position{-3, 1}, Position{3, 1}}) {
             const Position p{landmarkAltar_.x + offset.x, landmarkAltar_.y + offset.y};
             if (!map_.inBounds(p.x, p.y) || map_.tileAt(p.x, p.y).type != TileType::Wall || propIndexAt(p.x, p.y) >= 0 ||

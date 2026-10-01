@@ -43,7 +43,9 @@ const std::vector<ModuleTemplate>& regularModules();
 const ModuleTemplate& bossModule();
 // Holds the sealed vault room; its gate is exactly 3 tiles from the cache.
 const ModuleTemplate& vaultModule();
-// Set pieces with an event (each has one S). Index matches LandmarkKind - 1.
+// Set pieces with an event (each has one S): Shrine, Fountain Court (both
+// fountains), Ritual Chamber. Landmarks are never mirrored top-to-bottom, so
+// a fountain's wall face always faces the camera.
 const std::vector<ModuleTemplate>& landmarkModules();
 
 // One message per broken authoring rule across every module; empty when

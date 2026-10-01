@@ -90,7 +90,7 @@ void checkFloor(const GeneratedDungeon& d, const DungeonGenerationParams& params
     std::set<std::string> regular;
     for (const auto& name : d.moduleNames)
         if (name != bossModule().name && name != vaultModule().name && name.rfind("Procedural", 0) != 0 &&
-            name != landmarkModules()[0].name)
+            name != landmarkModules()[0].name && name != landmarkModules()[1].name && name != landmarkModules()[2].name)
             check(regular.insert(name).second, "hand-made modules are distinct" + where);
 
     check(d.landmark == LandmarkKind::None || !params.includeBossRoom, "boss floors have no landmark" + where);

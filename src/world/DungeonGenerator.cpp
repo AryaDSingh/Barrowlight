@@ -147,6 +147,10 @@ constexpr float kExtraConnectionChance = 0.65f;
 
 struct Edge { int a, b; };
 
+std::size_t landmarkModuleIndex(LandmarkKind kind) {
+    return kind == LandmarkKind::Shrine ? 0 : kind == LandmarkKind::RitualCircle ? 2 : 1;
+}
+
 std::vector<Edge> gridEdges() {
     std::vector<Edge> edges;
     for (int r = 0; r < kModuleGrid; ++r)
@@ -235,6 +239,12 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
             if (cell != startCell && cell != finalCell && cell != vaultCell) candidates.push_back(cell);
         landmarkCell = candidates[std::uniform_int_distribution<std::size_t>(0, candidates.size() - 1)(rng)];
     }
+    // Which set piece: shrines are commonest near the surface, dark rites below.
+    std::array<int, 4> landmarkWeights{3, 2, 1, 1}; // Shrine, Healing Fountain, Blood Font, Ritual Circle
+    if (params.region == FloorRegion::Sanctum) landmarkWeights = {2, 2, 1, 2};
+    if (params.region == FloorRegion::Crypts) landmarkWeights = {1, 1, 2, 3};
+    const auto landmarkKind = static_cast<LandmarkKind>(
+        std::discrete_distribution<int>(landmarkWeights.begin(), landmarkWeights.end())(rng) + 1);
 
     // --- Pick and stamp modules -------------------------------------------
     const auto& pool = regularModules();
@@ -257,11 +267,12 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
         if (procedural) generated = proceduralModule(pickProceduralStyle(params.region, rng), rng);
         const ModuleTemplate& module = cell == bossCell ? bossModule()
                                      : cell == vaultCell ? vaultModule()
-                                     : cell == landmarkCell ? landmarkModules()[0]
+                                     : cell == landmarkCell ? landmarkModules()[landmarkModuleIndex(landmarkKind)]
                                      : procedural ? generated
                                      : pool[picks[nextPick++ % picks.size()]];
         result.moduleNames[cell] = module.name;
-        const auto rows = mirrored(module.rows, coin(rng) == 1, coin(rng) == 1);
+        const bool flipX = coin(rng) == 1, flipY = coin(rng) == 1 && cell != landmarkCell;
+        const auto rows = mirrored(module.rows, flipX, flipY);
         const int originX = (cell % kModuleGrid) * kModuleWidth;
         const int originY = (cell / kModuleGrid) * kModuleHeight;
         for (int y = 0; y < kModuleHeight; ++y)
@@ -307,7 +318,7 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
         result.bossRoomCenter = {(bossCell % kModuleGrid) * kModuleWidth + kModuleWidth / 2,
                                  (bossCell / kModuleGrid) * kModuleHeight + kModuleHeight / 2};
     result.roomCount = kCells;
-    if (landmarkCell >= 0) result.landmark = LandmarkKind::Shrine;
+    if (landmarkCell >= 0) result.landmark = landmarkKind;
     placeProps(result, params.region, rng);
     return result;
 }
