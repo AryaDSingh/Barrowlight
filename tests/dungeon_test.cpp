@@ -94,6 +94,12 @@ void checkFloor(const GeneratedDungeon& d, const DungeonGenerationParams& params
             check(regular.insert(name).second, "hand-made modules are distinct" + where);
 
     check(d.landmark == LandmarkKind::None || !params.includeBossRoom, "boss floors have no landmark" + where);
+    check(!d.props.empty(), "floors have some props" + where);
+    for (const Prop& prop : d.props)
+        for (int i = 0; i < propWidth(prop.kind); ++i) {
+            const auto& tile = map.tileAt(prop.pos.x + i, prop.pos.y);
+            check(!tile.walkable && tile.transparent, "props block movement but not sight" + where);
+        }
     if (d.landmark != LandmarkKind::None) {
         const Position a = d.landmarkAltar;
         check(!map.isWalkable(a.x, a.y), "the landmark altar is solid" + where);

@@ -40,7 +40,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 23;
+constexpr int kSaveFormatVersion = 24;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -335,6 +335,9 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
     out << '\n' << state.dungeonLevels[0] << ' ' << state.dungeonLevels[1] << '\n';
     out << state.adventureMode << ' ' << state.extraLives << '\n';
     out << state.landmark << ' ' << state.landmarkAltar.x << ' ' << state.landmarkAltar.y << ' ' << state.landmarkUsed << '\n';
+    out << state.props.size();
+    for (const auto& prop : state.props) out << ' ' << static_cast<int>(prop.kind) << ' ' << prop.pos.x << ' ' << prop.pos.y;
+    out << '\n';
     return static_cast<bool>(out);
 }
 
@@ -342,7 +345,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
+    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
         return std::nullopt;
     }
 
@@ -604,6 +607,20 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
     if(version>=21 && (!(in>>state.adventureMode>>state.extraLives) || state.extraLives<0 || state.extraLives>2 || (!state.adventureMode && state.extraLives!=0))) return std::nullopt;
     if (version>=23 && !(in>>state.landmark>>state.landmarkAltar.x>>state.landmarkAltar.y>>state.landmarkUsed)) return std::nullopt;
     if (state.landmark<0 || state.landmark>=kLandmarkKindCount) return std::nullopt;
+    if (version>=24) {
+        std::size_t count=0;
+        if (!(in>>count) || count>500) return std::nullopt;
+        for (std::size_t i=0;i<count;++i) {
+            int kind=0; Position pos;
+            if (!(in>>kind>>pos.x>>pos.y) || kind<kPropKindMin || kind>kPropKindMax) return std::nullopt;
+            const Prop prop{static_cast<PropKind>(kind),pos};
+            for (int t=0;t<propWidth(prop.kind);++t) {
+                if (!state.map.inBounds(pos.x+t,pos.y) || state.map.isWalkable(pos.x+t,pos.y)) return std::nullopt;
+                state.map.setTile(pos.x+t,pos.y,Tile{TileType::Wall,false,true}); // props don't block sight
+            }
+            state.props.push_back(prop);
+        }
+    }
     if (state.landmark && (!state.map.inBounds(state.landmarkAltar.x,state.landmarkAltar.y) ||
         state.map.isWalkable(state.landmarkAltar.x,state.landmarkAltar.y))) return std::nullopt;
     if (version>=15 && state.currentFloor<kRunFinalFloor && !state.map.isWalkable(state.floorExit.x,state.floorExit.y)) return std::nullopt;

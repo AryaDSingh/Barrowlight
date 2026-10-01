@@ -1,6 +1,7 @@
 #include "world/DungeonGenerator.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <array>
 #include <numeric>
 #include <queue>
@@ -12,6 +13,79 @@
 namespace engine {
 
 namespace {
+
+// Props stand against walls, away from encounters, the start, sockets and
+// set pieces, and only where they leave every floor tile reachable.
+void placeProps(GeneratedDungeon& d, FloorRegion region, std::mt19937& rng) {
+    Map& map = d.map;
+    const int w = map.width(), h = map.height();
+    const auto reachable = [&]() {
+        std::vector<bool> seen(static_cast<std::size_t>(w * h), false);
+        std::queue<Position> frontier;
+        frontier.push(d.playerStart);
+        seen[static_cast<std::size_t>(d.playerStart.y * w + d.playerStart.x)] = true;
+        int count = 0;
+        while (!frontier.empty()) {
+            const Position p = frontier.front();
+            frontier.pop();
+            ++count;
+            for (const Position step : {Position{1, 0}, Position{-1, 0}, Position{0, 1}, Position{0, -1}}) {
+                const Position n{p.x + step.x, p.y + step.y};
+                if (!map.isWalkable(n.x, n.y)) continue;
+                const auto i = static_cast<std::size_t>(n.y * w + n.x);
+                if (!seen[i]) { seen[i] = true; frontier.push(n); }
+            }
+        }
+        return count;
+    };
+    const auto near = [](Position a, Position b, int r) { return std::abs(a.x - b.x) <= r && std::abs(a.y - b.y) <= r; };
+    const auto allowed = [&](Position p) {
+        if (!map.isWalkable(p.x, p.y) || map.tileAt(p.x, p.y).type != TileType::Floor) return false;
+        const int lx = p.x % kModuleWidth, ly = p.y % kModuleHeight;
+        if ((lx >= 8 && lx <= 12 && (ly <= 2 || ly >= kModuleHeight - 3)) ||
+            (ly >= 4 && ly <= 8 && (lx <= 2 || lx >= kModuleWidth - 3))) return false; // keep sockets clear
+        if (near(p, d.playerStart, 2)) return false;
+        for (const Position& a : d.otherRoomCenters) if (near(p, a, 2)) return false;
+        if (d.hasBossRoom && near(p, d.bossRoomCenter, 4)) return false;
+        if (d.hasVault && near(p, d.vaultCenter, 4)) return false;
+        if (d.landmark != LandmarkKind::None && near(p, d.landmarkAltar, 4)) return false;
+        for (const Prop& prop : d.props)
+            for (int i = 0; i < propWidth(prop.kind); ++i)
+                if (near(p, {prop.pos.x + i, prop.pos.y}, 1)) return false; // never clumped
+        // Against a wall: props line rooms instead of floating in them.
+        const auto wall = [&](int x, int y) { return map.inBounds(x, y) && map.tileAt(x, y).type == TileType::Wall; };
+        return wall(p.x, p.y - 1) || wall(p.x - 1, p.y) || wall(p.x + 1, p.y);
+    };
+
+    // Weights per kind: Barrel, Crate, Sacks, Throne, SkeletonThrone, Statue.
+    std::array<int, 6> weights{4, 4, 2, 1, 0, 0};
+    if (region == FloorRegion::Sanctum) weights = {1, 1, 0, 2, 0, 2};
+    if (region == FloorRegion::Crypts) weights = {0, 1, 0, 1, 2, 1};
+    std::discrete_distribution<int> pickKind(weights.begin(), weights.end());
+
+    std::vector<Position> candidates;
+    for (int y = 1; y < h - 1; ++y)
+        for (int x = 1; x < w - 1; ++x) candidates.push_back({x, y});
+    std::shuffle(candidates.begin(), candidates.end(), rng);
+    const int target = std::uniform_int_distribution<int>(10, 16)(rng);
+    int baseline = reachable();
+    for (const Position p : candidates) {
+        if (static_cast<int>(d.props.size()) >= target) break;
+        const auto kind = static_cast<PropKind>(pickKind(rng) + 1);
+        const int width = propWidth(kind);
+        bool fits = true;
+        for (int i = 0; i < width && fits; ++i) fits = allowed({p.x + i, p.y});
+        if (!fits) continue;
+        for (int i = 0; i < width; ++i) map.setTile(p.x + i, p.y, Tile{TileType::Wall, false, true});
+        const int now = reachable();
+        if (now != baseline - width) {
+            for (int i = 0; i < width; ++i) map.setTile(p.x + i, p.y, Tile{TileType::Floor, true, true});
+            continue;
+        }
+        baseline = now;
+        d.props.push_back({kind, p});
+    }
+}
 
 constexpr int kCells = kModuleGrid * kModuleGrid;
 // Chance that a neighbor pair not already joined by the spanning tree is
@@ -182,6 +256,7 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
                                  (bossCell / kModuleGrid) * kModuleHeight + kModuleHeight / 2};
     result.roomCount = kCells;
     if (landmarkCell >= 0) result.landmark = LandmarkKind::Shrine;
+    placeProps(result, params.region, rng);
     return result;
 }
 

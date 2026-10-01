@@ -116,6 +116,7 @@ set(WORLD_HEADERS
     src/world/DungeonModules.hpp
     src/world/ProceduralModules.hpp
     src/world/Landmark.hpp
+    src/world/Props.hpp
 )
 
 set(AI_HEADERS

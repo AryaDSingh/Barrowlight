@@ -284,6 +284,11 @@ private:
     Position landmarkAltar_{};
     bool landmarkUsed_ = false;
     bool shrineMenu_ = false;
+    // Blocking props on this floor, and which one covers each tile (-1: none).
+    std::vector<Prop> props_;
+    std::vector<int> propAt_;
+    void setProps(std::vector<Prop> props);
+    int propIndexAt(int x, int y) const;
     bool nearAltar() const;
     void openShrine();
     std::string blessingCost(int choice) const;

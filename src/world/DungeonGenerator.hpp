@@ -7,6 +7,7 @@
 #include "world/FloorTheme.hpp"
 #include "world/Landmark.hpp"
 #include "world/Map.hpp"
+#include "world/Props.hpp"
 
 namespace engine {
 
@@ -40,6 +41,9 @@ struct GeneratedDungeon {
     std::vector<std::string> moduleNames;     // row-major, for debugging/printing
     LandmarkKind landmark = LandmarkKind::None;
     Position landmarkAltar{};                 // the solid altar tile; valid if landmark != None
+    // Blocking furniture and statues, already marked in `map` as solid but
+    // see-through tiles. Never placed where it would cut off any floor.
+    std::vector<Prop> props;
 };
 
 // Builds a floor from a 3x3 grid of module-sized cells (see

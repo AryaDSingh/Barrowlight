@@ -55,6 +55,7 @@ struct ApplicationRewardsTestAccess {
             app.autoExploring_=false; app.restTurns_=0; app.quietTurns_=0; app.combatThisTurn_=false;
             app.vaultExists_=app.vaultOpened_=app.vaultClaimed_=false; app.vaultMenu_=0; app.exitMenu_=false;
             app.landmark_=LandmarkKind::None; app.landmarkUsed_=false; app.shrineMenu_=false;
+            app.setProps({});
             app.floorCache_.clear(); app.floorEntrance_={1,1}; app.floorExit_={30,20};
             app.currentFloor_ = 1; app.boss_ = nullptr;
             app.pendingFinalVictory_ = false;

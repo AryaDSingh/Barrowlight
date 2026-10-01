@@ -45,6 +45,7 @@ struct ApplicationTargetingTestAccess {
             app.player_.talents()=talentSetForClass(PlayerClass::Mage);
             app.player_.statusEffects().active().clear();
             app.map_=Map(50,30);
+            app.setProps({}); app.landmark_=LandmarkKind::None;
             for(int y=0;y<30;++y) for(int x=0;x<50;++x) {
                 const bool edge=x==0||y==0||x==49||y==29;
                 app.map_.setTile(x,y,Tile{edge?TileType::Wall:TileType::Floor,!edge,!edge});

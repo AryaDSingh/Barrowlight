@@ -18,6 +18,7 @@
 #include "entities/StatusEffects.hpp"
 #include "world/ExploredMap.hpp"
 #include "world/Map.hpp"
+#include "world/Props.hpp"
 
 namespace engine {
 
@@ -86,6 +87,9 @@ struct SaveGameState {
     int landmark=0;
     Position landmarkAltar{};
     bool landmarkUsed=false;
+    // Blocking props (version 24+). Their tiles are saved as walls; loading
+    // makes them see-through again.
+    std::vector<Prop> props;
     struct TalentSaveData {
         std::string id;
         int cooldown = 0;

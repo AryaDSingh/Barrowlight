@@ -194,6 +194,20 @@ SpriteFrame floorFrame(int x, int y, FloorRegion region) {
     return {kCobbles, sf::IntRect({column * 16, top + row * 16}, {16, 16})};
 }
 
+// Prop art: thrones and statues from Evil Dungeon (32px), barrels, crates
+// and sacks from the Calciumtrice tileset (16px).
+std::pair<SpriteFrame, const char*> propFrame(PropKind kind) {
+    switch (kind) {
+        case PropKind::Barrel: return {{kTileset, sf::IntRect({64, 304}, {16, 16})}, kTileset};
+        case PropKind::Crate: return {{kTileset, sf::IntRect({0, 304}, {16, 16})}, kTileset};
+        case PropKind::Sacks: return {{kTileset, sf::IntRect({112, 304}, {16, 16})}, kTileset};
+        case PropKind::Throne: return {{kEvilDungeon, sf::IntRect({28, 384}, {40, 64})}, kEvilDungeon};
+        case PropKind::SkeletonThrone: return {{kEvilDungeon, sf::IntRect({124, 384}, {40, 72})}, kEvilDungeon};
+        case PropKind::Statue: return {{kEvilDungeon, sf::IntRect({176, 408}, {72, 112})}, kEvilDungeon};
+    }
+    return {{kTileset, sf::IntRect({64, 304}, {16, 16})}, kTileset};
+}
+
 // --- Decorations -------------------------------------------------------
 // Purely visual: derived from the map, tile position and floor number at
 // draw time, so they never block anything, need no save data, and work on
@@ -361,6 +375,20 @@ void Application::drawText(const std::string& text, float x, float y, unsigned i
 }
 
 SpriteFrame Application::playerSpriteFrame() const { return playerFrame(playerClass_); }
+
+void Application::setProps(std::vector<Prop> props) {
+    props_ = std::move(props);
+    propAt_.assign(static_cast<std::size_t>(std::max(0, map_.width() * map_.height())), -1);
+    for (std::size_t i = 0; i < props_.size(); ++i)
+        for (int t = 0; t < propWidth(props_[i].kind); ++t)
+            if (map_.inBounds(props_[i].pos.x + t, props_[i].pos.y))
+                propAt_[static_cast<std::size_t>(props_[i].pos.y * map_.width() + props_[i].pos.x + t)] = static_cast<int>(i);
+}
+
+int Application::propIndexAt(int x, int y) const {
+    if (!map_.inBounds(x, y) || propAt_.size() != static_cast<std::size_t>(map_.width() * map_.height())) return -1;
+    return propAt_[static_cast<std::size_t>(y * map_.width() + x)];
+}
 
 // A soft oval at the feet keeps sprites from floating over the floor.
 void Application::drawActorShadow(sf::Vector2f tileTopLeft) {
@@ -1448,6 +1476,7 @@ void Application::regenerateLevel(unsigned int seed) {
     landmark_=dungeon.landmark; landmarkAltar_=dungeon.landmarkAltar; landmarkUsed_=false; shrineMenu_=false;
 
     map_ = dungeon.map;
+    setProps(dungeon.props);
 
     player_.setPosition(dungeon.playerStart);
     floorEntrance_=dungeon.playerStart; floorExit_={-1,-1};
@@ -1560,6 +1589,7 @@ SaveGameState Application::captureState(bool includeFloors) {
     state.chestPosition = chestPosition_; state.chestExists = chestExists_; state.chestClaimed = chestClaimed_;
     state.ordinaryDrops = ordinaryDrops_;
     state.landmark=static_cast<int>(landmark_); state.landmarkAltar=landmarkAltar_; state.landmarkUsed=landmarkUsed_;
+    state.props=props_;
     state.vaultExists=vaultExists_; state.vaultOpened=vaultOpened_; state.vaultClaimed=vaultClaimed_;
     state.vaultCenter=vaultCenter_; state.vaultEntrance=vaultEntrance_;
     const auto saveItem = [&](const Item& item, int location) {
@@ -1707,6 +1737,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     chestPosition_ = state.chestPosition; chestExists_ = state.chestExists; chestClaimed_ = state.chestClaimed;
     ordinaryDrops_ = state.ordinaryDrops;
     landmark_=static_cast<LandmarkKind>(state.landmark); landmarkAltar_=state.landmarkAltar; landmarkUsed_=state.landmarkUsed;
+    setProps(state.props);
     vaultExists_=state.vaultExists; vaultOpened_=state.vaultOpened; vaultClaimed_=state.vaultClaimed;
     vaultCenter_=state.vaultCenter; vaultEntrance_=state.vaultEntrance;
     vaultRewards_.clear(); if (vaultExists_ && !vaultClaimed_) vaultRewards_.resize(3);
@@ -1963,6 +1994,7 @@ void Application::render() {
     const auto isWallAt = [&](int x, int y) {
         if (!map_.inBounds(x, y)) return true;
         if (landmark_ != LandmarkKind::None && x == landmarkAltar_.x && y == landmarkAltar_.y) return false;
+        if (propIndexAt(x, y) >= 0) return false;
         return map_.tileAt(x, y).type == TileType::Wall;
     };
     const auto shadeFor = [](Visibility vis, sf::Color c) { return vis == Visibility::Visible ? c : dim(c); };
@@ -1970,16 +2002,17 @@ void Application::render() {
 
     // --- Pass 1: floors, wall tops (seen from above) and contact shadows -------
     sf::VertexArray tops(sf::PrimitiveType::Triangles), shadows(sf::PrimitiveType::Triangles);
+    const sf::Texture* wallTexture = sprites_.texture(kEvilDungeon);
     // Floors, wall faces and decorations all come from the dungeon tileset,
     // so each pass is one batched draw call.
     const sf::Texture* tileset = sprites_.texture(kTileset);
     const sf::Texture* floorTexture = sprites_.texture(floorSheet(theme.region));
+    sf::VertexArray wallTops(sf::PrimitiveType::Triangles), dais(sf::PrimitiveType::Triangles);
     // The cobble art carries its own colour, so it gets a soft, slightly
     // desaturating tint rather than the full theme colour.
     const sf::Color floorTint = theme.region == FloorRegion::Barracks ? themeTint(themeColor(theme.floor), 2.3f)
                               : theme.region == FloorRegion::Sanctum ? sf::Color(150, 138, 150)
                               : themeTint(themeColor(theme.floor), 1.6f);
-    const sf::Texture* wallTexture = sprites_.texture(kEvilDungeon);
     sf::VertexArray floors(sf::PrimitiveType::Triangles), faces(sf::PrimitiveType::Triangles),
         details(sf::PrimitiveType::Triangles), feet(sf::PrimitiveType::Triangles);
     const auto quad = [](sf::VertexArray& va, sf::Vector2f p, sf::Vector2f s, sf::Color a, sf::Color b, bool vertical) {
@@ -2004,14 +2037,19 @@ void Application::render() {
                                      static_cast<std::uint8_t>(std::clamp(wallTop.g * f + vary, 0.f, 255.f)),
                                      static_cast<std::uint8_t>(std::clamp(wallTop.b * f + vary, 0.f, 255.f)));
                 };
-                const sf::Color fill = shadeFor(vis, top(1.05f)), rim = shadeFor(vis, top(2.0f));
-                quad(tops, at, {kTileSize, kTileSize}, fill, fill, true);
+                const sf::Color rim = shadeFor(vis, top(2.0f));
+                if (wallTexture) SpriteAtlas::append(wallTops, {kEvilDungeon, sf::IntRect({64, 0}, {32, 32})}, at, kTileSize,
+                                                     shadeFor(vis, top(2.6f)));
+                else quad(tops, at, {kTileSize, kTileSize}, shadeFor(vis, top(1.05f)), shadeFor(vis, top(1.05f)), true);
                 if (!isWallAt(x - 1, y)) quad(tops, at, {2, kTileSize}, rim, rim, true);
                 if (!isWallAt(x + 1, y)) quad(tops, {at.x + kTileSize - 2, at.y}, {2, kTileSize}, rim, rim, true);
                 if (!isWallAt(x, y - 1)) quad(tops, at, {kTileSize, 2}, rim, rim, true);
                 continue;
             }
             if (floorTexture) SpriteAtlas::append(floors, floorFrame(x, y, theme.region), at, kTileSize, shadeFor(vis, floorTint));
+            if (wallTexture && landmark_ != LandmarkKind::None &&
+                std::abs(x - landmarkAltar_.x) <= 1 && std::abs(y - landmarkAltar_.y) <= 1)
+                SpriteAtlas::append(dais, {kEvilDungeon, sf::IntRect({96, 0}, {32, 32})}, at, kTileSize, shadeFor(vis, sf::Color(235, 215, 185)));
             else {
                 sf::RectangleShape tileShape({kTileSize - 1.f, kTileSize - 1.f});
                 tileShape.setPosition(at);
@@ -2026,6 +2064,7 @@ void Application::render() {
         }
     }
     if (floorTexture) window_.draw(floors, sf::RenderStates(floorTexture));
+    if (wallTexture) { window_.draw(dais, sf::RenderStates(wallTexture)); window_.draw(wallTops, sf::RenderStates(wallTexture)); }
     window_.draw(tops);
     window_.draw(shadows);
 
@@ -2059,7 +2098,17 @@ void Application::render() {
                 }
                 if (vis == Visibility::Visible) lights.push_back({{at.x + kTileSize / 2, at.y + kTileSize / 2}, sf::Color(120, 160, 255)});
             }
-            switch (altarTile ? Decor::None : decorAt(map_, x, y, currentFloor_, theme.region)) {
+            if (const int index = propIndexAt(x, y); index >= 0 && props_[static_cast<std::size_t>(index)].pos.x == x) {
+                const Prop& prop = props_[static_cast<std::size_t>(index)];
+                const auto [frame, sheet] = propFrame(prop.kind);
+                const float width = kTileSize * propWidth(prop.kind);
+                const float scale = (sheet == kEvilDungeon ? kTileSize / 32.f : kTileSize / 16.f);
+                const float size = std::max(frame.rect.size.x, frame.rect.size.y) * scale;
+                drawActorShadow({at.x + (width - kTileSize) / 2, at.y});
+                SpriteAtlas::append(sheet == kEvilDungeon ? faces : details, frame,
+                                    {at.x + (width - size) / 2, at.y + kTileSize - size + 2}, size, shade(sf::Color(225, 215, 205)));
+            }
+            switch (altarTile || propIndexAt(x, y) >= 0 ? Decor::None : decorAt(map_, x, y, currentFloor_, theme.region)) {
                 case Decor::Torch:
                     SpriteAtlas::append(details, torchFrame(x, y, now), {at.x, at.y - kTileSize * 0.45f}, kTileSize, shade(sf::Color::White));
                     if (vis == Visibility::Visible) lights.push_back({{at.x + kTileSize / 2, at.y}, sf::Color(255, 160, 80)});
@@ -2088,6 +2137,16 @@ void Application::render() {
         const auto at = worldToScreen(landmarkAltar_.x, landmarkAltar_.y);
         lights.push_back({{at.x + kTileSize / 2, at.y + kTileSize / 2}, sf::Color(255, 205, 120)});
     }
+    // Braziers burn on the four pillars that frame a landmark altar.
+    if (landmark_ != LandmarkKind::None)
+        for (const Position offset : {Position{-3, -1}, Position{3, -1}, Position{-3, 1}, Position{3, 1}}) {
+            const Position p{landmarkAltar_.x + offset.x, landmarkAltar_.y + offset.y};
+            if (!map_.inBounds(p.x, p.y) || map_.tileAt(p.x, p.y).type != TileType::Wall || propIndexAt(p.x, p.y) >= 0 ||
+                exploredMap_.at(p.x, p.y) != Visibility::Visible) continue;
+            const auto at = worldToScreen(p.x, p.y);
+            sprites_.draw(window_, torchFrame(p.x, p.y, now), {at.x - 2, at.y - kTileSize * 0.75f}, kTileSize + 4);
+            lights.push_back({{at.x + kTileSize / 2, at.y - kTileSize * 0.2f}, sf::Color(255, 160, 80)});
+        }
     renderGroundItems();
     for (auto& m : monsters_) {
         if (m->stats().hp <= 0) {
