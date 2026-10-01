@@ -12,6 +12,7 @@
 #include "world/EncounterPlan.hpp"
 #include "world/LineOfFire.hpp"
 #include "core/Application.hpp"
+#include "core/ScreenLayout.hpp"
 #include "entities/MonsterFactory.hpp"
 #include "entities/PlayerClassFactory.hpp"
 #include "entities/StatusEffectLogic.hpp"
@@ -48,7 +49,7 @@ struct ApplicationRewardsTestAccess {
         };
         auto setup = [&](PlayerClass cls) {
             app.cancelTargeting(); app.mousePixel_.reset(); app.talentPage_ = 0;
-            app.codexOpen_=false; app.inventoryDragSource_.reset();
+            app.inventoryDragSource_.reset();
             app.dungeonMenu_=false;
             app.mode_ = GameMode::Playing; app.playerClass_ = cls;
             app.autoExploring_=false; app.restTurns_=0; app.quietTurns_=0; app.combatThisTurn_=false;
@@ -364,43 +365,47 @@ struct ApplicationRewardsTestAccess {
         auto click=[&](int x,int y,sf::Mouse::Button button=sf::Mouse::Button::Left) {
             app.handleEvent(sf::Event::MouseButtonPressed{button,{x,y}});
         };
+        auto clickOn=[&](const sf::FloatRect& r,sf::Mouse::Button button=sf::Mouse::Button::Left) {
+            const auto c=screen::center(r); click(c.x,c.y,button);
+        };
         auto release=[&](int x,int y) { app.handleEvent(sf::Event::MouseButtonReleased{sf::Mouse::Button::Left,{x,y}}); };
         auto addItem=[&](const char* id) { app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition(id),app.nextItemId_++)); };
         setup(PlayerClass::Mage);
-        app.mode_=GameMode::GameOver; snapshot("ui-game-over.png"); click(100,190);
+        app.mode_=GameMode::GameOver; snapshot("ui-game-over.png"); clickOn(screen::kRestart);
         check(app.mode_==GameMode::ClassSelection,"Restart click opens class selection");
-        snapshot("ui-class-selection.png"); click(120,290);
+        snapshot("ui-class-selection.png"); clickOn(screen::classCard(1));
         check(app.playerClass_==PlayerClass::Mage && app.mode_==GameMode::AbilityChoice && app.player_.treePoints()==1 && app.player_.abilityPoints()==3,
             "Class card starts Mage without spending talent points");
         snapshot("ui-talent-start.png"); click(1140,40);
         check(app.mode_==GameMode::AbilityChoice,"Continue cannot bypass the first tree choice");
         // Find the visible Fire row without assuming undiscovered trees are displayed.
         std::size_t fire=0; while(std::string(kTalentTrees[fire].id)!="fire") ++fire;
-        click(70,185+30*static_cast<int>(fire));
+        const auto fireIcon=app.talentTreeAbilityRect(fire,0);
+        click(static_cast<int>(fireIcon.position.x)+10,static_cast<int>(fireIcon.position.y)+10);
         check(app.treeSelection_==fire && app.player_.treePoints()==1,"Selecting a tree spends nothing");
-        click(1130,190);
+        click(950,584);
         check(app.player_.treePoints()==0 && treeAccess(app.player_,"fire"),"Unlock button spends exactly one tree point");
-        click(1130,280);
+        click(1140,584);
         check(app.player_.abilityPoints()==2 && app.player_.talents().rankOf(talentCatalog()[fire*4].id)==1,"Learn button spends exactly one ability point");
-        click(1130,340); snapshot("ui-binding.png");
+        click(950,628); snapshot("ui-binding.png");
         check(app.bindingTalent_,"Assign button opens the binding picker");
-        click(395,555);
+        click(290,440);
         check(!app.bindingTalent_ && app.player_.talents().hotbar()[9]==talentCatalog()[fire*4].id,"Picker binds the selected ability to page two");
         click(1140,40); check(app.mode_==GameMode::Playing,"Continue enters play after valid starting choices");
 
         setup(PlayerClass::Warrior); app.player_.unspentAttributePoints()=2; app.mode_=GameMode::AttributeAllocation;
         const int oldStrength=app.player_.baseStats().strength;
-        snapshot("ui-attributes.png"); click(100,165);
+        snapshot("ui-attributes.png"); clickOn(screen::attributeChoice(0));
         check(app.player_.unspentAttributePoints()==1 && app.player_.baseStats().strength==oldStrength+1 && app.mode_==GameMode::AttributeAllocation,
             "Attribute click spends one point without skipping the remaining choice");
-        click(100,235);
+        clickOn(screen::attributeChoice(1));
         check(app.player_.unspentAttributePoints()==0 && app.mode_==GameMode::Playing,"Final attribute click returns to play");
 
         setup(PlayerClass::Mage); addItem("copper_ring"); addItem("silver_ring");
-        app.openInventory(); click(500,165); release(340,460);
+        app.openInventory(); click(598,138); release(354,360);
         check(app.player_.inventory().equipped(EquipmentSlot::Ring2) && !app.inventoryOpen_ && app.player_.position().x==10,
             "Dragging a ring to Ring 2 equips and closes without moving the player");
-        app.openInventory(); click(500,165,sf::Mouse::Button::Right);
+        app.openInventory(); click(598,138,sf::Mouse::Button::Right);
         check(app.player_.inventory().equipped(EquipmentSlot::Ring1) && app.player_.inventory().items().empty(),"Right-click fills the other empty ring slot");
         roundTrip();
         check(app.player_.inventory().equipped(EquipmentSlot::Ring1) && app.player_.inventory().equipped(EquipmentSlot::Ring2),"Save/load preserves both ring slots");
@@ -412,77 +417,73 @@ struct ApplicationRewardsTestAccess {
         check(app.player_.inventory().armourKind()==ArmourKind::Cloth,"Three empty armour slots outvote a heavy body piece");
         for(int i=0;i<50;++i) addItem("iron_helm");
         app.openInventory(); snapshot("ui-full-inventory.png");
-        app.handleEvent(sf::Event::MouseMoved{{500,165}}); snapshot("ui-item-comparison.png");
-        click(50,460,sf::Mouse::Button::Right);
+        app.handleEvent(sf::Event::MouseMoved{{598,138}}); snapshot("ui-item-comparison.png");
+        click(182,360,sf::Mouse::Button::Right);
         check(app.player_.inventory().items().size()==50 && app.player_.inventory().equipped(EquipmentSlot::Ring1) && app.inventoryOpen_,"Full bag blocks unequipping without losing an item");
-        click(500,165); release(40,280);
+        click(598,138); release(100,256);
         check(app.inventoryOpen_ && app.player_.inventory().items().size()==50 && !app.player_.inventory().equipped(EquipmentSlot::Weapon),"Incompatible drag does not equip or consume an item");
-        click(500,165); release(190,140);
+        click(598,138); release(268,116);
         check(app.player_.inventory().items().size()==49 && app.player_.inventory().equipped(EquipmentSlot::Head),"Equipping into an empty slot frees bag space");
-        addItem("iron_boots"); app.openInventory(); click(500,165); release(190,140);
+        addItem("iron_boots"); app.openInventory(); click(598,138); release(268,116);
         check(app.player_.inventory().items().size()==50,"Swapping equipped gear works with a full bag");
-        app.openInventory(); click(700,530);
-        check(app.inventoryBagPage_==1,"Inventory next-page button reaches the next bag page");
+        addItem("iron_boots"); app.openInventory(); click(1060,412);
+        check(app.inventoryBagPage_==1,"Inventory next-page button reaches the overflow page");
+        app.player_.inventory().take(app.player_.inventory().items().size()-1); app.inventoryBagPage_=0;
         click(1190,35); check(!app.inventoryOpen_ && app.player_.position().x==10,"Inventory close click cannot activate the underlying world");
 
         app.mode_=GameMode::Town; app.gold_=100; app.selling_=false; app.shopSelection_=0;
         const auto itemIdBefore=app.nextItemId_;
-        click(710,540);
+        clickOn(screen::kTownTrade);
         check(app.gold_==100 && app.nextItemId_==itemIdBefore && app.player_.inventory().items().size()==50,"Full bag purchase spends no gold or item IDs");
-        click(250,150); const int goldBeforeSale=app.gold_; click(710,540);
+        clickOn(screen::kTownSell); const int goldBeforeSale=app.gold_; clickOn(screen::kTownTrade);
         check(app.gold_>goldBeforeSale && app.player_.inventory().items().size()==49,"Sell button trades exactly one bag item");
-        click(90,150); const int goldBeforeBuy=app.gold_; click(710,540);
+        clickOn(screen::kTownBuy); const int goldBeforeBuy=app.gold_; clickOn(screen::kTownTrade);
         check(app.gold_==goldBeforeBuy-30 && app.player_.inventory().items().size()==50,"Buy button trades exactly one stock item");
         snapshot("ui-town.png");
-        click(450,150); check(app.codexOpen_,"Town Codex button opens the overlay");
-        click(100,245); check(app.codexSelection_==1,"Codex card selects its family");
-        click(100,605); check(app.codex_.knows("town.grave"),"Town book button discovers its fragment");
-        snapshot("ui-codex.png"); click(1140,40);
-        check(!app.codexOpen_ && app.mode_==GameMode::Town && app.gold_==goldBeforeBuy-30,"Codex close cannot click through to town actions");
-        click(1110,80); check(app.mode_==GameMode::Playing && app.player_.position().x==10,"Town return button resumes the same floor position");
+        clickOn(screen::kTownReturn); check(app.mode_==GameMode::Playing && app.player_.position().x==10,"Town return button resumes the same floor position");
 
         setup(PlayerClass::Mage);
         app.vaultExists_=true; app.vaultEntrance_={11,10}; app.vaultMenu_=1;
-        snapshot("ui-vault-warning.png"); click(410,440);
+        snapshot("ui-vault-warning.png"); clickOn(screen::vaultCancel(1));
         check(!app.vaultMenu_ && !app.vaultOpened_ && app.player_.position().x==10,"Leave sealed closes without opening or moving");
-        app.vaultMenu_=1; click(100,440);
+        app.vaultMenu_=1; clickOn(screen::vaultCommit(1));
         check(app.vaultOpened_ && !app.vaultMenu_,"Open vault button commits the opening");
         app.vaultRewards_.clear();
         for(const auto* id:{"iron_helm","silver_ring","leather_boots"}) app.vaultRewards_.push_back(std::make_unique<Item>(*findItemDefinition(id),app.nextItemId_++));
-        app.vaultMenu_=2; app.vaultSelection_=0; click(100,315);
+        app.vaultMenu_=2; app.vaultSelection_=0; clickOn(screen::vaultRewardCard(1));
         check(app.vaultSelection_==1 && app.player_.inventory().items().empty(),"Clicking a vault reward only selects it");
         snapshot("ui-vault-rewards.png");
         for(int i=0;i<50;++i) addItem("copper_ring");
-        click(100,605);
+        clickOn(screen::vaultCommit(2));
         check(!app.vaultClaimed_ && app.vaultRewards_.size()==3 && app.vaultMenu_==2,"Full bag keeps all unclaimed vault choices");
-        app.player_.inventory().take(0); click(100,605);
+        app.player_.inventory().take(0); clickOn(screen::vaultCommit(2));
         check(app.vaultClaimed_ && app.vaultRewards_.empty() && app.player_.inventory().items().size()==50 && !app.vaultMenu_,"Claim transfers exactly the selected reward after space is available");
 
-        setup(PlayerClass::Mage); app.exitMenu_=true; snapshot("ui-travel.png"); click(780,300);
+        setup(PlayerClass::Mage); app.exitMenu_=true; snapshot("ui-travel.png"); clickOn(screen::kTravelStay);
         check(!app.exitMenu_ && app.player_.position().x==10,"Stay closes descent without movement");
-        app.exitMenu_=true; app.quietTurns_=0; click(490,300);
+        app.exitMenu_=true; app.quietTurns_=0; clickOn(screen::kTravelTown);
         check(app.mode_==GameMode::Playing,"Town travel button respects the ten quiet turns requirement");
-        app.exitMenu_=true; app.quietTurns_=10; click(490,300);
+        app.exitMenu_=true; app.quietTurns_=10; clickOn(screen::kTravelTown);
         check(app.mode_==GameMode::Town,"Town travel button succeeds after ten quiet turns");
 
         setup(PlayerClass::Mage); app.player_.statusEffects().apply({StatusEffectType::Poison,3,1});
-        click(40,75); check(app.inventoryOpen_ && app.player_.stats().hp==100,"Action-bar Bag is free");
-        click(1190,35); click(350,75);
+        click(30,638); check(app.inventoryOpen_ && app.player_.stats().hp==100,"Action-bar Bag is free");
+        click(1190,35); click(147,638);
         check(app.player_.stats().hp==99 && app.player_.statusEffects().active()[0].turnsRemaining==2,"Action-bar Wait advances exactly one turn");
-        app.player_.statusEffects().active().clear(); click(430,75);
+        app.player_.statusEffects().active().clear(); click(186,638);
         check(app.restTurns_>0,"Action-bar Rest starts resting");
-        click(40,75); check(app.restTurns_==0 && !app.inventoryOpen_,"First click during rest only stops resting");
-        app.requestTalent(1); click(830,75);
+        click(30,638); check(app.restTurns_==0 && !app.inventoryOpen_,"First click during rest only stops resting");
+        app.requestTalent(1); click(1068,517);
         check(!app.aimingTalent_ && !app.inspecting_,"Action-bar Cancel leaves targeting without casting");
         snapshot("ui-dungeon.png");
 
 
         setup(PlayerClass::Mage); app.mode_=GameMode::Town;
-        click(710,150);
+        clickOn(screen::kTownDungeons);
         check(app.dungeonMenu_,"Dungeon chooser opens");
-        click(720,150); click(190,395); // Deep Crypts, depth 2
+        clickOn(screen::dungeonCard(1)); clickOn(screen::depthCard(2)); // Deep Crypts, depth 2
         check(app.dungeonSelection_==1 && app.dungeonDepth_==2 && app.currentFloor_==1,"Dungeon and depth choices only preview the destination");
-        snapshot("ui-dungeon-selection.png"); click(360,560);
+        snapshot("ui-dungeon-selection.png"); clickOn(screen::kDungeonBack);
         check(!app.dungeonMenu_,"Cancelling dungeon selection spends nothing");
         const auto raiseLevel=[&](int level) {
             app.player_.level()=level; app.player_.abilityPoints()=level-1;
@@ -491,7 +492,7 @@ struct ApplicationRewardsTestAccess {
         raiseLevel(12); app.player_.stats().hp=60; app.player_.stats().mana=40;
         app.groundItems_.push_back(std::make_unique<Item>(kItemDefinitions[0],app.nextItemId_++,Position{11,10}));
         const auto homeItem=app.groundItems_[0]->instanceId();
-        click(710,150); click(720,150); click(190,395); click(100,560);
+        clickOn(screen::kTownDungeons); clickOn(screen::dungeonCard(1)); clickOn(screen::depthCard(2)); clickOn(screen::kDungeonEnter);
         check(app.currentFloor_==12 && app.mode_==GameMode::Playing && !app.dungeonMenu_,"Crypts entry opens the selected depth");
         check(app.player_.stats().hp==60 && app.player_.stats().mana==40,"Choosing a dungeon neither heals nor spends a turn");
         check(!app.monsters_.empty(),"Selected depth has generated encounters");
@@ -531,8 +532,7 @@ struct ApplicationRewardsTestAccess {
 
         bool packsSafe=true, varied=false, rares=false, named=false;
         for(int floor=1;floor<=20;++floor) for(unsigned seed=1;seed<=25;++seed) {
-            DungeonGenerationParams params; const auto theme=floorTheme(floor);
-            params.minRoomSize=theme.minRoomSize; params.maxRoomSize=theme.maxRoomSize;
+            DungeonGenerationParams params;
             params.includeBossRoom=(floor==5 || floor==10 || floor==20); params.includeVault=floor>=3 && !params.includeBossRoom;
             auto dungeon=generateDungeon(params,seed); const auto spawns=planEncounters(dungeon,floor);
             std::set<std::pair<int,int>> occupied;

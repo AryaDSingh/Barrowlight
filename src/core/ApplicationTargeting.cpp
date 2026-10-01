@@ -2,21 +2,59 @@
 
 #include <algorithm>
 #include <cmath>
+#include "core/GameIcons.hpp"
 #include "core/PlayLayout.hpp"
 #include "entities/MonsterInspection.hpp"
+#include "entities/PlayerLeveling.hpp"
+#include "entities/RunProgression.hpp"
+#include "world/FloorTheme.hpp"
 #include "entities/TalentEffects.hpp"
 #include "entities/HiddenCombat.hpp"
 #include "world/LineOfFire.hpp"
 
 namespace engine {
 namespace {
-constexpr int kMapWidth = playLayout::mapWidth, kMapTop = playLayout::mapTop,
+constexpr int kMapLeft = playLayout::mapLeft, kMapWidth = playLayout::mapWidth, kMapTop = playLayout::mapTop,
     kMapHeight = playLayout::mapHeight, kTile = playLayout::tileSize;
-constexpr float kPanelX = 912.f, kPanelRight = 1264.f;
 constexpr std::size_t kPageSize = 9;
-constexpr const char* kDungeonActions[]{"Bag B","Trees T","Codex J","Use G","Wait","Rest R","Explore Z","Town H","Cleanse C","Save F5","Load F9"};
-sf::FloatRect dungeonActionRect(std::size_t index) { return {{10+80.f*index,64},{77,22}}; }
-const sf::FloatRect kCancelAction{{795,64},{95,22}};
+struct DungeonAction { const char* name; const char* key; const char* icon; };
+constexpr DungeonAction kDungeonActions[]{
+    {"Inventory","B","knapsack"},{"Talent trees","T","tree-branch"},
+    {"Use / pick up","G","locked-chest"},{"Wait a turn","Space","hourglass"},{"Rest","R","campfire"},
+    {"Auto-explore","Z","compass"},{"Return to town","H","village"},{"Cleanse","C","aura"},
+    {"Save game","F5","scroll-unfurled"},{"Load game","F9","spell-book"}};
+constexpr std::size_t kDungeonActionCount = std::size(kDungeonActions);
+sf::FloatRect dungeonActionRect(std::size_t index) {
+    using namespace playLayout;
+    return {{actionX+actionStrideX*(index%actionColumns), actionY+actionStrideY*(index/actionColumns)},{actionWidth,actionHeight}};
+}
+// The mode banner (aiming, inspecting, resting, exploring) runs along the
+// bottom of the map, with its Cancel/Stop button at the right end.
+const sf::FloatRect kModeBanner{{kMapLeft+154.f,kMapTop+kMapHeight-42.f},{700,34}};
+const sf::FloatRect kCancelAction{{kModeBanner.position.x+kModeBanner.size.x-96,kModeBanner.position.y+5},{88,24}};
+sf::FloatRect pageButton(int dir) {
+    using namespace playLayout;
+    return {{pageButtonX+(pageButtonWidth+4)*dir,hotbarY},{pageButtonWidth,pageButtonHeight}};
+}
+sf::FloatRect hotbarRect(std::size_t slot) {
+    using namespace playLayout;
+    return {{hotbarX+hotbarStride*slot,hotbarY},{hotbarWidth,hotbarHeight}};
+}
+sf::FloatRect statusRect(int slot) {
+    using namespace playLayout;
+    return {{statusX+statusStride*(slot%statusColumns),statusY+statusStride*(slot/statusColumns)},{statusSize,statusSize}};
+}
+constexpr int kStatusPerPage = playLayout::statusColumns*playLayout::statusRows;
+const sf::FloatRect kLogArea{{playLayout::logX,playLayout::logY},
+    {playLayout::logWidth,playLayout::logLineHeight*playLayout::logLines}};
+const char* className(PlayerClass c) {
+    switch(c) { case PlayerClass::Warrior: return "Warrior"; case PlayerClass::Thief: return "Thief";
+        case PlayerClass::Mage: return "Mage"; case PlayerClass::Spellblade: return "Spellblade"; }
+    return "";
+}
+bool harmfulStatus(StatusEffectType t) {
+    return isCleansable(t) || t==StatusEffectType::Stun || t==StatusEffectType::Wither || t==StatusEffectType::Shock;
+}
 std::vector<StatusEffectInstance> hudEffects(const Player& player) {
     std::vector<StatusEffectInstance> effects;
     for (const auto& e:player.statusEffects().active()) if(e.type!=StatusEffectType::UnseenReady) effects.push_back(e);
@@ -53,97 +91,201 @@ bool same(Position a, Position b) { return a.x == b.x && a.y == b.y; }
 std::optional<Position> Application::screenToWorld(sf::Vector2i pixel) const {
     // mapPixelToCoords handles resizing using SFML's unchanged logical view.
     const auto p = window_.mapPixelToCoords(pixel);
-    if (p.x < 0 || p.x >= kMapWidth || p.y < kMapTop || p.y >= kMapTop + kMapHeight)
-        return std::nullopt;
-    const Position tile{cameraX_ + static_cast<int>(p.x) / kTile,
+    if (!onMap(p)) return std::nullopt;
+    const Position tile{cameraX_ + (static_cast<int>(p.x) - kMapLeft) / kTile,
         cameraY_ + (static_cast<int>(p.y) - kMapTop) / kTile};
     if (!map_.inBounds(tile.x, tile.y)) return std::nullopt;
     return tile;
 }
 
+bool Application::onMap(sf::Vector2f p) const {
+    return p.x >= kMapLeft && p.x < kMapLeft + kMapWidth && p.y >= kMapTop && p.y < kMapTop + kMapHeight;
+}
+
 std::optional<std::size_t> Application::talentAtPixel(sf::Vector2i pixel) const {
     const auto p = window_.mapPixelToCoords(pixel);
-    if (p.x<playLayout::hotbarX || p.y<playLayout::hotbarY || p.y>=playLayout::hotbarY+playLayout::hotbarHeight) return std::nullopt;
-    const float local=p.x-playLayout::hotbarX;
-    const auto slot=static_cast<std::size_t>(local/playLayout::hotbarStride);
-    if (slot>=kPageSize || local-slot*playLayout::hotbarStride>=playLayout::hotbarWidth) return std::nullopt;
-    return player_.talents().hotbarIndex(talentPage_*kPageSize+slot);
+    for (std::size_t slot = 0; slot < kPageSize; ++slot)
+        if (hotbarRect(slot).contains(p)) return player_.talents().hotbarIndex(talentPage_*kPageSize+slot);
+    return std::nullopt;
 }
 
 std::optional<StatusEffectInstance> Application::hoveredStatus() const {
     if (!mousePixel_) return std::nullopt;
     const auto p=window_.mapPixelToCoords(*mousePixel_);
-    if (p.x<10 || p.y<playLayout::statusY || p.y>=playLayout::statusY+playLayout::statusHeight) return std::nullopt;
-    const int slot=static_cast<int>((p.x-10)/playLayout::statusStride);
-    if(slot>=9 || p.x-10-slot*playLayout::statusStride>=74) return std::nullopt;
     const auto effects=hudEffects(player_);
-    const int page=std::min(statusPage_,std::max(0,(static_cast<int>(effects.size())-1)/9));
-    const int index=page*9+slot;
-    if(index>=static_cast<int>(effects.size())) return std::nullopt;
-    return effects[index];
+    const int page=std::min(statusPage_,std::max(0,(static_cast<int>(effects.size())-1)/kStatusPerPage));
+    for (int slot=0;slot<kStatusPerPage;++slot) {
+        const int index=page*kStatusPerPage+slot;
+        if (index<static_cast<int>(effects.size()) && statusRect(slot).contains(p)) return effects[index];
+    }
+    return std::nullopt;
+}
+
+std::optional<std::size_t> Application::hoveredLogLine() const {
+    if (!mousePixel_ || logMessages_.empty()) return std::nullopt;
+    const auto p=window_.mapPixelToCoords(*mousePixel_);
+    if (!kLogArea.contains(p)) return std::nullopt;
+    const int shown=std::min<int>(playLayout::logLines,static_cast<int>(logMessages_.size()));
+    const int first=std::max(0,static_cast<int>(logMessages_.size())-shown-combatLogScroll_);
+    const int row=static_cast<int>((p.y-playLayout::logY)/playLayout::logLineHeight);
+    if (row>=shown) return std::nullopt;
+    return static_cast<std::size_t>(first+row);
+}
+
+void Application::renderMinimap(sf::FloatRect area) {
+    if (map_.width()<=0 || map_.height()<=0) return;
+    const float scale=std::floor(std::min(area.size.x/map_.width(),area.size.y/map_.height()));
+    if (scale<1.f) return;
+    const sf::Vector2f origin{area.position.x+(area.size.x-scale*map_.width())/2,
+                              area.position.y+(area.size.y-scale*map_.height())/2};
+    sf::VertexArray cells(sf::PrimitiveType::Triangles);
+    const auto cell=[&](int x,int y,sf::Color c,float grow=0.f) {
+        const float l=origin.x+x*scale-grow, t=origin.y+y*scale-grow, s=scale+2*grow;
+        const sf::Vector2f a{l,t},b{l+s,t},c2{l+s,t+s},d{l,t+s};
+        for (const auto v:{a,b,c2,a,c2,d}) cells.append(sf::Vertex{v,c});
+    };
+    for (int y=0;y<map_.height();++y) for (int x=0;x<map_.width();++x) {
+        const auto vis=exploredMap_.at(x,y);
+        if (vis==Visibility::Hidden) continue;
+        const auto type=map_.tileAt(x,y).type;
+        sf::Color c=type==TileType::Wall?sf::Color(92,78,60):type==TileType::Door?sf::Color(110,190,255):sf::Color(52,48,46);
+        if (vis!=Visibility::Visible) c=sf::Color(c.r*2/3,c.g*2/3,c.b*2/3);
+        cell(x,y,c);
+    }
+    for (const auto& m:monsters_) {
+        const auto p=m->position();
+        if (m->stats().hp>0 && !m->tactics.concealed && exploredMap_.at(p.x,p.y)==Visibility::Visible)
+            cell(p.x,p.y,m->allied?sf::Color(110,230,230):sf::Color(230,70,60),0.5f);
+    }
+    cell(player_.position().x,player_.position().y,sf::Color(255,214,90),1.f);
+    window_.draw(cells);
+    // The rectangle the main view currently shows.
+    sf::RectangleShape view({scale*kMapWidth/kTile,scale*kMapHeight/kTile});
+    view.setPosition({origin.x+cameraX_*scale,origin.y+cameraY_*scale});
+    view.setFillColor(sf::Color::Transparent); view.setOutlineThickness(1.f); view.setOutlineColor(sf::Color(232,196,112,120));
+    window_.draw(view);
 }
 
 void Application::renderBattleHud() {
-    sf::RectangleShape backdrop({896.f,128.f}); backdrop.setPosition({0,592});
-    backdrop.setFillColor(sf::Color(13,17,24)); window_.draw(backdrop);
+    using namespace playLayout;
+    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(window_.mapPixelToCoords(*mousePixel_)):std::nullopt;
+    const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
+    const auto& stats=player_.stats();
+
+    // --- Character column ---------------------------------------------------
+    ui_.panel(window_,{{0,0},{static_cast<float>(sidebarWidth),720}});
+    const sf::FloatRect portrait{{14,14},{64,64}};
+    ui_.inset(window_,portrait,sf::Color(140,108,62));
+    sprites_.draw(window_,playerSpriteFrame(),{portrait.position.x+4,portrait.position.y+4},56.f);
+    ui_.text(window_,className(playerClass_),{90,14},20,ui::kGold,ui::Font::Title);
+    ui_.text(window_,"Level "+std::to_string(player_.level()),{90,42},16,ui::kText,ui::Font::Bold);
+    ui_.text(window_,adventureMode_?"Adventure, "+std::to_string(extraLives_)+" spare li"+(extraLives_==1?"fe":"ves"):"Roguelike, one life",
+        {90,62},13,ui::kMuted);
+
+    ui_.bar(window_,{{14,90},{228,20}},stats.maxHp?static_cast<float>(stats.hp)/stats.maxHp:0.f,sf::Color(176,38,34),
+        "Life  "+std::to_string(stats.hp)+" / "+std::to_string(stats.maxHp));
+    ui_.bar(window_,{{14,114},{228,20}},stats.maxMana?static_cast<float>(stats.mana)/stats.maxMana:0.f,sf::Color(52,92,190),
+        "Mana  "+std::to_string(stats.mana)+" / "+std::to_string(stats.maxMana));
+    const bool maxLevel=player_.level()>=kRunMaxLevel;
+    ui_.bar(window_,{{14,138},{228,12}},maxLevel?1.f:static_cast<float>(player_.xp())/std::max(1,xpForNextLevel(player_.level())),
+        sf::Color(196,156,72));
+    ui_.text(window_,maxLevel?"Experience: max level":"Experience "+std::to_string(player_.xp())+" / "+std::to_string(xpForNextLevel(player_.level())),
+        {16,152},13,ui::kMuted);
+
+    const auto theme=floorTheme(currentFloor_);
+    ui_.text(window_,std::string(dungeonName(dungeonIndex(currentFloor_)))+"  "+std::to_string((currentFloor_-1)%10+1)+"/10",{14,176},16,ui::kGold,ui::Font::Bold);
+    ui_.text(window_,std::string(theme.name)+", depth "+std::to_string(currentFloor_),{14,196},14,ui::kText);
+    const auto stat=[&](const char* name,int value,float x,float y) {
+        ui_.text(window_,name,{x,y},14,ui::kMuted);
+        ui_.text(window_,std::to_string(value),{x+30,y},14,ui::kText,ui::Font::Bold);
+    };
+    stat("Str",stats.strength,14,220); stat("Dex",stats.dexterity,96,220); stat("Int",stats.intelligence,178,220);
+    ui_.text(window_,std::string(armourName(player_.inventory().armourKind()))+" armour   Gold "+std::to_string(gold_),{14,240},13,ui::kMuted);
+
+    // Status effects: icon tiles, harmful ones rimmed red.
     const auto effects=hudEffects(player_);
-    const int pages=std::max(1,(static_cast<int>(effects.size())+8)/9);
+    const int pages=std::max(1,(static_cast<int>(effects.size())+kStatusPerPage-1)/kStatusPerPage);
     statusPage_=std::clamp(statusPage_,0,pages-1);
-    for(int slot=0;slot<9 && statusPage_*9+slot<static_cast<int>(effects.size());++slot) {
-        const auto& e=effects[statusPage_*9+slot]; const float x=10+slot*78.f;
-        sf::RectangleShape badge({74,24}); badge.setPosition({x,594});
-        const bool harmful=isCleansable(e.type) || e.type==StatusEffectType::Stun || e.type==StatusEffectType::Wither || e.type==StatusEffectType::Shock;
-        badge.setFillColor(harmful?sf::Color(91,40,45):sf::Color(31,66,70)); window_.draw(badge);
-        drawText(std::string(statusName(e.type)).substr(0,9),x+3,595,10,sf::Color::White);
-        drawText(e.type==StatusEffectType::BattleRhythm?"Ready":std::to_string(e.turnsRemaining)+" t",x+3,605,10,sf::Color(235,211,149));
+    if (effects.empty()) ui_.text(window_,"No active effects",{statusX,statusY+10},14,ui::kMuted);
+    for (int slot=0;slot<kStatusPerPage && statusPage_*kStatusPerPage+slot<static_cast<int>(effects.size());++slot) {
+        const auto& e=effects[statusPage_*kStatusPerPage+slot];
+        const auto r=statusRect(slot);
+        const bool harmful=harmfulStatus(e.type);
+        ui_.inset(window_,r,harmful?sf::Color(176,44,40):sf::Color(70,150,120));
+        ui_.icon(window_,statusIcon(e.type),{{r.position.x+5,r.position.y+4},{r.size.x-10,r.size.y-12}},
+            harmful?sf::Color(240,140,120):sf::Color(170,230,200));
+        ui_.text(window_,e.type==StatusEffectType::BattleRhythm?"rdy":std::to_string(e.turnsRemaining),
+            {r.position.x+r.size.x-16,r.position.y+r.size.y-17},12,ui::kGold,ui::Font::Bold);
     }
-    if(effects.empty()) drawText("No active effects",10,598,12,sf::Color(150,165,180));
-    if(pages>1) {
-        drawText("<   >",726,594,16,sf::Color(180,220,240));
-        drawText(std::to_string(statusPage_+1)+"/"+std::to_string(pages),794,598,12,sf::Color(180,220,240));
+    if (pages>1) ui_.text(window_,"Effects "+std::to_string(statusPage_+1)+"/"+std::to_string(pages)+" (scroll)",
+        {statusX,statusY+statusStride*statusRows-2},12,ui::kMuted);
+
+    ui_.text(window_,"Map",{14,minimapY-22},14,ui::kGold,ui::Font::Title);
+    const sf::FloatRect minimap{{14,minimapY},{228,150}};
+    ui_.inset(window_,minimap);
+    renderMinimap({{minimap.position.x+4,minimap.position.y+4},{minimap.size.x-8,minimap.size.y-8}});
+
+    const int quiet=dangerNearby()?0:quietTurns_;
+    ui_.text(window_,"Town recall: "+std::to_string(quiet)+"/10 quiet turns",{14,minimapY+156},13,quiet>=10?ui::kGood:ui::kMuted);
+    if(player_.talents().passiveValue(PassiveKind::Deathless)) {
+        const bool spent=std::find(player_.deathlessSpentFloors.begin(),player_.deathlessSpentFloors.end(),currentFloor_)!=player_.deathlessSpentFloors.end();
+        ui_.text(window_,spent?"Deathless: spent this floor":"Deathless: ready",{14,minimapY+174},13,spent?ui::kMuted:ui::kGood);
     }
-    combatLogScroll_=std::clamp(combatLogScroll_,0,std::max(0,static_cast<int>(logMessages_.size())-2));
-    const int first=std::max(0,static_cast<int>(logMessages_.size())-2-combatLogScroll_);
-    for(int row=0;row<2 && first+row<static_cast<int>(logMessages_.size());++row) {
-        const auto& text=logMessages_[first+row];
-        drawText(text.size()>108?text.substr(0,105)+"...":text,10,622.f+17.f*row,12,sf::Color(205,215,227));
+
+    const bool busy=aimingTalent_ || inspecting_ || autoExploring_ || restTurns_>0;
+    for (std::size_t i=0;i<kDungeonActionCount;++i) {
+        const auto r=dungeonActionRect(i);
+        ui_.inset(window_,r,hovered(r)&&!busy?ui::kBronze:sf::Color::Transparent);
+        ui_.icon(window_,kDungeonActions[i].icon,{{r.position.x+6,r.position.y+4},{r.size.x-12,r.size.y-20}},
+            busy?ui::kMuted:hovered(r)?ui::kGold:ui::kText);
+        const auto key=std::string(kDungeonActions[i].key);
+        ui_.text(window_,key,{r.position.x+(r.size.x-ui_.textWidth(key,11,ui::Font::Bold))/2,r.position.y+r.size.y-16},11,ui::kMuted,ui::Font::Bold);
     }
-    if(combatLogScroll_) drawText("Older",844,623,11,sf::Color(235,211,149));
-    for(std::size_t slot=0;slot<9;++slot) {
-        const auto index=player_.talents().hotbarIndex(talentPage_*9+slot); const float x=10+78.f*slot;
+
+    // --- Bottom strip: log and hotbar ---------------------------------------
+    ui_.panel(window_,{{static_cast<float>(sidebarWidth),bottomTop},{1280.f-sidebarWidth,720.f-bottomTop}});
+    ui_.inset(window_,{{logX-4,logY-6},{logWidth+8,logLineHeight*logLines+10}});
+    const int shown=std::min<int>(logLines,static_cast<int>(logMessages_.size()));
+    combatLogScroll_=std::clamp(combatLogScroll_,0,std::max(0,static_cast<int>(logMessages_.size())-shown));
+    const int first=std::max(0,static_cast<int>(logMessages_.size())-shown-combatLogScroll_);
+    for (int row=0;row<shown;++row) {
+        std::string line=logMessages_[first+row];
+        while (line.size()>4 && ui_.textWidth(line,14)>logWidth-8) line=line.substr(0,line.size()-5)+"...";
+        // Older lines fade, ToME-style; the newest is brightest.
+        const int age=shown-1-row+combatLogScroll_;
+        const auto alpha=static_cast<std::uint8_t>(std::max(110,255-age*22));
+        ui_.text(window_,line,{logX+2,logY+logLineHeight*row-2},14,sf::Color(222,212,192,alpha));
+    }
+    if (combatLogScroll_) ui_.text(window_,"older",{logX+logWidth-34,logY-4},11,ui::kGold);
+
+    ui_.divider(window_,hotbarX-12,bottomTop+12,712);
+    for(std::size_t slot=0;slot<kPageSize;++slot) {
+        const auto index=player_.talents().hotbarIndex(talentPage_*kPageSize+slot);
+        const auto r=hotbarRect(slot);
         const bool selected=index && aimingTalent_ && *index==*aimingTalent_;
         const bool hover=index && hoveredTalent_ && *index==*hoveredTalent_;
-        sf::RectangleShape box({74,52}); box.setPosition({x,660});
-        box.setFillColor(selected?sf::Color(83,68,30):hover?sf::Color(44,65,83):sf::Color(26,34,47));
-        box.setOutlineThickness(-1); box.setOutlineColor(sf::Color(83,103,126)); window_.draw(box);
-        drawText(std::to_string(slot+1),x+4,662,11,sf::Color(200,215,230));
-        if(!index) { drawText("Empty",x+18,684,11,sf::Color(110,125,145)); continue; }
+        ui_.inset(window_,r,selected?ui::kGold:hover?ui::kBronze:sf::Color::Transparent);
+        ui_.text(window_,std::to_string(slot+1),{r.position.x+4,r.position.y+2},12,ui::kMuted,ui::Font::Bold);
+        if(!index) continue;
         const auto talent=combatTalent(player_,player_.talents().effectiveTalent(*index));
         const int cd=player_.talents().cooldownRemaining(*index);
         const bool ready=talentUnavailableReason(player_,*index).empty();
-        const auto color=ready?sf::Color(117,226,219):sf::Color(125,140,160);
-        // Small shape symbols drawn natively: mobility, area, buff/heal or strike.
-        const std::string symbol=talent.shape==EffectShape::Movement?">>":
-            talent.effectKind==TalentEffectKind::Heal?"+":talent.effectKind==TalentEffectKind::SelfBuff?"[]":
-            (talent.tags&AreaTag)?"(*)":talent.projectile?"->":"/";
-        drawText(symbol,x+24,662,16,color);
-        drawText(std::to_string(player_.talents().rank(*index)),x+62,663,10,color);
-        drawText(talent.name.size()>10?talent.name.substr(0,9)+".":talent.name,x+4,682,10,color);
-        drawText(cd?"CD "+std::to_string(cd):talent.hpCost?std::to_string(talent.hpCost)+" HP":std::to_string(talent.manaCost)+" MP",x+4,696,11,
-            cd?sf::Color(245,176,105):color);
+        ui_.icon(window_,talentIcon(talent),{{r.position.x+7,r.position.y+6},{r.size.x-14,r.size.y-14}},
+            ready?sf::Color(236,226,204):sf::Color(110,104,96));
+        if (cd) {
+            sf::RectangleShape shade({r.size.x-4,r.size.y-4}); shade.setPosition({r.position.x+2,r.position.y+2});
+            shade.setFillColor(sf::Color(0,0,0,150)); window_.draw(shade);
+            ui_.textCentered(window_,std::to_string(cd),r,22,ui::kGold,ui::Font::Title);
+        }
+        const std::string cost=talent.hpCost?std::to_string(talent.hpCost):talent.manaCost?std::to_string(talent.manaCost):"";
+        if (!cost.empty())
+            ui_.text(window_,cost,{r.position.x+r.size.x-4-ui_.textWidth(cost,12,ui::Font::Bold),r.position.y+r.size.y-17},12,
+                talent.hpCost?sf::Color(240,110,100):sf::Color(130,170,255),ui::Font::Bold);
     }
-    for(int dir=0;dir<2;++dir) {
-        sf::RectangleShape button({30,24}); button.setPosition({720.f+34*dir,660});
-        button.setFillColor(sf::Color(43,56,72)); window_.draw(button);
-        drawText(dir?">":"<",728.f+34*dir,660,17,sf::Color(210,230,245));
-    }
-    drawText("Page "+std::to_string(talentPage_+1)+"/2",795,664,12,sf::Color(180,210,225));
-    drawText("PgUp/PgDn",722,695,11,sf::Color(160,180,200));
-    if(player_.talents().passiveValue(PassiveKind::Deathless)) {
-        const bool spent=std::find(player_.deathlessSpentFloors.begin(),player_.deathlessSpentFloors.end(),currentFloor_)!=player_.deathlessSpentFloors.end();
-        drawText("Deathless",795,687,11,sf::Color(180,220,240));
-        drawText(spent?"Spent":"Ready",795,700,11,spent?sf::Color(160,160,175):sf::Color(130,235,170));
-    }
+    for(int dir=0;dir<2;++dir) ui_.button(window_,pageButton(dir),dir?">":"<",hovered(pageButton(dir)),true,16);
+    ui_.text(window_,"Page "+std::to_string(talentPage_+1)+"/2",{pageButtonX+4,hotbarY+30},13,ui::kMuted);
+    ui_.text(window_,"PgUp/PgDn",{pageButtonX+4,hotbarY+46},12,ui::kMuted);
+    ui_.text(window_,"Hover a slot for details, click or press its number to use it.",{hotbarX,hotbarY+60},13,ui::kMuted);
 }
 
 std::vector<Actor*> Application::targetingEnemies() const {
@@ -291,13 +433,15 @@ void Application::handleTargetingMouse(const sf::Event& event) {
     }
     if (const auto* wheel=event.getIf<sf::Event::MouseWheelScrolled>()) {
         const auto p=window_.mapPixelToCoords(wheel->position);
-        if (p.x<kMapWidth && p.y>=playLayout::statusY && p.y<playLayout::statusY+playLayout::statusHeight)
-            statusPage_=std::max(0,statusPage_+(wheel->delta<0?1:wheel->delta>0?-1:0));
-        if (p.x<kMapWidth && p.y>=622.f && p.y<656.f)
-            combatLogScroll_=std::clamp(combatLogScroll_+(wheel->delta<0?1:wheel->delta>0?-1:0),0,std::max(0,static_cast<int>(logMessages_.size())-2));
-        if (p.x>=kPanelX && p.x<kPanelRight && p.y>=468.f) {
-            inspectionScroll_=std::max(0,inspectionScroll_+(wheel->delta<0?3:wheel->delta>0?-3:0));
-        }
+        const int step=wheel->delta<0?1:wheel->delta>0?-1:0;
+        if (sf::FloatRect({0,playLayout::statusY},{static_cast<float>(playLayout::sidebarWidth),
+                playLayout::statusStride*playLayout::statusRows}).contains(p))
+            statusPage_=std::max(0,statusPage_+step);
+        // Scrolling up (away from you) reaches older messages.
+        if (kLogArea.contains(p))
+            combatLogScroll_=std::clamp(combatLogScroll_-step,0,std::max(0,static_cast<int>(logMessages_.size())-playLayout::logLines));
+        // Over the map, the wheel scrolls the enemy inspection tooltip.
+        if (onMap(p)) inspectionScroll_=std::max(0,inspectionScroll_+3*step);
     }
     if (const auto* click = event.getIf<sf::Event::MouseButtonPressed>()) {
         mousePixel_ = click->position;
@@ -306,31 +450,24 @@ void Application::handleTargetingMouse(const sf::Event& event) {
         const auto p=window_.mapPixelToCoords(click->position);
         if(aimingTalent_ || inspecting_) {
             if(kCancelAction.contains(p)) { cancelTargeting(); return; }
-        } else for(std::size_t i=0;i<11;++i) if(dungeonActionRect(i).contains(p)) {
-            switch(i) {
-            case 0: openInventory(); break;
-            case 1: openTalentTrees(); break;
-            case 2: cancelTargeting(); codexOpen_=true; break;
-            case 3: pickupItem(); break;
-            case 4: player_.statusEffects().apply({StatusEffectType::Opening,2,0}); finishInventoryTurn(); break;
-            case 5: startRest(); break;
-            case 6: startAutoExplore(); break;
-            case 7: returnToTown(); break;
-            case 8:
+        } else for(std::size_t i=0;i<kDungeonActionCount;++i) if(dungeonActionRect(i).contains(p)) {
+            const std::string action=kDungeonActions[i].name;
+            if(action=="Inventory") openInventory();
+            else if(action=="Talent trees") openTalentTrees();
+            else if(action=="Use / pick up") pickupItem();
+            else if(action=="Wait a turn") { player_.statusEffects().apply({StatusEffectType::Opening,2,0}); finishInventoryTurn(); }
+            else if(action=="Rest") startRest();
+            else if(action=="Auto-explore") startAutoExplore();
+            else if(action=="Return to town") returnToTown();
+            else if(action=="Cleanse") {
                 for(std::size_t index=0;index<player_.talents().knownTalents().size();++index)
                     if(player_.talents().knownTalents()[index].id=="basic.cleanse") { requestTalent(index); break; }
-                break;
-            case 9: saveGame(); break;
-            case 10: loadGame(); break;
             }
+            else if(action=="Save game") saveGame();
+            else if(action=="Load game") loadGame();
             return;
         }
-        if (p.y>=playLayout::hotbarY && p.y<playLayout::hotbarY+26 && p.x>=720.f && p.x<788.f) {
-            changeTalentPage(p.x<754.f?-1:1); return;
-        }
-        if (p.y>=playLayout::statusY && p.y<playLayout::statusY+24 && p.x>=720.f && p.x<788.f) {
-            statusPage_=std::max(0,statusPage_+(p.x<754.f?-1:1)); return;
-        }
+        for (int dir=0;dir<2;++dir) if (pageButton(dir).contains(p)) { changeTalentPage(dir?1:-1); return; }
         if (const auto index = talentAtPixel(click->position)) { requestTalent(*index); return; }
         const auto tile = screenToWorld(click->position);
         if (!tile) return; // Clicking HUD never casts through it.
@@ -362,19 +499,11 @@ void Application::handleTargetingMouse(const sf::Event& event) {
 
 void Application::drawWrapped(const std::string& text, float x, float& y,
     std::size_t columns, sf::Color color, float bottom) {
-    std::istringstream words(text);
-    std::string word, line;
-    auto flush = [&] {
-        if (y + 16.f <= bottom) drawText(line, x, y, 13, color);
+    // `columns` dates from the monospace font; ~7px per column at 14px.
+    for (const auto& line : ui_.wrap(text, columns*7.2f, 14)) {
+        if (y + 16.f <= bottom) ui_.text(window_, line, {x, y}, 14, color);
         y += 17.f;
-        line.clear();
-    };
-    while (words >> word) {
-        if (!line.empty() && line.size() + word.size() + 1 > columns) flush();
-        if (!line.empty()) line += ' ';
-        line += word;
     }
-    if (!line.empty()) flush();
 }
 
 void Application::renderTargetingOverlay() {
@@ -438,54 +567,46 @@ void Application::renderTargetingOverlay() {
         mark(preview.destination, sf::Color(130, 255, 150), true);
 }
 
-void Application::renderTargetingPanel() {
-    sf::RectangleShape panel({384.f, 720.f});
-    panel.setPosition({896.f, 0.f}); panel.setFillColor(sf::Color(18, 22, 31));
-    window_.draw(panel);
-    const auto& talents = player_.talents().knownTalents();
-    const std::size_t pages = 2;
-    talentPage_ = std::min(talentPage_, pages - 1);
-    drawText("DETAILS",kPanelX,10.f,17,sf::Color(110,220,220));
-    drawText("Hover a talent or status below the map",kPanelX,30.f,12,sf::Color(175,185,205));
-    const auto selected = aimingTalent_ ? aimingTalent_ : hoveredTalent_;
-    float y = 55.f;
-    const sf::Color normal(210, 220, 235), accent(110, 220, 220);
-    const auto status=hoveredStatus();
-    std::optional<std::string> hoveredLog;
-    if (mousePixel_) {
-        const auto mouse=window_.mapPixelToCoords(*mousePixel_);
-        if(mouse.x>=10 && mouse.x<kMapWidth && mouse.y>=622 && mouse.y<656 && !logMessages_.empty()) {
-            const int first=std::max(0,static_cast<int>(logMessages_.size())-2-combatLogScroll_);
-            const int index=first+static_cast<int>((mouse.y-622)/17);
-            if(index<static_cast<int>(logMessages_.size())) hoveredLog=logMessages_[index];
-        }
+void Application::renderHudTooltips() {
+    using ui::Line;
+    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(window_.mapPixelToCoords(*mousePixel_)):std::nullopt;
+    const sf::FloatRect screen{{0,0},{1280,720}};
+    const sf::FloatRect aboveHotbar{{0,0},{1280,playLayout::hotbarY-8}};
+
+    // --- Mode banner along the bottom of the map ----------------------------
+    if (autoExploring_ || restTurns_>0 || aimingTalent_ || inspecting_) {
+        ui_.panel(window_,kModeBanner,false,sf::Color(150,140,130));
+        const std::string text=autoExploring_ ? "Exploring. Any key or click stops; danger and discoveries pause it." :
+            restTurns_>0 ? "Resting. Any key or click stops; recovers life, mana and cooldowns." :
+            aimingTalent_ ? "Aim with mouse or arrows, Tab cycles targets, Enter or click casts" :
+            "Inspecting: mouse or arrows, Tab for the next enemy, I or Esc closes";
+        ui_.text(window_,text,{kModeBanner.position.x+14,kModeBanner.position.y+7},15,ui::kText);
+        ui_.button(window_,kCancelAction,autoExploring_ || restTurns_>0?"Stop":"Cancel",
+            mouse && kCancelAction.contains(*mouse),true,14);
     }
-    if (status) {
-        drawWrapped(statusName(status->type),kPanelX,y,43,accent,463.f);
-        drawWrapped(status->type==StatusEffectType::BattleRhythm?"Ready until used":"Remaining: "+std::to_string(status->turnsRemaining)+" status ticks",kPanelX,y,43,normal,463.f);
-        drawWrapped(statusTooltip(*status),kPanelX,y,43,normal,463.f);
-        if (isCleansable(status->type)) drawWrapped("C: Cleanse removes this effect.",kPanelX,y,43,accent,463.f);
-    } else if (hoveredLog) {
-        drawWrapped("COMBAT LOG",kPanelX,y,43,accent,463.f);
-        drawWrapped(*hoveredLog,kPanelX,y,43,normal,463.f);
-    } else if (selected && *selected < talents.size()) {
+
+    // --- Talent: hovered or being aimed, shown above its hotbar slot --------
+    const auto& talents = player_.talents().knownTalents();
+    const auto selected = aimingTalent_ ? aimingTalent_ : hoveredTalent_;
+    if (selected && *selected < talents.size()) {
         const auto talent = combatTalent(player_,player_.talents().effectiveTalent(*selected));
-        drawWrapped(talent.name+" ["+std::to_string(player_.talents().rank(*selected))+"/3]", kPanelX, y, 43, accent, 463.f);
-        drawWrapped(talent.description, kPanelX, y, 43, normal, 463.f);
-        drawWrapped("Cost: " + std::to_string(talent.manaCost) + " mana, " +
-            std::to_string(talent.hpCost) + " HP | CD: " + std::to_string(talent.cooldownTurns) +
-            " turns", kPanelX, y, 43, normal, 463.f);
-        const std::string rule = talent.shape == EffectShape::Movement ?
+        std::vector<Line> lines{{talent.name,ui::kGold,19,ui::Font::Title},
+            {"Rank "+std::to_string(player_.talents().rank(*selected))+" of 3",ui::kMuted,14},{""},
+            {talent.description,ui::kText,15}};
+        lines.push_back({""});
+        if (talent.manaCost) lines.push_back({"Mana cost: "+std::to_string(talent.manaCost),sf::Color(130,170,255),15});
+        if (talent.hpCost) lines.push_back({"Life cost: "+std::to_string(talent.hpCost),sf::Color(240,110,100),15});
+        lines.push_back({"Cooldown: "+(talent.cooldownTurns?std::to_string(talent.cooldownTurns)+" turns":std::string("none")),ui::kText,15});
+        lines.push_back({talent.shape == EffectShape::Movement ?
             "Movement: up to " + std::to_string(talent.moveDistance) + " tiles; stops at blockers." :
-            talent.projectile ? "Aim at visible ground; projectile stops at the first enemy." :
+            talent.projectile ? "Aim at visible ground; the projectile stops at the first enemy." :
             talent.targeting == TargetingMode::AdjacentEnemy ? "Aim at adjacent ground (no diagonals)." :
-            talent.targeting == TargetingMode::Self ? "Centered on yourself." : "Range: any visible ground tile (direct spell).";
-        drawWrapped(rule, kPanelX, y, 43, normal, 463.f);
-        if (talent.tags & AreaTag) drawWrapped("Radius: " + std::to_string(talent.areaRadius), kPanelX, y, 43, normal, 463.f);
-        const auto unavailable = talentUnavailableReason(player_, *selected);
-        if (!unavailable.empty()) drawWrapped(unavailable, kPanelX, y, 43, sf::Color(255, 130, 110), 463.f);
+            talent.targeting == TargetingMode::Self ? "Centred on yourself." : "Range: any visible ground tile.",ui::kInfo,15});
+        if (talent.tags & AreaTag) lines.push_back({"Radius: " + std::to_string(talent.areaRadius),ui::kInfo,15});
         if (talent.movementBurn && (talent.shape==EffectShape::Movement || talent.retreatDistance))
-            drawWrapped("Kindle: landing burns adjacent visible enemies for "+std::to_string(talent.movementBurn)+" per turn, 2 turns; reveals you.",kPanelX,y,43,accent,463.f);
+            lines.push_back({"Kindle: landing burns adjacent visible enemies for "+std::to_string(talent.movementBurn)+" per turn for 2 turns, and reveals you.",ui::kInfo,15});
+        const auto unavailable = talentUnavailableReason(player_, *selected);
+        if (!unavailable.empty()) lines.push_back({unavailable,ui::kBad,15});
         if (aimingTalent_) {
             auto preview = targetPreview(*selected, targetCursor_);
             preview.affected.erase(std::remove_if(preview.affected.begin(),preview.affected.end(),[](const Actor* a){
@@ -501,87 +622,100 @@ void Application::renderTargetingPanel() {
                     low = first ? damage.normal : std::min(low, damage.normal);
                     high = std::max(high, damage.critical); first = false;
                 }
-                drawWrapped("On hit: " + std::to_string(low) + "-" + std::to_string(high) +
-                    " damage (includes crit). Can miss. Targets: " +
-                    std::to_string(preview.affected.size()), kPanelX, y, 43, accent, 463.f);
+                lines.push_back({""});
+                lines.push_back({"On hit: " + std::to_string(low) + "-" + std::to_string(high) +
+                    " damage (includes crits). Can miss. Targets: " + std::to_string(preview.affected.size()),ui::kGood,15,ui::Font::Bold});
             }
-            if (!preview.message.empty()) drawWrapped(preview.message, kPanelX, y, 43,
-                preview.valid ? accent : sf::Color(255, 130, 110), 463.f);
+            if (!preview.message.empty()) lines.push_back({preview.message,preview.valid?ui::kInfo:ui::kBad,15});
         }
-    } else {
-        drawWrapped("Hover a talent for details. Select a talent to aim; self buffs and healing cast immediately.",
-            kPanelX, y, 43, normal, 463.f);
+        // Anchor over the slot it's bound to on this page, or the hotbar's start.
+        float slotX=playLayout::hotbarX;
+        for (std::size_t slot=0;slot<kPageSize;++slot)
+            if (const auto i=player_.talents().hotbarIndex(talentPage_*kPageSize+slot); i && *i==*selected) slotX=hotbarRect(slot).position.x;
+        // While aiming, stay clear of the mode banner as well.
+        const sf::FloatRect room=aimingTalent_?sf::FloatRect{{0,0},{1280,kModeBanner.position.y-6}}:aboveHotbar;
+        ui_.tooltip(window_,lines,{slotX-18,room.size.y},360,room);
+        return;
     }
 
-    y = 468.f;
-    drawWrapped("ENEMY INSPECTION - wheel to scroll", kPanelX, y, 43, accent, 712.f);
+    // --- Status effect ------------------------------------------------------
+    if (const auto status=hoveredStatus(); status && mouse) {
+        std::vector<Line> lines{{statusName(status->type),harmfulStatus(status->type)?ui::kBad:ui::kGood,18,ui::Font::Title},
+            {status->type==StatusEffectType::BattleRhythm?"Ready until used":"Remaining: "+std::to_string(status->turnsRemaining)+" status ticks",ui::kMuted,14},
+            {""},{statusTooltip(*status),ui::kText,15}};
+        if (isCleansable(status->type)) lines.push_back({"C: Cleanse removes this effect.",ui::kInfo,15});
+        ui_.tooltip(window_,lines,*mouse,320,screen);
+        return;
+    }
+
+    // --- Action buttons -------------------------------------------------------
+    if (mouse) for (std::size_t i=0;i<kDungeonActionCount;++i) if (dungeonActionRect(i).contains(*mouse)) {
+        ui_.tooltip(window_,{{kDungeonActions[i].name,ui::kGold,16,ui::Font::Bold},{std::string("Key: ")+kDungeonActions[i].key,ui::kMuted,14}},
+            {dungeonActionRect(i).position.x+dungeonActionRect(i).size.x-10,dungeonActionRect(i).position.y-60},220,screen);
+        return;
+    }
+
+    // --- Log line: the full, untruncated message ---------------------------------
+    if (const auto line=hoveredLogLine(); line && mouse) {
+        ui_.tooltip(window_,{{logMessages_[*line],ui::kText,15}},{mouse->x,mouse->y-80},420,aboveHotbar);
+        return;
+    }
+
+    // --- Enemy inspection, next to the enemy --------------------------------
     std::optional<Position> inspectTile;
     if (aimingTalent_ || inspecting_) inspectTile = targetCursor_;
-    else if (mousePixel_) {
-        inspectTile=screenToWorld(*mousePixel_);
-        // Keep the last hovered enemy while moving into its inspection panel.
-        if (!inspectTile) inspectTile=inspectionAnchor_;
-    }
+    else if (mousePixel_) inspectTile=screenToWorld(*mousePixel_);
     if (!inspectTile || !inspectionAnchor_ || !same(*inspectTile,*inspectionAnchor_)) inspectionScroll_=0;
     inspectionAnchor_=inspectTile;
-    std::vector<std::string> details;
-    if (inspectTile) {
-        for (const auto& monster:monsters_) {
-            if (!same(monster->position(),*inspectTile)) continue;
-            const auto lines=inspectMonster(*monster,exploredMap_);
-            if (lines.empty()) continue; // dead or hidden actors never disclose information
-            if (monster->allied) {
-                details.push_back("ALLIED SKELETON - "+std::to_string(monster->stats().hp)+"/"+std::to_string(monster->stats().maxHp)+" HP. Walk into it to swap.");
-                details.push_back(monster->remainingLife?"Expires in "+std::to_string(monster->remainingLife)+" actions.":"Permanent until death or travel.");
-            } else {
-                if (player_.statusEffects().has(StatusEffectType::Concealed)) {
-                    const float chance=enemyStealthDetectionChance(*monster);
-                    details.push_back(chance>0.f ? "Stealth detection: "+std::to_string(static_cast<int>(std::lround(chance*100.f)))+
-                        "% on next active turn. Detection breaks concealment.":"No stealth check from here (outside detection range or sight).");
-                }
-                details.insert(details.end(),lines.begin(),lines.end());
+    if (!inspectTile) return;
+    for (const auto& monster:monsters_) {
+        if (!same(monster->position(),*inspectTile)) continue;
+        auto details=inspectMonster(*monster,exploredMap_);
+        if (details.empty()) continue; // dead or hidden actors never disclose information
+        std::vector<Line> lines;
+        if (monster->allied) {
+            lines.push_back({"Allied skeleton",sf::Color(110,230,230),18,ui::Font::Title});
+            lines.push_back({std::to_string(monster->stats().hp)+"/"+std::to_string(monster->stats().maxHp)+" life. Walk into it to swap places.",ui::kText,15});
+            lines.push_back({monster->remainingLife?"Expires in "+std::to_string(monster->remainingLife)+" actions.":"Lasts until it dies or you travel.",ui::kMuted,14});
+        } else {
+            const sf::Color nameColor=isUniqueMonster(monster->type())?ui::kRare:
+                monster->tier()==MonsterTier::Nightmare?sf::Color(255,255,255):monster->tier()==MonsterTier::Elite?sf::Color(255,200,60):ui::kGold;
+            lines.push_back({details.front(),nameColor,18,ui::Font::Title});
+            std::vector<std::string> rest(details.begin()+1,details.end());
+            if (player_.statusEffects().has(StatusEffectType::Concealed)) {
+                const float chance=enemyStealthDetectionChance(*monster);
+                rest.insert(rest.begin(),chance>0.f ? "Stealth detection: "+std::to_string(static_cast<int>(std::lround(chance*100.f)))+
+                    "% on its next active turn." : "No stealth check from here.");
             }
-            break;
+            constexpr int kVisible=12;
+            inspectionScroll_=std::clamp(inspectionScroll_,0,std::max(0,static_cast<int>(rest.size())-kVisible));
+            for (int i=inspectionScroll_;i<static_cast<int>(rest.size()) && i<inspectionScroll_+kVisible;++i) {
+                const auto& text=rest[static_cast<std::size_t>(i)];
+                const bool warning=text.rfind("Strike",0)==0 || text.rfind("Ritual",0)==0 || text.rfind("Committed",0)==0;
+                lines.push_back({text,i==0?ui::kText:warning?ui::kBad:sf::Color(196,188,170),i==0?15u:14u,i==0?ui::Font::Bold:ui::Font::Body});
+            }
+            if (static_cast<int>(rest.size())>kVisible) lines.push_back({"Scroll for more ("+std::to_string(inspectionScroll_+1)+"-"+
+                std::to_string(std::min(inspectionScroll_+kVisible,static_cast<int>(rest.size())))+" of "+std::to_string(rest.size())+")",ui::kMuted,13});
         }
+        const auto at=worldToScreen(inspectTile->x,inspectTile->y);
+        ui_.tooltip(window_,lines,{at.x+kTile,at.y},330,{{static_cast<float>(kMapLeft),static_cast<float>(kMapTop)},
+            {static_cast<float>(kMapWidth),static_cast<float>(kMapHeight)}});
+        return;
     }
-    if (details.empty()) {
-        inspectionScroll_=0;
-        details.push_back("Hover a visible enemy for details. I / Tab: free inspection mode. Left-click: adjacent basic attack; ground: one step.");
-    }
-    std::vector<std::string> wrapped;
-    for (const auto& detail:details) {
-        std::istringstream words(detail); std::string word,line;
-        while(words>>word) {
-            if (!line.empty() && line.size()+word.size()+1>43) { wrapped.push_back(line); line.clear(); }
-            if (!line.empty()) line+=' ';
-            line+=word;
-        }
-        if (!line.empty()) wrapped.push_back(line);
-    }
-    constexpr int visibleLines=12;
-    inspectionScroll_=std::clamp(inspectionScroll_,0,std::max(0,static_cast<int>(wrapped.size())-visibleLines));
-    for(int i=0;i<visibleLines && inspectionScroll_+i<static_cast<int>(wrapped.size());++i)
-        drawText(wrapped[inspectionScroll_+i],kPanelX,489.f+17.f*i,13,normal);
-    if (wrapped.size()>visibleLines)
-        drawText("Lines "+std::to_string(inspectionScroll_+1)+"-"+
-            std::to_string(std::min(inspectionScroll_+visibleLines,static_cast<int>(wrapped.size())))+
-            "/"+std::to_string(wrapped.size())+" | scroll here for more",kPanelX,699.f,12,accent);
+}
 
-    if(autoExploring_ || restTurns_>0 || aimingTalent_ || inspecting_) {
-    drawText(autoExploring_ ? "AUTO-EXPLORE: any key/click stops. Pauses for danger and discoveries." :
-        restTurns_>0 ? "RESTING: any key/click stops. Recovering HP, mana and cooldowns." :
-        aimingTalent_ ? "AIM: mouse / arrows  Tab: target  Enter / click: cast  Esc / right-click: cancel" :
-        inspecting_ ? "INSPECT: mouse / arrows  Tab: enemy  I / Esc / right-click: close" :
-        "WASD move  Space wait  Z explore  R rest  H town  1-9 cast  C cleanse  B bag  T trees  J codex  G use  F5/F9 save/load",
-        10.f, 68.f, 12, sf::Color(180, 210, 220));
-        sf::RectangleShape button(kCancelAction.size); button.setPosition(kCancelAction.position);
-        button.setFillColor(sf::Color(45,65,80)); window_.draw(button);
-        drawText(autoExploring_ || restTurns_>0?"Stop":"Cancel",805,67,12,sf::Color::White);
-    } else for(std::size_t i=0;i<11;++i) {
-        const auto rect=dungeonActionRect(i);
-        sf::RectangleShape button(rect.size); button.setPosition(rect.position);
-        button.setFillColor(mousePixel_ && rect.contains(sf::Vector2f(*mousePixel_))?sf::Color(45,70,85):sf::Color(26,40,54));
-        window_.draw(button); drawText(kDungeonActions[i],rect.position.x+4,68,11,sf::Color(200,225,235));
+// Short contextual prompts ("item at your feet", vault, stairs) stack in
+// the top-left of the map.
+void Application::renderMapHints() {
+    float y=kMapTop+8.f;
+    for (const auto& [text,color]:mapHints_) {
+        const float w=ui_.textWidth(text,15)+24;
+        sf::RectangleShape back({w,26}); back.setPosition({kMapLeft+8.f,y});
+        back.setFillColor(sf::Color(10,8,10,200)); back.setOutlineThickness(1); back.setOutlineColor(sf::Color(140,108,62,200));
+        window_.draw(back);
+        ui_.text(window_,text,{kMapLeft+20.f,y+4},15,color);
+        y+=32.f;
     }
+    mapHints_.clear();
 }
 } // namespace engine

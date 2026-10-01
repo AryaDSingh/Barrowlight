@@ -226,11 +226,4 @@ void Application::afterHiddenCast(const Talent& t,bool landed,bool killed,int co
             player_.talents().passiveValue(PassiveKind::Unseen),concealed});
     }
 }
-void Application::refreshHiddenDiscoveries() {
-    synchronizeImbues(player_);
-    for (int i=0;i<4;++i) if (hiddenTreeAvailable(player_,kHiddenIds[i]) && codex_.reveal(kHiddenIds[i])) {
-        log("Hidden tree discovered: ",kHiddenNames[i],"! T: unlock with a tree point. J: read the condition.");
-        if (!codex_.save("codex.txt")) log(codex_.error());
-    }
-}
 } // namespace engine

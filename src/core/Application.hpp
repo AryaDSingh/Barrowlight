@@ -11,7 +11,8 @@
 #include <SFML/Graphics.hpp>
 
 #include "core/SoundManager.hpp"
-#include "core/Codex.hpp"
+#include "core/SpriteAtlas.hpp"
+#include "core/UiKit.hpp"
 #include "core/SaveGame.hpp"
 #include "core/TurnScheduler.hpp"
 #include "entities/AIBehavior.hpp"
@@ -101,7 +102,16 @@ private:
     std::vector<Actor*> targetingEnemies() const;
     TalentTarget targetPreview(std::size_t talentIndex, Position cursor, bool includeConcealed=false);
     void renderTargetingOverlay();
-    void renderTargetingPanel();
+    // Hover tooltips (talent, status, log line, enemy) and the mode banner.
+    void renderHudTooltips();
+    void renderMapHints();
+    void renderMinimap(sf::FloatRect area);
+    bool onMap(sf::Vector2f screen) const;
+    std::optional<std::size_t> hoveredLogLine() const;
+    SpriteFrame playerSpriteFrame() const;
+    // Contextual one-liners for the top-left of the map, gathered during
+    // render() and drawn once by renderMapHints().
+    std::vector<std::pair<std::string, sf::Color>> mapHints_;
     void drawWrapped(const std::string& text, float x, float& y,
                      std::size_t columns, sf::Color color, float bottom);
 
@@ -121,11 +131,6 @@ private:
     friend struct ApplicationTargetingTestAccess;
     friend struct ApplicationRewardsTestAccess;
 
-    Codex codex_;
-    bool codexOpen_=false;
-    int codexSelection_=0;
-    void discoverLore(const char* id);
-    void refreshHiddenDiscoveries();
     void scaleDeepMonster(Monster& monster,int floor);
     void configureMinion(Monster& monster,int rank,int intelligence);
     int minionCap() const;
@@ -137,10 +142,6 @@ private:
     void afterHiddenCast(const Talent& talent,bool landed,bool killed,int concealed);
     std::size_t imbueSelection_=0;
 
-    void discoverMonsterLore(const Monster& monster);
-    void handleCodexKey(sf::Keyboard::Key key);
-    void handleCodexMouse(const sf::Event& event);
-    void renderCodex();
 
     bool inventoryOpen_ = false;
     std::size_t inventorySelection_ = 0; // equipment slots, followed by bag rows
@@ -181,6 +182,8 @@ private:
     void handleTreeKey(sf::Keyboard::Key key, bool shift);
     void handleTreeMouse(const sf::Event& event);
     void renderTalentTrees();
+    // Screen rect of one ability icon on the talent screen (tests click it).
+    sf::FloatRect talentTreeAbilityRect(std::size_t tree, std::size_t ability) const;
     void closeTalentTrees();
     void requestHotbar(std::size_t slot);
     void applyMovementTalents(Position previous);
@@ -381,9 +384,11 @@ private:
                    sf::Color color);
 
     sf::RenderWindow window_;
-    sf::Font font_;
+    ui::Kit ui_; // fonts, stone/bronze panels, icons, tooltips -- see UiKit.hpp
     SoundManager soundManager_; // Prompt 25 -- see SoundManager.hpp for the "sound is a
                                 // presentation detail, never a hard requirement" design
+    SpriteAtlas sprites_; // same policy: a missing sheet falls back to flat-colored squares
+    sf::Clock animationClock_; // drives purely cosmetic animation (torch flicker)
     GameMode mode_ = GameMode::ClassSelection;
     PlayerClass playerClass_ = PlayerClass::Spellblade; // meaningless until selectClass() runs
     bool wonGame_ = false; // meaningless unless mode_ == GameOver -- see checkAndHandleDeath
@@ -432,7 +437,7 @@ private:
     // as new ones are appended. Deque specifically for cheap pop_front();
     // this is never indexed randomly, only iterated front-to-back.
     std::deque<std::string> logMessages_;
-    static constexpr std::size_t kMaxLogMessages = 6;
+    static constexpr std::size_t kMaxLogMessages = 60; // scrollback for the log panel
 
     // Direction of the player's last successful move -- Blink teleports
     // in this direction.

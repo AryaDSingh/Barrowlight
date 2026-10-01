@@ -126,9 +126,8 @@ bool validProgression(const SaveGameState& s) {
         treeSpent+=access.specialized?2:1;
     }
     if (treeSpent+s.treePoints != earnedTreePoints(s.playerLevel)) return false;
-    Player requirements({},s.playerStats,{}); requirements.trees()=s.trees;
-    requirements.bloodRelic=s.bloodRelic; requirements.animationRelic=s.animationRelic;
-    for (const auto& tree:s.trees) if (!hiddenTreeAvailable(requirements,tree.id)) return false;
+    // Hidden trees are locked to new purchases, but saves that already own
+    // one keep it.
     for (const auto& t:s.playerTalents) {
         if (!known.insert(t.id).second || t.rank<1 || t.rank>3 || t.cooldown<0 || t.cooldown>10000) return false;
         if (t.id=="basic.attack" || t.id=="basic.cleanse") { if (t.rank!=1) return false; continue; }

@@ -147,7 +147,9 @@ public:
     using Entity::Entity;
     Item(const ItemDefinition& definition, std::uint64_t instanceId, Position position = {},
          std::vector<RolledAffix> affixes = {}, int rollTier = 0)
-        : Entity(std::string(rarityName(static_cast<ItemRarity>(affixes.size()))) + " " + definition.name, '!', position),
+        : Entity(affixes.empty() ? std::string(definition.name)
+                                 : std::string(rarityName(static_cast<ItemRarity>(affixes.size()))) + " " + definition.name,
+                 '!', position),
           definition_(&definition), instanceId_(instanceId), affixes_(std::move(affixes)), rollTier_(rollTier) {}
     const ItemDefinition* definition() const { return definition_; }
     std::uint64_t instanceId() const { return instanceId_; }

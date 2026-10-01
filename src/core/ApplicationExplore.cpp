@@ -63,7 +63,7 @@ void Application::stopAutoExplore(const char* reason) {
 }
 
 void Application::startAutoExplore() {
-    if (mode_!=GameMode::Playing || inventoryOpen_ || vaultMenu_ || exitMenu_ || codexOpen_) return;
+    if (mode_!=GameMode::Playing || inventoryOpen_ || vaultMenu_ || exitMenu_) return;
     if (dangerNearby() || combatThisTurn_) {
         log("Cannot auto-explore: enemies, attack warnings or harmful effects are present.");
         return;
@@ -82,7 +82,7 @@ void Application::startAutoExplore() {
 }
 
 void Application::stepAutoExplore() {
-    if (!window_.isOpen() || mode_!=GameMode::Playing || codexOpen_ || inventoryOpen_ || vaultMenu_ || exitMenu_) {
+    if (!window_.isOpen() || mode_!=GameMode::Playing || inventoryOpen_ || vaultMenu_ || exitMenu_) {
         stopAutoExplore("another screen opened."); return;
     }
     if (dangerNearby() || combatThisTurn_) { stopAutoExplore("danger detected."); return; }

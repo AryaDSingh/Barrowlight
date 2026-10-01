@@ -1,234 +1,168 @@
 #include "world/DungeonGenerator.hpp"
 
 #include <algorithm>
-#include <optional>
+#include <array>
+#include <numeric>
+#include <queue>
 #include <random>
-#include <stdexcept>
-#include <vector>
+
+#include "world/DungeonModules.hpp"
 
 namespace engine {
 
 namespace {
 
-struct Room {
-    int x1, y1, x2, y2; // half-open: [x1,x2) x [y1,y2)
+constexpr int kCells = kModuleGrid * kModuleGrid;
+// Chance that a neighbor pair not already joined by the spanning tree is
+// opened anyway. High on purpose: the floor should feel like one open
+// space with several routes, not a single winding path.
+constexpr float kExtraConnectionChance = 0.65f;
 
-    Position center() const { return Position{(x1 + x2) / 2, (y1 + y2) / 2}; }
+struct Edge { int a, b; };
 
-    bool overlaps(const Room& other, int padding) const {
-        return x1 - padding < other.x2 && x2 + padding > other.x1 &&
-               y1 - padding < other.y2 && y2 + padding > other.y1;
-    }
-};
-
-void carveRoom(Map& map, const Room& room) {
-    for (int y = room.y1; y < room.y2; ++y) {
-        for (int x = room.x1; x < room.x2; ++x) {
-            map.setTile(x, y, Tile{TileType::Floor, true, true});
+std::vector<Edge> gridEdges() {
+    std::vector<Edge> edges;
+    for (int r = 0; r < kModuleGrid; ++r)
+        for (int c = 0; c < kModuleGrid; ++c) {
+            const int cell = r * kModuleGrid + c;
+            if (c + 1 < kModuleGrid) edges.push_back({cell, cell + 1});
+            if (r + 1 < kModuleGrid) edges.push_back({cell, cell + kModuleGrid});
         }
-    }
+    return edges;
 }
 
-void carveHorizontalCorridor(Map& map, int x1, int x2, int y) {
-    for (int x = std::min(x1, x2); x <= std::max(x1, x2); ++x) {
-        map.setTile(x, y, Tile{TileType::Floor, true, true});
-    }
+int findRoot(std::array<int, kCells>& parent, int i) {
+    while (parent[i] != i) i = parent[i] = parent[parent[i]];
+    return i;
 }
 
-void carveVerticalCorridor(Map& map, int y1, int y2, int x) {
-    for (int y = std::min(y1, y2); y <= std::max(y1, y2); ++y) {
-        map.setTile(x, y, Tile{TileType::Floor, true, true});
-    }
-}
-
-void carveCorridorBetween(Map& map, std::mt19937& rng, Position prevCenter, Position newCenter) {
-    std::uniform_int_distribution<int> coinFlip(0, 1);
-    // Randomly pick the corridor's elbow direction for visual variety,
-    // rather than always turning the same way.
-    if (coinFlip(rng) == 0) {
-        carveHorizontalCorridor(map, prevCenter.x, newCenter.x, prevCenter.y);
-        carveVerticalCorridor(map, prevCenter.y, newCenter.y, newCenter.x);
-    } else {
-        carveVerticalCorridor(map, prevCenter.y, newCenter.y, prevCenter.x);
-        carveHorizontalCorridor(map, prevCenter.x, newCenter.x, newCenter.y);
-    }
-}
-
-// Attempts to place one room with a size in [minSize, maxSize], avoiding
-// overlap with anything in `avoid`. On success, carves it, connects it
-// to `connectTo` (if provided) with an L-shaped corridor, and returns the
-// placed Room. Extracted once the boss room (Prompt 11) needed the exact
-// same placement logic as the main loop, just with a different size
-// range and connection target -- a second independent use is exactly
-// the "worth deduplicating" signal.
-std::optional<Room> tryPlaceRoom(Map& map, std::mt19937& rng, int minSize, int maxSize,
-                                  int mapWidth, int mapHeight, int padding,
-                                  const std::vector<Room>& avoid,
-                                  const Room* connectTo) {
-    std::uniform_int_distribution<int> sizeDist(minSize, maxSize);
-    const int w = sizeDist(rng);
-    const int h = sizeDist(rng);
-
-    // Leave a guaranteed 1-tile border of wall around the whole map.
-    const int maxX1 = mapWidth - w - 1;
-    const int maxY1 = mapHeight - h - 1;
-    if (maxX1 < 1 || maxY1 < 1) {
-        return std::nullopt;
-    }
-
-    std::uniform_int_distribution<int> xDist(1, maxX1);
-    std::uniform_int_distribution<int> yDist(1, maxY1);
-    const int x1 = xDist(rng);
-    const int y1 = yDist(rng);
-    const Room room{x1, y1, x1 + w, y1 + h};
-
-    const bool overlapsExisting = std::any_of(
-        avoid.begin(), avoid.end(),
-        [&](const Room& existing) { return room.overlaps(existing, padding); });
-    if (overlapsExisting) {
-        return std::nullopt;
-    }
-
-    carveRoom(map, room);
-    if (connectTo != nullptr) {
-        carveCorridorBetween(map, rng, connectTo->center(), room.center());
-    }
-    return room;
+std::vector<std::string> mirrored(const std::vector<std::string>& rows, bool flipX, bool flipY) {
+    std::vector<std::string> out = rows;
+    if (flipX) for (auto& row : out) std::reverse(row.begin(), row.end());
+    if (flipY) std::reverse(out.begin(), out.end());
+    return out;
 }
 
 } // namespace
 
 GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned int seed) {
-    Map map(params.width, params.height);
-    // Map starts entirely Wall by construction (Tile's own default member
-    // initializers -- see Tile.hpp), so only carved tiles need touching;
-    // no separate "fill with walls" pass is needed.
-
     std::mt19937 rng(seed);
+    std::uniform_real_distribution<float> roll(0.f, 1.f);
 
-    std::vector<Room> rooms;
-    constexpr int kPadding = 1; // minimum gap between rooms so they don't visually merge
-    constexpr int kMaxAttempts = 200; // generous cap so this can't loop forever
-    constexpr int kBossRoomAttempts = 100; // generous too -- a failed boss room means no boss
-
-    for (int attempt = 0;
-         attempt < kMaxAttempts && static_cast<int>(rooms.size()) < params.maxRooms;
-         ++attempt) {
-        const std::optional<Room> placed =
-            tryPlaceRoom(map, rng, params.minRoomSize, params.maxRoomSize, params.width,
-                         params.height, kPadding, rooms, rooms.empty() ? nullptr : &rooms.back());
-        if (placed.has_value()) {
-            rooms.push_back(*placed);
-        }
+    // --- Which neighbor pairs are joined -----------------------------------
+    // Random spanning tree first (Kruskal over shuffled edges) so every
+    // cell is reachable, then extra openings on top.
+    std::vector<Edge> edges = gridEdges();
+    std::shuffle(edges.begin(), edges.end(), rng);
+    std::array<int, kCells> parent{};
+    std::iota(parent.begin(), parent.end(), 0);
+    std::array<std::array<bool, kCells>, kCells> open{};
+    for (const Edge& e : edges) {
+        const int ra = findRoot(parent, e.a), rb = findRoot(parent, e.b);
+        const bool treeEdge = ra != rb;
+        if (treeEdge) parent[ra] = rb;
+        if (treeEdge || roll(rng) < kExtraConnectionChance) open[e.a][e.b] = open[e.b][e.a] = true;
     }
 
-    if (rooms.empty()) {
-        throw std::runtime_error(
-            "generateDungeon: failed to place any rooms -- map too small for the given "
-            "room size parameters");
-    }
+    // --- Start, finish, vault ---------------------------------------------
+    std::vector<int> edgeCells;
+    for (int cell = 0; cell < kCells; ++cell)
+        if (cell != kCells / 2) edgeCells.push_back(cell);
+    const int startCell = edgeCells[std::uniform_int_distribution<std::size_t>(0, edgeCells.size() - 1)(rng)];
 
-    // One more attempt, after all regular rooms: a deliberately larger
-    // boss room, connected to whichever regular room was placed last --
-    // topologically the far end of the level from the player's start.
-    // Tried last (not first) specifically so it ends up at the end of
-    // the room chain, matching "a set-piece at the end of the level
-    // sequence" -- trying it first would place it right next to the
-    // player's own starting room instead.
-    std::optional<Room> bossRoom;
-    if (params.includeBossRoom) {
-        for (int attempt = 0; attempt < kBossRoomAttempts && !bossRoom.has_value(); ++attempt) {
-            bossRoom = tryPlaceRoom(map, rng, params.bossRoomMinSize, params.bossRoomMaxSize,
-                                     params.width, params.height, kPadding, rooms, &rooms.back());
-        }
-    }
-
-    // Extra "shortcut" connections between nearby regular rooms that
-    // aren't already chain-adjacent (Prompt 21 follow-up to Prompt 18's
-    // bigger dungeons) -- the chain above is a *connectivity guarantee*,
-    // not meant to be the only route through. Without this, the dungeon
-    // is topologically a single corridor no matter how large the map
-    // gets: reaching room 8 always means passing through rooms 2-7 in
-    // order, which reads as "one long hallway" rather than "one
-    // connected space" once the map is big enough for that to matter --
-    // confirmed live, not just reasoned about (a real BFS-verified
-    // walkthrough on the bigger 60x32 map). The boss room is excluded
-    // entirely -- it should stay reachable only by the full chain,
-    // preserving "the far end of the level, reached at the end of the
-    // sequence" (Prompt 11). The *last* regular room is excluded as a
-    // shortcut endpoint too, for the same reason extended to the
-    // floor-progression system: on a non-boss floor that room hosts the
-    // door to the next floor, so it deserves the identical protection
-    // the boss room already had -- reaching either should mean actually
-    // working through the floor, not skipping most of it via a lucky
-    // shortcut. Capped and probabilistic, not "connect every nearby
-    // pair": a fully connected grid would remove the sense of distinct
-    // areas entirely, which isn't the goal either.
-    constexpr int kMaxExtraConnections = 6;
-    constexpr int kExtraConnectionMaxDistanceSq = 15 * 15;
-    constexpr float kExtraConnectionChance = 0.4f;
-    std::uniform_real_distribution<float> extraConnectionRoll(0.f, 1.f);
-    int extraConnectionsAdded = 0;
-    const std::size_t lastRoomIndex = rooms.size() - 1;
-    for (std::size_t i = 0; i < rooms.size() && extraConnectionsAdded < kMaxExtraConnections;
-         ++i) {
-        if (i == lastRoomIndex) {
-            continue; // the last room only ever connects via the chain -- see comment above
-        }
-        // j starts at i+2: j == i+1 is already chain-connected, nothing
-        // extra to add there.
-        for (std::size_t j = i + 2;
-             j < rooms.size() && extraConnectionsAdded < kMaxExtraConnections; ++j) {
-            if (j == lastRoomIndex) {
-                continue;
+    std::array<int, kCells> distance{};
+    distance.fill(-1);
+    std::queue<int> frontier;
+    distance[startCell] = 0;
+    frontier.push(startCell);
+    while (!frontier.empty()) {
+        const int cell = frontier.front();
+        frontier.pop();
+        for (int next = 0; next < kCells; ++next)
+            if (open[cell][next] && distance[next] < 0) {
+                distance[next] = distance[cell] + 1;
+                frontier.push(next);
             }
-            const Position centerI = rooms[i].center();
-            const Position centerJ = rooms[j].center();
-            const int dx = centerI.x - centerJ.x;
-            const int dy = centerI.y - centerJ.y;
-            const int distanceSq = dx * dx + dy * dy;
-            if (distanceSq <= kExtraConnectionMaxDistanceSq &&
-                extraConnectionRoll(rng) < kExtraConnectionChance) {
-                carveCorridorBetween(map, rng, centerI, centerJ);
-                ++extraConnectionsAdded;
-            }
-        }
     }
+    // Nearest modules first; ties in a random order.
+    std::vector<int> order(kCells);
+    std::iota(order.begin(), order.end(), 0);
+    std::shuffle(order.begin(), order.end(), rng);
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return distance[a] < distance[b]; });
+    const int finalCell = order.back();
+
+    int vaultCell = -1;
+    if (params.includeVault && !params.includeBossRoom) {
+        std::vector<int> candidates;
+        for (int cell = 0; cell < kCells; ++cell)
+            if (cell != startCell && cell != finalCell) candidates.push_back(cell);
+        vaultCell = candidates[std::uniform_int_distribution<std::size_t>(0, candidates.size() - 1)(rng)];
+    }
+    const int bossCell = params.includeBossRoom ? finalCell : -1;
+
+    // --- Pick and stamp modules -------------------------------------------
+    const auto& pool = regularModules();
+    std::vector<std::size_t> picks(pool.size());
+    std::iota(picks.begin(), picks.end(), std::size_t{0});
+    std::shuffle(picks.begin(), picks.end(), rng);
+    std::size_t nextPick = 0;
 
     GeneratedDungeon result;
-    // Add a sealed leaf room only after all shortcuts. Its entire perimeter
-    // must be untouched wall: opening its one entrance cannot create a bypass.
-    if (params.includeVault && !params.includeBossRoom) {
-        for (std::size_t i=1;i+1<rooms.size() && !result.hasVault;++i) {
-            const auto& source=rooms[i];
-            const auto c=source.center();
-            for (const Position d:std::vector<Position>{{1,0},{-1,0},{0,1},{0,-1}}) {
-                Position gate=d.x ? Position{d.x>0?source.x2:source.x1-1,c.y} :
-                    Position{c.x,d.y>0?source.y2:source.y1-1};
-                Position center{gate.x+d.x*3,gate.y+d.y*3};
-                Room vault{center.x-2,center.y-2,center.x+3,center.y+3};
-                bool clear=true;
-                for (int y=vault.y1-1;y<=vault.y2 && clear;++y)
-                    for (int x=vault.x1-1;x<=vault.x2;++x)
-                        if (x<1 || y<1 || x>=map.width()-1 || y>=map.height()-1 ||
-                            map.tileAt(x,y).type!=TileType::Wall) { clear=false; break; }
-                if (!clear) continue;
-                carveRoom(map,vault); // gate stays solid until explicitly opened
-                result.hasVault=true; result.vaultCenter=center; result.vaultEntrance=gate;
-                break;
+    result.map = Map(kModuleGrid * kModuleWidth, kModuleGrid * kModuleHeight);
+    result.moduleNames.resize(kCells);
+    std::array<std::vector<Position>, kCells> anchors;
+    std::uniform_int_distribution<int> coin(0, 1);
+
+    for (int cell = 0; cell < kCells; ++cell) {
+        const ModuleTemplate& module = cell == bossCell ? bossModule()
+                                     : cell == vaultCell ? vaultModule()
+                                     : pool[picks[nextPick++ % picks.size()]];
+        result.moduleNames[cell] = module.name;
+        const auto rows = mirrored(module.rows, coin(rng) == 1, coin(rng) == 1);
+        const int originX = (cell % kModuleGrid) * kModuleWidth;
+        const int originY = (cell / kModuleGrid) * kModuleHeight;
+        for (int y = 0; y < kModuleHeight; ++y)
+            for (int x = 0; x < kModuleWidth; ++x) {
+                const char c = rows[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)];
+                const Position p{originX + x, originY + y};
+                const bool wall = c == '#' || c == 'V';
+                result.map.setTile(p.x, p.y, wall ? Tile{TileType::Wall, false, false}
+                                                  : Tile{TileType::Floor, true, true});
+                if (c == 'A') anchors[cell].push_back(p);
+                if (c == 'C') result.vaultCenter = p;
+                if (c == 'V') result.vaultEntrance = p;
             }
-        }
+        if (anchors[cell].empty())
+            anchors[cell].push_back({originX + kModuleWidth / 2, originY + kModuleHeight / 2});
+
+        // Seal every socket that doesn't lead into an opened neighbor
+        // (including all of them on the floor's outer edge).
+        const int col = cell % kModuleGrid, row = cell / kModuleGrid;
+        const auto sealIfClosed = [&](bool hasNeighbor, int neighbor, auto sealTile) {
+            if (!hasNeighbor || !open[cell][neighbor])
+                for (int i = 0; i < 3; ++i) sealTile(i);
+        };
+        const Tile wall{TileType::Wall, false, false};
+        sealIfClosed(row > 0, cell - kModuleGrid, [&](int i) { result.map.setTile(originX + 9 + i, originY, wall); });
+        sealIfClosed(row + 1 < kModuleGrid, cell + kModuleGrid,
+                     [&](int i) { result.map.setTile(originX + 9 + i, originY + kModuleHeight - 1, wall); });
+        sealIfClosed(col > 0, cell - 1, [&](int i) { result.map.setTile(originX, originY + 5 + i, wall); });
+        sealIfClosed(col + 1 < kModuleGrid, cell + 1,
+                     [&](int i) { result.map.setTile(originX + kModuleWidth - 1, originY + 5 + i, wall); });
     }
-    result.map = std::move(map);
-    result.playerStart = rooms.front().center();
-    for (std::size_t i = 1; i < rooms.size(); ++i) {
-        result.otherRoomCenters.push_back(rooms[i].center());
+
+    // --- Describe the floor to the caller ----------------------------------
+    result.hasVault = vaultCell >= 0;
+    result.playerStart = anchors[startCell].front();
+    for (const int cell : order) {
+        if (cell == startCell || cell == bossCell) continue;
+        for (const Position& anchor : anchors[cell]) result.otherRoomCenters.push_back(anchor);
     }
-    result.hasBossRoom = bossRoom.has_value();
-    if (bossRoom.has_value()) {
-        result.bossRoomCenter = bossRoom->center();
-    }
-    result.roomCount = static_cast<int>(rooms.size()) + (bossRoom.has_value() ? 1 : 0) + (result.hasVault ? 1 : 0);
+    result.hasBossRoom = bossCell >= 0;
+    if (result.hasBossRoom)
+        result.bossRoomCenter = {(bossCell % kModuleGrid) * kModuleWidth + kModuleWidth / 2,
+                                 (bossCell / kModuleGrid) * kModuleHeight + kModuleHeight / 2};
+    result.roomCount = kCells;
     return result;
 }
 

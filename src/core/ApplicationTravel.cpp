@@ -5,7 +5,9 @@
 #include <limits>
 #include <queue>
 #include <random>
+#include "core/GameIcons.hpp"
 #include "core/PlayLayout.hpp"
+#include "core/ScreenLayout.hpp"
 #include "world/FloorTheme.hpp"
 
 namespace engine {
@@ -14,23 +16,8 @@ bool sameTile(Position a,Position b) { return a.x==b.x && a.y==b.y; }
 bool training(const Item& item) { return std::string_view(item.definition()->id).find("training_")==0; }
 int salePrice(const Item& item) { return training(item)?0:5+10*static_cast<int>(item.rarity())+2*item.rollTier(); }
 constexpr int kShopPrice=30;
-const sf::FloatRect kTravelDown{{195,285},{245,44}}, kTravelTown{{455,285},{250,44}}, kTravelStay{{720,285},{240,44}};
-const sf::FloatRect kTownBuy{{40,135},{170,38}}, kTownSell{{220,135},{170,38}},
-    kTownTrade{{680,525},{265,48}}, kTownPrevious{{40,525},{155,40}}, kTownNext{{215,525},{155,40}},
-    kTownInn{{770,65},{150,38}}, kTownInventory{{930,65},{135,38}}, kTownReturn{{1080,65},{155,38}};
-const sf::FloatRect kTownCodex{{410,135},{220,38}};
-const sf::FloatRect kTownDungeons{{650,135},{260,38}}, kDungeonEnter{{40,545},{260,45}}, kDungeonBack{{320,545},{240,45}};
-sf::FloatRect dungeonCard(int index) { return {{40+610.f*index,125},{550,90}}; }
-sf::FloatRect dungeonDepthCard(int depth) { return {{40+120.f*((depth-1)%5),375+60.f*((depth-1)/5)},{110,45}}; }
-const sf::FloatRect kTownRows[]{{{35,220},{600,30}},{{35,252},{600,30}},{{35,284},{600,30}},
-    {{35,316},{600,30}},{{35,348},{600,30}},{{35,380},{600,30}},{{35,412},{600,30}},
-    {{35,444},{600,30}},{{35,476},{600,30}}};
+using namespace screen;
 bool contains(const sf::FloatRect& rect,sf::Vector2i p) { return rect.contains(sf::Vector2f(p)); }
-void shopButton(sf::RenderWindow& window,const sf::FloatRect& rect,const std::string& label,bool active=false,bool enabled=true) {
-    sf::RectangleShape shape(rect.size); shape.setPosition(rect.position);
-    shape.setFillColor(!enabled?sf::Color(25,29,37):active?sf::Color(39,76,78):sf::Color(30,43,56));
-    shape.setOutlineThickness(1); shape.setOutlineColor(active?sf::Color(110,225,210):sf::Color(95,115,140)); window.draw(shape);
-}
 }
 
 bool Application::dangerNearby() const {
@@ -49,12 +36,12 @@ void Application::handleTownMouse(const sf::Event& event) {
         const auto& bag=player_.inventory().items();
         const auto stock=rewardItemDefinitions();
         const auto count=selling_?bag.size():stock.size();
-        const auto first=(shopSelection_/9)*9;
-        for(std::size_t row=0;row<9 && first+row<count;++row)
-            if(contains(kTownRows[row],moved->position)) { shopSelection_=first+row; break; }
+        const auto first=(shopSelection_/kTownRowsPerPage)*kTownRowsPerPage;
+        for(std::size_t row=0;row<kTownRowsPerPage && first+row<count;++row)
+            if(contains(townRow(static_cast<int>(row)),moved->position)) { shopSelection_=first+row; break; }
     }
     if(const auto* wheel=event.getIf<sf::Event::MouseWheelScrolled>()) {
-        if(wheel->position.x>650) return;
+        if(wheel->position.x>kTownPreview.position.x) return;
         const auto stock=rewardItemDefinitions();
         const auto count=selling_?player_.inventory().items().size():stock.size();
         if(!count) return;
@@ -66,17 +53,17 @@ void Application::handleTownMouse(const sf::Event& event) {
     if(contains(kTownDungeons,p)) { handleTownKey(sf::Keyboard::Key::M); return; }
     if(contains(kTownBuy,p)) { selling_=false; shopSelection_=0; return; }
     if(contains(kTownSell,p)) { selling_=true; shopSelection_=0; return; }
-    if(contains(kTownCodex,p)) { cancelTargeting(); codexOpen_=true; return; }
     if(contains(kTownInn,p)) { handleTownKey(sf::Keyboard::Key::R); return; }
-    if(contains(kTownInventory,p)) { openInventory(); return; }
+    if(contains(kTownEquipment,p)) { openInventory(); return; }
     if(contains(kTownReturn,p)) { handleTownKey(sf::Keyboard::Key::D); return; }
     if(contains(kTownTrade,p)) { handleTownKey(sf::Keyboard::Key::Enter); return; }
     const auto stock=rewardItemDefinitions();
     const auto count=selling_?player_.inventory().items().size():stock.size();
-    const auto first=(shopSelection_/9)*9;
-    if(contains(kTownPrevious,p)) { shopSelection_=first>=9?first-9:0; return; }
-    if(contains(kTownNext,p)) { shopSelection_=std::min(first+9,count?count-1:0); return; }
-    for(std::size_t row=0;row<9;++row) if(contains(kTownRows[row],p) && first+row<count) {
+    const std::size_t perPage=kTownRowsPerPage;
+    const auto first=(shopSelection_/perPage)*perPage;
+    if(contains(kTownPrevious,p)) { shopSelection_=first>=perPage?first-perPage:0; return; }
+    if(contains(kTownNext,p)) { shopSelection_=std::min(first+perPage,count?count-1:0); return; }
+    for(std::size_t row=0;row<perPage;++row) if(contains(townRow(static_cast<int>(row)),p) && first+row<count) {
         shopSelection_=first+row; return; // selection previews; the trade button commits
     }
 }
@@ -258,52 +245,99 @@ void Application::handleTownKey(sf::Keyboard::Key key) {
 
 void Application::renderTown() {
     if(dungeonMenu_) { renderDungeonSelection(); return; }
-    const auto button=[&](const sf::FloatRect& rect,const std::string& label,bool active=false,bool enabled=true) {
-        shopButton(window_,rect,label,active,enabled);
-        drawText(label,rect.position.x+8,rect.position.y+8,15,enabled?sf::Color(225,232,242):sf::Color(130,135,145));
-    };
-    drawText("TOWN - provisional hub",40,25,28,sf::Color(130,225,215));
-    drawText("D: resume   R: inn   B: equipment   J: Codex   F5/F9: save/load",40,70,16,sf::Color::White);
-    drawText("Gold: "+std::to_string(gold_)+"   HP: "+std::to_string(player_.stats().hp)+"/"+std::to_string(player_.stats().maxHp),40,105,19,sf::Color(255,220,130));
-    drawText("Select an item to preview, then click the trade button. Existing keyboard controls still work.",40,190,15,sf::Color(185,195,210));
-    button(kTownBuy,"Buy",!selling_); button(kTownSell,"Sell",selling_);
-    button(kTownCodex,"Codex / books [J]");
-    button(kTownDungeons,"Choose dungeon [M]");
-    button(kTownInn,"Inn: recover"); button(kTownInventory,"Equipment"); button(kTownReturn,"Return to floor");
+    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
+    const auto hovered=[&](const sf::FloatRect& r){ return !inventoryOpen_ && mouse && r.contains(*mouse); };
+    ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(140,135,130));
+    ui_.heading(window_,"Town",{40,16},34);
+    ui_.text(window_,"Gold",{190,30},16,ui::kMuted); ui_.text(window_,std::to_string(gold_),{232,26},22,ui::kRare,ui::Font::Bold);
+    const auto& stats=player_.stats();
+    ui_.bar(window_,{{320,30},{210,20}},stats.maxHp?static_cast<float>(stats.hp)/stats.maxHp:0.f,sf::Color(176,38,34),
+        "Life "+std::to_string(stats.hp)+" / "+std::to_string(stats.maxHp));
+    ui_.button(window_,kTownInn,"Inn: rest (R)",hovered(kTownInn));
+    ui_.button(window_,kTownEquipment,"Equipment (B)",hovered(kTownEquipment));
+    ui_.button(window_,kTownDungeons,"Choose dungeon (M)",hovered(kTownDungeons));
+    ui_.button(window_,kTownReturn,"Return to floor (D)",hovered(kTownReturn));
+
+    // --- Merchant list ---------------------------------------------------------
+    ui_.button(window_,kTownBuy,"Buy",hovered(kTownBuy) || !selling_);
+    ui_.button(window_,kTownSell,"Sell",hovered(kTownSell) || selling_);
+    const auto& active=selling_?kTownSell:kTownBuy;
+    sf::RectangleShape underline({active.size.x-8,3}); underline.setPosition({active.position.x+4,active.position.y+active.size.y+1});
+    underline.setFillColor(ui::kGold); window_.draw(underline);
     const auto& bag=player_.inventory().items();
     const auto stock=rewardItemDefinitions();
     const auto count=selling_?bag.size():stock.size();
+    ui_.text(window_,selling_?"Your bag, "+std::to_string(bag.size())+" items":"The merchant's stock, "+std::to_string(kShopPrice)+" gold each",
+        {362,102},15,ui::kMuted);
     if (count) shopSelection_=std::min(shopSelection_,count-1);
-    const auto first=(shopSelection_/9)*9;
-    for (std::size_t i=first;i<count && i<first+9;++i) {
-        const auto name=selling_?bag[i]->name():std::string(stock[i]->name);
+    const auto first=(shopSelection_/kTownRowsPerPage)*kTownRowsPerPage;
+    if(!count) ui_.text(window_,selling_?"Your bag is empty.":"Nothing for sale.",{48,150},16,ui::kMuted);
+    for (std::size_t i=first;i<count && i<first+kTownRowsPerPage;++i) {
+        const auto row=townRow(static_cast<int>(i-first));
+        const ItemDefinition& definition=selling_?*bag[i]->definition():*stock[i];
+        const sf::Color nameColor=selling_ && bag[i]->rarity()==ItemRarity::Rare?ui::kRare:
+            selling_ && bag[i]->rarity()==ItemRarity::Magic?ui::kMagic:ui::kText;
+        ui_.inset(window_,row,i==shopSelection_?ui::kGold:hovered(row)?ui::kBronze:sf::Color::Transparent);
+        ui_.icon(window_,itemIcon(definition),{{row.position.x+8,row.position.y+5},{28,28}},nameColor);
+        ui_.text(window_,selling_?bag[i]->name():std::string(definition.name),{row.position.x+46,row.position.y+8},16,nameColor);
         const int price=selling_?salePrice(*bag[i]):kShopPrice;
-        sf::RectangleShape row({600,30}); row.setPosition({35,220+32.f*(i-first)});
-        row.setFillColor(i==shopSelection_?sf::Color(42,59,73):sf::Color(21,30,43));
-        row.setOutlineThickness(mousePixel_ && kTownRows[i-first].contains(sf::Vector2f(*mousePixel_))?1.f:0.f);
-        row.setOutlineColor(sf::Color(110,225,210)); window_.draw(row);
-        drawText((i==shopSelection_?"> ":"  ")+name+" - "+std::to_string(price)+" gold",43,225+32.f*(i-first),16,
-            i==shopSelection_?sf::Color(255,220,100):sf::Color::White);
+        const std::string priceText=price?std::to_string(price)+" gold":"no value";
+        ui_.text(window_,priceText,{row.position.x+row.size.x-14-ui_.textWidth(priceText,15,ui::Font::Bold),row.position.y+9},15,
+            price?ui::kRare:ui::kMuted,ui::Font::Bold);
     }
-    const auto pages=std::max<std::size_t>(1,(count+8)/9);
-    const auto page=count?shopSelection_/9:0;
-    button(kTownPrevious,"Previous",false,page>0);
-    button(kTownNext,"Next",false,page+1<pages);
-    button(kTownTrade,selling_?"Sell selected item":"Buy selected item",false,count>0 && (selling_?salePrice(*bag[shopSelection_])>0:(gold_>=kShopPrice && !player_.inventory().full())));
-    drawText("Page "+std::to_string(page+1)+" / "+std::to_string(pages),405,535,15,sf::Color(190,200,215));
+    const auto pages=std::max<std::size_t>(1,(count+kTownRowsPerPage-1)/kTownRowsPerPage);
+    const auto page=count?shopSelection_/kTownRowsPerPage:0;
+    ui_.button(window_,kTownPrevious,"Previous",hovered(kTownPrevious),page>0);
+    ui_.button(window_,kTownNext,"Next",hovered(kTownNext),page+1<pages);
+    ui_.textCentered(window_,"Page "+std::to_string(page+1)+" of "+std::to_string(pages),
+        {{kTownPrevious.position.x+kTownPrevious.size.x,kTownPrevious.position.y},{kTownNext.position.x-kTownPrevious.position.x-kTownPrevious.size.x,34}},15,ui::kMuted);
+
+    // --- Preview of the selected item --------------------------------------------
+    ui_.panel(window_,kTownPreview,false,sf::Color(130,125,125));
+    const float left=kTownPreview.position.x+20;
     if (count) {
-        const auto bonus=selling_?bag[shopSelection_]->bonuses():stock[shopSelection_]->bonuses;
-        const auto slot=player_.inventory().preferredSlot(selling_?*bag[shopSelection_]->definition():*stock[shopSelection_]);
+        const ItemDefinition& definition=selling_?*bag[shopSelection_]->definition():*stock[shopSelection_];
+        const std::string name=selling_?bag[shopSelection_]->name():std::string(definition.name);
+        const sf::Color nameColor=selling_ && bag[shopSelection_]->rarity()==ItemRarity::Rare?ui::kRare:
+            selling_ && bag[shopSelection_]->rarity()==ItemRarity::Magic?ui::kMagic:ui::kText;
+        const sf::FloatRect art{{left,kTownPreview.position.y+20},{88,88}};
+        ui_.inset(window_,art,ui::kBronze);
+        ui_.icon(window_,itemIcon(definition),{{art.position.x+12,art.position.y+12},{64,64}},nameColor);
+        ui_.text(window_,name,{left+104,art.position.y+8},22,nameColor,ui::Font::Title);
+        ui_.text(window_,equipmentTypeName(definition),{left+104,art.position.y+40},15,ui::kMuted);
+        const auto bonus=selling_?bag[shopSelection_]->bonuses():definition.bonuses;
+        const auto slot=player_.inventory().preferredSlot(definition);
         const auto* equipped=player_.inventory().equipped(slot);
-        drawText("Type: "+equipmentTypeName(selling_?*bag[shopSelection_]->definition():*stock[shopSelection_]),680,230,18,sf::Color(140,230,215));
-        drawText("STR +"+std::to_string(bonus.strength)+"  DEX +"+std::to_string(bonus.dexterity)+"  INT +"+std::to_string(bonus.intelligence),680,270,17,sf::Color::White);
-        drawText("Max HP +"+std::to_string(bonus.maxHp)+"  Max mana +"+std::to_string(bonus.maxMana),680,305,17,sf::Color::White);
-        float y=350;
-        drawWrapped("Equipped: "+(equipped?equipped->name():std::string("nothing")),680,y,65,sf::Color(185,195,210),460);
-        drawWrapped("Stock is basic gear. Find stronger affixed items in the dungeon. Buying costs more than resale; returning never refreshes dungeon loot.",680,y,65,sf::Color(185,195,210),500);
+        const auto old=equipped?equipped->bonuses():ItemBonuses{};
+        float y=art.position.y+108;
+        const auto statLine=[&](const char* label,int value,int previous) {
+            if(!value && !previous) return;
+            ui_.text(window_,(value>=0?"+":"")+std::to_string(value)+" "+label,{left,y},16,ui::kText);
+            if(!selling_ && value!=previous) {
+                const int delta=value-previous;
+                ui_.text(window_,std::string("(")+(delta>0?"+":"")+std::to_string(delta)+" vs. worn)",{left+170,y},15,delta>0?ui::kGood:ui::kBad);
+            }
+            y+=24;
+        };
+        statLine("Strength",bonus.strength,old.strength); statLine("Dexterity",bonus.dexterity,old.dexterity);
+        statLine("Intelligence",bonus.intelligence,old.intelligence); statLine("Max life",bonus.maxHp,old.maxHp);
+        statLine("Max mana",bonus.maxMana,old.maxMana);
+        y+=8;
+        ui_.text(window_,std::string("Worn in ")+slotName(slot)+": "+(equipped?equipped->name():std::string("nothing")),{left,y},15,ui::kInfo);
+        y+=30;
+        ui_.paragraph(window_,"The merchant only stocks basic gear; stronger affixed items come from the dungeon. Buying costs more than selling earns.",
+            left,y,kTownPreview.size.x-40,14,ui::kMuted);
+        const bool canTrade=selling_?salePrice(*bag[shopSelection_])>0:(gold_>=kShopPrice && !player_.inventory().full());
+        ui_.button(window_,kTownTrade,selling_?"Sell for "+std::to_string(salePrice(*bag[shopSelection_]))+" gold (Enter)":
+            "Buy for "+std::to_string(kShopPrice)+" gold (Enter)",hovered(kTownTrade),canTrade,16);
+        if(!selling_ && player_.inventory().full()) ui_.text(window_,"Your bag is full.",{kTownTrade.position.x+316,kTownTrade.position.y+12},15,ui::kBad);
+        else if(!selling_ && gold_<kShopPrice) ui_.text(window_,"Not enough gold.",{kTownTrade.position.x+316,kTownTrade.position.y+12},15,ui::kBad);
+    } else {
+        ui_.textCentered(window_,selling_?"Nothing to sell.":"Nothing in stock.",kTownPreview,18,ui::kMuted);
     }
-    drawText("Inactive floors pause. Returning resumes your saved location; nothing respawns.",40,585,16,sf::Color(140,230,215));
-    if (!logMessages_.empty()) { float y=610; drawWrapped(logMessages_.back(),40,y,145,sf::Color(255,220,140),700); }
+    ui_.text(window_,"Floors you leave pause. Returning resumes where you stood; nothing respawns.",{40,596},15,ui::kMuted);
+    if (!logMessages_.empty()) ui_.text(window_,logMessages_.back(),{40,624},16,sf::Color(232,196,130));
+    ui_.text(window_,"D resume   R inn   B equipment   M dungeons   Tab buy or sell   F5/F9 save or load",{40,684},14,ui::kMuted);
     if (inventoryOpen_) renderInventory();
 }
 
@@ -322,40 +356,58 @@ void Application::handleDungeonMouse(const sf::Event& event) {
     if(kDungeonBack.contains(point)) { handleDungeonKey(sf::Keyboard::Key::Escape); return; }
     if(kDungeonEnter.contains(point)) { handleDungeonKey(sf::Keyboard::Key::Enter); return; }
     for(int i=0;i<2;++i) if(dungeonCard(i).contains(point)) { dungeonSelection_=i; return; }
-    for(int depth=1;depth<=10;++depth) if(dungeonDepthCard(depth).contains(point)) { dungeonDepth_=depth; return; }
+    for(int depth=1;depth<=10;++depth) if(depthCard(depth).contains(point)) { dungeonDepth_=depth; return; }
 }
 
 void Application::renderDungeonSelection() {
-    const sf::Color text(220,230,240), accent(110,225,210), selected(255,220,110);
-    const auto box=[&](sf::FloatRect rect,bool active) {
-        sf::RectangleShape shape(rect.size); shape.setPosition(rect.position);
-        shape.setFillColor(active?sf::Color(42,64,77):sf::Color(24,35,49));
-        shape.setOutlineThickness(1); shape.setOutlineColor(active?selected:accent); window_.draw(shape);
-    };
-    drawText("CHOOSE YOUR DESCENT",40,25,27,accent);
-    drawText("Click a dungeon and depth, then Enter. Arrows: dungeon/depth. Esc: town. F5/F9: save/load.",40,75,16,text);
+    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
+    const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
+    ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(140,135,130));
+    ui_.heading(window_,"Choose your descent",{40,16},32);
+    ui_.text(window_,"Pick a dungeon and a depth. Arrows also work; Enter descends, Esc returns to town.",{40,70},15,ui::kMuted);
+    const char* descriptions[]{"Barracks, a ruined sanctum and the crypts. The Goblin Warlord waits at depth 5, the Lich at depth 10.",
+                               "Undead legions beyond the broken seal. The final Lich waits at depth 10."};
+    const char* icons[]{"relic-blade","skull-crossed-bones"};
     for(int i=0;i<2;++i) {
-        const auto rect=dungeonCard(i); box(rect,i==dungeonSelection_);
-        drawText(std::string(dungeonName(i))+" | levels "+std::to_string(i*10+1)+"-"+std::to_string(dungeonMaximum(i)),rect.position.x+15,140,21,accent);
-        drawText("Difficulty follows depth, independent of your level",rect.position.x+15,177,15,text);
+        const auto r=dungeonCard(i);
+        const bool active=i==dungeonSelection_;
+        ui_.inset(window_,r,active?ui::kGold:hovered(r)?ui::kBronze:sf::Color::Transparent);
+        const sf::FloatRect art{{r.position.x+16,r.position.y+16},{118,118}};
+        ui_.inset(window_,art);
+        ui_.icon(window_,icons[i],{{art.position.x+16,art.position.y+16},{86,86}},active?ui::kGold:ui::kMuted);
+        ui_.text(window_,dungeonName(i),{r.position.x+152,r.position.y+16},26,active?ui::kGold:ui::kText,ui::Font::Title);
+        ui_.text(window_,"Levels "+std::to_string(i*10+1)+" to "+std::to_string(dungeonMaximum(i)),{r.position.x+152,r.position.y+52},16,ui::kText,ui::Font::Bold);
+        float y=r.position.y+80;
+        ui_.paragraph(window_,descriptions[i],r.position.x+152,y,r.size.x-170,15,ui::kMuted);
+    }
+    ui_.text(window_,"Depth",{40,272},20,ui::kGold,ui::Font::Title);
+    for(int depth=1;depth<=10;++depth) {
+        const auto r=depthCard(depth);
+        const int floor=dungeonSelection_*10+depth;
+        const bool visited=floor==currentFloor_ || floorCache_.count(floor);
+        ui_.inset(window_,r,depth==dungeonDepth_?ui::kGold:hovered(r)?ui::kBronze:sf::Color::Transparent);
+        ui_.textCentered(window_,std::to_string(depth),{{r.position.x,r.position.y+6},{r.size.x,44}},32,
+            depth==dungeonDepth_?ui::kGold:ui::kText,ui::Font::Title);
+        if(depth==5 || depth==10)
+            ui_.icon(window_,"skull-crossed-bones",{{r.position.x+r.size.x-24,r.position.y+6},{18,18}},sf::Color(200,70,60));
+        if(visited) ui_.textCentered(window_,floor==currentFloor_?"you are here":"visited",{{r.position.x,r.position.y+52},{r.size.x,20}},13,ui::kGood);
     }
     const int destination=dungeonSelection_*10+dungeonDepth_;
-    const int suggested=destination;
     const bool visited=destination==currentFloor_ || floorCache_.count(destination);
-    drawText("Your level: "+std::to_string(player_.level())+" | Depth level: "+std::to_string(suggested),40,250,20,player_.level()<suggested?selected:text);
-    drawText("Deeper floors add tougher encounters and better rewards.",40,287,16,text);
-    drawText(dungeonSelection_?"Undead legions. Final Lich at depth 10.":"Barracks, sanctum and crypts. Warlord at depth 5; Lich at depth 10.",40,320,16,accent);
-    for(int depth=1;depth<=10;++depth) {
-        const auto rect=dungeonDepthCard(depth); box(rect,depth==dungeonDepth_);
-        const int floor=dungeonSelection_*10+depth;
-        drawText(std::string(floor==currentFloor_ || floorCache_.count(floor)?"* ":"  ")+"Depth "+std::to_string(depth),rect.position.x+5,rect.position.y+12,14,text);
-    }
-    drawText(visited?"* Visited: enemies and loot stay as you left them. No respawns.":"New floor: generated once. Entering does not heal you or advance a turn.",40,505,16,text);
-    box(kDungeonEnter,false); box(kDungeonBack,false);
-    drawText("Enter selected depth",50,558,17,text); drawText("Back to town [Esc]",330,558,17,text);
-    float y=620;
-    drawWrapped("Entry is unrestricted: higher depths can be deadly. Difficulty depends only on depth. Returning to the current floor resumes your exact position; other visited floors arrive at their entrance.",40,y,140,selected,690);
-    if(!logMessages_.empty()) drawText(logMessages_.back().substr(0,135),40,694,12,text);
+    float y=410;
+    ui_.text(window_,std::string(dungeonName(dungeonSelection_))+", depth "+std::to_string(dungeonDepth_),{40,y},22,ui::kGold,ui::Font::Title);
+    y+=36;
+    ui_.text(window_,"Your level "+std::to_string(player_.level())+", depth level "+std::to_string(destination),{40,y},17,
+        player_.level()<destination?ui::kBad:ui::kText,ui::Font::Bold);
+    y+=28;
+    ui_.paragraph(window_,visited?"Visited: enemies and loot stay exactly as you left them. Nothing respawns.":
+        "A new floor, generated once. Entering doesn't heal you or take a turn.",40,y,1180,16,ui::kText);
+    y+=6;
+    ui_.paragraph(window_,"Entry is never restricted, so deep floors can be deadly. Difficulty depends only on depth. "
+        "Returning to your current floor puts you back where you stood; other visited floors start at their entrance.",40,y,1180,15,ui::kMuted);
+    ui_.button(window_,kDungeonEnter,"Descend (Enter)",hovered(kDungeonEnter),true,17);
+    ui_.button(window_,kDungeonBack,"Back to town (Esc)",hovered(kDungeonBack),true,17);
+    if(!logMessages_.empty()) ui_.text(window_,logMessages_.back(),{600,616},15,sf::Color(232,196,130));
 }
 
 void Application::handleTravelKey(sf::Keyboard::Key key) {
@@ -378,24 +430,20 @@ void Application::handleTravelMouse(const sf::Event& event) {
 void Application::renderTravel() {
     const auto p=floorEntrance_;
     const auto at=worldToScreen(p.x,p.y);
-    if (exploredMap_.at(p.x,p.y)==Visibility::Visible && at.x>=0 && at.x<playLayout::mapWidth &&
-        at.y>=playLayout::mapTop && at.y<playLayout::mapTop+playLayout::mapHeight)
-        drawText("<",at.x+5,at.y+1,22,sf::Color(120,205,255));
-    drawText("H: "+std::to_string(dangerNearby()?0:quietTurns_)+"/10",1150,12,12,sf::Color(160,220,240));
+    if (exploredMap_.at(p.x,p.y)==Visibility::Visible && onMap(at))
+        ui_.icon(window_,"jump-across",{{at.x+3,at.y+3},{22,22}},ui::kInfo);
     if (sameTile(player_.position(),floorEntrance_))
-        drawText(currentFloor_==1?"G: return to town (10 quiet turns)":"G: ascend to the previous floor",590,49,12,sf::Color(130,220,255));
+        mapHints_.push_back({currentFloor_==1?"Entrance. G: return to town (needs 10 quiet turns)":"Stairs up. G: ascend to the previous floor",ui::kInfo});
     if (!exitMenu_) return;
-    sf::RectangleShape box({850.f,240.f}); box.setPosition({160,210}); box.setFillColor(sf::Color(15,20,30,250)); window_.draw(box);
-    drawText("DESCENT",195,235,24,sf::Color(255,215,120));
-    const auto button=[&](const sf::FloatRect& rect,const std::string& label) {
-        const bool hover=mousePixel_ && contains(rect,*mousePixel_);
-        shopButton(window_,rect,label,hover);
-        drawText(label,rect.position.x+10,rect.position.y+11,15,sf::Color::White);
-    };
-    button(kTravelDown,"1: Descend to floor "+std::to_string(currentFloor_+1));
-    button(kTravelTown,"2: Return to town");
-    button(kTravelStay,"Esc: Stay here");
-    drawText("Town requires 10 quiet turns. Stairs require no current danger.",195,340,17,sf::Color(190,210,230));
-    drawText("Floors persist; you can come back for loot. Travel does not heal you.",195,380,17,sf::Color(190,210,230));
+    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
+    const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
+    sf::RectangleShape dim({1280,720}); dim.setFillColor(sf::Color(0,0,0,120)); window_.draw(dim);
+    ui_.panel(window_,kTravelDialog,true,sf::Color(150,145,140));
+    ui_.textCentered(window_,"Stairs down",{{kTravelDialog.position.x,kTravelDialog.position.y+22},{kTravelDialog.size.x,44}},32,ui::kGold,ui::Font::Title);
+    ui_.textCentered(window_,"Floors persist, so you can come back for loot. Travel doesn't heal you.",
+        {{kTravelDialog.position.x,kTravelDialog.position.y+64},{kTravelDialog.size.x,22}},15,ui::kMuted);
+    ui_.button(window_,kTravelDown,"1: Descend to depth "+std::to_string(currentFloor_+1),hovered(kTravelDown),true,17);
+    ui_.button(window_,kTravelTown,"2: Return to town (needs 10 quiet turns)",hovered(kTravelTown),true,17);
+    ui_.button(window_,kTravelStay,"Esc: Stay here",hovered(kTravelStay),true,17);
 }
 } // namespace engine

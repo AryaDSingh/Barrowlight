@@ -3,24 +3,24 @@
 #include <limits>
 #include <algorithm>
 #include <cstdlib>
+#include "core/GameIcons.hpp"
 #include "core/PlayLayout.hpp"
+#include "core/ScreenLayout.hpp"
 #include "world/FloorTheme.hpp"
 
 namespace engine {
 namespace {
-sf::FloatRect vaultRewardRect(std::size_t row) { return {{50,135+155.f*row},{1180,125}}; }
-sf::FloatRect vaultCommitRect(int menu) { return {{60,menu==1?425.f:590.f},{295,44}}; }
-sf::FloatRect vaultCancelRect(int menu) { return {{380,menu==1?425.f:590.f},{280,44}}; }
+using namespace screen;
 }
 
 void Application::handleVaultMouse(const sf::Event& event) {
     const auto* click=event.getIf<sf::Event::MouseButtonPressed>();
     if(!click || click->button!=sf::Mouse::Button::Left || !vaultMenu_) return;
     const auto point=sf::Vector2f(click->position);
-    if(vaultCancelRect(vaultMenu_).contains(point)) { handleVaultKey(sf::Keyboard::Key::Escape); return; }
-    if(vaultCommitRect(vaultMenu_).contains(point)) { handleVaultKey(sf::Keyboard::Key::Enter); return; }
+    if(vaultCancel(vaultMenu_).contains(point)) { handleVaultKey(sf::Keyboard::Key::Escape); return; }
+    if(vaultCommit(vaultMenu_).contains(point)) { handleVaultKey(sf::Keyboard::Key::Enter); return; }
     if(vaultMenu_==2) for(std::size_t i=0;i<vaultRewards_.size();++i)
-        if(vaultRewardRect(i).contains(point)) { vaultSelection_=i; return; }
+        if(vaultRewardCard(static_cast<int>(i)).contains(point)) { vaultSelection_=i; return; }
 }
 
 bool Application::vaultCleared() const {
@@ -69,72 +69,83 @@ void Application::handleVaultKey(sf::Keyboard::Key key) {
 void Application::renderVault() {
     if (!vaultExists_) return;
     const auto p=player_.position();
-    const auto marker=[&](Position tile,const char* glyph,sf::Color color) {
+    const auto marker=[&](Position tile,const char* icon,sf::Color color) {
         if (exploredMap_.at(tile.x,tile.y)!=Visibility::Visible) return;
         const auto pos=worldToScreen(tile.x,tile.y);
-        if (pos.x<0 || pos.x>=playLayout::mapWidth || pos.y<playLayout::mapTop ||
-            pos.y>=playLayout::mapTop+playLayout::mapHeight) return;
-        drawText(glyph,pos.x+5,pos.y+1,22,color);
+        if (!onMap(pos)) return;
+        ui_.icon(window_,icon,{{pos.x+3,pos.y+3},{22,22}},color);
     };
-    if (!vaultOpened_) marker(vaultEntrance_,"V",sf::Color(235,140,255));
-    else if (!vaultClaimed_) marker(vaultCenter_,vaultCleared()?"!":"X",sf::Color(255,215,100));
+    if (!vaultOpened_) marker(vaultEntrance_,"locked-chest",sf::Color(235,150,255));
+    else if (!vaultClaimed_) marker(vaultCenter_,"locked-chest",vaultCleared()?ui::kRare:sf::Color(150,140,150));
     const bool nearEntrance=std::abs(p.x-vaultEntrance_.x)+std::abs(p.y-vaultEntrance_.y)<=1;
     const bool nearCache=std::abs(p.x-vaultCenter_.x)+std::abs(p.y-vaultCenter_.y)<=1;
     if (!vaultMenu_) {
         if ((!vaultOpened_ && nearEntrance) || (vaultOpened_ && !vaultClaimed_ && nearCache)) {
-            sf::RectangleShape banner({880.f,28.f}); banner.setPosition({8.f,90.f});
-            banner.setFillColor(sf::Color(25,15,35,245)); window_.draw(banner);
-            drawText(!vaultOpened_ ? "Optional vault: Elite Goblin + Archer. G: read warning (free)." :
-                vaultCleared()?"Vault cleared! G: choose one of three rare rewards.":"Vault cache: defeat both guards to claim a reward.",
-                18.f,94.f,14,sf::Color(245,215,150));
+            mapHints_.push_back({!vaultOpened_ ? "Optional vault: Elite Goblin and Archer. G: read the warning (free)" :
+                vaultCleared()?"Vault cleared. G: choose one of three rare rewards":"Vault cache: defeat both guards to claim a reward.",
+                sf::Color(235,190,255)});
         }
         return;
     }
-    sf::RectangleShape backdrop({1280.f,720.f}); backdrop.setFillColor(sf::Color(12,15,25,250)); window_.draw(backdrop);
-    drawText(vaultMenu_==1?"OPTIONAL VAULT":"CHOOSE ONE VAULT REWARD",60,45,26,sf::Color(235,190,255));
-    const auto button=[&](const sf::FloatRect& rect,const std::string& label,bool enabled=true) {
-        sf::RectangleShape shape(rect.size); shape.setPosition(rect.position);
-        const bool hover=mousePixel_ && rect.contains(sf::Vector2f(*mousePixel_));
-        shape.setFillColor(enabled?(hover?sf::Color(45,70,82):sf::Color(28,43,57)):sf::Color(29,30,38));
-        shape.setOutlineThickness(1); shape.setOutlineColor(sf::Color(130,190,210)); window_.draw(shape);
-        drawText(label,rect.position.x+10,rect.position.y+11,16,enabled?sf::Color::White:sf::Color(155,160,175));
-    };
-    button(vaultCommitRect(vaultMenu_),vaultMenu_==1?"Enter: Open vault (1 turn)":"Enter: Claim (1 turn)",
-        vaultMenu_==1 || (!player_.inventory().full() && !vaultRewards_.empty()));
-    button(vaultCancelRect(vaultMenu_),vaultMenu_==1?"Esc: Leave sealed":"Esc: Decide later");
+    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
+    const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
+    using namespace screen;
     if (vaultMenu_==1) {
-        drawText("Danger: one Elite Goblin and one Archer in a small room.",60,120,19,sf::Color::White);
-        drawText("Elite Goblin: 1.5x HP, 1.4x damage. Archer attacks from range.",60,165,17,sf::Color(245,190,130));
-        drawText("Reward: choose one of three rare items after defeating both guards.",60,230,18,sf::Color(255,220,120));
-        drawText("Opening costs one turn. Enemies can respond immediately.",60,280,18,sf::Color::White);
-        drawText("You may retreat. Skipping the vault never blocks the next floor.",60,330,18,sf::Color::White);
-        drawText("Click a button or use its keyboard shortcut. F5/F9: save/load",60,495,16,sf::Color(140,235,220));
+        sf::RectangleShape dim({1280,720}); dim.setFillColor(sf::Color(0,0,0,140)); window_.draw(dim);
+        ui_.panel(window_,kVaultWarning,true,sf::Color(150,140,150));
+        const float x=kVaultWarning.position.x, w=kVaultWarning.size.x;
+        ui_.icon(window_,"locked-chest",{{x+w/2-34,kVaultWarning.position.y+22},{68,68}},sf::Color(235,190,255));
+        ui_.textCentered(window_,"Optional vault",{{x,kVaultWarning.position.y+96},{w,44}},34,ui::kGold,ui::Font::Title);
+        float y=kVaultWarning.position.y+152;
+        const auto line=[&](const std::string& text,sf::Color color,unsigned size=17) {
+            ui_.textCentered(window_,text,{{x,y},{w,24}},size,color); y+=30;
+        };
+        line("Inside: an Elite Goblin and an Archer, in a small room.",ui::kText);
+        line("The Elite Goblin has 1.5x life and 1.4x damage. The Archer shoots from range.",sf::Color(240,180,130),16);
+        line("Reward: choose one of three rare items once both guards are dead.",ui::kRare);
+        y+=8;
+        line("Opening takes a turn and the guards can act at once.",ui::kMuted,16);
+        line("You can retreat, and skipping the vault never blocks the stairs.",ui::kMuted,16);
+        ui_.button(window_,vaultCommit(1),"Open the vault (Enter)",hovered(vaultCommit(1)),true,16);
+        ui_.button(window_,vaultCancel(1),"Leave it sealed (Esc)",hovered(vaultCancel(1)),true,16);
         return;
     }
-    drawText("Click a reward or use Up/Down to select. The Claim button takes it. F5/F9: save/load",60,90,16,sf::Color::White);
+    ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(150,140,150));
+    ui_.heading(window_,"Choose one reward",{60,30},32);
+    ui_.text(window_,"Click a reward to inspect it, then claim it. The other two are lost.",{420,46},15,ui::kMuted);
     for (std::size_t i=0;i<vaultRewards_.size();++i) {
         const auto& item=*vaultRewards_[i]; const auto b=item.bonuses();
-        const float y=145.f+155.f*i;
-        const auto rect=vaultRewardRect(i);
-        sf::RectangleShape card(rect.size); card.setPosition(rect.position);
-        card.setFillColor(i==vaultSelection_?sf::Color(40,53,70):sf::Color(23,30,43));
-        card.setOutlineThickness(1);
-        card.setOutlineColor(i==vaultSelection_?sf::Color(255,220,100):sf::Color(75,95,115)); window_.draw(card);
-        drawText(std::string(i==vaultSelection_?"> ":"  ")+item.name(),60,y,20,
-            i==vaultSelection_?sf::Color(255,220,100):sf::Color::White);
-        drawText(equipmentTypeName(*item.definition())+" | STR +"+std::to_string(b.strength)+
-            "  DEX +"+std::to_string(b.dexterity)+"  INT +"+std::to_string(b.intelligence)+
-            "  HP +"+std::to_string(b.maxHp)+"  Mana +"+std::to_string(b.maxMana),80,y+36,16,sf::Color(180,230,220));
+        const auto r=vaultRewardCard(static_cast<int>(i));
+        const bool chosen=i==vaultSelection_;
+        ui_.inset(window_,r,chosen?ui::kRare:hovered(r)?ui::kBronze:sf::Color::Transparent);
+        const sf::FloatRect art{{r.position.x+r.size.x/2-56,r.position.y+22},{112,112}};
+        ui_.inset(window_,art,sf::Color(255,214,96,chosen?200:70));
+        ui_.icon(window_,itemIcon(*item.definition()),{{art.position.x+16,art.position.y+16},{80,80}},ui::kRare);
+        float y=r.position.y+146;
+        ui_.paragraph(window_,item.name(),r.position.x+20,y,r.size.x-40,20,ui::kRare,ui::Font::Title);
+        ui_.text(window_,equipmentTypeName(*item.definition()),{r.position.x+20,y},15,ui::kMuted); y+=30;
         const auto* equipped=player_.inventory().equipped(player_.inventory().preferredSlot(*item.definition()));
         const auto old=equipped?equipped->bonuses():ItemBonuses{};
-        auto delta=[](int n){return (n>=0?std::string("+"):std::string{})+std::to_string(n);};
-        drawText("Compared to "+(equipped?equipped->name():std::string("empty slot"))+":",80,y+65,14,sf::Color(190,190,205));
-        drawText("STR "+delta(b.strength-old.strength)+"  DEX "+delta(b.dexterity-old.dexterity)+
-            "  INT "+delta(b.intelligence-old.intelligence)+"  HP "+delta(b.maxHp-old.maxHp)+
-            "  Mana "+delta(b.maxMana-old.maxMana),80,y+89,15,sf::Color(190,190,205));
+        const auto stat=[&](const char* name,int value,int previous) {
+            if(!value && !previous) return;
+            ui_.text(window_,(value>=0?"+":"")+std::to_string(value)+" "+name,{r.position.x+20,y},16,ui::kText);
+            const int delta=value-previous;
+            if(delta) ui_.text(window_,std::string("(")+(delta>0?"+":"")+std::to_string(delta)+")",{r.position.x+200,y},15,delta>0?ui::kGood:ui::kBad);
+            y+=23;
+        };
+        stat("Strength",b.strength,old.strength); stat("Dexterity",b.dexterity,old.dexterity);
+        stat("Intelligence",b.intelligence,old.intelligence); stat("Max life",b.maxHp,old.maxHp); stat("Max mana",b.maxMana,old.maxMana);
+        for(const auto& roll:item.affixes()) {
+            ui_.text(window_,std::string(findAffix(roll.id)->name)+" +"+std::to_string(roll.value),{r.position.x+20,y},15,ui::kMagic); y+=22;
+        }
+        y+=6;
+        ui_.paragraph(window_,"Compared with "+(equipped?equipped->name():std::string("an empty slot")),r.position.x+20,y,r.size.x-40,14,ui::kMuted,
+            ui::Font::Body,r.position.y+r.size.y-8);
     }
-    drawText("Claimed gear goes into your bag. The other two rewards are discarded.",60,650,16,sf::Color(245,215,150));
-    if(player_.inventory().full()) drawText("Bag full (50). Decide later, make space, then return to claim.",60,682,16,sf::Color(255,165,130));
+    const bool canClaim=!player_.inventory().full() && !vaultRewards_.empty();
+    ui_.button(window_,vaultCommit(2),"Claim it (Enter, 1 turn)",hovered(vaultCommit(2)),canClaim,16);
+    ui_.button(window_,vaultCancel(2),"Decide later (Esc)",hovered(vaultCancel(2)),true,16);
+    if(player_.inventory().full()) ui_.text(window_,"Your bag is full. Decide later, make space, then come back.",{720,502},16,ui::kBad);
 }
 
 void Application::spawnFloorChest() {

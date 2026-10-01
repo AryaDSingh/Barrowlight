@@ -1,0 +1,342 @@
+#include "world/DungeonModules.hpp"
+
+#include <cstdlib>
+#include <queue>
+#include <set>
+#include <utility>
+
+namespace engine {
+
+// New modules go in regularModules() below -- see DungeonModules.hpp for
+// the authoring rules. dungeon_test fails with a description of the
+// problem if one is broken.
+
+// Regular modules: any socket may be opened or sealed.
+const std::vector<ModuleTemplate>& regularModules() {
+    static const std::vector<ModuleTemplate> modules{
+    {"Great Hall", {
+        "#########...#########",
+        "#...................#",
+        "#..##...........##..#",
+        "#..##...........##..#",
+        "#...................#",
+        ".....##.......##.....",
+        ".....................",
+        ".....##.......##.....",
+        "#...................#",
+        "#..##...........##..#",
+        "#..##...........##..#",
+        "#...................#",
+        "#########...#########",
+    }},
+    {"Crossroads", {
+        "#########...#########",
+        "#.....#.......#.....#",
+        "#.....#.......#.....#",
+        "#...................#",
+        "#.....#.......#.....#",
+        "...........A.........",
+        ".....................",
+        ".....................",
+        "#.....#.......#.....#",
+        "#.....#.......#.....#",
+        "#.....#.......#.....#",
+        "#.....#.......#.....#",
+        "#########...#########",
+    }},
+    {"Ring", {
+        "#########...#########",
+        "#...................#",
+        "#...................#",
+        "#...####.....####...#",
+        "#...#...........#...#",
+        "......A......A.......",
+        ".....................",
+        "......#.......#......",
+        "#...#...........#...#",
+        "#...####.....####...#",
+        "#...................#",
+        "#...................#",
+        "#########...#########",
+    }},
+    {"Twin Chambers", {
+        "#########...#########",
+        "#.......#...#.......#",
+        "#.......#...#.......#",
+        "#.........A.........#",
+        "#.......#...#.......#",
+        "....###.......###....",
+        ".....................",
+        "....###.......###....",
+        "#.......#...#.......#",
+        "#.......#...#.......#",
+        "#...................#",
+        "#.......#...#.......#",
+        "#########...#########",
+    }},
+    {"Colonnade", {
+        "#########...#########",
+        "#...................#",
+        "#.#..#..#...#..#..#.#",
+        "#...................#",
+        "#...................#",
+        "..#..#..#...#..#..#..",
+        ".....................",
+        "..#..#..#...#..#..#..",
+        "#...................#",
+        "#...................#",
+        "#.#..#..#...#..#..#.#",
+        "#...................#",
+        "#########...#########",
+    }},
+    {"Cavern", {
+        "#########...#########",
+        "##.....##.....###..##",
+        "#.......#.........###",
+        "#...##.........##...#",
+        "##..###.......###...#",
+        ".....#...............",
+        ".....................",
+        ".............#.......",
+        "#....##.....###....##",
+        "#...###......#.....##",
+        "##.................##",
+        "###....###.....#...##",
+        "#########...#########",
+    }},
+    {"Shrine", {
+        "#########...#########",
+        "#...................#",
+        "#.#####.......#####.#",
+        "#.#...............#.#",
+        "#.#...............#.#",
+        ".....A.........A.....",
+        ".........###.........",
+        ".........###.........",
+        "#.#...............#.#",
+        "#.#...............#.#",
+        "#.#####.......#####.#",
+        "#...................#",
+        "#########...#########",
+    }},
+    {"Barracks", {
+        "#########...#########",
+        "#...................#",
+        "#.####..#.....#..####",
+        "#...................#",
+        "#.####.............##",
+        ".....................",
+        ".....................",
+        ".....................",
+        "#.####.............##",
+        "#...................#",
+        "#.####..#.....#..####",
+        "#...................#",
+        "#########...#########",
+    }},
+    {"Broken Walls", {
+        "#########...#########",
+        "#.......#...........#",
+        "#.#####.#.###.####..#",
+        "#...........#.......#",
+        "#.###.###...#.#####.#",
+        ".....................",
+        ".....................",
+        ".....................",
+        "#.###.##.....##.###.#",
+        "#.......#...........#",
+        "#.#####.#.###.####..#",
+        "#...................#",
+        "#########...#########",
+    }},
+    {"Courtyard", {
+        "#########...#########",
+        "#...###.......###...#",
+        "#...###.......###...#",
+        "#...................#",
+        "#...................#",
+        ".....................",
+        ".....................",
+        ".....................",
+        "#...................#",
+        "#...................#",
+        "#...###.......###...#",
+        "#...###.......###...#",
+        "#########...#########",
+    }},
+    {"Crypt Niches", {
+        "#########...#########",
+        "#.#.#.#.......#.#.#.#",
+        "#...................#",
+        "###...............###",
+        "#.....#.......#.....#",
+        "...........A.........",
+        ".....................",
+        ".....................",
+        "#.....#.......#.....#",
+        "###...............###",
+        "#...................#",
+        "#.#.#.#.......#.#.#.#",
+        "#########...#########",
+    }},
+    {"Staggered Hall", {
+        "#########...#########",
+        "#...................#",
+        "#..###..............#",
+        "#.......###.........#",
+        "#...........###.....#",
+        "..............###....",
+        ".....................",
+        "....###..............",
+        "#.....###...........#",
+        "#.........###.......#",
+        "#.............###...#",
+        "#...................#",
+        "#########...#########",
+    }},
+    };
+    return modules;
+}
+
+const ModuleTemplate& bossModule() {
+    static const ModuleTemplate module{"Boss Arena", {
+        "#########...#########",
+        "#...................#",
+        "#..##...........##..#",
+        "#..##...........##..#",
+        "#...................#",
+        ".....................",
+        ".....................",
+        ".....................",
+        "#...................#",
+        "#..##...........##..#",
+        "#..##...........##..#",
+        "#...................#",
+        "#########...#########",
+    }};
+    return module;
+}
+
+const ModuleTemplate& vaultModule() {
+    static const ModuleTemplate module{"Vault", {
+        "#########...#########",
+        "#...................#",
+        "#...................#",
+        "#.....#.....#######.#",
+        "#.....#.....#.....#.#",
+        "............#.....#..",
+        ".....A......V..C..#..",
+        "............#.....#..",
+        "#.....#.....#.....#.#",
+        "#.....#.....#######.#",
+        "#...................#",
+        "#...................#",
+        "#########...#########",
+    }};
+    return module;
+}
+
+
+namespace {
+
+bool isSocket(int x, int y) {
+    const bool topOrBottom = y == 0 || y == kModuleHeight - 1;
+    const bool leftOrRight = x == 0 || x == kModuleWidth - 1;
+    return (topOrBottom && x >= 9 && x <= 11) || (leftOrRight && y >= 5 && y <= 7);
+}
+
+bool isFloorChar(char c) { return c == '.' || c == 'A' || c == 'C'; }
+
+void validateModule(const ModuleTemplate& module, bool boss, bool vault,
+                    std::vector<std::string>& errors) {
+    const auto fail = [&](const std::string& what) { errors.push_back(module.name + ": " + what); };
+    if (static_cast<int>(module.rows.size()) != kModuleHeight) {
+        fail("needs " + std::to_string(kModuleHeight) + " rows");
+        return;
+    }
+    for (std::size_t y = 0; y < module.rows.size(); ++y)
+        if (static_cast<int>(module.rows[y].size()) != kModuleWidth) {
+            fail("row " + std::to_string(y) + " needs " + std::to_string(kModuleWidth) + " characters");
+            return;
+        }
+    const auto at = [&](int x, int y) { return module.rows[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)]; };
+
+    for (int y = 0; y < kModuleHeight; ++y)
+        for (int x = 0; x < kModuleWidth; ++x) {
+            const bool border = x == 0 || y == 0 || x == kModuleWidth - 1 || y == kModuleHeight - 1;
+            if (border && isFloorChar(at(x, y)) != isSocket(x, y))
+                fail("border tile (" + std::to_string(x) + "," + std::to_string(y) +
+                     (isSocket(x, y) ? ") is a socket and must be floor" : ") must be wall"));
+            const char c = at(x, y);
+            if (c != '#' && !isFloorChar(c) && c != 'V')
+                fail(std::string("unknown character '") + c + "'");
+            if ((c == 'V' || c == 'C') && !vault) fail("V/C are only allowed in the vault module");
+        }
+
+    std::set<std::pair<int, int>> reached;
+    std::queue<std::pair<int, int>> frontier;
+    frontier.push({10, 0});
+    reached.insert({10, 0});
+    while (!frontier.empty()) {
+        const auto [x, y] = frontier.front();
+        frontier.pop();
+        for (const auto [dx, dy] : {std::pair{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+            const int nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= kModuleWidth || ny >= kModuleHeight) continue;
+            if (isFloorChar(at(nx, ny)) && reached.insert({nx, ny}).second) frontier.push({nx, ny});
+        }
+    }
+
+    std::pair<int, int> cache{-1, -1}, gate{-1, -1};
+    std::vector<std::pair<int, int>> anchors;
+    for (int y = 0; y < kModuleHeight; ++y)
+        for (int x = 0; x < kModuleWidth; ++x) {
+            if (at(x, y) == 'C') cache = {x, y};
+            if (at(x, y) == 'V') gate = {x, y};
+            if (at(x, y) == 'A') anchors.push_back({x, y});
+        }
+    if (anchors.empty()) anchors.push_back({kModuleWidth / 2, kModuleHeight / 2});
+
+    const auto inVault = [&](int x, int y) {
+        return vault && std::abs(x - cache.first) <= 2 && std::abs(y - cache.second) <= 2;
+    };
+    for (int y = 0; y < kModuleHeight; ++y)
+        for (int x = 0; x < kModuleWidth; ++x)
+            if (isFloorChar(at(x, y)) && !reached.count({x, y}) && !inVault(x, y))
+                fail("floor (" + std::to_string(x) + "," + std::to_string(y) + ") is unreachable");
+
+    for (const auto [ax, ay] : anchors)
+        for (int y = ay - 1; y <= ay + 1; ++y)
+            for (int x = ax - 1; x <= ax + 1; ++x)
+                if (!isFloorChar(at(x, y)))
+                    fail("anchor (" + std::to_string(ax) + "," + std::to_string(ay) + ") needs floor around it");
+
+    if (boss)
+        for (int y = kModuleHeight / 2 - 3; y <= kModuleHeight / 2 + 3; ++y)
+            for (int x = kModuleWidth / 2 - 3; x <= kModuleWidth / 2 + 3; ++x)
+                if (!isFloorChar(at(x, y))) fail("the central 7x7 must be floor");
+
+    if (vault) {
+        if (cache.first < 0 || gate.first < 0) { fail("needs one V and one C"); return; }
+        if (std::abs(cache.first - gate.first) + std::abs(cache.second - gate.second) != 3)
+            fail("gate must be exactly 3 tiles from the cache");
+        if (reached.count(cache)) fail("vault must be sealed until its gate opens");
+        for (int y = cache.second - 2; y <= cache.second + 2; ++y)
+            for (int x = cache.first - 2; x <= cache.first + 2; ++x)
+                if (!isFloorChar(at(x, y))) fail("vault interior must be a 5x5 floor");
+    }
+}
+
+} // namespace
+
+std::vector<std::string> validateModules() {
+    std::vector<std::string> errors;
+    if (static_cast<int>(regularModules().size()) < kModuleGrid * kModuleGrid)
+        errors.push_back("regular pool needs at least " + std::to_string(kModuleGrid * kModuleGrid) + " modules");
+    for (const auto& module : regularModules()) validateModule(module, false, false, errors);
+    validateModule(bossModule(), true, false, errors);
+    validateModule(vaultModule(), false, true, errors);
+    return errors;
+}
+
+} // namespace engine

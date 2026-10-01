@@ -118,12 +118,12 @@ struct ApplicationTargetingTestAccess {
         const auto tile=app.screenToWorld(eastPixel);
         check(tile && tile->x==23 && tile->y==12 && app.cameraX_>0 && app.cameraY_>0,
             "Mouse coordinates account for camera offsets and the map's top margin");
-        check(!app.screenToWorld({920,100}) && !app.screenToWorld({100,20}) &&
-            !app.screenToWorld({100,690}),"Sidebar, header and log cannot be clicked through");
+        check(!app.screenToWorld({100,300}) && !app.screenToWorld({400,5}) &&
+            !app.screenToWorld({400,620}),"Character column, map frame and log cannot be clicked through");
         app.requestTalent(0);
-        app.handleTargetingMouse(sf::Event::MouseButtonPressed{sf::Mouse::Button::Left,{920,690}});
+        app.handleTargetingMouse(sf::Event::MouseButtonPressed{sf::Mouse::Button::Left,{400,620}});
         check(app.aimingTalent_ && app.monsters_[0]->stats().hp==100,
-            "Clicking the inspection panel does not confirm the previous target");
+            "Clicking the message log does not confirm the previous target");
         app.handleTargetingMouse(sf::Event::MouseMoved{eastPixel});
         check(app.targetCursor_.x==23 && app.targetCursor_.y==12,"Mouse movement updates the aim");
         app.handleTargetingMouse(sf::Event::MouseButtonPressed{sf::Mouse::Button::Left,eastPixel});
@@ -149,8 +149,11 @@ struct ApplicationTargetingTestAccess {
         app.player_.talents()=TalentSet(fullKitForClass(PlayerClass::Warrior));
         for(const auto& talent:fullKitForClass(PlayerClass::Mage)) app.player_.talents().learnTalent(talent);
         app.handleTargetingKey(sf::Keyboard::Key::PageDown,false);
-        check(app.talentPage_==1 && app.talentAtPixel({30,680})==std::optional<std::size_t>(9) &&
-            app.talentAtPixel({186,680})==std::optional<std::size_t>(11),
+        const auto slotPixel=[](int slot) {
+            return sf::Vector2i(static_cast<int>(playLayout::hotbarX+playLayout::hotbarStride*slot+20),static_cast<int>(playLayout::hotbarY+20));
+        };
+        check(app.talentPage_==1 && app.talentAtPixel(slotPixel(0))==std::optional<std::size_t>(9) &&
+            app.talentAtPixel(slotPixel(2))==std::optional<std::size_t>(11),
             "Second talent page maps to learned abilities 10 through 12");
         app.requestTalent(11); app.targetCursor_={23,12};
         snapshot("hybrid-page-two.png");

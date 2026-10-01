@@ -17,6 +17,9 @@
 #include <vector>
 
 #include "core/SaveGame.hpp"
+#include "core/GameIcons.hpp"
+#include "core/ScreenLayout.hpp"
+#include "entities/TalentCatalog.hpp"
 #include "ai/BossBehavior.hpp"
 #include "core/PlayLayout.hpp"
 #include "entities/AttributeFormulas.hpp"
@@ -40,6 +43,7 @@ constexpr unsigned int kWindowWidth = playLayout::windowWidth;
 constexpr unsigned int kWindowHeight = playLayout::windowHeight;
 constexpr char kWindowTitle[] = "Roguelike Engine - Dev Window";
 constexpr float kTileSize = static_cast<float>(playLayout::tileSize);
+constexpr float kMapLeft = static_cast<float>(playLayout::mapLeft);
 constexpr unsigned int kMapWidth = playLayout::mapWidth;
 constexpr unsigned int kMapHeight = playLayout::mapHeight;
 constexpr float kMapTop = static_cast<float>(playLayout::mapTop);
@@ -71,13 +75,7 @@ constexpr int kManaRegenInCombat = 1;
 // avoided needing so far.
 constexpr const char* kSaveFilePath = "savegame.txt";
 
-// Same relative-path reasoning as kSaveFilePath.
-constexpr const char* kFontPath = "assets/fonts/DejaVuSansMono.ttf";
-const sf::FloatRect kClassCards[]{{{50,155},{920,90}},{{50,265},{920,90}},{{50,375},{920,90}}};
-const sf::FloatRect kAttributeChoices[]{{{50,150},{920,58}},{{50,218},{920,58}},{{50,286},{920,58}}};
-const sf::FloatRect kDeathModeButton{{650,580},{550,42}}, kReviveButton{{60,245},{500,48}};
-const sf::FloatRect kRestartButton{{60,175},{410,48}}, kEndCodexButton{{60,370},{300,44}},
-    kStartLoadButton{{60,580},{260,42}}, kStartCodexButton{{340,580},{260,42}};
+// Menu hit areas live in core/ScreenLayout.hpp (shared with the UI tests).
 
 sf::Color dim(sf::Color c) {
     constexpr float kDimFactor = 0.35f;
@@ -86,8 +84,8 @@ sf::Color dim(sf::Color c) {
                       static_cast<std::uint8_t>(c.b * kDimFactor));
 }
 
-// No sprite/tile art exists yet (see ARCHITECTURE_DECISIONS.md) -- each
-// enemy type gets a distinct flat color so the roster is at least
+// Fallback when a monster's sprite sheet fails to load (see monsterLook())
+// -- each enemy type gets a distinct flat color so the roster is at least
 // visually distinguishable at a glance.
 // Keyed by MonsterType, not the display name string -- Prompt 22's
 // Elite/Nightmare tiers prefix the name ("Elite Goblin", "Nightmare
@@ -144,6 +142,138 @@ std::optional<sf::Color> tierBorderColor(MonsterTier tier) {
     }
     return std::nullopt; // unreachable
 }
+
+// Sprite art (assets/sprites/CREDITS.txt). Character sheets are 10x5
+// grids of 32px frames whose first frame is the idle pose facing right;
+// the minotaur sheet's frames are 48x52. The dungeon tileset is a 16px grid.
+constexpr SpriteFrame idleFrame(const char* sheet, int row = 0, int w = 32, int h = 32) {
+    return {sheet, sf::IntRect({0, row * h}, {w, h})};
+}
+constexpr const char* kTileset = "calciumtrice/tiles/dungeon_tileset_calciumtrice.png";
+constexpr SpriteFrame kWallFrame{kTileset, sf::IntRect({16, 64}, {16, 16})};
+// Door tiles are floor transitions, so they use the tileset's stairway.
+constexpr SpriteFrame kDoorFrame{kTileset, sf::IntRect({112, 64}, {16, 32})};
+
+// Stone variants from the tileset's last floor row, picked per tile by a
+// position hash so the floor doesn't visibly repeat but also doesn't
+// shimmer between frames. Plain speckled slabs most of the time, the
+// cracked ones occasionally; the edge pieces are left out since they
+// draw stray lines when not placed as a proper border.
+SpriteFrame floorFrame(int x, int y) {
+    constexpr int kVariantX[]{16, 32, 48, 64, 112, 16, 32, 48, 64, 112, 80, 96};
+    const unsigned h = static_cast<unsigned>(x) * 73856093u ^ static_cast<unsigned>(y) * 19349663u;
+    return {kTileset, sf::IntRect({kVariantX[h % std::size(kVariantX)], 144}, {16, 16})};
+}
+
+// --- Decorations -------------------------------------------------------
+// Purely visual: derived from the map, tile position and floor number at
+// draw time, so they never block anything, need no save data, and work on
+// any layout (old saves included). Wall decor only goes on a wall face --
+// a wall with floor directly below it, which is the side the camera sees.
+enum class Decor { None, Torch, Banner, Bones, Rubble, Cobweb };
+
+unsigned decorHash(int x, int y, int floor) {
+    unsigned h = static_cast<unsigned>(x) * 374761393u + static_cast<unsigned>(y) * 668265263u +
+                 static_cast<unsigned>(floor) * 2246822519u;
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return h ^ (h >> 16);
+}
+
+Decor decorAt(const Map& map, int x, int y, int floor, FloorRegion region) {
+    const TileType type = map.tileAt(x, y).type;
+    const unsigned h = decorHash(x, y, floor) % 100;
+    if (type == TileType::Wall) {
+        if (!map.inBounds(x, y + 1) || map.tileAt(x, y + 1).type != TileType::Floor) return Decor::None;
+        // Torches spaced out along a wall: never two in neighboring columns.
+        const auto wantsTorch = [&](int tx) { return decorHash(tx, y, floor) % 100 < 9; };
+        if (h < 9 && !wantsTorch(x - 1)) return Decor::Torch;
+        if (h >= 90 && h < 95) return Decor::Banner;
+        return Decor::None;
+    }
+    if (type != TileType::Floor) return Decor::None;
+    const auto isWall = [&](int wx, int wy) { return !map.inBounds(wx, wy) || map.tileAt(wx, wy).type == TileType::Wall; };
+    const bool nearWall = isWall(x - 1, y) || isWall(x, y - 1);
+    // Kept rare: a bone pile at full density reads like a skeleton enemy.
+    const unsigned fine = decorHash(y, x, floor) % 1000; // independent of h for finer odds
+    if (fine < (region == FloorRegion::Crypts ? 15u : 5u)) return Decor::Bones;
+    if (h == 50) return Decor::Rubble;
+    if (nearWall && fine >= 500 && fine < 510) return Decor::Cobweb;
+    return Decor::None;
+}
+
+SpriteFrame bannerFrame(FloorRegion region, int x) {
+    // Red banners in the Barracks, blue cross in the Sanctum, black skull in the Crypts.
+    const int base = region == FloorRegion::Barracks ? 288 : region == FloorRegion::Sanctum ? 320 : 352;
+    return {kTileset, sf::IntRect({base + (x % 2) * 16, 176}, {16, 32})};
+}
+
+// The three lit torch frames, cycled for a flicker; each torch is offset
+// so they don't all flicker in step.
+SpriteFrame torchFrame(int x, int y, float seconds) {
+    const int frame = (static_cast<int>(seconds * 6.f) + x * 7 + y * 3) % 3;
+    return {kTileset, sf::IntRect({176 + frame * 16, 304}, {16, 16})};
+}
+
+constexpr SpriteFrame kBonesFrame{kTileset, sf::IntRect({112, 240}, {16, 16})};
+constexpr SpriteFrame kRubbleFrame{kTileset, sf::IntRect({128, 240}, {16, 16})};
+constexpr SpriteFrame kCobwebFrame{kTileset, sf::IntRect({96, 240}, {16, 16})};
+
+// The tileset's stone is pale grey, so tinting it with a theme color
+// darkens it below that flat color. Brighten the tint by roughly the
+// inverse of each texture's average brightness so a textured tile reads
+// about as bright as the old flat square did.
+sf::Color themeTint(sf::Color c, float boost) {
+    auto ch = [boost](std::uint8_t v) {
+        return static_cast<std::uint8_t>(std::min(255.f, v * boost));
+    };
+    return sf::Color(ch(c.r), ch(c.g), ch(c.b));
+}
+
+struct MonsterLook { SpriteFrame frame; sf::Color tint = sf::Color::White; };
+
+// Bosses and named encounters get the most distinctive sheets in the
+// pack; regular enemies share the generic goblin/skeleton art, tinted
+// where two types would otherwise look identical.
+MonsterLook monsterLook(MonsterType type) {
+    constexpr const char* goblin = "calciumtrice/monsters/goblin_spritesheet_calciumtrice.png";
+    constexpr const char* skeleton = "calciumtrice/monsters/skeleton_spritesheet_calciumtrice.png";
+    switch (type) {
+        case MonsterType::Goblin: return {idleFrame(goblin)};
+        case MonsterType::GoblinSlinger: return {idleFrame(goblin), sf::Color(255, 220, 170)};
+        case MonsterType::GoblinRaider: return {idleFrame(goblin, 5)}; // the sheet's armored variant
+        case MonsterType::GoblinStalker: return {idleFrame("calciumtrice/monsters/Imp.png")};
+        case MonsterType::GoblinBulwark: return {idleFrame("calciumtrice/monsters/ArmourImp.png")};
+        case MonsterType::GoblinMedic: return {idleFrame("calciumtrice/monsters/PsionicGoblin.png")};
+        case MonsterType::Spider: return {idleFrame("calciumtrice/monsters/snake_spritesheet_calciumtrice.png")};
+        case MonsterType::Ogre: return {idleFrame("calciumtrice/monsters/orc_spritesheet_calciumtrice.png")};
+        case MonsterType::Archer: return {idleFrame("calciumtrice/heroes/DarkRanger.png")};
+        case MonsterType::Shaman: return {idleFrame("calciumtrice/monsters/TricksterOrc.png")};
+        case MonsterType::Bomber: return {idleFrame("calciumtrice/monsters/PyromaniacOrc.png")};
+        case MonsterType::Skeleton: return {idleFrame(skeleton)};
+        case MonsterType::SkeletonArcher: return {idleFrame(skeleton), sf::Color(170, 220, 255)};
+        case MonsterType::SkeletonGuard: return {idleFrame(skeleton), sf::Color(190, 190, 205)};
+        case MonsterType::Bonecaller: return {idleFrame("calciumtrice/heroes/FoulMonk.png")};
+        case MonsterType::CryptSentinel: return {idleFrame("calciumtrice/heroes/BlackKnight.png")};
+        case MonsterType::GraveMender: return {idleFrame("calciumtrice/heroes/FutureCleric.png")};
+        case MonsterType::CryptShade: return {idleFrame("calciumtrice/monsters/Ghost.png"), sf::Color(255, 255, 255, 190)};
+        case MonsterType::FrostAcolyte: return {idleFrame("calciumtrice/heroes/BlueCleric.png")};
+        case MonsterType::GoblinWarlord: return {idleFrame("calciumtrice/monsters/GreyMinotaur.png", 0, 48, 52)};
+        case MonsterType::Lich: return {idleFrame("calciumtrice/monsters/Death.png")};
+        case MonsterType::GoblinCaptain: return {idleFrame("calciumtrice/monsters/ArmourPsionicGoblin.png")};
+        case MonsterType::OssuaryWarden: return {idleFrame("calciumtrice/heroes/Psychopath.png")};
+    }
+    return {idleFrame(goblin)}; // unreachable -- all enum values handled above
+}
+
+SpriteFrame playerFrame(PlayerClass playerClass) {
+    switch (playerClass) {
+        case PlayerClass::Warrior: return idleFrame("calciumtrice/heroes/MitheralKnight.png");
+        case PlayerClass::Thief: return idleFrame("calciumtrice/heroes/PrinceRanger.png");
+        case PlayerClass::Mage: return idleFrame("calciumtrice/heroes/Mage.png");
+        case PlayerClass::Spellblade: return idleFrame("calciumtrice/heroes/warrior_spritesheet_calciumtrice.png");
+    }
+    return idleFrame("calciumtrice/heroes/MitheralKnight.png"); // unreachable
+}
 } // namespace
 
 Application::Application()
@@ -161,18 +291,8 @@ Application::Application()
     // line at once.
     std::cout << std::unitbuf;
 
-    // A missing/unreadable font doesn't crash the game -- sf::Text just
-    // silently draws nothing with an unloaded sf::Font, so the rest of
-    // the HUD (bars, tiles, console output) still works. Logged once,
-    // plainly, rather than treated as fatal. Raw std::cout here, not
-    // log() -- logMessages_ is empty and meaningless before the window
-    // and constructor have even finished.
-    if (!font_.openFromFile(kFontPath)) {
-        std::cout << "Warning: failed to load font at " << kFontPath
-                   << " -- on-screen text will not render.\n";
-    }
-
-    if (!codex_.load("codex.txt")) log(codex_.error());
+    // Fonts load in ui::Kit; a missing one falls back to DejaVu Sans Mono
+    // and is logged rather than treated as fatal.
     window_.setFramerateLimit(60);
     window_.setKeyRepeatEnabled(false); // A held confirm key must not cast twice.
     // Deliberately no regenerateLevel() call here -- mode_ starts at
@@ -202,13 +322,12 @@ void Application::logImpl(const std::string& message) {
 
 void Application::drawText(const std::string& text, float x, float y, unsigned int size,
                             sf::Color color) {
-    sf::Text sfText(font_);
-    sfText.setString(text);
-    sfText.setCharacterSize(size);
-    sfText.setFillColor(color);
-    sfText.setPosition({x, y});
-    window_.draw(sfText);
+    // Older screens were laid out for a monospace font; the proportional
+    // body font reads about a point smaller, so nudge it up.
+    ui_.text(window_, text, {x, y}, size + 1, color);
 }
+
+SpriteFrame Application::playerSpriteFrame() const { return playerFrame(playerClass_); }
 
 void Application::updateCamera() {
     // Viewport size in whole tiles -- derived from the window/tile
@@ -234,7 +353,7 @@ void Application::updateCamera() {
 }
 
 sf::Vector2f Application::worldToScreen(int tileX, int tileY) const {
-    return {static_cast<float>(tileX - cameraX_) * kTileSize,
+    return {kMapLeft + static_cast<float>(tileX - cameraX_) * kTileSize,
             kMapTop + static_cast<float>(tileY - cameraY_) * kTileSize};
 }
 
@@ -254,39 +373,29 @@ void Application::handleEvent(const sf::Event& input) {
         stopAutoExplore("interrupted by input or focus change.");
         return;
     }
-    if (codexOpen_) {
-        if (const auto* key=event->getIf<sf::Event::KeyPressed>()) handleCodexKey(key->code);
-        else handleCodexMouse(*event);
-        return;
-    }
     if (const auto* click=event->getIf<sf::Event::MouseButtonPressed>(); click && click->button==sf::Mouse::Button::Left) {
         const auto point=sf::Vector2f(click->position);
         if(mode_==GameMode::GameOver) {
-            if(kReviveButton.contains(point)) { reviveInTown(); return; }
-            if(kRestartButton.contains(point)) mode_=GameMode::ClassSelection;
-            else if(kEndCodexButton.contains(point)) codexOpen_=true;
+            if(screen::kRevive.contains(point)) { reviveInTown(); return; }
+            if(screen::kRestart.contains(point)) mode_=GameMode::ClassSelection;
             return;
         }
         if(mode_==GameMode::ClassSelection) {
-            if(kDeathModeButton.contains(point)) { adventureMode_=!adventureMode_; return; }
-            if(kStartLoadButton.contains(point)) { loadGame(); return; }
-            if(kStartCodexButton.contains(point)) { codexOpen_=true; return; }
-            for(std::size_t i=0;i<3;++i) if(kClassCards[i].contains(point)) {
+            if(screen::kModeToggle.contains(point)) { adventureMode_=!adventureMode_; return; }
+            if(screen::kStartLoad.contains(point)) { loadGame(); return; }
+            for(int i=0;i<3;++i) if(screen::classCard(i).contains(point)) {
                 selectClass(i==0?PlayerClass::Warrior:i==1?PlayerClass::Mage:PlayerClass::Thief);
                 break;
             }
             return;
         }
         if(mode_==GameMode::AttributeAllocation) {
-            for(std::size_t i=0;i<3;++i) if(kAttributeChoices[i].contains(point)) {
+            for(int i=0;i<3;++i) if(screen::attributeChoice(i).contains(point)) {
                 allocateAttribute(static_cast<unsigned int>(i));
                 break;
             }
             return;
         }
-    }
-    if (const auto* key=event->getIf<sf::Event::KeyPressed>(); key && key->code==sf::Keyboard::Key::J) {
-        restTurns_=0; cancelTargeting(); codexOpen_=true; return;
     }
 
     if (event->is<sf::Event::KeyPressed>() || event->is<sf::Event::MouseButtonPressed>()) {
@@ -1063,7 +1172,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
         }
         return;
     }
-    if (defeated) { discoverMonsterLore(*defeated); rewardMonster(*defeated, &actor == boss_); }
+    if (defeated) rewardMonster(*defeated, &actor == boss_);
 
     if (&actor == boss_) {
         boss_ = nullptr; // must clear before removeDeadMonsters() erases the underlying object
@@ -1218,8 +1327,6 @@ void Application::regenerateLevel(unsigned int seed) {
     talentPage_ = 0;
     const auto theme=floorTheme(currentFloor_);
     DungeonGenerationParams params;
-    params.minRoomSize=theme.minRoomSize;
-    params.maxRoomSize=theme.maxRoomSize;
     // Only specific floors generate with a boss room at all -- every
     // other floor is a pure "clear it, find the door" dungeon. kFinalFloor
     // (10) is a placeholder using the same GoblinWarlord as
@@ -1549,14 +1656,13 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
         for (const auto& floor:state.savedFloors) floorCache_[floor.currentFloor]=floor;
     }
     if (state.inTown && mode_==GameMode::Playing) mode_=GameMode::Town;
-    enforceMinionCap(); refreshHiddenDiscoveries();
+    enforceMinionCap();
     updateFieldOfView();
     return true;
 }
 
 void Application::update() {
     if (autoExploring_) { stepAutoExplore(); return; }
-    if (codexOpen_) return;
     if (restTurns_<=0) return;
     if (mode_!=GameMode::Playing || inventoryOpen_ || vaultMenu_ || exitMenu_ || dangerNearby()) {
         restTurns_=0; log("Rest stopped."); return;
@@ -1571,32 +1677,51 @@ void Application::update() {
 }
 
 void Application::renderClassSelection() {
-    const sf::Color colors[]{sf::Color(230,150,110),sf::Color(130,170,240),sf::Color(130,220,160)};
-    const char* names[]{"1. Warrior","2. Mage","3. Thief"};
-    const char* stats[]{"STR 6 / DEX 2 / INT 2   HP 30 / Mana 10","STR 2 / DEX 2 / INT 6   HP 20 / Mana 20","STR 2 / DEX 6 / INT 2   HP 25 / Mana 15"};
-    const char* pools[]{"One-Handed, Two-Handed, Shield","Fire, Ice, Lightning, Arcane","Stealth, Bow, Acrobatics"};
-    drawText("Choose your starting class",60,60,30,sf::Color(110,220,220));
-    drawText("Class determines your starting attributes and first tree choices.",60,110,18,sf::Color(220,220,230));
-    for(std::size_t i=0;i<3;++i) {
-        sf::RectangleShape card(kClassCards[i].size); card.setPosition(kClassCards[i].position);
-        const bool hover=mousePixel_ && kClassCards[i].contains(sf::Vector2f(*mousePixel_));
-        card.setFillColor(hover?sf::Color(42,57,70):sf::Color(24,32,44));
-        card.setOutlineThickness(hover?2.f:1.f); card.setOutlineColor(colors[i]); window_.draw(card);
-        drawText(names[i],70,164+110.f*i,21,colors[i]);
-        drawText(stats[i],300,164+110.f*i,17,sf::Color(225,228,238));
-        drawText(pools[i],90,198+110.f*i,16,sf::Color(190,198,214));
+    using namespace screen;
+    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
+    const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
+    ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(140,135,130));
+    ui_.textCentered(window_,"Choose your class",{{0,26},{1280,50}},38,ui::kGold,ui::Font::Title);
+    ui_.textCentered(window_,"Your class sets your starting attributes and the trees you can begin with.",{{0,78},{1280,26}},17,ui::kMuted);
+    struct ClassInfo { const char* name; PlayerClass cls; sf::Color color; const char* stats; const char* pools; const char* blurb; std::vector<std::size_t> trees; };
+    const ClassInfo classes[]{
+        {"Warrior",PlayerClass::Warrior,sf::Color(232,150,108),"Str 6   Dex 2   Int 2","Life 30   Mana 10",
+            "Steel and endurance: heavy blows, a raised shield and a refusal to fall.",{0,1,2}},
+        {"Mage",PlayerClass::Mage,sf::Color(142,172,240),"Str 2   Dex 2   Int 6","Life 20   Mana 20",
+            "Fire, ice, lightning and raw arcane force, from a safe distance.",{6,7,8,9}},
+        {"Thief",PlayerClass::Thief,sf::Color(132,218,160),"Str 2   Dex 6   Int 2","Life 25   Mana 15",
+            "Shadows, the bow and quick feet: strike first, then vanish.",{4,3,5}}};
+    for (int i=0;i<3;++i) {
+        const auto& info=classes[i];
+        const auto card=classCard(i);
+        const float x=card.position.x, y=card.position.y;
+        ui_.inset(window_,card,hovered(card)?info.color:sf::Color(info.color.r,info.color.g,info.color.b,60));
+        ui_.text(window_,std::to_string(i+1),{x+12,y+8},16,ui::kMuted,ui::Font::Bold);
+        const sf::FloatRect portrait{{x+110,y+22},{140,140}};
+        ui_.inset(window_,portrait,sf::Color(140,108,62));
+        sprites_.draw(window_,playerFrame(info.cls),{portrait.position.x+6,portrait.position.y+6},128.f);
+        ui_.textCentered(window_,info.name,{{x,y+170},{card.size.x,40}},30,info.color,ui::Font::Title);
+        ui_.textCentered(window_,info.stats,{{x,y+214},{card.size.x,22}},17,ui::kText,ui::Font::Bold);
+        ui_.textCentered(window_,info.pools,{{x,y+238},{card.size.x,22}},16,ui::kMuted,ui::Font::Bold);
+        float textY=y+270;
+        ui_.paragraph(window_,info.blurb,x+26,textY,card.size.x-52,15,ui::kText);
+        ui_.text(window_,"Starting trees",{x+26,y+322},14,ui::kGold,ui::Font::Bold);
+        const float slot=(card.size.x-52)/4;
+        for (std::size_t t=0;t<info.trees.size();++t) {
+            const auto tree=info.trees[t];
+            const sf::FloatRect icon{{x+26+slot*t+(slot-46)/2,y+344},{46,46}};
+            ui_.inset(window_,icon);
+            ui_.icon(window_,talentIcon(talentCatalog()[tree*4].ranks[0]),{{icon.position.x+6,icon.position.y+6},{34,34}},ui::kText);
+            ui_.textCentered(window_,kTalentTrees[tree].name,{{x+26+slot*t,y+392},{slot,20}},13,ui::kMuted);
+        }
     }
-    drawText("Start with 1 tree point and 3 ability points. Other core trees open at level 5; hidden trees require discovery.",60,490,17,sf::Color(220,220,230));
-    drawText("Click a class or press 1-3. J: Codex   F9: load a version-9 through 22 save.",60,535,16,sf::Color(190,190,210));
-    for(const auto& rect:{kStartLoadButton,kStartCodexButton,kDeathModeButton}) {
-        sf::RectangleShape button(rect.size); button.setPosition(rect.position);
-        button.setFillColor(mousePixel_ && rect.contains(sf::Vector2f(*mousePixel_))?sf::Color(44,65,80):sf::Color(28,40,55)); window_.draw(button);
-    }
-    drawText(adventureMode_?"[M] Adventure: 2 extra lives":"[M] Roguelike: one life",660,590,17,sf::Color::White);
-    drawText("Choose mode before clicking a class. Revival returns you to town with your gear.",60,675,15,sf::Color(190,190,210));
-    drawText("Load adventure [F9]",70,590,17,sf::Color::White);
-    drawText("Open Codex [J]",350,590,17,sf::Color::White);
-    if(!logMessages_.empty()) { float y=640; drawWrapped(logMessages_.back(),60,y,135,sf::Color(230,200,150),710); }
+    ui_.textCentered(window_,"You start with 1 tree point and 3 ability points. The other core trees open at level 5.",
+        {{0,556},{1280,24}},16,ui::kText);
+    ui_.button(window_,kStartLoad,"Load game (F9)",hovered(kStartLoad));
+    ui_.button(window_,kModeToggle,adventureMode_?"Mode: Adventure, 2 extra lives (M)":"Mode: Roguelike, one life (M)",hovered(kModeToggle));
+    ui_.textCentered(window_,"Click a class or press 1-3. Pick the mode first; revival returns you to town with your gear.",
+        {{0,656},{1280,24}},15,ui::kMuted);
+    if(!logMessages_.empty()) ui_.textCentered(window_,logMessages_.back(),{{0,684},{1280,24}},15,sf::Color(232,196,130));
 }
 
 void Application::allocateAttribute(unsigned int attribute) {
@@ -1616,63 +1741,67 @@ void Application::allocateAttribute(unsigned int attribute) {
 }
 
 void Application::renderGameOver() {
-    for(const auto& rect:{kRestartButton,kEndCodexButton}) {
-        sf::RectangleShape button(rect.size); button.setPosition(rect.position);
-        button.setFillColor(mousePixel_ && rect.contains(sf::Vector2f(*mousePixel_))?sf::Color(44,65,80):sf::Color(28,40,55)); window_.draw(button);
-    }
-    drawText("Open Codex [J]",70,382,17,sf::Color(110,220,220));
+    using namespace screen;
+    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
+    const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
+    ui_.panel(window_,kGameOverDialog,true,sf::Color(150,140,138));
+    const float cx=kGameOverDialog.position.x, w=kGameOverDialog.size.x;
+    ui_.icon(window_,wonGame_?"relic-blade":"skull-crossed-bones",{{cx+w/2-36,kGameOverDialog.position.y+24},{72,72}},
+        wonGame_?ui::kRare:sf::Color(200,60,52));
+    ui_.textCentered(window_,wonGame_?"Victory":"You died",{{cx,kGameOverDialog.position.y+104},{w,56}},46,
+        wonGame_?ui::kRare:sf::Color(210,64,56),ui::Font::Title);
+    ui_.textCentered(window_,wonGame_?"You have slain the "+defeatedBossName_+".":"The dungeon claims another.",
+        {{cx,kGameOverDialog.position.y+160},{w,26}},18,ui::kText);
+    ui_.button(window_,kRestart,"New character (Enter)",hovered(kRestart),true,17);
     if(!wonGame_ && adventureMode_ && extraLives_>0) {
-        sf::RectangleShape button(kReviveButton.size); button.setPosition(kReviveButton.position);
-        button.setFillColor(sf::Color(35,70,70)); window_.draw(button);
-        drawText("Revive in town [R] - "+std::to_string(extraLives_)+" remaining",70,259,18,sf::Color::White);
-        drawText("Full recovery. Keep gear and progress. Spend one extra life.",60,315,16,sf::Color(190,210,210));
-    } else if(!wonGame_) drawText("No lives remain. This character has ended.",60,260,18,sf::Color(200,170,170));
-    drawText("Collected lore survives this adventure.",60,430,16,sf::Color(170,190,205));
-    if (wonGame_) {
-        drawText("Victory!", 60.f, 60.f, 32, sf::Color(255, 215, 0));
-        drawText("You have slain the " + defeatedBossName_ + ".", 60.f, 120.f, 18,
-                  sf::Color(210, 210, 210));
-    } else {
-        drawText("You Died", 60.f, 60.f, 32, sf::Color(200, 50, 50));
-        drawText("The dungeon claims another.", 60.f, 120.f, 18, sf::Color(210, 210, 210));
+        ui_.button(window_,kRevive,"Revive in town (R), "+std::to_string(extraLives_)+" li"+(extraLives_==1?"fe":"ves")+" left",hovered(kRevive),true,17);
+        ui_.textCentered(window_,"Full recovery. You keep your gear and progress, and spend one extra life.",
+            {{cx,kRevive.position.y+56},{w,22}},15,ui::kMuted);
+    } else if(!wonGame_) {
+        ui_.textCentered(window_,"No lives remain. This character's story has ended.",{{cx,kRevive.position.y+10},{w,24}},16,ui::kMuted);
     }
-    drawText("Choose a new character [Enter]", 70.f, 189.f, 18,
-              sf::Color(150, 150, 150));
 }
 
 void Application::renderAttributeAllocation() {
-    drawText("Level up!", 60.f, 60.f, 28, sf::Color(230, 230, 230));
-    drawText("Click an option or press 1-3. Each click spends one attribute point.",60.f,132.f,15,sf::Color(165,180,200));
-
-    std::ostringstream subtitle;
-    subtitle << "You have " << player_.unspentAttributePoints()
-              << (player_.unspentAttributePoints() == 1 ? " point" : " points")
-              << " to spend. Choose one:";
-    drawText(subtitle.str(), 60.f, 104.f, 16, sf::Color(190, 190, 190));
-
+    using namespace screen;
+    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
+    ui_.panel(window_,kAttributeDialog,true,sf::Color(150,145,140));
+    const float x=kAttributeDialog.position.x, w=kAttributeDialog.size.x;
+    ui_.textCentered(window_,"Level up",{{x,kAttributeDialog.position.y+22},{w,50}},38,ui::kGold,ui::Font::Title);
+    const int points=player_.unspentAttributePoints();
+    ui_.textCentered(window_,"You have "+std::to_string(points)+(points==1?" attribute point":" attribute points")+" to spend.",
+        {{x,kAttributeDialog.position.y+76},{w,24}},18,ui::kText);
+    ui_.textCentered(window_,"Click an attribute or press 1-3. Each choice spends one point.",
+        {{x,kAttributeDialog.position.y+102},{w,22}},15,ui::kMuted);
     const Stats& stats = player_.stats();
-
-    const std::string labels[]{"1. Strength (currently "+std::to_string(stats.strength)+")",
-        "2. Dexterity (currently "+std::to_string(stats.dexterity)+")",
-        "3. Intelligence (currently "+std::to_string(stats.intelligence)+")"};
-    const char* details[]{"+1 Max HP. Scales Strength-based abilities.",
-        "+0.5% Dodge (cap 25%), +0.5% Crit. Scales Dexterity-based abilities.",
-        "+1 Max Mana. Scales Intelligence-based abilities."};
-    const sf::Color colors[]{sf::Color(230,140,100),sf::Color(120,220,140),sf::Color(140,170,230)};
-    for(std::size_t i=0;i<3;++i) {
-        sf::RectangleShape option(kAttributeChoices[i].size); option.setPosition(kAttributeChoices[i].position);
-        const bool hover=mousePixel_ && kAttributeChoices[i].contains(sf::Vector2f(*mousePixel_));
-        option.setFillColor(hover?sf::Color(42,57,70):sf::Color(24,32,44));
-        option.setOutlineThickness(hover?2.f:1.f); option.setOutlineColor(colors[i]); window_.draw(option);
-        drawText(labels[i],65,157+68.f*i,18,colors[i]);
-        drawText(details[i],80,183+68.f*i,14,sf::Color(195,201,215));
+    struct Choice { const char* name; const char* detail; const char* icon; sf::Color color; int value; };
+    const Choice choices[]{
+        {"Strength","+1 max life. Strengthens Strength-based abilities.","axe-swing",sf::Color(232,140,100),stats.strength},
+        {"Dexterity","+0.5% dodge (up to 25%) and +0.5% critical chance. Strengthens Dexterity-based abilities.","dodging",sf::Color(130,214,140),stats.dexterity},
+        {"Intelligence","+1 max mana. Strengthens Intelligence-based abilities.","third-eye",sf::Color(142,172,236),stats.intelligence}};
+    for(int i=0;i<3;++i) {
+        const auto r=attributeChoice(i);
+        const auto& c=choices[i];
+        const bool hover=mouse && r.contains(*mouse);
+        ui_.inset(window_,r,hover?c.color:sf::Color(c.color.r,c.color.g,c.color.b,60));
+        const sf::FloatRect icon{{r.position.x+14,r.position.y+14},{70,70}};
+        ui_.inset(window_,icon);
+        ui_.icon(window_,c.icon,{{icon.position.x+10,icon.position.y+10},{50,50}},c.color);
+        ui_.text(window_,std::to_string(i+1)+".  "+c.name,{r.position.x+100,r.position.y+12},24,c.color,ui::Font::Title);
+        float y=r.position.y+48;
+        ui_.paragraph(window_,c.detail,r.position.x+100,y,400,15,ui::kText);
+        const std::string value=std::to_string(c.value);
+        ui_.text(window_,value,{r.position.x+r.size.x-24-ui_.textWidth(value,34,ui::Font::Title),r.position.y+20},34,ui::kText,ui::Font::Title);
+        ui_.text(window_,"now",{r.position.x+r.size.x-58,r.position.y+64},13,ui::kMuted);
     }
 }
 
 void Application::render() {
     window_.clear(sf::Color(10, 10, 14));
+    // Full-screen menus share a dim stone backdrop; screens that paint
+    // their own background simply cover it.
+    if (mode_ != GameMode::Playing) ui_.stone(window_, {{0, 0}, {1280, 720}}, sf::Color(120, 115, 112));
 
-    if (codexOpen_) { renderCodex(); window_.display(); return; }
     if (mode_==GameMode::Town) { renderTown(); window_.display(); return; }
     if (mode_ == GameMode::ClassSelection) {
         renderClassSelection();
@@ -1730,10 +1859,37 @@ void Application::render() {
                 baseColor = themeColor(theme.floor);
             }
 
-            sf::RectangleShape tileShape({kTileSize - 1.f, kTileSize - 1.f});
-            tileShape.setPosition(worldToScreen(x, y));
-            tileShape.setFillColor(vis == Visibility::Visible ? baseColor : dim(baseColor));
-            window_.draw(tileShape);
+            const sf::Vector2f at = worldToScreen(x, y);
+            const auto shade = [vis](sf::Color c) { return vis == Visibility::Visible ? c : dim(c); };
+            // Doors stand on a floor tile; the tint boosts match each
+            // texture's average brightness (see themeTint()).
+            bool drawn = tileType == TileType::Wall
+                ? sprites_.draw(window_, kWallFrame, at, kTileSize, shade(themeTint(baseColor, 2.0f)))
+                : sprites_.draw(window_, floorFrame(x, y), at, kTileSize,
+                                shade(themeTint(themeColor(theme.floor), 1.25f)));
+            if (drawn && tileType == TileType::Door)
+                drawn = sprites_.draw(window_, kDoorFrame, at, kTileSize, shade(themeTint(baseColor, 1.6f)));
+            if (!drawn) {
+                sf::RectangleShape tileShape({kTileSize - 1.f, kTileSize - 1.f});
+                tileShape.setPosition(at);
+                tileShape.setFillColor(shade(baseColor));
+                window_.draw(tileShape);
+            }
+
+            switch (decorAt(map_, x, y, currentFloor_, theme.region)) {
+                case Decor::Torch:
+                    // Raised a little so it sits on the wall face, not at its foot.
+                    sprites_.draw(window_, torchFrame(x, y, animationClock_.getElapsedTime().asSeconds()),
+                                  {at.x, at.y - kTileSize * 0.3f}, kTileSize, shade(sf::Color::White));
+                    break;
+                case Decor::Banner:
+                    sprites_.draw(window_, bannerFrame(theme.region, x), at, kTileSize, shade(sf::Color::White));
+                    break;
+                case Decor::Bones: sprites_.draw(window_, kBonesFrame, at, kTileSize, shade(sf::Color(150, 145, 135, 190))); break;
+                case Decor::Rubble: sprites_.draw(window_, kRubbleFrame, at, kTileSize, shade(sf::Color(190, 180, 170))); break;
+                case Decor::Cobweb: sprites_.draw(window_, kCobwebFrame, at, kTileSize, shade(sf::Color(150, 150, 155, 110))); break;
+                case Decor::None: break;
+            }
         }
     }
 
@@ -1747,28 +1903,39 @@ void Application::render() {
         }
 
         const sf::Vector2f screenPos = worldToScreen(m->position().x, m->position().y);
-        if (screenPos.x < 0.f || screenPos.x >= kMapWidth ||
-            screenPos.y < kMapTop || screenPos.y >= kMapTop + kMapHeight) continue;
+        if (!onMap(screenPos)) continue;
 
-        // Elite/Nightmare border (Prompt 22): a slightly larger square
-        // drawn first, in the tier's color, so the monster's own type-
-        // colored tile (drawn on top, its normal size) reads as sitting
-        // inside a visible outline. Base tier returns nullopt -- nothing
-        // extra drawn, looks exactly as it always has.
+        // Elite/Nightmare border (Prompt 22): an outline in the tier's
+        // color around the monster's tile. An outline rather than the old
+        // filled square behind the monster, which a sprite's transparent
+        // pixels would show through as a solid block. Base tier returns
+        // nullopt -- nothing extra drawn.
         if (const std::optional<sf::Color> borderColor = isUniqueMonster(m->type()) ? std::optional<sf::Color>(sf::Color(255,190,60)) : tierBorderColor(m->tier());
             borderColor.has_value()) {
             constexpr float kBorderThickness = 3.f;
-            sf::RectangleShape border(
-                {kTileSize - 1.f + kBorderThickness * 2.f, kTileSize - 1.f + kBorderThickness * 2.f});
-            border.setPosition({screenPos.x - kBorderThickness, screenPos.y - kBorderThickness});
-            border.setFillColor(*borderColor);
+            sf::RectangleShape border({kTileSize - 1.f, kTileSize - 1.f});
+            border.setPosition(screenPos);
+            border.setFillColor(sf::Color::Transparent);
+            border.setOutlineThickness(kBorderThickness);
+            border.setOutlineColor(*borderColor);
             window_.draw(border);
         }
 
-        sf::RectangleShape monsterShape({kTileSize - 1.f, kTileSize - 1.f});
-        monsterShape.setPosition(screenPos);
-        monsterShape.setFillColor(m->allied ? sf::Color(90,220,220) : monsterColor(m->type()));
-        window_.draw(monsterShape);
+        const MonsterLook look = monsterLook(m->type());
+        // Sized relative to a 32px character frame, so the 48px minotaur
+        // stands taller than its tile instead of shrinking to fit it.
+        const float spriteSize =
+            kTileSize * static_cast<float>(std::max(look.frame.rect.size.x, look.frame.rect.size.y)) / 32.f;
+        const sf::Vector2f spritePos{screenPos.x + (kTileSize - spriteSize) / 2.f,
+                                     screenPos.y + kTileSize - spriteSize};
+        // Allies keep their art but are washed cyan, matching the old ally color.
+        if (!sprites_.draw(window_, look.frame, spritePos, spriteSize,
+                           m->allied ? sf::Color(120, 235, 235) : look.tint)) {
+            sf::RectangleShape monsterShape({kTileSize - 1.f, kTileSize - 1.f});
+            monsterShape.setPosition(screenPos);
+            monsterShape.setFillColor(m->allied ? sf::Color(90,220,220) : monsterColor(m->type()));
+            window_.draw(monsterShape);
+        }
 
         const float hpFraction =
             static_cast<float>(m->stats().hp) / static_cast<float>(m->stats().maxHp);
@@ -1784,10 +1951,13 @@ void Application::render() {
         if(m->tactics.retreat>0) drawText("Retreat",screenPos.x-8,screenPos.y+14,10,sf::Color(255,220,90));
     }
 
-    sf::RectangleShape playerShape({kTileSize - 1.f, kTileSize - 1.f});
-    playerShape.setPosition(worldToScreen(player_.position().x, player_.position().y));
-    playerShape.setFillColor(sf::Color(240, 200, 60));
-    window_.draw(playerShape);
+    const sf::Vector2f playerPos = worldToScreen(player_.position().x, player_.position().y);
+    if (!sprites_.draw(window_, playerFrame(playerClass_), playerPos, kTileSize)) {
+        sf::RectangleShape playerShape({kTileSize - 1.f, kTileSize - 1.f});
+        playerShape.setPosition(playerPos);
+        playerShape.setFillColor(sf::Color(240, 200, 60));
+        window_.draw(playerShape);
+    }
 
     // Visible committed danger remains visible even if the caster leaves sight.
     for (const auto& m:monsters_) if (m->stats().hp>0 && m->intent()) {
@@ -1808,98 +1978,28 @@ void Application::render() {
     }
 
     renderTargetingOverlay();
-
-    constexpr float kBarWidth = 200.f;
-    constexpr float kBarHeight = 14.f;
-
-    const float hpFraction =
-        static_cast<float>(player_.stats().hp) / static_cast<float>(player_.stats().maxHp);
-    sf::RectangleShape hpBack({kBarWidth, kBarHeight});
-    hpBack.setPosition({10.f, 10.f});
-    hpBack.setFillColor(sf::Color(40, 20, 20));
-    window_.draw(hpBack);
-    sf::RectangleShape hpFront({kBarWidth * hpFraction, kBarHeight});
-    hpFront.setPosition({10.f, 10.f});
-    hpFront.setFillColor(sf::Color(200, 50, 50));
-    window_.draw(hpFront);
-    {
-        std::ostringstream oss;
-        oss << player_.stats().hp << '/' << player_.stats().maxHp;
-        drawText(oss.str(), 10.f + kBarWidth + 8.f, 10.f, 13, sf::Color::White);
-    }
-
-    const float manaFraction = player_.stats().maxMana > 0
-                                    ? static_cast<float>(player_.stats().mana) /
-                                          static_cast<float>(player_.stats().maxMana)
-                                    : 0.f;
-    sf::RectangleShape manaBack({kBarWidth, kBarHeight});
-    manaBack.setPosition({10.f, 28.f});
-    manaBack.setFillColor(sf::Color(20, 20, 40));
-    window_.draw(manaBack);
-    sf::RectangleShape manaFront({kBarWidth * manaFraction, kBarHeight});
-    manaFront.setPosition({10.f, 28.f});
-    manaFront.setFillColor(sf::Color(50, 90, 220));
-    window_.draw(manaFront);
-    {
-        std::ostringstream oss;
-        oss << player_.stats().mana << '/' << player_.stats().maxMana;
-        drawText(oss.str(), 10.f + kBarWidth + 8.f, 28.f, 13, sf::Color::White);
-    }
-
-    drawText(adventureMode_?"Adventure | Lives +"+std::to_string(extraLives_):"Roguelike | One life",980,46,12,sf::Color(180,200,210));
-
-    // Level/XP -- Prompt 20. "MAX" instead of a fraction once level 10
-    // is reached, since grantXp() zeroes xp() there and "X/0" would
-    // read as a bug, not a deliberate cap.
-    {
-        std::ostringstream oss;
-        oss << "Level " << player_.level();
-        if (player_.level() < kRunMaxLevel) {
-            oss << "  (" << player_.xp() << '/' << xpForNextLevel(player_.level()) << " XP)";
-        } else {
-            oss << "  (MAX)";
-        }
-        drawText(oss.str(), 10.f, 46.f, 13, sf::Color(200, 200, 160));
-    }
-
-    // Floor -- the multi-floor dungeon progression. Small and
-    // unobtrusive, same styling as the Level line above it, just one
-    // more fact about where the character currently stands.
-    {
-        std::ostringstream oss;
-        oss << dungeonName(dungeonIndex(currentFloor_)) << " " << (currentFloor_-1)%10+1 << "/10 | Depth level " << currentFloor_ << " - " << theme.name;
-        drawText(oss.str(), 290.f, 46.f, 13, sf::Color(180, 180, 200));
-    }
-
-    renderTargetingPanel();
     renderBattleHud();
 
-    // A prominent, top-center boss bar -- distinct from the small
-    // floating per-monster bars -- only shown when the boss is alive AND
-    // currently visible, same consistency rule as everything else
-    // (Prompt 7's "only render what's currently visible").
+    // Frame around the map, drawn over the tile edges.
+    ui_.frame(window_, {{kMapLeft - 4, kMapTop - 4}, {kMapWidth + 8.f, kMapHeight + 8.f}});
+
+    // Boss frame, top centre of the map, while the boss is alive and in sight.
     if (boss_ != nullptr && boss_->stats().hp > 0 &&
         exploredMap_.at(boss_->position().x, boss_->position().y) == Visibility::Visible) {
-        constexpr float kBossBarWidth = 500.f;
-        constexpr float kBossBarHeight = 20.f;
-        const float bossX = 370.f;
-
-        const float bossHpFraction =
-            static_cast<float>(boss_->stats().hp) / static_cast<float>(boss_->stats().maxHp);
-        sf::RectangleShape bossBack({kBossBarWidth, kBossBarHeight});
-        bossBack.setPosition({bossX, 27.f});
-        bossBack.setFillColor(sf::Color(35, 30, 10));
-        window_.draw(bossBack);
-        sf::RectangleShape bossFront({kBossBarWidth * bossHpFraction, kBossBarHeight});
-        bossFront.setPosition({bossX, 27.f});
-        bossFront.setFillColor(sf::Color(255, 215, 0));
-        window_.draw(bossFront);
-        drawText(boss_->name(), bossX, 5.f, 14, sf::Color(255, 215, 0));
+        const sf::FloatRect box{{kMapLeft + kMapWidth / 2.f - 260, kMapTop + 8}, {520, 50}};
+        ui_.panel(window_, box, true, sf::Color(150, 140, 130));
+        ui_.textCentered(window_, boss_->name(), {box.position, {box.size.x, 26}}, 18, ui::kRare, ui::Font::Title);
+        ui_.bar(window_, {{box.position.x + 16, box.position.y + 28}, {box.size.x - 32, 14}},
+                static_cast<float>(boss_->stats().hp) / static_cast<float>(boss_->stats().maxHp), sf::Color(196, 40, 32),
+                std::to_string(boss_->stats().hp) + " / " + std::to_string(boss_->stats().maxHp), 12);
     }
 
     renderTravel();
     renderVault();
+    if (vaultMenu_ || exitMenu_) mapHints_.clear();
+    renderMapHints();
     if (inventoryOpen_) renderInventory();
+    else if (!vaultMenu_ && !exitMenu_) renderHudTooltips();
     window_.display();
 }
 

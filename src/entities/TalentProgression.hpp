@@ -16,7 +16,7 @@ inline int treeInvestment(const Player& p,const std::string& tree) {
     return count;
 }
 inline std::string treePurchaseReason(const Player& p, PlayerClass cls, const TreeDefinition& t) {
-    if (!hiddenTreeAvailable(p,t.id)) return "Hidden tree requirements have not been met by this character.";
+    if (!hiddenTreeAvailable(p,t.id)) return "This tree is locked for now.";
     if (p.treePoints()<=0) return "No tree points available.";
     const auto* access=treeAccess(p,t.id);
     if (access) {

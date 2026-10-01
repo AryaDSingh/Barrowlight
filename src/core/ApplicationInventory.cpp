@@ -1,4 +1,5 @@
 #include "core/Application.hpp"
+#include "core/GameIcons.hpp"
 #include "core/PlayLayout.hpp"
 #include "world/FloorTheme.hpp"
 
@@ -9,8 +10,7 @@
 
 namespace engine {
 namespace {
-constexpr std::size_t kBagPageSize = 12;
-const sf::Color kText(220, 228, 240), kAccent(115, 225, 215);
+constexpr std::size_t kBagPageSize = 50; // the whole bag fits one 10x5 grid; pages only for overflow
 std::string signedNumber(int value) {
     return (value > 0 ? "+" : "") + std::to_string(value);
 }
@@ -91,9 +91,9 @@ void Application::handleInventoryKey(sf::Keyboard::Key key) {
     else if (key == sf::Keyboard::Key::Down || key == sf::Keyboard::Key::S)
         inventorySelection_ = (inventorySelection_ + 1) % rows;
     else if (key == sf::Keyboard::Key::PageDown)
-        inventorySelection_ = std::min(inventorySelection_ + kBagPageSize, rows - 1);
+        inventorySelection_ = std::min<std::size_t>(inventorySelection_ + 10, rows - 1); // one bag row
     else if (key == sf::Keyboard::Key::PageUp)
-        inventorySelection_ = inventorySelection_ > kBagPageSize ? inventorySelection_ - kBagPageSize : 0;
+        inventorySelection_ = inventorySelection_ > 10 ? inventorySelection_ - 10 : 0;
     else if (key == sf::Keyboard::Key::Enter || key == sf::Keyboard::Key::E || key == sf::Keyboard::Key::U) {
         if (inventorySelection_ < kEquipmentSlotCount) {
             if (key == sf::Keyboard::Key::E) return;
@@ -155,19 +155,21 @@ void Application::spawnFixedItems() {
 void Application::renderGroundItems() {
     if (chestExists_ && !chestClaimed_ && exploredMap_.at(chestPosition_.x, chestPosition_.y) == Visibility::Visible) {
         const auto screen = worldToScreen(chestPosition_.x, chestPosition_.y);
-        if (screen.x >= 0 && screen.x < playLayout::mapWidth && screen.y >= playLayout::mapTop &&
-            screen.y < playLayout::mapTop + playLayout::mapHeight) {
-            sf::RectangleShape chest({18.f, 14.f}); chest.setPosition({screen.x+5.f, screen.y+7.f});
-            chest.setFillColor(sf::Color(210,145,55)); chest.setOutlineThickness(2.f);
-            chest.setOutlineColor(sf::Color(255,220,100)); window_.draw(chest);
+        if (onMap(screen)) {
+            static constexpr SpriteFrame kChestFrame{"calciumtrice/tiles/dungeon_tileset_calciumtrice.png",
+                                                     sf::IntRect({32, 304}, {16, 16})};
+            if (!sprites_.draw(window_, kChestFrame, screen, static_cast<float>(playLayout::tileSize))) {
+                sf::RectangleShape chest({18.f, 14.f}); chest.setPosition({screen.x+5.f, screen.y+7.f});
+                chest.setFillColor(sf::Color(210,145,55)); chest.setOutlineThickness(2.f);
+                chest.setOutlineColor(sf::Color(255,220,100)); window_.draw(chest);
+            }
         }
     }
     for (const auto& item : groundItems_) {
         const auto p = item->position();
         if (exploredMap_.at(p.x, p.y) != Visibility::Visible) continue;
         const auto screen = worldToScreen(p.x, p.y);
-        if (screen.x < 0 || screen.x >= playLayout::mapWidth || screen.y < playLayout::mapTop ||
-            screen.y >= playLayout::mapTop + playLayout::mapHeight) continue;
+        if (!onMap(screen)) continue;
         sf::CircleShape marker(6.f, 4);
         marker.setPosition({screen.x + 7.f, screen.y + 7.f});
         marker.setFillColor(item->rarity() == ItemRarity::Rare ? sf::Color(255,211,95) :
@@ -176,38 +178,56 @@ void Application::renderGroundItems() {
     }
     for (const auto& item : groundItems_) {
         if (item->position().x == player_.position().x && item->position().y == player_.position().y) {
-            drawText(item->name() + " at your feet [G: pickup]", 430.f, 49.f, 12, kAccent);
+            mapHints_.push_back({item->name() + " at your feet. G: pick up", ui::kGold});
             break;
         }
     }
     if (chestExists_ && !chestClaimed_ && chestPosition_.x == player_.position().x && chestPosition_.y == player_.position().y)
-        drawText(currentFloor_<=3 ? "Chest: martial [G, 1 turn]" :
-            currentFloor_<=6 ? "Chest: casting [G, 1 turn]" :
-            "Chest: jewellery [G, 1 turn]", 630.f, 49.f, 11, kAccent);
+        mapHints_.push_back({currentFloor_<=3 ? "Chest of martial gear. G: open (1 turn)" :
+            currentFloor_<=6 ? "Chest of casting gear. G: open (1 turn)" :
+            "Chest of jewellery. G: open (1 turn)", ui::kGold});
 }
 
 
 namespace {
-// Positions follow the body, while indices preserve save-file slot IDs.
+// Diablo II-style equipment layout. Positions follow the body; indices
+// preserve save-file slot IDs (EquipmentSlot order).
 sf::FloatRect gearRect(int slot) {
-    static const std::array<sf::Vector2f,kEquipmentSlotCount> positions{{
-        {25,270},{175,270},{175,195},{325,270},{175,120},{325,195},
-        {25,355},{175,355},{175,440},{25,440},{325,440}}};
-    return {positions[slot],{140,68}};
+    static const std::array<sf::FloatRect,kEquipmentSlotCount> rects{{
+        {{48,158},{104,196}},   // Weapon: left hand, tall
+        {{208,168},{120,164}},  // Armour: centre
+        {{340,96},{60,60}},     // Charm (amulet): beside the head
+        {{384,158},{104,196}},  // OffHand: right hand, tall
+        {{218,72},{100,88}},    // Head
+        {{136,96},{60,60}},     // Cloak
+        {{48,364},{104,92}},    // Hands
+        {{218,340},{100,46}},   // Belt
+        {{384,364},{104,92}},   // Feet
+        {{156,334},{52,52}},    // Ring 1
+        {{328,334},{52,52}}}};  // Ring 2
+    return rects[static_cast<std::size_t>(slot)];
 }
-bool inBag(sf::Vector2i p) { return p.x>=485 && p.x<830 && p.y>=155 && p.y<491; }
+constexpr float kBagX=572, kBagY=112, kBagSlot=52, kBagStride=56;
+constexpr int kBagColumns=10;
+sf::FloatRect bagRect(std::size_t cell) {
+    return {{kBagX+kBagStride*(cell%kBagColumns),kBagY+kBagStride*(cell/kBagColumns)},{kBagSlot,kBagSlot}};
+}
+const sf::FloatRect kBagArea{{kBagX,kBagY},{kBagStride*kBagColumns,kBagStride*(kBagPageSize/kBagColumns)}};
+const sf::FloatRect kCloseButton{{1170,18},{94,32}};
+const sf::FloatRect kPrevPage{{kBagX,kBagY+kBagArea.size.y+8},{120,30}}, kNextPage{{kBagX+436,kBagY+kBagArea.size.y+8},{120,30}};
+bool inBag(sf::Vector2i p) { return kBagArea.contains(sf::Vector2f(p)); }
 std::optional<std::size_t> inventoryHit(sf::Vector2i p,std::size_t page,std::size_t count) {
     for(int i=0;i<kEquipmentSlotCount;++i)
         if(gearRect(i).contains(sf::Vector2f(p))) return i;
-    if(inBag(p)) {
-        const auto index=page*kBagPageSize+(p.y-155)/28;
-        if(index<count) return index+kEquipmentSlotCount;
-    }
+    for(std::size_t cell=0;cell<kBagPageSize;++cell)
+        if(bagRect(cell).contains(sf::Vector2f(p))) {
+            const auto index=page*kBagPageSize+cell;
+            if(index<count) return index+kEquipmentSlotCount;
+        }
     return {};
 }
-std::string clipped(std::string text,std::size_t size) {
-    if(text.size()>size) text=text.substr(0,size-3)+"...";
-    return text;
+sf::Color rarityColor(const Item& item) {
+    return item.rarity()==ItemRarity::Rare?ui::kRare:item.rarity()==ItemRarity::Magic?ui::kMagic:ui::kText;
 }
 }
 
@@ -232,12 +252,9 @@ void Application::handleInventoryMouse(const sf::Event& event) {
     if(const auto* click=event.getIf<sf::Event::MouseButtonPressed>()) {
         const auto p=click->position;
         if(click->button==sf::Mouse::Button::Left) {
-            if(p.x>=1160 && p.y<65) { inventoryOpen_=false; inventoryDragSource_.reset(); return; }
-            if(p.y>=510 && p.y<550 && p.x>=485 && p.x<830) {
-                if(p.x<650 && inventoryBagPage_) --inventoryBagPage_;
-                else if(p.x>=650) inventoryBagPage_=std::min(inventoryBagPage_+1,pages-1);
-                return;
-            }
+            if(kCloseButton.contains(sf::Vector2f(p))) { inventoryOpen_=false; inventoryDragSource_.reset(); return; }
+            if(kPrevPage.contains(sf::Vector2f(p))) { if(inventoryBagPage_) --inventoryBagPage_; return; }
+            if(kNextPage.contains(sf::Vector2f(p))) { inventoryBagPage_=std::min(inventoryBagPage_+1,pages-1); return; }
         }
         const auto hit=inventoryHit(p,inventoryBagPage_,count);
         if(!hit) return;
@@ -264,74 +281,117 @@ void Application::handleInventoryMouse(const sf::Event& event) {
 }
 
 void Application::renderInventory() {
-    sf::RectangleShape backdrop({1280.f,720.f});
-    backdrop.setFillColor(sf::Color(8,12,20,250)); window_.draw(backdrop);
-    drawText("INVENTORY & EQUIPMENT",25,20,24,kAccent);
-    drawText("[ Close ]",1160,25,17,kAccent);
-    drawText("Drag to equip/remove | Right-click: equip/remove | Hover: compare | Wheel/arrows: bag page",25,60,15,kText);
-    drawText(mode_==GameMode::Town ? "Equipment changes are free in town." : "Equip, remove and drop cost one turn. Viewing is free.",25,83,14,sf::Color(255,211,130));
+    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
+    ui_.panel(window_,{{0,0},{1280,720}},true);
+    ui_.heading(window_,"Inventory",{28,18},28);
+    ui_.button(window_,kCloseButton,"Close",mouse && kCloseButton.contains(*mouse));
+    ui_.text(window_,mode_==GameMode::Town ? "Equipment changes are free in town." : "Equipping, removing and dropping take a turn. Looking is free.",
+        {240,28},15,sf::Color(232,196,130));
+
     const auto& inventory=player_.inventory(); const auto& bag=inventory.items();
     inventorySelection_=std::min(inventorySelection_,bag.size()+kEquipmentSlotCount-1);
     const auto pages=std::max<std::size_t>(1,(bag.size()+kBagPageSize-1)/kBagPageSize);
     inventoryBagPage_=std::min(inventoryBagPage_,pages-1);
     const Item* dragged=inventoryDragSource_ && *inventoryDragSource_>=kEquipmentSlotCount ? bag[*inventoryDragSource_-kEquipmentSlotCount].get():nullptr;
+
+    // --- Equipment, around a faint figure --------------------------------
+    const sf::FloatRect doll{{28,64},{480,410}};
+    ui_.inset(window_,doll);
+    ui_.icon(window_,"shadow-follower",{{168,110},{200,330}},sf::Color(255,255,255,14));
     for(int i=0;i<kEquipmentSlotCount;++i) {
         const auto rect=gearRect(i); const auto slot=static_cast<EquipmentSlot>(i);
         const auto* item=inventory.equipped(slot);
-        sf::RectangleShape card(rect.size); card.setPosition(rect.position);
-        card.setFillColor(sf::Color(24,34,49)); card.setOutlineThickness(1);
-        card.setOutlineColor(dragged && slotAccepts(slot,dragged->definition()->slot) ? sf::Color(120,240,150):
-            inventorySelection_==i?kAccent:sf::Color(65,80,100)); window_.draw(card);
-        drawText(slotName(slot),rect.position.x+6,rect.position.y+5,14,kAccent);
-        float y=rect.position.y+26;
-        drawWrapped(item?clipped(item->name(),34):"(empty)",rect.position.x+6,y,16,kText,rect.position.y+65);
+        const bool fits=dragged && slotAccepts(slot,dragged->definition()->slot);
+        const sf::Color glow=fits?ui::kGood:inventorySelection_==static_cast<std::size_t>(i)?ui::kGold:
+            item && item->rarity()!=ItemRarity::Normal?sf::Color(rarityColor(*item).r,rarityColor(*item).g,rarityColor(*item).b,110):sf::Color::Transparent;
+        ui_.inset(window_,rect,glow);
+        const float pad=std::min(rect.size.x,rect.size.y)*0.16f;
+        const sf::FloatRect art{{rect.position.x+pad,rect.position.y+pad},{rect.size.x-2*pad,rect.size.y-2*pad}};
+        if(item) ui_.icon(window_,itemIcon(*item->definition()),art,rarityColor(*item));
+        else ui_.icon(window_,slotIcon(slot),art,sf::Color(255,255,255,28));
     }
-    float y=550;
-    drawWrapped(std::string("Armour: ")+armourName(inventory.armourKind())+". Majority of head, body, hands and feet. Empty pieces count as cloth; ties favour body.",25,y,54,kText,630);
-    drawText("B/Esc: close | Up/Down: select | Enter: equip/remove",25,652,14,kText);
-    drawText("D: drop bag item (dungeon) | F5/F9: save/load",25,677,14,kText);
-    drawText("BAG "+std::to_string(bag.size())+" / 50",485,120,20,kAccent);
+    float y=486;
+    ui_.text(window_,std::string(armourName(inventory.armourKind()))+" armour",{30,y},18,ui::kGold,ui::Font::Title);
+    y+=26;
+    ui_.paragraph(window_,"Your armour type is the majority of head, body, hands and feet. Empty pieces count as cloth; ties favour the body.",
+        30,y,476,14,ui::kMuted);
+    y+=8;
+    const auto& stats=player_.stats();
+    const auto stat=[&](const char* name,const std::string& value,float x,float row) {
+        ui_.text(window_,name,{x,row},15,ui::kMuted); ui_.text(window_,value,{x+92,row},15,ui::kText,ui::Font::Bold);
+    };
+    stat("Strength",std::to_string(stats.strength),30,y); stat("Life",std::to_string(stats.hp)+" / "+std::to_string(stats.maxHp),270,y); y+=22;
+    stat("Dexterity",std::to_string(stats.dexterity),30,y); stat("Mana",std::to_string(stats.mana)+" / "+std::to_string(stats.maxMana),270,y); y+=22;
+    stat("Intelligence",std::to_string(stats.intelligence),30,y); stat("Gold",std::to_string(gold_),270,y);
+
+    // --- Bag grid ---------------------------------------------------------
+    ui_.heading(window_,"Bag",{kBagX,62},22);
+    ui_.text(window_,std::to_string(bag.size())+" / "+std::to_string(Inventory::capacity),{kBagX+70,70},16,
+        bag.size()>=Inventory::capacity?ui::kBad:ui::kMuted,ui::Font::Bold);
     const auto first=inventoryBagPage_*kBagPageSize;
-    for(std::size_t r=0;r<kBagPageSize;++r) {
-        const auto i=first+r;
-        sf::RectangleShape row({340,26}); row.setPosition({485,155+28.f*r});
-        row.setFillColor(inventorySelection_==i+kEquipmentSlotCount?sf::Color(45,65,80):sf::Color(20,29,42)); window_.draw(row);
-        if(i<bag.size()) drawText(clipped(bag[i]->name(),37),491,158+28.f*r,14,
-            bag[i]->rarity()==ItemRarity::Rare?sf::Color(255,215,110):bag[i]->rarity()==ItemRarity::Magic?sf::Color(135,180,255):kText);
+    for(std::size_t cell=0;cell<kBagPageSize;++cell) {
+        const auto i=first+cell; const auto rect=bagRect(cell);
+        const bool selected=inventorySelection_==i+kEquipmentSlotCount;
+        const Item* item=i<bag.size()?bag[i].get():nullptr;
+        ui_.inset(window_,rect,selected?ui::kGold:item && item->rarity()!=ItemRarity::Normal?
+            sf::Color(rarityColor(*item).r,rarityColor(*item).g,rarityColor(*item).b,90):sf::Color::Transparent);
+        if(item) ui_.icon(window_,itemIcon(*item->definition()),{{rect.position.x+8,rect.position.y+8},{rect.size.x-16,rect.size.y-16}},rarityColor(*item));
     }
-    drawText("< Previous       Next >",490,515,17,kAccent);
-    drawText("Page "+std::to_string(inventoryBagPage_+1)+" / "+std::to_string(pages),490,545,15,kText);
-    if(!logMessages_.empty()) { y=575; drawWrapped(logMessages_.back(),485,y,43,sf::Color(255,211,130),626); }
-    if(bag.size()>Inventory::capacity) { y=632; drawWrapped("Overflow preserved. Drop or sell items before picking up more.",485,y,40,sf::Color(255,211,130),710); }
+    if(pages>1) {
+        ui_.button(window_,kPrevPage,"Previous",mouse && kPrevPage.contains(*mouse),inventoryBagPage_>0);
+        ui_.button(window_,kNextPage,"Next",mouse && kNextPage.contains(*mouse),inventoryBagPage_+1<pages);
+        ui_.textCentered(window_,"Page "+std::to_string(inventoryBagPage_+1)+" of "+std::to_string(pages),
+            {{kPrevPage.position.x+120,kPrevPage.position.y},{316,30}},15,ui::kMuted);
+    }
+    if(bag.size()>Inventory::capacity)
+        ui_.text(window_,"Overflow kept: drop or sell items before picking up more.",{kBagX,kBagY+kBagArea.size.y+46},14,sf::Color(232,196,130));
+
+    // --- Help and the latest message --------------------------------------
+    y=510;
+    ui_.text(window_,"Controls",{kBagX,y},16,ui::kGold,ui::Font::Bold); y+=24;
+    for(const char* line:{"Drag an item onto a slot to equip it, or back to the bag to remove it.",
+                          "Right-click to equip or remove. Hover to compare with what you wear.",
+                          "Arrows: select   Enter: equip or remove   D: drop (in the dungeon)   B or Esc: close"}) {
+        ui_.text(window_,line,{kBagX,y},14,ui::kMuted); y+=20;
+    }
+    if(!logMessages_.empty()) { y+=12; ui_.paragraph(window_,logMessages_.back(),kBagX,y,560,15,sf::Color(232,196,130),ui::Font::Body,712); }
+
+    // --- Tooltip for the hovered/selected item, with comparison ------------
     const bool removing=inventorySelection_<kEquipmentSlotCount;
     const auto* selected=removing?inventory.equipped(static_cast<EquipmentSlot>(inventorySelection_)):bag[inventorySelection_-kEquipmentSlotCount].get();
-    y=120;
-    if(!selected) { drawWrapped("Select or hover an item to see its stats and comparison.",860,y,44,kText,260); return; }
+    if(!selected) return;
     const auto& definition=*selected->definition();
     const auto slot=removing?static_cast<EquipmentSlot>(inventorySelection_):inventoryEquipTarget_.value_or(inventory.preferredSlot(definition));
     const auto* current=inventory.equipped(slot);
-    drawWrapped(selected->name(),860,y,43,kAccent,180);
-    drawWrapped(equipmentTypeName(definition),860,y,43,kText,230);
-    drawWrapped(removing?"Preview: remove item":std::string("Equip to ")+slotName(slot)+"; replaces "+(current?current->name():"empty slot"),860,y,43,kText,300);
+    std::vector<ui::Line> lines{{selected->name(),rarityColor(*selected),19,ui::Font::Title},
+        {(selected->rarity()==ItemRarity::Normal?std::string():std::string(rarityName(selected->rarity()))+" ")+equipmentTypeName(definition),ui::kMuted,14},{""}};
     const auto before=current?current->bonuses():ItemBonuses{};
     const auto after=removing?ItemBonuses{}:selected->bonuses();
     const auto bonus=selected->bonuses();
-    y=310;
-    drawText("Stat           Item   Change",860,y,16,kAccent); y+=30;
-    const auto stat=[&](const char* name,int value,int delta) {
-        drawText(name,860,y,16,kText); drawText(signedNumber(value),1020,y,16,kText);
-        drawText(signedNumber(delta),1130,y,16,delta>0?sf::Color(135,240,160):delta<0?sf::Color(255,140,120):kText); y+=28;
+    const auto statLine=[&](const char* name,int value,int delta) {
+        if(!value && !delta) return;
+        std::string text=signedNumber(value)+" "+name;
+        if(delta) text+="   ("+signedNumber(delta)+" if "+(removing?"removed":"equipped")+")";
+        lines.push_back({text,delta>0?ui::kGood:delta<0?ui::kBad:ui::kText,15});
     };
-    stat("Strength",bonus.strength,after.strength-before.strength);
-    stat("Dexterity",bonus.dexterity,after.dexterity-before.dexterity);
-    stat("Intelligence",bonus.intelligence,after.intelligence-before.intelligence);
-    stat("Max HP",bonus.maxHp,after.maxHp-before.maxHp);
-    stat("Max mana",bonus.maxMana,after.maxMana-before.maxMana);
-    std::string affixes="Affixes: ";
-    for(const auto& roll:selected->affixes()) affixes+=std::string(findAffix(roll.id)->name)+" +"+std::to_string(roll.value)+"; ";
-    if(selected->affixes().empty()) affixes+="none";
-    y+=12; drawWrapped(affixes,860,y,43,kAccent,570);
-    drawWrapped("Equipment never refills HP or mana. Lower maximum values clamp your current pools.",860,y,43,kText,640);
-    if(dragged) drawWrapped("Green slots accept this item. Release elsewhere to cancel.",860,y,43,kAccent,700);
+    statLine("Strength",bonus.strength,after.strength-before.strength);
+    statLine("Dexterity",bonus.dexterity,after.dexterity-before.dexterity);
+    statLine("Intelligence",bonus.intelligence,after.intelligence-before.intelligence);
+    statLine("Max life",bonus.maxHp,after.maxHp-before.maxHp);
+    statLine("Max mana",bonus.maxMana,after.maxMana-before.maxMana);
+    for(const auto& roll:selected->affixes())
+        lines.push_back({std::string(findAffix(roll.id)->name)+" +"+std::to_string(roll.value),ui::kMagic,15});
+    lines.push_back({""});
+    lines.push_back({removing?std::string("Equipped: ")+slotName(slot):
+        std::string("Equips to ")+slotName(slot)+(current?", replacing "+current->name():", which is empty"),ui::kInfo,14});
+    if(dragged) lines.push_back({"Green slots accept this item. Release elsewhere to cancel.",ui::kGood,14});
+    lines.push_back({"Equipment never refills life or mana; lower maximums clamp your current pools.",ui::kMuted,13});
+    const auto anchor=removing?gearRect(static_cast<int>(inventorySelection_)):
+        bagRect((inventorySelection_-kEquipmentSlotCount)%kBagPageSize);
+    // Follow the mouse while it's over the item; otherwise (keyboard
+    // selection) sit beside the selected slot.
+    const bool overItem=mousePixel_ && inventoryHit(*mousePixel_,inventoryBagPage_,bag.size())==inventorySelection_;
+    const sf::Vector2f at=overItem && !dragged?*mouse:sf::Vector2f{anchor.position.x+anchor.size.x-10,anchor.position.y};
+    ui_.tooltip(window_,lines,at,340);
 }
 } // namespace engine

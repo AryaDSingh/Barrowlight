@@ -1,0 +1,113 @@
+SPRITE CREDITS
+==============
+
+All art in assets/sprites/calciumtrice/ was downloaded on 2026-09-30 from the
+OpenGameArt collection "Calciumtrice's Dungeon" (curated by elmerenges):
+https://opengameart.org/content/calciumtrices-dungeon-0
+
+Licenses:
+  CC-BY 3.0     https://creativecommons.org/licenses/by/3.0/
+  OGA-BY 3.0    https://opengameart.org/content/oga-by-30-faq
+  CC-BY 4.0     https://creativecommons.org/licenses/by/4.0/
+
+Files have been renamed (spaces -> underscores, upload suffixes like "_0"
+dropped) and sorted into tiles/, monsters/ and heroes/ folders. The pixel
+art itself is unmodified.
+
+
+Calciumtrice  (CC-BY 3.0)
+-------------------------
+"Art by Calciumtrice, usable under Creative Commons Attribution 3.0."
+Twitter @Calciumtrice -- calciumtrice.tumblr.com
+
+  Dungeon Tileset ........ https://opengameart.org/content/dungeon-tileset-1
+  Deer ................... https://opengameart.org/content/deer
+  Animated Minotaur ...... https://opengameart.org/content/animated-minotaur
+  Animated Rogue ......... https://opengameart.org/content/animated-rogue
+  Animated Wizard ........ https://opengameart.org/content/animated-wizard
+  Animated Orcs .......... https://opengameart.org/content/animated-orcs
+  Animated Skeleton ...... https://opengameart.org/content/animated-skeleton
+  Animated Cleric ........ https://opengameart.org/content/animated-cleric
+  Animated Snake ......... https://opengameart.org/content/animated-snake
+  Animated Rat and Bat ... https://opengameart.org/content/animated-rat-and-bat
+  Animated Goblins ....... https://opengameart.org/content/animated-goblins
+  Animated Slime ......... https://opengameart.org/content/animated-slime
+  Animated Ranger ........ https://opengameart.org/content/animated-ranger
+  Animated Warrior ....... https://opengameart.org/content/animated-warrior
+  Animated Statue ........ https://opengameart.org/content/animated-statue
+  Simple Knight .......... https://opengameart.org/content/simple-knight
+  Forest Monsters ........ https://opengameart.org/content/forest-monsters
+
+
+Calciumtrice, recolored by Merry Dream Games  (CC-BY 3.0)
+---------------------------------------------------------
+"Art by Calciumtrice, recolored by Merry Dream Games, usable under Creative
+Commons Attribution 3.0." Each is at https://opengameart.org/content/<slug>:
+
+  Evil Cleric (evil-cleric)            Young Thief (young-thief)
+  Wind Rogue (wind-rogue)              Wild Rogue (wild-rogue)
+  Trickster Orc (trickster-orc)        Street Thief (street-thief)
+  Red Orc (red-orc)                    Simpleton (simpleton)
+  Royal Messenger (royal-messenger)    Red Minotaur (red-minotaur)
+  Pyromaniac Orc (pyromaniac-orc)      Purple Orc (purple-orc)
+  Psychopath (psychopath)              Psionic Goblin (psionic-goblic)
+  Prince Ranger (prince-ranger)        Priest (priest)
+  Pink Thief (pink-thief)              Peasant (peasant)
+  Noble Ranger (noble-ranger)          Night Thief (night-thief)
+  Mystery Monk (mystery-monk)          Mitheral Knight (mitheral-knight)
+  Mage (mage)                          Lucky Orc (lucky-orc)
+  Imp (imp-1)                          Grey Minotaur (grey-minotaur)
+  Green Monk (green-monk)              Hunter Orc (hunter-orc)
+  Gold Knight (gold-knight)            Ghost (ghost-1)
+  Death (death)                        Desert Rogue (desert-rogue)
+  Fierce Wizard (fierce-wizard)        Forest Ranger (forest-ranger)
+  Foul Monk (foul-monk)                Future Cleric (future-cleric)
+  Dark Ranger (dark-ranger)            Crazy Wizard (crazy-wizard)
+  Bronze Knight (bronze-knight)        Blue Cleric (blue-cleric)
+  Blood Ranger (blood-ranger)          Black Knight (black-knight-0)
+  Assassin (assassin)                  Armour Psionic Goblin (armour-psionic-goblin)
+  Armour Imp (armour-imp)              Adamant Knight (adamant-knight)
+  Abyss Ranger (abyss-ranger)
+
+
+Gem, based on Calciumtrice's Dungeon Tileset  (CC-BY 3.0 / OGA-BY 3.0)
+----------------------------------------------------------------------
+"Dungeon Tileset with rounded walls by Gem, based on the Dungeon Tileset by
+Calciumtrice."
+  https://opengameart.org/content/dungeon-tileset-with-rounded-walls
+
+
+NimNom123, based on Calciumtrice's Simple Knight  (CC-BY 3.0)
+-------------------------------------------------------------
+"Simple Knight w/ Shield by NimNom123, based on Simple Knight by Calciumtrice."
+  https://opengameart.org/content/simple-knight-w-shield-by-calciumtrice
+
+
+Pawel Slusarczyk (pawel_s1)  (CC-BY 4.0)
+----------------------------------------
+"Ratfolk tileset by Pawel Slusarczyk (pawel_s1)."
+  https://opengameart.org/content/ratfolk-tileset
+
+
+ICONS (assets/icons/)
+=====================
+Downloaded on 2026-09-30 from https://game-icons.net, white on transparent,
+512x512, unmodified. Licensed CC-BY 3.0 (https://creativecommons.org/licenses/by/3.0/).
+Each file is named after its game-icons.net icon; the page for an icon is
+https://game-icons.net/1x1/<author>/<file name without .png>.html
+
+  Lorc -- every icon not listed below.
+  Delapouite -- jump-across, leather-armor, cape,
+      gloves, ring, hamburger-menu, village, spell-book, healing.
+  sbed -- shield.
+  (Artist pages: https://game-icons.net/about.html)
+
+"Icons by Lorc, Delapouite and sbed, from game-icons.net, CC-BY 3.0."
+
+
+FONTS (assets/fonts/)
+=====================
+  Cinzel by Natanael Gama -- SIL Open Font License 1.1, see LICENSE-Cinzel.txt
+  Alegreya Sans by Huerta Tipografica -- SIL Open Font License 1.1, see LICENSE-AlegreyaSans.txt
+  (Both from https://github.com/google/fonts.)
+  DejaVu Sans Mono -- see LICENSE-DejaVu.txt

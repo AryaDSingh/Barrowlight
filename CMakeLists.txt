@@ -97,6 +97,10 @@ set(CORE_HEADERS
     src/core/TurnScheduler.hpp
     src/core/SaveGame.hpp
     src/core/SoundManager.hpp
+    src/core/SpriteAtlas.hpp
+    src/core/ScreenLayout.hpp
+    src/core/UiKit.hpp
+    src/core/GameIcons.hpp
 )
 
 set(WORLD_HEADERS
@@ -109,6 +113,7 @@ set(WORLD_HEADERS
     src/world/ExploredMap.hpp
     src/world/Pathfinder.hpp
     src/world/DungeonGenerator.hpp
+    src/world/DungeonModules.hpp
 )
 
 set(AI_HEADERS
@@ -138,7 +143,6 @@ add_executable(roguelike
     src/core/ApplicationExplore.cpp
     src/core/ApplicationLoot.cpp
     src/core/ApplicationHidden.cpp
-    src/core/ApplicationCodex.cpp
     src/core/ApplicationTalents.cpp
     src/world/TalentTargeting.cpp
     src/entities/MonsterInspection.cpp
@@ -148,6 +152,7 @@ add_executable(roguelike
     src/world/ExploredMap.cpp
     src/world/Pathfinder.cpp
     src/world/DungeonGenerator.cpp
+    src/world/DungeonModules.cpp
     src/ai/Chaser.cpp
     src/ai/Kiter.cpp
     src/ai/Support.cpp
@@ -170,6 +175,8 @@ add_executable(roguelike
     src/entities/MonsterTier.cpp
     src/core/SaveGame.cpp
     src/core/SoundManager.cpp
+    src/core/SpriteAtlas.cpp
+    src/core/UiKit.cpp
     ${COMMON_HEADERS}
     ${ENTITY_HEADERS}
     ${CORE_HEADERS}
@@ -304,6 +311,7 @@ add_executable(dungeon_test
     tests/dungeon_test.cpp
     src/world/Map.cpp
     src/world/DungeonGenerator.cpp
+    src/world/DungeonModules.cpp
     ${COMMON_HEADERS}
     ${WORLD_HEADERS}
 )

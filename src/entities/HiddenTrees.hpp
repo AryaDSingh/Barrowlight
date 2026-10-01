@@ -5,22 +5,15 @@ inline bool specialized(const Player& p,const char* id) {
     for (const auto& t:p.trees()) if (t.id==id) return t.specialized;
     return false;
 }
-inline bool hiddenTreeAvailable(const Player& p,const std::string& id) {
-    const bool magic=specialized(p,"fire") || specialized(p,"ice") || specialized(p,"lightning") || specialized(p,"arcane");
-    if (id=="spellblade") return magic && (specialized(p,"one_handed") || specialized(p,"two_handed") || specialized(p,"shield"));
-    if (id=="animation") return p.animationRelic && specialized(p,"arcane");
-    if (id=="blood_magic") return p.bloodRelic && magic;
-    if (id=="shadow_archer") return specialized(p,"bow") && specialized(p,"stealth");
-    return true;
-}
 inline constexpr const char* kHiddenIds[]{"spellblade","animation","shadow_archer","blood_magic"};
 inline constexpr const char* kHiddenNames[]{"Spellblade","Animation","Shadow Archer","Blood Magic"};
-inline constexpr const char* kHiddenConditions[]{
-    "Specialize One-Handed, Two-Handed or Shield AND Fire, Ice, Lightning or Arcane.",
-    "Find the Lich's Ossuary Seal in this run AND specialize Arcane.",
-    "Specialize both Bow and Stealth.",
-    "Find a Blood Testament in this run (Shamans or Warlord) AND specialize any magic tree."
-};
+// Hidden trees can't be unlocked for now: their old discovery path (the
+// Codex, relics and specialization combinations) was removed and a new
+// unlock is still being designed. Every other tree is always available.
+inline bool hiddenTreeAvailable(const Player&,const std::string& id) {
+    for (const auto* hidden:kHiddenIds) if (id==hidden) return false;
+    return true;
+}
 inline bool hiddenTree(const std::string& id) {
     for (const auto* hidden:kHiddenIds) if (id==hidden) return true;
     return false;

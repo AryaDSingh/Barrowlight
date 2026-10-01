@@ -1,86 +1,112 @@
-// Standalone sanity check for generateDungeon. No SFML, no window -- same
-// pattern as the other tests. The single property that actually matters
-// for "a connected, playable Map" is full connectivity -- verified here
-// via flood-fill across several different seeds, not just assumed
-// because the "connect each room to the previous one" logic looks
-// simple. Also prints one example layout, which is literally what the
-// prompt asked for (a quick way to inspect a generated layout) -- a
-// console printout, complementing the in-game regenerate key.
+// Standalone sanity check for generateDungeon and the module pool. No
+// SFML, no window -- same pattern as the other tests. Checks every
+// module's authoring rules (so a broken new module fails here with a
+// readable message), then generates many floors and verifies the
+// properties the rest of the game relies on: full connectivity, a sealed
+// vault, a clear boss arena, distinct modules, and safe start spacing.
+// Also prints one example layout for eyeballing.
 
+#include <cstdlib>
 #include <iostream>
 #include <queue>
+#include <set>
 #include <vector>
 
 #include "world/DungeonGenerator.hpp"
+#include "world/DungeonModules.hpp"
 
 using namespace engine;
 
 namespace {
 
-int countReachableFloorTiles(const Map& map, Position start) {
-    std::vector<std::vector<bool>> visited(
-        static_cast<std::size_t>(map.height()),
-        std::vector<bool>(static_cast<std::size_t>(map.width()), false));
+int failures = 0;
 
+void check(bool condition, const std::string& message) {
+    if (!condition) {
+        std::cout << "[FAIL] " << message << '\n';
+        ++failures;
+    }
+}
+
+std::vector<bool> reachableFrom(const Map& map, Position start) {
+    std::vector<bool> seen(static_cast<std::size_t>(map.width() * map.height()), false);
     std::queue<Position> frontier;
     frontier.push(start);
-    visited[static_cast<std::size_t>(start.y)][static_cast<std::size_t>(start.x)] = true;
-
-    static constexpr int kDx[4] = {0, 0, -1, 1};
-    static constexpr int kDy[4] = {-1, 1, 0, 0};
-
-    int count = 0;
+    seen[static_cast<std::size_t>(start.y * map.width() + start.x)] = true;
     while (!frontier.empty()) {
         const Position p = frontier.front();
         frontier.pop();
-        ++count;
-
-        for (int dir = 0; dir < 4; ++dir) {
-            const Position n{p.x + kDx[dir], p.y + kDy[dir]};
-            if (map.isWalkable(n.x, n.y) &&
-                !visited[static_cast<std::size_t>(n.y)][static_cast<std::size_t>(n.x)]) {
-                visited[static_cast<std::size_t>(n.y)][static_cast<std::size_t>(n.x)] = true;
+        for (const Position d : {Position{1, 0}, Position{-1, 0}, Position{0, 1}, Position{0, -1}}) {
+            const Position n{p.x + d.x, p.y + d.y};
+            if (!map.isWalkable(n.x, n.y)) continue;
+            const auto index = static_cast<std::size_t>(n.y * map.width() + n.x);
+            if (!seen[index]) {
+                seen[index] = true;
                 frontier.push(n);
             }
         }
     }
-    return count;
+    return seen;
 }
 
-int countTotalFloorTiles(const Map& map) {
-    int count = 0;
-    for (int y = 0; y < map.height(); ++y) {
-        for (int x = 0; x < map.width(); ++x) {
-            if (map.tileAt(x, y).walkable) {
-                ++count;
-            }
-        }
-    }
-    return count;
-}
-
-void printDungeon(const Map& map, Position playerStart, const std::vector<Position>& otherRoomCenters,
-                   bool hasBossRoom, Position bossRoomCenter) {
-    auto isOtherRoomCenter = [&](Position p) {
-        for (const Position& c : otherRoomCenters) {
-            if (c.x == p.x && c.y == p.y) {
-                return true;
-            }
-        }
-        return false;
+void checkFloor(const GeneratedDungeon& d, const DungeonGenerationParams& params, unsigned seed) {
+    const std::string where = " (seed " + std::to_string(seed) + ")";
+    const Map& map = d.map;
+    const auto reached = reachableFrom(map, d.playerStart);
+    const auto inVault = [&](int x, int y) {
+        return d.hasVault && std::abs(x - d.vaultCenter.x) <= 2 && std::abs(y - d.vaultCenter.y) <= 2;
     };
-
-    for (int y = 0; y < map.height(); ++y) {
+    for (int y = 0; y < map.height(); ++y)
         for (int x = 0; x < map.width(); ++x) {
-            if (x == playerStart.x && y == playerStart.y) {
-                std::cout << '@';
-            } else if (hasBossRoom && x == bossRoomCenter.x && y == bossRoomCenter.y) {
-                std::cout << 'B';
-            } else if (isOtherRoomCenter(Position{x, y})) {
-                std::cout << 'g';
-            } else {
-                std::cout << (map.tileAt(x, y).type == TileType::Wall ? '#' : '.');
-            }
+            const bool walkable = map.isWalkable(x, y);
+            const bool edge = x == 0 || y == 0 || x == map.width() - 1 || y == map.height() - 1;
+            if (edge) check(!walkable, "outer edge is wall" + where);
+            if (walkable && !inVault(x, y))
+                check(reached[static_cast<std::size_t>(y * map.width() + x)], "every floor tile reachable" + where);
+        }
+
+    check(d.hasBossRoom == params.includeBossRoom, "boss room present iff requested" + where);
+    if (d.hasBossRoom)
+        for (int y = d.bossRoomCenter.y - 3; y <= d.bossRoomCenter.y + 3; ++y)
+            for (int x = d.bossRoomCenter.x - 3; x <= d.bossRoomCenter.x + 3; ++x)
+                check(map.isWalkable(x, y), "boss arena's central 7x7 is floor" + where);
+
+    check(d.hasVault == (params.includeVault && !params.includeBossRoom), "vault present iff requested" + where);
+    if (d.hasVault) {
+        check(!reached[static_cast<std::size_t>(d.vaultCenter.y * map.width() + d.vaultCenter.x)],
+              "vault is sealed" + where);
+        check(!map.isWalkable(d.vaultEntrance.x, d.vaultEntrance.y), "vault gate starts closed" + where);
+        check(std::abs(d.vaultCenter.x - d.vaultEntrance.x) + std::abs(d.vaultCenter.y - d.vaultEntrance.y) == 3,
+              "vault gate is 3 tiles from the cache" + where);
+        Map opened = map;
+        opened.setTile(d.vaultEntrance.x, d.vaultEntrance.y, Tile{TileType::Floor, true, true});
+        check(reachableFrom(opened, d.playerStart)[static_cast<std::size_t>(d.vaultCenter.y * map.width() + d.vaultCenter.x)],
+              "opening the gate reaches the cache" + where);
+    }
+
+    std::set<std::string> regular;
+    for (const auto& name : d.moduleNames)
+        if (name != bossModule().name && name != vaultModule().name) check(regular.insert(name).second, "modules are distinct" + where);
+
+    check(!d.otherRoomCenters.empty(), "there are encounter anchors" + where);
+    for (const Position& p : d.otherRoomCenters) {
+        check(map.isWalkable(p.x, p.y), "anchors are floor" + where);
+        const int dx = p.x - d.playerStart.x, dy = p.y - d.playerStart.y;
+        check(dx * dx + dy * dy > 64, "no anchor right next to the start" + where);
+    }
+}
+
+void printDungeon(const GeneratedDungeon& d) {
+    for (int y = 0; y < d.map.height(); ++y) {
+        for (int x = 0; x < d.map.width(); ++x) {
+            const Position p{x, y};
+            const auto is = [&](Position q) { return q.x == p.x && q.y == p.y; };
+            char c = d.map.tileAt(x, y).type == TileType::Wall ? '#' : '.';
+            for (const Position& a : d.otherRoomCenters) if (is(a)) c = 'g';
+            if (d.hasBossRoom && is(d.bossRoomCenter)) c = 'B';
+            if (d.hasVault && is(d.vaultCenter)) c = 'V';
+            if (is(d.playerStart)) c = '@';
+            std::cout << c;
         }
         std::cout << '\n';
     }
@@ -89,50 +115,34 @@ void printDungeon(const Map& map, Position playerStart, const std::vector<Positi
 } // namespace
 
 int main() {
-    const DungeonGenerationParams params; // defaults
+    std::cout << "Dungeon generation test\n-----------------------\n";
 
-    std::cout << "Dungeon generation test\n";
-    std::cout << "-----------------------\n\n";
+    const auto moduleErrors = validateModules();
+    for (const auto& error : moduleErrors) std::cout << "[FAIL] module " << error << '\n';
+    failures += static_cast<int>(moduleErrors.size());
+    std::cout << regularModules().size() << " regular modules in the pool\n";
 
-    bool allConnected = true;
-    for (unsigned int seed = 1; seed <= 10; ++seed) {
-        const GeneratedDungeon dungeon = generateDungeon(params, seed);
-        const int reachable = countReachableFloorTiles(dungeon.map, dungeon.playerStart);
-        const int total = countTotalFloorTiles(dungeon.map);
-        const bool connected = reachable == total;
-        allConnected &= connected;
+    int floors = 0;
+    for (const bool boss : {false, true})
+        for (const bool vault : {false, true})
+            for (unsigned seed = 1; seed <= 100; ++seed) {
+                DungeonGenerationParams params;
+                params.includeBossRoom = boss;
+                params.includeVault = vault;
+                checkFloor(generateDungeon(params, seed), params, seed);
+                ++floors;
+            }
+    std::cout << floors << " generated floors checked\n";
 
-        std::cout << "seed " << seed << ": " << dungeon.roomCount << " rooms"
-                  << (dungeon.hasBossRoom ? " (incl. boss room)" : " (NO boss room)") << ", "
-                  << reachable << "/" << total << " floor tiles reachable from player start "
-                  << (connected ? "[ok]" : "[FAIL]") << '\n';
-    }
+    DungeonGenerationParams exampleParams;
+    exampleParams.includeBossRoom = false;
+    exampleParams.includeVault = true;
+    const GeneratedDungeon example = generateDungeon(exampleParams, 42);
+    std::cout << "\nExample (seed 42): @ start, g encounter anchors (last = door down), V vault\n";
+    for (std::size_t i = 0; i < example.moduleNames.size(); ++i)
+        std::cout << example.moduleNames[i] << ((i + 1) % kModuleGrid ? " | " : "\n");
+    printDungeon(example);
 
-    std::cout << "\n"
-              << (allConnected ? "All seeds fully connected." : "Some seeds FAILED connectivity.")
-              << "\n\n";
-
-    // Boss room placement isn't guaranteed to succeed (it's the last,
-    // largest room attempted, on an already-partially-filled map) --
-    // measured across a larger sample rather than assumed reliable from
-    // a handful of seeds.
-    constexpr int kBossRoomSampleSize = 50;
-    int bossRoomSuccesses = 0;
-    for (unsigned int seed = 100; seed < 100 + kBossRoomSampleSize; ++seed) {
-        if (generateDungeon(params, seed).hasBossRoom) {
-            ++bossRoomSuccesses;
-        }
-    }
-    const double bossRoomRate =
-        100.0 * static_cast<double>(bossRoomSuccesses) / kBossRoomSampleSize;
-    std::cout << "Boss room placement succeeded in " << bossRoomSuccesses << "/"
-              << kBossRoomSampleSize << " seeds (" << bossRoomRate << "%)\n\n";
-
-    const GeneratedDungeon example = generateDungeon(params, /*seed=*/42);
-    std::cout << "Example layout (seed 42), @ = player start, g = other room centers, "
-                 "B = boss room:\n\n";
-    printDungeon(example.map, example.playerStart, example.otherRoomCenters, example.hasBossRoom,
-                 example.bossRoomCenter);
-
-    return allConnected ? 0 : 1;
+    std::cout << (failures ? "\nFAILED: " + std::to_string(failures) + " check(s)\n" : "\nAll dungeon checks passed.\n");
+    return failures ? 1 : 0;
 }
