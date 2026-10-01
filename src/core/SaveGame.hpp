@@ -117,6 +117,7 @@ struct SaveGameState {
         bool allied=false;
         int summonRank=1, summonIntelligence=0, remainingLife=0;
         bool vaultGuard = false;
+        int eventChampion = 0;
         int recoveryActions=0, summonsCommitted=0, announcedPhase=1;
         bool enraged=false;
         std::optional<EnemyIntent> intent;

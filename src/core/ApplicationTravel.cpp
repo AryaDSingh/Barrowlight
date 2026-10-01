@@ -306,7 +306,7 @@ void Application::renderMerchant() {
     for (std::size_t i=first;i<count && i<first+kTownRowsPerPage;++i) {
         const auto row=townRow(static_cast<int>(i-first));
         const ItemDefinition& definition=selling_?*bag[i]->definition():*stock[i];
-        const sf::Color nameColor=selling_ && bag[i]->rarity()==ItemRarity::Rare?ui::kRare:
+        const sf::Color nameColor=selling_ && bag[i]->rarity()==ItemRarity::Unique?ui::kUnique:selling_ && bag[i]->rarity()==ItemRarity::Rare?ui::kRare:
             selling_ && bag[i]->rarity()==ItemRarity::Magic?ui::kMagic:ui::kText;
         ui_.inset(window_,row,i==shopSelection_?ui::kGold:hovered(row)?ui::kBronze:sf::Color::Transparent);
         ui_.icon(window_,itemIcon(definition),{{row.position.x+8,row.position.y+5},{28,28}},nameColor);
@@ -329,7 +329,7 @@ void Application::renderMerchant() {
     if (count) {
         const ItemDefinition& definition=selling_?*bag[shopSelection_]->definition():*stock[shopSelection_];
         const std::string name=selling_?bag[shopSelection_]->name():std::string(definition.name);
-        const sf::Color nameColor=selling_ && bag[shopSelection_]->rarity()==ItemRarity::Rare?ui::kRare:
+        const sf::Color nameColor=selling_ && bag[shopSelection_]->rarity()==ItemRarity::Unique?ui::kUnique:selling_ && bag[shopSelection_]->rarity()==ItemRarity::Rare?ui::kRare:
             selling_ && bag[shopSelection_]->rarity()==ItemRarity::Magic?ui::kMagic:ui::kText;
         const sf::FloatRect art{{left,kTownPreview.position.y+20},{88,88}};
         ui_.inset(window_,art,ui::kBronze);

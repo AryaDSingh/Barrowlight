@@ -281,6 +281,14 @@ struct MonsterLook { SpriteFrame frame; sf::Color tint = sf::Color::White; };
 // Bosses and named encounters get the most distinctive sheets in the
 // pack; regular enemies share the generic goblin/skeleton art, tinted
 // where two types would otherwise look identical.
+MonsterLook monsterLook(MonsterType type);
+// The chained demon keeps its own red minotaur art once it breaks free.
+MonsterLook monsterLook(const Monster& monster) {
+    if (monster.eventChampion == kChampionDemon) return {idleFrame("calciumtrice/monsters/RedMinotaur.png", 0, 48, 52)};
+    if (monster.eventChampion == kChampionRevenant) return {idleFrame("calciumtrice/heroes/BlackKnight.png"), sf::Color(200, 190, 255)};
+    return monsterLook(monster.type());
+}
+
 MonsterLook monsterLook(MonsterType type) {
     constexpr const char* goblin = "calciumtrice/monsters/goblin_spritesheet_calciumtrice.png";
     constexpr const char* skeleton = "calciumtrice/monsters/skeleton_spritesheet_calciumtrice.png";
@@ -1409,7 +1417,7 @@ std::vector<Actor*> Application::aliveAllies(const Actor* exclude) {
 void Application::removeDeadMonsters() {
     for (const auto& m : monsters_)
         if (m->stats().hp <= 0) {
-            const MonsterLook look = monsterLook(m->type());
+            const MonsterLook look = monsterLook(*m);
             recordCorpse(*m, look.frame, m->allied ? sf::Color(120, 235, 235) : look.tint);
             forgetActor(*m);
         }
@@ -1474,6 +1482,8 @@ void Application::regenerateLevel(unsigned int seed) {
     const auto theme=floorTheme(currentFloor_);
     DungeonGenerationParams params;
     params.region=theme.region;
+    // Very rare events only stir on deep floors.
+    params.rareEventChance=currentFloor_>=kRareEventFloor ? kRareEventChance : 0.f;
     // Only specific floors generate with a boss room at all -- every
     // other floor is a pure "clear it, find the door" dungeon. kFinalFloor
     // (10) is a placeholder using the same GoblinWarlord as
@@ -1641,6 +1651,7 @@ SaveGameState Application::captureState(bool includeFloors) {
         data.rewardsEligible = m->rewardsEligible();
         data.intent = m->intent();
         data.vaultGuard = m->vaultGuard;
+        data.eventChampion = m->eventChampion;
         data.recoveryActions=m->recoveryActions; data.summonsCommitted=m->summonsCommitted;
         if (const auto* behavior=dynamic_cast<const BossBehavior*>(m->ai())) {
             data.announcedPhase=behavior->announcedPhase(); data.enraged=behavior->enraged();
@@ -1704,6 +1715,8 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
         monster->setRewardsEligible(savedMonster.rewardsEligible);
         monster->intent() = savedMonster.intent;
         monster->vaultGuard = savedMonster.vaultGuard;
+        monster->eventChampion = savedMonster.eventChampion;
+        if (monster->eventChampion) monster->setName(championName(monster->eventChampion));
         monster->recoveryActions=savedMonster.recoveryActions; monster->summonsCommitted=savedMonster.summonsCommitted;
         if (auto* behavior=dynamic_cast<BossBehavior*>(monster->ai())) behavior->restoreState(savedMonster.announcedPhase,savedMonster.enraged);
         monster->stats().hp = savedMonster.hp;
@@ -2202,7 +2215,7 @@ void Application::render() {
         }
 
         drawActorShadow(screenPos);
-        const MonsterLook look = monsterLook(m->type());
+        const MonsterLook look = monsterLook(*m);
         // Sized relative to a 32px character frame, so the 48px minotaur
         // stands taller than its tile instead of shrinking to fit it.
         const float spriteSize =

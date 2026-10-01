@@ -40,7 +40,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 24;
+constexpr int kSaveFormatVersion = 25;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -300,6 +300,7 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
         writeStatusEffects(out, m.statusEffects);
         writeTalentStates(out, m.talents);
         if (version>=12) out << m.vaultGuard << '\n';
+        if (version>=25) out << m.eventChampion << '\n';
         if (version>=13) out << m.recoveryActions << ' ' << m.summonsCommitted << ' ' << m.announcedPhase << ' ' << m.enraged << '\n';
         if (version>=11) {
             out << m.intent.has_value();
@@ -360,7 +361,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
+    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
         return std::nullopt;
     }
 
@@ -456,6 +457,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
             m.talents.push_back({"lich.hex",10,1}); // grace period for an already-running fight
         for (const auto& t:m.talents) if (t.rank!=1) return std::nullopt;
         if (version>=12 && !(in>>m.vaultGuard)) return std::nullopt;
+        if (version>=25 && (!(in>>m.eventChampion) || m.eventChampion<0 || m.eventChampion>kEventChampionKinds)) return std::nullopt;
         if (version>=13) {
             if (!(in>>m.recoveryActions>>m.summonsCommitted>>m.announcedPhase>>m.enraged) ||
                 m.recoveryActions<0 || m.recoveryActions>1 || m.summonsCommitted<0 || m.summonsCommitted>3 ||

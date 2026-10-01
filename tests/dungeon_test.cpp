@@ -90,7 +90,7 @@ void checkFloor(const GeneratedDungeon& d, const DungeonGenerationParams& params
     std::set<std::string> regular;
     for (const auto& name : d.moduleNames)
         if (name != bossModule().name && name != vaultModule().name && name.rfind("Procedural", 0) != 0 &&
-            name != landmarkModules()[0].name && name != landmarkModules()[1].name && name != landmarkModules()[2].name)
+            std::none_of(landmarkModules().begin(), landmarkModules().end(), [&](const auto& m) { return m.name == name; }))
             check(regular.insert(name).second, "hand-made modules are distinct" + where);
 
     check(d.landmark == LandmarkKind::None || !params.includeBossRoom, "boss floors have no landmark" + where);
@@ -182,6 +182,32 @@ int main() {
         landmarks += generateDungeon(params, seed).landmark != LandmarkKind::None;
     }
     std::cout << landmarks << "/200 ordinary floors have a landmark\n";
+
+    // Very rare events: forced on, every one is a valid floor with a rare landmark;
+    // at the real deep-floor chance they stay rare; surface floors never get them.
+    std::set<LandmarkKind> rareKinds;
+    int rareFloors = 0, surfaceRare = 0;
+    for (unsigned seed = 1; seed <= 300; ++seed) {
+        DungeonGenerationParams params;
+        params.includeBossRoom = false;
+        params.includeVault = seed % 2 == 0;
+        params.region = static_cast<FloorRegion>(seed % 3);
+        if (seed <= 60) {
+            params.rareEventChance = 1.f;
+            const auto d = generateDungeon(params, seed);
+            checkFloor(d, params, seed);
+            check(rareLandmark(d.landmark), "a forced rare event places a rare landmark (seed " + std::to_string(seed) + ")");
+            rareKinds.insert(d.landmark);
+            continue;
+        }
+        surfaceRare += rareLandmark(generateDungeon(params, seed).landmark);
+        params.rareEventChance = kRareEventChance;
+        rareFloors += rareLandmark(generateDungeon(params, seed).landmark);
+    }
+    std::cout << rareFloors << "/240 deep floors held a very rare event\n";
+    check(rareKinds.size() == 3, "all three rare events can appear");
+    check(surfaceRare == 0, "surface floors never hold a rare event");
+    check(rareFloors >= 5 && rareFloors <= 45, "rare events are rare");
 
     // Props come as arrangements: throne rooms, galleries and storage corners.
     int furnished = 0, thrones = 0, statues = 0, storage = 0;

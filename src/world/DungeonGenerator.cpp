@@ -148,7 +148,17 @@ constexpr float kExtraConnectionChance = 0.65f;
 struct Edge { int a, b; };
 
 std::size_t landmarkModuleIndex(LandmarkKind kind) {
-    return kind == LandmarkKind::Shrine ? 0 : kind == LandmarkKind::RitualCircle ? 2 : 1;
+    switch (kind) {
+        case LandmarkKind::Shrine: return 0;
+        case LandmarkKind::RitualCircle: return 2;
+        case LandmarkKind::TreasureHoard: return 3;
+        case LandmarkKind::PrisonerCage: return 4;
+        case LandmarkKind::ChampionPit: return 5;
+        case LandmarkKind::SealedTomb: return 6;
+        case LandmarkKind::PalePeddler: return 7;
+        case LandmarkKind::ChainedDemon: return 8;
+        default: return 1; // both fountains
+    }
 }
 
 std::vector<Edge> gridEdges() {
@@ -233,18 +243,22 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
 
     // Landmark: any cell except the start, the final cell and the vault.
     int landmarkCell = -1;
-    if (!params.includeBossRoom && std::uniform_real_distribution<float>(0.f, 1.f)(rng) < params.landmarkChance) {
+    const bool rareEvent = !params.includeBossRoom && params.rareEventChance > 0.f &&
+                           std::uniform_real_distribution<float>(0.f, 1.f)(rng) < params.rareEventChance;
+    if (!params.includeBossRoom && (rareEvent || std::uniform_real_distribution<float>(0.f, 1.f)(rng) < params.landmarkChance)) {
         std::vector<int> candidates;
         for (int cell = 0; cell < kCells; ++cell)
             if (cell != startCell && cell != finalCell && cell != vaultCell) candidates.push_back(cell);
         landmarkCell = candidates[std::uniform_int_distribution<std::size_t>(0, candidates.size() - 1)(rng)];
     }
     // Which set piece: shrines are commonest near the surface, dark rites below.
-    std::array<int, 4> landmarkWeights{3, 2, 1, 1}; // Shrine, Healing Fountain, Blood Font, Ritual Circle
-    if (params.region == FloorRegion::Sanctum) landmarkWeights = {2, 2, 1, 2};
-    if (params.region == FloorRegion::Crypts) landmarkWeights = {1, 1, 2, 3};
-    const auto landmarkKind = static_cast<LandmarkKind>(
+    // Shrine, Healing Fountain, Blood Font, Ritual Circle, Treasure Hoard, Prisoner's Cage, Champion's Pit
+    std::array<int, 7> landmarkWeights{3, 2, 1, 1, 2, 2, 2};
+    if (params.region == FloorRegion::Sanctum) landmarkWeights = {2, 2, 1, 2, 2, 2, 2};
+    if (params.region == FloorRegion::Crypts) landmarkWeights = {1, 1, 2, 3, 2, 1, 2};
+    auto landmarkKind = static_cast<LandmarkKind>(
         std::discrete_distribution<int>(landmarkWeights.begin(), landmarkWeights.end())(rng) + 1);
+    if (rareEvent) landmarkKind = static_cast<LandmarkKind>(static_cast<int>(LandmarkKind::SealedTomb) + std::uniform_int_distribution<int>(0, 2)(rng));
 
     // --- Pick and stamp modules -------------------------------------------
     const auto& pool = regularModules();

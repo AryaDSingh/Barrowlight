@@ -47,9 +47,12 @@ struct ItemBonuses {
     int strength = 0, dexterity = 0, intelligence = 0;
     int maxHp = 0, maxMana = 0;
 };
-enum class ItemRarity { Normal, Magic, Rare };
+// Normal/Magic/Rare count rolled affixes. Unique items are hand-made
+// definitions with fixed bonuses and no affixes; they only come from the
+// very rare deep-floor events.
+enum class ItemRarity { Normal, Magic, Rare, Unique };
 inline const char* rarityName(ItemRarity rarity) {
-    return rarity == ItemRarity::Rare ? "Rare" : rarity == ItemRarity::Magic ? "Magic" : "Normal";
+    return rarity == ItemRarity::Unique ? "Unique" : rarity == ItemRarity::Rare ? "Rare" : rarity == ItemRarity::Magic ? "Magic" : "Normal";
 }
 enum class BonusStat { Strength, Dexterity, Intelligence, Hp, Mana };
 struct AffixDefinition {
@@ -91,6 +94,8 @@ struct ItemDefinition {
     ItemBonuses bonuses;
     WeaponKind weaponKind = WeaponKind::None;
     ArmourKind armourKind = ArmourKind::Unarmoured;
+    bool unique = false;
+    const char* lore = nullptr; // uniques' flavour line
 };
 
 inline std::string equipmentTypeName(const ItemDefinition& item) {
@@ -98,7 +103,7 @@ inline std::string equipmentTypeName(const ItemDefinition& item) {
 }
 
 // IDs are persistent identities. Display names can change independently.
-inline constexpr std::array<ItemDefinition, 28> kItemDefinitions{{
+inline constexpr std::array<ItemDefinition, 42> kItemDefinitions{{
     {"iron_sword", "Iron Sword", EquipmentSlot::Weapon, {5, 0, 0, 0, 0}, WeaponKind::OneHanded},
     {"ash_staff", "Ash Staff", EquipmentSlot::Weapon, {0, 0, 5, 0, 3}, WeaponKind::Staff},
     {"hunting_bow", "Hunting Bow", EquipmentSlot::Weapon, {0, 5, 0, 0, 0}, WeaponKind::Bow},
@@ -127,12 +132,46 @@ inline constexpr std::array<ItemDefinition, 28> kItemDefinitions{{
     {"sturdy_belt", "Sturdy Belt", EquipmentSlot::Belt, {0,0,0,2,0}},
     {"copper_ring", "Copper Ring", EquipmentSlot::Ring1, {1,0,0,0,0}},
     {"silver_ring", "Silver Ring", EquipmentSlot::Ring1, {0,0,1,0,0}},
+    // Uniques: far above a rare's budget, most with a price attached.
+    {"unique_lichbane", "Lichbane", EquipmentSlot::Weapon, {18,0,6,10,0}, WeaponKind::TwoHanded, ArmourKind::Unarmoured, true,
+     "Forged to end the first Lich. It remembers how."},
+    {"unique_saintsbane", "Saintsbane", EquipmentSlot::Weapon, {12,8,0,0,0}, WeaponKind::OneHanded, ArmourKind::Unarmoured, true,
+     "It fell from a saint's grave, edge first."},
+    {"unique_crypt_whisper", "Whisper of the Crypt", EquipmentSlot::Weapon, {0,16,4,-10,0}, WeaponKind::Bow, ArmourKind::Unarmoured, true,
+     "Arrows loosed from it make no sound at all."},
+    {"unique_pale_choir", "Staff of the Pale Choir", EquipmentSlot::Weapon, {0,0,18,-15,25}, WeaponKind::Staff, ArmourKind::Unarmoured, true,
+     "Its hollow keys still sing for the dead."},
+    {"unique_last_captain", "Aegis of the Last Captain", EquipmentSlot::OffHand, {4,0,0,30,0}, WeaponKind::Shield, ArmourKind::Unarmoured, true,
+     "The barracks fell. The shield did not."},
+    {"unique_bloodbound_mail", "Bloodbound Mail", EquipmentSlot::Armour, {6,0,0,40,-15}, WeaponKind::None, ArmourKind::Heavy, true,
+     "The rings are warm, and they drink."},
+    {"unique_nightstalker", "Nightstalker Leathers", EquipmentSlot::Armour, {0,12,0,15,0}, WeaponKind::None, ArmourKind::Light, true,
+     "Cured in a place the sun has never reached."},
+    {"unique_unseen_choir", "Robe of the Unseen Choir", EquipmentSlot::Armour, {0,0,12,0,30}, WeaponKind::None, ArmourKind::Cloth, true,
+     "Faint hymns follow its hem through empty halls."},
+    {"unique_gravewarden", "Gravewarden's Oath", EquipmentSlot::Head, {6,0,0,20,-5}, WeaponKind::None, ArmourKind::Heavy, true,
+     "Sworn to keep the dead below. Broken once."},
+    {"unique_ossuary_grips", "Ossuary Grips", EquipmentSlot::Hands, {8,0,0,12,0}, WeaponKind::None, ArmourKind::Heavy, true,
+     "Knuckles of the bone-wardens, still clenched."},
+    {"unique_veilwalker", "Veilwalker Treads", EquipmentSlot::Feet, {0,10,0,10,0}, WeaponKind::None, ArmourKind::Light, true,
+     "Each step lands a heartbeat early."},
+    {"unique_nameless_shroud", "Shroud of the Nameless", EquipmentSlot::Cloak, {0,8,8,8,0}, WeaponKind::None, ArmourKind::Unarmoured, true,
+     "Whoever wore it last is not remembered."},
+    {"unique_ninth_seal", "Ring of the Ninth Seal", EquipmentSlot::Ring1, {5,5,5,10,10}, WeaponKind::None, ArmourKind::Unarmoured, true,
+     "Eight seals broke. This one held."},
+    {"unique_abyss_heart", "Heart of the Abyss", EquipmentSlot::Charm, {-4,-4,0,30,30}, WeaponKind::None, ArmourKind::Unarmoured, true,
+     "It beats only when you are still."},
 }};
 
 inline bool trainingItem(const ItemDefinition& d) { return std::string_view(d.id).find("training_")==0; }
 inline std::vector<const ItemDefinition*> rewardItemDefinitions() {
     std::vector<const ItemDefinition*> result;
-    for(const auto& d:kItemDefinitions) if(!trainingItem(d)) result.push_back(&d);
+    for(const auto& d:kItemDefinitions) if(!trainingItem(d) && !d.unique) result.push_back(&d);
+    return result;
+}
+inline std::vector<const ItemDefinition*> uniqueItemDefinitions() {
+    std::vector<const ItemDefinition*> result;
+    for(const auto& d:kItemDefinitions) if(d.unique) result.push_back(&d);
     return result;
 }
 inline const ItemDefinition* findItemDefinition(std::string_view id) {
@@ -155,7 +194,9 @@ public:
     std::uint64_t instanceId() const { return instanceId_; }
     const std::vector<RolledAffix>& affixes() const { return affixes_; }
     int rollTier() const { return rollTier_; }
-    ItemRarity rarity() const { return static_cast<ItemRarity>(affixes_.size()); }
+    ItemRarity rarity() const {
+        return definition_ && definition_->unique ? ItemRarity::Unique : static_cast<ItemRarity>(affixes_.size());
+    }
     ItemBonuses bonuses() const {
         ItemBonuses result = definition_ ? definition_->bonuses : ItemBonuses{};
         for (const auto& rolled : affixes_)

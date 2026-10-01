@@ -22,6 +22,9 @@ struct DungeonGenerationParams {
     FloorRegion region = FloorRegion::Barracks;
     // Chance that a non-boss floor is built around a landmark set piece.
     float landmarkChance = 0.6f;
+    // Chance that the floor instead holds one of the very rare events
+    // (deep floors only; 0 elsewhere, which draws nothing extra).
+    float rareEventChance = 0.f;
     // Share of ordinary cells built procedurally; the rest are hand-made.
     float proceduralShare = 0.5f;
 };

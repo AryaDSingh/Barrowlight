@@ -26,6 +26,7 @@ inline const sf::Color kGood(130, 214, 120);
 inline const sf::Color kBad(232, 104, 88);
 inline const sf::Color kMagic(120, 160, 255);
 inline const sf::Color kRare(255, 214, 96);
+inline const sf::Color kUnique(240, 136, 52);     // burnt orange, above rare
 inline const sf::Color kInfo(132, 206, 222);       // cyan accents (ToME's info blue)
 
 // One line of a tooltip or text block; long lines wrap to the box width.

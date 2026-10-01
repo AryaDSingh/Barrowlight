@@ -485,6 +485,93 @@ struct ApplicationRewardsTestAccess {
         check(app.landmarkUsed_ && app.player_.unspentAttributePoints()==1 && app.player_.statusEffects().has(StatusEffectType::Doom) &&
             app.mode_==GameMode::AttributeAllocation,"The ritual circle grants an attribute point and lays a Doom curse");
 
+        // Treasure hoard: a handful is free; seizing it all pays more and wakes guardians.
+        const auto placeAltar=[&](LandmarkKind kind) {
+            setup(PlayerClass::Mage);
+            app.landmarkAltar_={11,10}; app.map_.setTile(11,10,Tile{TileType::Wall,false,true}); app.updateFieldOfView();
+            app.landmark_=kind;
+        };
+        placeAltar(LandmarkKind::TreasureHoard); app.gold_=0;
+        snapshot("ui-hoard-map.png");
+        app.pickupItem(); snapshot("ui-hoard.png");
+        clickOn(screen::shrineChoice(0));
+        check(app.landmarkUsed_ && app.gold_==13 && app.monsters_.empty(),"A handful of the hoard is free and wakes nothing");
+        app.landmarkUsed_=false; app.gold_=0;
+        auto bagBefore=app.player_.inventory().items().size();
+        app.pickupItem(); clickOn(screen::shrineChoice(2));
+        check(app.landmarkUsed_ && app.gold_==52 && app.player_.inventory().items().size()==bagBefore+1 && app.monsters_.size()==3 &&
+              app.monsters_.front()->tier()==MonsterTier::Elite &&
+              std::all_of(app.monsters_.begin(),app.monsters_.end(),[](const auto& m){return m->tactics.alert>0;}),
+              "Seizing the hoard pays out a rare item and wakes three hunting guardians");
+        snapshot("ui-hoard-guardians.png");
+
+        // Prisoner's cage: picking the lock needs Dexterity; breaking it is loud.
+        placeAltar(LandmarkKind::PrisonerCage);
+        app.player_.baseStats().dexterity=app.player_.stats().dexterity=0;
+        auto* sleeper=enemy({20,10}); auto* distant=enemy({30,20});
+        snapshot("ui-cage-map.png");
+        app.pickupItem(); snapshot("ui-cage.png");
+        clickOn(screen::shrineChoice(2));
+        check(app.shrineMenu_ && !app.landmarkUsed_,"Picking the lock is refused without the Dexterity");
+        bagBefore=app.player_.inventory().items().size();
+        clickOn(screen::shrineChoice(0));
+        check(app.landmarkUsed_ && app.player_.inventory().items().size()==bagBefore+1 &&
+              app.player_.inventory().items().back()->rarity()==ItemRarity::Rare,"Breaking the lock frees the prisoner for a rare item");
+        check(sleeper->tactics.alert>0 && distant->tactics.alert==0,"The clang wakes enemies within range, not beyond it");
+
+        // Champion's pit: stoking the brazier summons two nightmare champions.
+        placeAltar(LandmarkKind::ChampionPit);
+        snapshot("ui-pit-map.png");
+        app.pickupItem(); clickOn(screen::shrineChoice(2));
+        check(app.landmarkUsed_ && app.monsters_.size()==2 &&
+              std::all_of(app.monsters_.begin(),app.monsters_.end(),[](const auto& m){return m->tier()==MonsterTier::Nightmare && m->tactics.alert>0;}),
+              "Stoking the brazier brings two hunting nightmare champions");
+        snapshot("ui-pit-champions.png");
+
+        // Very rare events: each leads to a unique item.
+        const auto ordinaryBases=rewardItemDefinitions();
+        check(uniqueItemDefinitions().size()==14 && std::none_of(ordinaryBases.begin(),ordinaryBases.end(),
+              [](const auto* d){return d->unique;}),"Uniques never appear in ordinary loot or the merchant's stock");
+        placeAltar(LandmarkKind::SealedTomb); app.currentFloor_=8;
+        snapshot("ui-tomb-map.png");
+        app.pickupItem(); snapshot("ui-tomb.png");
+        app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Enter});
+        Monster* king=nullptr;
+        for (auto& m:app.monsters_) if (m->eventChampion==kChampionRevenant) king=m.get();
+        check(app.landmarkUsed_ && app.monsters_.size()==3 && king && king->tier()==MonsterTier::Nightmare && king->name()=="The Risen King",
+              "Breaking the tomb's seal raises the Risen King and two guards");
+        snapshot("ui-tomb-king.png");
+        roundTrip();
+        king=nullptr;
+        for (auto& m:app.monsters_) if (m->eventChampion==kChampionRevenant) king=m.get();
+        check(king && king->name()=="The Risen King","Save/load keeps the event champion and its name");
+        const auto groundBefore=app.groundItems_.size();
+        king->stats().hp=0; app.checkAndHandleDeath(*king);
+        check(std::any_of(app.groundItems_.begin()+static_cast<std::ptrdiff_t>(groundBefore),app.groundItems_.end(),
+              [](const auto& item){return item->rarity()==ItemRarity::Unique;}),"The Risen King drops a unique item");
+
+        placeAltar(LandmarkKind::PalePeddler); app.gold_=0;
+        snapshot("ui-peddler-map.png"); app.pickupItem(); snapshot("ui-peddler.png");
+        clickOn(screen::shrineChoice(0));
+        check(!app.landmarkUsed_,"The peddler refuses a buyer without the gold");
+        const int lifeBefore=app.player_.baseStats().maxHp;
+        clickOn(screen::shrineChoice(2));
+        check(app.landmarkUsed_ && app.player_.baseStats().maxHp==lifeBefore-10 &&
+              app.player_.inventory().items().back()->rarity()==ItemRarity::Unique,"Paying in blood buys a unique for ten maximum life");
+
+        placeAltar(LandmarkKind::ChainedDemon);
+        snapshot("ui-demon-map.png");
+        app.pickupItem(); clickOn(screen::shrineChoice(0));
+        check(app.landmarkUsed_ && app.player_.inventory().items().back()->rarity()==ItemRarity::Unique &&
+              app.player_.statusEffects().has(StatusEffectType::Doom) && app.player_.statusEffects().has(StatusEffectType::ManaDrain),
+              "The demon's bargain gives a unique and two curses");
+        placeAltar(LandmarkKind::ChainedDemon);
+        app.pickupItem(); clickOn(screen::shrineChoice(2));
+        check(app.monsters_.size()==1 && app.monsters_[0]->eventChampion==kChampionDemon,"Slaying the demon makes it fight as a champion");
+        snapshot("ui-demon-free.png");
+        app.grantUnique(std::nullopt);
+        app.openInventory(); app.inventorySelection_=kEquipmentSlotCount; snapshot("ui-unique-tooltip.png"); app.inventoryOpen_=false;
+
         setup(PlayerClass::Mage);
         app.vaultExists_=true; app.vaultEntrance_={11,10}; app.vaultMenu_=1;
         snapshot("ui-vault-warning.png"); clickOn(screen::vaultCancel(1));

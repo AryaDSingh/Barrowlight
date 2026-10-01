@@ -266,6 +266,18 @@ private:
     // ToME-style awareness: an enemy hunting you (alerted, not concealed)
     // stays shown out of sight until it loses track of you.
     bool sensedMonster(const Monster& m) const;
+    // Landmark events that wake enemies: `count` monsters drawn from this
+    // floor's own roster appear 3-7 steps from the altar, already hunting
+    // the player. The first uses `firstTier`. Returns how many appeared.
+    int spawnLandmarkFoes(int count, MonsterTier firstTier, MonsterTier restTier,
+                          std::optional<MonsterType> firstType = std::nullopt);
+    void landmarkReward(ItemRarity rarity);
+    // Uniques: one the player doesn't already own when possible, into the
+    // bag or onto the ground where a champion fell.
+    const ItemDefinition& pickUnique();
+    void grantUnique(std::optional<Position> ground);
+    // A rare event's champion: Nightmare tier, half again its life.
+    void raiseChampion(MonsterType type, int champion);
     void scaleDungeonMonster(Monster& monster,int floor);
     Position floorEntrance_{}, floorExit_{};
     int gold_=0, quietTurns_=0, restTurns_=0;

@@ -18,6 +18,7 @@ public:
     virtual ~Entity() = default;
 
     const std::string& name() const { return name_; }
+    void setName(std::string name) { name_ = std::move(name); }
 
     // Placeholder visual identity (roguelike-style ASCII glyph) until a
     // real tile/sprite system exists. Deliberately not a texture ID or

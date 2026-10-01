@@ -37,6 +37,9 @@ public:
     bool allied=false;
     int summonRank=1, summonIntelligence=0, remainingLife=0; // 0 permanent; positive temporary
     bool vaultGuard=false;
+    // Champions of the rare deep-floor events (see Landmark.hpp's
+    // championName); each drops a unique item when it falls. 0 = none.
+    int eventChampion=0;
     int recoveryActions=0;
     int summonsCommitted=0;
     MonsterType type() const { return type_; }

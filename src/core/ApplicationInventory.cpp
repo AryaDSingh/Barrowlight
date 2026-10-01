@@ -171,7 +171,7 @@ void Application::renderGroundItems() {
         if (exploredMap_.at(p.x, p.y) != Visibility::Visible) continue;
         const auto screen = worldToScreen(p.x, p.y);
         if (!onMap(screen)) continue;
-        const sf::Color color = item->rarity() == ItemRarity::Rare ? ui::kRare :
+        const sf::Color color = item->rarity() == ItemRarity::Unique ? ui::kUnique : item->rarity() == ItemRarity::Rare ? ui::kRare :
                                 item->rarity() == ItemRarity::Magic ? ui::kMagic : sf::Color(225,218,200);
         sf::CircleShape glow(11.f); glow.setOrigin({11.f, 11.f});
         glow.setPosition({screen.x + 14.f, screen.y + 15.f});
@@ -231,7 +231,7 @@ std::optional<std::size_t> inventoryHit(sf::Vector2i p,std::size_t page,std::siz
     return {};
 }
 sf::Color rarityColor(const Item& item) {
-    return item.rarity()==ItemRarity::Rare?ui::kRare:item.rarity()==ItemRarity::Magic?ui::kMagic:ui::kText;
+    return item.rarity()==ItemRarity::Unique?ui::kUnique:item.rarity()==ItemRarity::Rare?ui::kRare:item.rarity()==ItemRarity::Magic?ui::kMagic:ui::kText;
 }
 }
 
@@ -395,6 +395,7 @@ void Application::renderInventory() {
     statLine("Max mana",bonus.maxMana,after.maxMana-before.maxMana);
     for(const auto& roll:selected->affixes())
         lines.push_back({std::string(findAffix(roll.id)->name)+" +"+std::to_string(roll.value),ui::kMagic,15});
+    if(definition.lore) { lines.push_back({""}); lines.push_back({definition.lore,sf::Color(200,150,100),14}); }
     lines.push_back({""});
     lines.push_back({removing?std::string("Equipped: ")+slotName(slot):
         std::string("Equips to ")+slotName(slot)+(current?", replacing "+current->name():", which is empty"),ui::kInfo,14});
