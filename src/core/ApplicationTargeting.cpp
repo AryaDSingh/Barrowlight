@@ -54,6 +54,7 @@ const char* className(PlayerClass c) {
 }
 // Clickable parts of the character column.
 const sf::FloatRect kPortraitArea{{14,14},{64,64}}, kNameArea{{84,14},{160,66}}, kXpArea{{14,136},{228,32}};
+const sf::FloatRect kLevelBadge{{160,40},{84,22}};
 const sf::FloatRect kMinimapArea{{18,playLayout::minimapY+4},{220,142}};
 bool harmfulStatus(StatusEffectType t) {
     return isCleansable(t) || t==StatusEffectType::Stun || t==StatusEffectType::Wither || t==StatusEffectType::Shock;
@@ -198,6 +199,16 @@ void Application::renderBattleHud() {
     sprites_.draw(window_,playerSpriteFrame(),{portrait.position.x+4,portrait.position.y+4},56.f);
     ui_.text(window_,className(playerClass_),{90,14},20,ui::kGold,ui::Font::Title);
     ui_.text(window_,"Level "+std::to_string(player_.level()),{90,42},16,ui::kText,ui::Font::Bold);
+    if (pointsToSpend()) {
+        // Earned points wait here, pulsing, until the player chooses to spend them.
+        const float pulse=0.5f+0.5f*std::sin(animationClock_.getElapsedTime().asSeconds()*4.f);
+        sf::RectangleShape back(kLevelBadge.size); back.setPosition(kLevelBadge.position);
+        back.setFillColor(sf::Color(70,52,20,static_cast<std::uint8_t>(170+60*pulse)));
+        back.setOutlineThickness(1.f);
+        back.setOutlineColor(hovered(kLevelBadge)?ui::kRare:sf::Color(232,196,112,static_cast<std::uint8_t>(140+110*pulse)));
+        window_.draw(back);
+        ui_.textCentered(window_,"+ Level up",kLevelBadge,13,ui::kRare,ui::Font::Bold);
+    }
     ui_.text(window_,adventureMode_?"Adventure, "+std::to_string(extraLives_)+" spare li"+(extraLives_==1?"fe":"ves"):"Roguelike, one life",
         {90,62},13,ui::kMuted);
 
@@ -496,6 +507,7 @@ void Application::handleTargetingMouse(const sf::Event& event) {
         }
         if(!aimingTalent_ && !inspecting_) {
             if(kPortraitArea.contains(p)) { openInventory(); return; }
+            if(pointsToSpend() && kLevelBadge.contains(p)) { openLevelUp(); return; }
             if(kNameArea.contains(p) || kXpArea.contains(p)) { openTalentTrees(); return; }
             if(const auto tile=minimapTile(p)) {
                 if(exploredMap_.at(tile->x,tile->y)==Visibility::Hidden || !map_.isWalkable(tile->x,tile->y)) log("You haven't explored there yet.");
@@ -717,6 +729,13 @@ void Application::renderHudTooltips() {
             ui_.tooltip(window_,{{title,ui::kGold,16,ui::Font::Bold},{detail,ui::kMuted,14}},*mouse,240,screen);
         };
         if (kPortraitArea.contains(*mouse)) { hint("Inventory","Click to open your equipment and bag (B)."); return; }
+        if (pointsToSpend() && kLevelBadge.contains(*mouse)) {
+            std::string detail;
+            const auto add=[&](int n,const char* what){ if(n>0) detail+=(detail.empty()?"":", ")+std::to_string(n)+" "+what; };
+            add(player_.unspentAttributePoints(),"attribute"); add(player_.abilityPoints(),"ability"); add(player_.treePoints(),"tree");
+            hint("Points to spend",detail+" point(s). Click or press P to spend them; they keep until you do.");
+            return;
+        }
         if (kNameArea.contains(*mouse) || kXpArea.contains(*mouse)) { hint("Talents","Click to open your talent trees (T)."); return; }
         if (const auto tile=minimapTile(*mouse)) {
             hint("Map",exploredMap_.at(tile->x,tile->y)==Visibility::Hidden?"Unexplored.":"Click to walk there.");

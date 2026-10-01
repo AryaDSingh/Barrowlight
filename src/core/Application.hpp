@@ -223,6 +223,8 @@ private:
     void renderGameOver();
 
     void resumeLevelUpSequence();
+    bool pointsToSpend() const;
+    void openLevelUp();
 
     // Draws the AttributeAllocation screen: how many points remain,
     // and what each of Strength/Dexterity/Intelligence currently does
@@ -329,6 +331,10 @@ private:
     void handleTownKey(sf::Keyboard::Key key);
     void handleTownMouse(const sf::Event& event);
     void renderTown();
+    // Which music fits the current screen and floor (called from run()
+    // only, so the UI tests stay silent).
+    void updateMusic();
+    sf::Clock musicClock_;
     // The town square (ApplicationTown.cpp): buildings drawn from the
     // dungeon art, lit at night, each one a click target.
     void renderTownSquare();

@@ -363,8 +363,21 @@ void Application::run() {
     while (window_.isOpen()) {
         processEvents();
         update();
+        updateMusic();
         render();
     }
+}
+
+void Application::updateMusic() {
+    MusicTrack track = MusicTrack::Title;
+    if (mode_ == GameMode::Town) track = MusicTrack::Town;
+    else if (mode_ != GameMode::ClassSelection && mode_ != GameMode::GameOver) {
+        const auto region = floorTheme(currentFloor_).region;
+        track = boss_ ? MusicTrack::Boss : region == FloorRegion::Barracks ? MusicTrack::Barracks
+              : region == FloorRegion::Sanctum ? MusicTrack::Sanctum : MusicTrack::Crypts;
+    }
+    soundManager_.setMusic(track);
+    soundManager_.updateMusic(musicClock_.restart().asSeconds());
 }
 
 void Application::logImpl(const std::string& message) {
@@ -512,6 +525,11 @@ void Application::handleEvent(const sf::Event& input) {
         window_.close();
     }
     if(const auto* moved=event->getIf<sf::Event::MouseMoved>()) mousePixel_=moved->position;
+    if (const auto* key=event->getIf<sf::Event::KeyPressed>(); key && key->code==sf::Keyboard::Key::N) {
+        soundManager_.toggleMusic();
+        log(soundManager_.musicEnabled() ? "Music on (N)." : "Music off (N).");
+        return;
+    }
 
     if (autoExploring_ && (event->is<sf::Event::KeyPressed>() ||
         event->is<sf::Event::MouseButtonPressed>() || event->is<sf::Event::FocusLost>())) {
@@ -535,6 +553,7 @@ void Application::handleEvent(const sf::Event& input) {
             return;
         }
         if(mode_==GameMode::AttributeAllocation) {
+            if(screen::kAttributeClose.contains(point)) { mode_=GameMode::Playing; resumeLevelUpSequence(); return; }
             for(int i=0;i<3;++i) if(screen::attributeChoice(i).contains(point)) {
                 allocateAttribute(static_cast<unsigned int>(i));
                 break;
@@ -573,6 +592,7 @@ void Application::handleEvent(const sf::Event& input) {
         if (shrineMenu_) { handleShrineKey(keyPressed->code); return; }
         if (keyPressed->code == sf::Keyboard::Key::Escape) {
             if (mode_ == GameMode::AbilityChoice) { handleTreeKey(keyPressed->code,keyPressed->shift); return; }
+            if (mode_ == GameMode::AttributeAllocation) { mode_=GameMode::Playing; resumeLevelUpSequence(); return; }
             if (inventoryOpen_) {
                 inventoryOpen_ = false;
                 return;
@@ -633,7 +653,9 @@ void Application::handleEvent(const sf::Event& input) {
         if (keyPressed->code == sf::Keyboard::Key::F5) { saveGame(); return; }
 
         if (mode_ == GameMode::AttributeAllocation) {
-            if (keyPressed->code == sf::Keyboard::Key::Num1) {
+            if (keyPressed->code == sf::Keyboard::Key::P) {
+                mode_=GameMode::Playing; resumeLevelUpSequence();
+            } else if (keyPressed->code == sf::Keyboard::Key::Num1) {
                 allocateAttribute(0);
             } else if (keyPressed->code == sf::Keyboard::Key::Num2) {
                 allocateAttribute(1);
@@ -652,6 +674,7 @@ void Application::handleEvent(const sf::Event& input) {
             return;
         }
         if (keyPressed->code == sf::Keyboard::Key::T) { openTalentTrees(); return; }
+        if (keyPressed->code == sf::Keyboard::Key::P) { openLevelUp(); return; }
         if (keyPressed->code == sf::Keyboard::Key::C) {
             for (std::size_t i=0;i<player_.talents().knownTalents().size();++i)
                 if (player_.talents().knownTalents()[i].id=="basic.cleanse") { requestTalent(i); break; }
@@ -1387,19 +1410,30 @@ void Application::grantXpAndAnnounce(int amount) {
     grantXp(player_, amount);
     log("Gained ", amount, " XP.");
     if (player_.level() > levelBefore) {
-        log("Level up! You are now level ", player_.level(), ".");
+        log("Level up! You are now level ", player_.level(), ". Spend points any time (P).");
         soundManager_.play(SoundEffect::LevelUp);
     }
-
-    if (player_.level()>levelBefore) progressionReviewPending_=true;
-    resumeLevelUpSequence();
 }
 
+bool Application::pointsToSpend() const {
+    return player_.unspentAttributePoints() > 0 || player_.abilityPoints() > 0 || player_.treePoints() > 0;
+}
+
+// Points are spent at the player's leisure: attributes first if any are
+// waiting, otherwise the talent trees.
+void Application::openLevelUp() {
+    if (mode_ != GameMode::Playing) return;
+    cancelTargeting();
+    inventoryOpen_ = false;
+    if (player_.unspentAttributePoints() > 0) mode_ = GameMode::AttributeAllocation;
+    else openTalentTrees();
+}
+
+// Level-ups no longer pause the game, so all that's left to resume is a
+// final victory that was waiting on an open menu.
 void Application::resumeLevelUpSequence() {
     if (mode_==GameMode::GameOver) return;
-    if (player_.unspentAttributePoints()>0) { mode_=GameMode::AttributeAllocation; return; }
-    if (progressionReviewPending_) { openTalentTrees(); return; }
-    if (pendingFinalVictory_) {
+    if (pendingFinalVictory_ && mode_==GameMode::Playing) {
         pendingFinalVictory_=false; mode_=GameMode::GameOver; wonGame_=true;
     }
 }
@@ -1904,8 +1938,8 @@ void Application::allocateAttribute(unsigned int attribute) {
     player_.refreshEquipmentStats();
     --player_.unspentAttributePoints();
     soundManager_.play(SoundEffect::Select);
-    mode_=GameMode::Playing;
-    resumeLevelUpSequence();
+    // The dialog stays open while points remain; it closes on the last one.
+    if (player_.unspentAttributePoints()<=0) { mode_=GameMode::Playing; resumeLevelUpSequence(); }
 }
 
 void Application::renderGameOver() {
@@ -1939,8 +1973,9 @@ void Application::renderAttributeAllocation() {
     const int points=player_.unspentAttributePoints();
     ui_.textCentered(window_,"You have "+std::to_string(points)+(points==1?" attribute point":" attribute points")+" to spend.",
         {{x,kAttributeDialog.position.y+76},{w,24}},18,ui::kText);
-    ui_.textCentered(window_,"Click an attribute or press 1-3. Each choice spends one point.",
+    ui_.textCentered(window_,"Click an attribute or press 1-3. Each choice spends one point; Esc keeps the rest for later.",
         {{x,kAttributeDialog.position.y+102},{w,22}},15,ui::kMuted);
+    ui_.button(window_,kAttributeClose,"Later (Esc)",mouse && kAttributeClose.contains(*mouse));
     const Stats& stats = player_.stats();
     struct Choice { const char* name; const char* detail; const char* icon; sf::Color color; int value; };
     const Choice choices[]{

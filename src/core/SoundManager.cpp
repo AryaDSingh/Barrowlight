@@ -1,5 +1,6 @@
 #include "core/SoundManager.hpp"
 
+#include <algorithm>
 #include <tuple>
 
 namespace engine {
@@ -13,6 +14,22 @@ constexpr const char* kDeathPath = "assets/sounds/death.wav";
 constexpr const char* kLevelUpPath = "assets/sounds/levelup.wav";
 constexpr const char* kDodgePath = "assets/sounds/dodge.wav";
 constexpr const char* kSelectPath = "assets/sounds/select.wav";
+
+constexpr float kMusicVolume = 32.f;   // of 100: under the sound effects
+constexpr float kFadeSeconds = 1.4f;
+
+const char* musicPath(MusicTrack track) {
+    switch (track) {
+        case MusicTrack::Title: return "assets/music/title.mp3";
+        case MusicTrack::Town: return "assets/music/town.mp3";
+        case MusicTrack::Barracks: return "assets/music/barracks.ogg";
+        case MusicTrack::Sanctum: return "assets/music/sanctum.ogg";
+        case MusicTrack::Crypts: return "assets/music/crypts.ogg";
+        case MusicTrack::Boss: return "assets/music/boss.ogg";
+        case MusicTrack::None: break;
+    }
+    return nullptr;
+}
 } // namespace
 
 SoundManager::SoundManager()
@@ -41,6 +58,43 @@ SoundManager::SoundManager()
     std::ignore = levelUpBuffer_.loadFromFile(kLevelUpPath);
     std::ignore = dodgeBuffer_.loadFromFile(kDodgePath);
     std::ignore = selectBuffer_.loadFromFile(kSelectPath);
+}
+
+void SoundManager::setMusic(MusicTrack track) {
+    if (track == target_) return;
+    target_ = track;
+    // The current deck fades out; the other one loads the new track and fades in.
+    const int next = 1 - front_;
+    decks_[next].stop();
+    deckTrack_[next] = MusicTrack::None;
+    if (const char* path = musicPath(track); path && decks_[next].openFromFile(path)) {
+        decks_[next].setLooping(true);
+        decks_[next].setVolume(0.f);
+        deckVolume_[next] = 0.f;
+        deckTrack_[next] = track;
+        if (musicEnabled_) decks_[next].play();
+    }
+    front_ = next;
+}
+
+void SoundManager::updateMusic(float seconds) {
+    const float step = seconds / kFadeSeconds;
+    for (int deck = 0; deck < 2; ++deck) {
+        const bool rising = deck == front_ && deckTrack_[deck] != MusicTrack::None;
+        deckVolume_[deck] = std::clamp(deckVolume_[deck] + (rising ? step : -step), 0.f, 1.f);
+        decks_[deck].setVolume(musicEnabled_ ? deckVolume_[deck] * kMusicVolume : 0.f);
+        if (!rising && deckVolume_[deck] <= 0.f && decks_[deck].getStatus() != sf::SoundSource::Status::Stopped) {
+            decks_[deck].stop();
+            deckTrack_[deck] = MusicTrack::None;
+        }
+    }
+}
+
+void SoundManager::toggleMusic() {
+    musicEnabled_ = !musicEnabled_;
+    auto& deck = decks_[front_];
+    if (deckTrack_[front_] == MusicTrack::None) return;
+    if (musicEnabled_) deck.play(); else deck.pause();
 }
 
 void SoundManager::play(SoundEffect effect) {

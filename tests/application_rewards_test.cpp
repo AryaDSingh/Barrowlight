@@ -8,6 +8,7 @@
 #include <chrono>
 #include <set>
 #include "entities/TalentProgression.hpp"
+#include "entities/PlayerLeveling.hpp"
 #include "entities/RunProgression.hpp"
 #include "world/EncounterPlan.hpp"
 #include "world/LineOfFire.hpp"
@@ -399,6 +400,20 @@ struct ApplicationRewardsTestAccess {
             "Attribute click spends one point without skipping the remaining choice");
         clickOn(screen::attributeChoice(1));
         check(app.player_.unspentAttributePoints()==0 && app.mode_==GameMode::Playing,"Final attribute click returns to play");
+
+        // Level-ups wait for the player instead of interrupting play.
+        setup(PlayerClass::Warrior);
+        app.grantXpAndAnnounce(xpForNextLevel(1));
+        check(app.player_.level()==2 && app.mode_==GameMode::Playing && app.pointsToSpend(),"Levelling up keeps playing, with points waiting");
+        snapshot("ui-levelup-badge.png");
+        click(200,50); check(app.mode_==GameMode::AttributeAllocation,"The Level up badge opens the attribute choice");
+        const int waiting=app.player_.unspentAttributePoints();
+        clickOn(screen::kAttributeClose);
+        check(app.mode_==GameMode::Playing && app.player_.unspentAttributePoints()==waiting,"Later closes the choice and keeps the points");
+        app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::P});
+        check(app.mode_==GameMode::AttributeAllocation,"P opens the waiting points");
+        app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Escape});
+        check(app.mode_==GameMode::Playing,"Esc closes them again");
 
         setup(PlayerClass::Mage); addItem("copper_ring"); addItem("silver_ring");
         app.openInventory(); click(598,138); release(354,360);

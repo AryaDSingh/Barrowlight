@@ -25,6 +25,7 @@ inline const sf::FloatRect kRevive{{390, 408}, {500, 48}};
 // --- Level up: attribute choices in a centred dialog -------------------------------
 inline const sf::FloatRect kAttributeDialog{{290, 100}, {700, 470}};
 inline sf::FloatRect attributeChoice(int i) { return {{330, 230.f + 108.f * i}, {620, 96}}; }
+inline const sf::FloatRect kAttributeClose{{850, 118}, {124, 32}};
 
 // --- Town -------------------------------------------------------------------------
 inline const sf::FloatRect kTownInn{{560, 22}, {150, 36}}, kTownEquipment{{718, 22}, {150, 36}},

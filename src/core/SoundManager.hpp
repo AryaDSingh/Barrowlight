@@ -16,6 +16,10 @@ enum class SoundEffect {
     Select,  // a UI choice: class selection, the AbilityChoice screen
 };
 
+// Background music (assets/music/CREDITS.txt). Each track loops; a change
+// of track crossfades.
+enum class MusicTrack { None, Title, Town, Barracks, Sanctum, Crypts, Boss };
+
 // Owns every SoundBuffer/Sound pair the game uses -- the only class
 // besides Application itself that touches SFML::Audio directly,
 // mirroring how Application.cpp has been the only place touching
@@ -42,7 +46,23 @@ public:
 
     void play(SoundEffect effect);
 
+    // Music: setMusic() picks the track to fade to (a no-op if it's
+    // already the one playing); updateMusic() advances the crossfade and
+    // must be called every frame. Streams from disk; a missing file or
+    // no audio device simply stays silent.
+    void setMusic(MusicTrack track);
+    void updateMusic(float seconds);
+    void toggleMusic();
+    bool musicEnabled() const { return musicEnabled_; }
+
 private:
+    sf::Music decks_[2];
+    MusicTrack deckTrack_[2]{MusicTrack::None, MusicTrack::None};
+    float deckVolume_[2]{0.f, 0.f}; // 0..1 of the music volume
+    int front_ = 0;                  // the deck fading in / playing
+    MusicTrack target_ = MusicTrack::None;
+    bool musicEnabled_ = true;
+
     sf::SoundBuffer hitBuffer_;
     sf::SoundBuffer deathBuffer_;
     sf::SoundBuffer levelUpBuffer_;
