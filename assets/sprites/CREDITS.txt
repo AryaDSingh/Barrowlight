@@ -111,3 +111,19 @@ FONTS (assets/fonts/)
   Alegreya Sans by Huerta Tipografica -- SIL Open Font License 1.1, see LICENSE-AlegreyaSans.txt
   (Both from https://github.com/google/fonts.)
   DejaVu Sans Mono -- see LICENSE-DejaVu.txt
+
+
+WALLS, FLOORS AND CRYPT PROPS
+=============================
+Downloaded on 2026-10-01 from OpenGameArt, unmodified.
+
+assets/sprites/evildungeon/
+  "Evil Dungeon" by Sevarihk -- CC-BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+  https://opengameart.org/content/evil-dungeon-asset-pack
+  (brick walls, skull pillars, floors, niches, chains, fountains, pentagram, drains, spikes)
+
+assets/sprites/siegmund/
+  "16x16 pixel art dungeon wall and cobblestone floor tiles" by Daniel Siegmund,
+  commissioned by OpenGameArt; wall tiles modified from Redshrike's 16x16 indoor tileset.
+  CC-BY 3.0 (https://creativecommons.org/licenses/by/3.0/)
+  https://opengameart.org/content/16x16-pixel-art-dungeon-wall-and-cobblestone-floor-tiles

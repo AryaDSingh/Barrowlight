@@ -150,25 +150,48 @@ constexpr SpriteFrame idleFrame(const char* sheet, int row = 0, int w = 32, int 
     return {sheet, sf::IntRect({0, row * h}, {w, h})};
 }
 constexpr const char* kTileset = "calciumtrice/tiles/dungeon_tileset_calciumtrice.png";
-// Brick wall faces (16x32): six variants, picked per tile. The short form is
-// the lower half, for walls with open floor behind them too.
+// Gothic walls and floors (assets/sprites/CREDITS.txt): Sevarihk's Evil
+// Dungeon (32px) and Daniel Siegmund's cobblestones (16px).
+constexpr const char* kEvilDungeon = "evildungeon/evildungeon_0.png";
+constexpr const char* kCobbles = "siegmund/cobbles2.png";
+
+unsigned tileHash(int x, int y) {
+    unsigned h = static_cast<unsigned>(x) * 73856093u ^ static_cast<unsigned>(y) * 19349663u;
+    h ^= h >> 13;
+    return h * 1274126177u;
+}
+
+// Brick wall faces from the Evil Dungeon wall strip: mostly plain brick,
+// now and then a skull-topped pillar. Tall faces (two tiles) use the lower
+// 64px of the strip; short faces its bottom 32px.
 SpriteFrame wallFaceFrame(int x, int y, bool tall) {
-    const int variant = static_cast<int>((static_cast<unsigned>(x) * 92821u ^ static_cast<unsigned>(y) * 68917u) % 6u);
-    return tall ? SpriteFrame{kTileset, sf::IntRect({variant * 16, 64}, {16, 32})}
-                : SpriteFrame{kTileset, sf::IntRect({variant * 16, 80}, {16, 16})};
+    constexpr int kPlain[]{0, 32, 160, 192, 224, 0, 32, 192};
+    const unsigned h = tileHash(x, y);
+    const int column = h % 9 == 0 ? (h % 2 ? 64 : 128) : kPlain[(h >> 4) % std::size(kPlain)];
+    return tall ? SpriteFrame{kEvilDungeon, sf::IntRect({column, 128}, {32, 64})}
+                : SpriteFrame{kEvilDungeon, sf::IntRect({column, 160}, {32, 32})};
 }
 // Door tiles are floor transitions, so they use the tileset's stairway.
 constexpr SpriteFrame kDoorFrame{kTileset, sf::IntRect({112, 64}, {16, 32})};
 
-// Stone variants from the tileset's last floor row, picked per tile by a
-// position hash so the floor doesn't visibly repeat but also doesn't
-// shimmer between frames. Plain speckled slabs most of the time, the
-// cracked ones occasionally; the edge pieces are left out since they
-// draw stray lines when not placed as a proper border.
-SpriteFrame floorFrame(int x, int y) {
-    constexpr int kVariantX[]{16, 32, 48, 64, 112, 16, 32, 48, 64, 112, 80, 96};
-    const unsigned h = static_cast<unsigned>(x) * 73856093u ^ static_cast<unsigned>(y) * 19349663u;
-    return {kTileset, sf::IntRect({kVariantX[h % std::size(kVariantX)], 144}, {16, 16})};
+// Each region has its own floor: flagstones in the Barracks, purple
+// cobbles in the Sanctum, grey cobbles in the Crypts. Variants are picked
+// per tile by a position hash, so the floor doesn't visibly repeat but
+// doesn't shimmer between frames either.
+const char* floorSheet(FloorRegion region) { return region == FloorRegion::Barracks ? kEvilDungeon : kCobbles; }
+
+SpriteFrame floorFrame(int x, int y, FloorRegion region) {
+    const unsigned h = tileHash(x, y);
+    if (region == FloorRegion::Barracks) {
+        // Mostly the plain slab, sometimes cracked, rarely the small bricks.
+        const int column = h % 7 == 0 ? 128 : h % 23 == 0 ? 64 : 96;
+        return {kEvilDungeon, sf::IntRect({column, 0}, {32, 32})};
+    }
+    // The cobble sheet's 7x4 interior blocks: purple rows start at 0,
+    // grey rows at 160.
+    const int top = region == FloorRegion::Sanctum ? 0 : 160;
+    const int column = static_cast<int>(h % 7), row = static_cast<int>((h >> 8) % 4);
+    return {kCobbles, sf::IntRect({column * 16, top + row * 16}, {16, 16})};
 }
 
 // --- Decorations -------------------------------------------------------
@@ -176,7 +199,7 @@ SpriteFrame floorFrame(int x, int y) {
 // draw time, so they never block anything, need no save data, and work on
 // any layout (old saves included). Wall decor only goes on a wall face --
 // a wall with floor directly below it, which is the side the camera sees.
-enum class Decor { None, Torch, Banner, Bones, Rubble, Cobweb };
+enum class Decor { None, Torch, Banner, Bones, Rubble, Cobweb, Niche, SkullNiche, Chains };
 
 unsigned decorHash(int x, int y, int floor) {
     unsigned h = static_cast<unsigned>(x) * 374761393u + static_cast<unsigned>(y) * 668265263u +
@@ -194,6 +217,10 @@ Decor decorAt(const Map& map, int x, int y, int floor, FloorRegion region) {
         const auto wantsTorch = [&](int tx) { return decorHash(tx, y, floor) % 100 < 9; };
         if (h < 9 && !wantsTorch(x - 1)) return Decor::Torch;
         if (h >= 90 && h < 95) return Decor::Banner;
+        // Crypt niches and hanging chains, more of them the deeper you go.
+        const bool crypt = region == FloorRegion::Crypts;
+        if (h >= 60 && h < (crypt ? 66u : 62u)) return h % 2 ? Decor::SkullNiche : Decor::Niche;
+        if (h >= 70 && h < (crypt ? 74u : 72u)) return Decor::Chains;
         return Decor::None;
     }
     if (type != TileType::Floor) return Decor::None;
@@ -1946,7 +1973,15 @@ void Application::render() {
     // Floors, wall faces and decorations all come from the dungeon tileset,
     // so each pass is one batched draw call.
     const sf::Texture* tileset = sprites_.texture(kTileset);
-    sf::VertexArray floors(sf::PrimitiveType::Triangles), details(sf::PrimitiveType::Triangles), feet(sf::PrimitiveType::Triangles);
+    const sf::Texture* floorTexture = sprites_.texture(floorSheet(theme.region));
+    // The cobble art carries its own colour, so it gets a soft, slightly
+    // desaturating tint rather than the full theme colour.
+    const sf::Color floorTint = theme.region == FloorRegion::Barracks ? themeTint(themeColor(theme.floor), 2.3f)
+                              : theme.region == FloorRegion::Sanctum ? sf::Color(150, 138, 150)
+                              : themeTint(themeColor(theme.floor), 1.6f);
+    const sf::Texture* wallTexture = sprites_.texture(kEvilDungeon);
+    sf::VertexArray floors(sf::PrimitiveType::Triangles), faces(sf::PrimitiveType::Triangles),
+        details(sf::PrimitiveType::Triangles), feet(sf::PrimitiveType::Triangles);
     const auto quad = [](sf::VertexArray& va, sf::Vector2f p, sf::Vector2f s, sf::Color a, sf::Color b, bool vertical) {
         // a at the start edge, b at the far edge (top->bottom if vertical, else left->right)
         const sf::Vector2f tl = p, tr{p.x + s.x, p.y}, br{p.x + s.x, p.y + s.y}, bl{p.x, p.y + s.y};
@@ -1976,8 +2011,7 @@ void Application::render() {
                 if (!isWallAt(x, y - 1)) quad(tops, at, {kTileSize, 2}, rim, rim, true);
                 continue;
             }
-            if (tileset) SpriteAtlas::append(floors, floorFrame(x, y), at, kTileSize,
-                                             shadeFor(vis, themeTint(themeColor(theme.floor), 1.25f)));
+            if (floorTexture) SpriteAtlas::append(floors, floorFrame(x, y, theme.region), at, kTileSize, shadeFor(vis, floorTint));
             else {
                 sf::RectangleShape tileShape({kTileSize - 1.f, kTileSize - 1.f});
                 tileShape.setPosition(at);
@@ -1991,7 +2025,7 @@ void Application::render() {
             if (isWallAt(x + 1, y)) quad(shadows, {at.x + kTileSize - 8, at.y}, {8, kTileSize}, clear, sf::Color(0, 0, 0, 90), false);
         }
     }
-    if (tileset) window_.draw(floors, sf::RenderStates(tileset));
+    if (floorTexture) window_.draw(floors, sf::RenderStates(floorTexture));
     window_.draw(tops);
     window_.draw(shadows);
 
@@ -2012,8 +2046,8 @@ void Application::render() {
                 // when there's wall behind to rise into, one tile otherwise.
                 const auto frame = wallFaceFrame(x, y, isWallAt(x, y - 1));
                 const float height = frame.rect.size.y > 16 ? kTileSize * 2 : kTileSize;
-                SpriteAtlas::append(details, frame, {at.x, at.y + kTileSize - height}, height,
-                                    shade(themeTint(themeColor(theme.wall), 2.1f)));
+                SpriteAtlas::append(faces, frame, {at.x, at.y + kTileSize - height}, height,
+                                    shade(themeTint(themeColor(theme.wall), 3.2f)));
                 // Darker foot where the wall meets the floor.
                 quad(feet, {at.x, at.y + kTileSize - 3}, {kTileSize, 3}, sf::Color(0, 0, 0, 110), sf::Color(0, 0, 0, 110), true);
             }
@@ -2037,10 +2071,14 @@ void Application::render() {
                 case Decor::Bones: SpriteAtlas::append(details, kBonesFrame, at, kTileSize, shade(sf::Color(150, 145, 135, 190))); break;
                 case Decor::Rubble: SpriteAtlas::append(details, kRubbleFrame, at, kTileSize, shade(sf::Color(190, 180, 170))); break;
                 case Decor::Cobweb: SpriteAtlas::append(details, kCobwebFrame, at, kTileSize, shade(sf::Color(150, 150, 155, 110))); break;
+                case Decor::Niche: SpriteAtlas::append(faces, {kEvilDungeon, sf::IntRect({0, 224}, {32, 32})}, at, kTileSize, shade(sf::Color(225, 215, 205))); break;
+                case Decor::SkullNiche: SpriteAtlas::append(faces, {kEvilDungeon, sf::IntRect({32, 224}, {32, 32})}, at, kTileSize, shade(sf::Color(225, 215, 205))); break;
+                case Decor::Chains: SpriteAtlas::append(faces, {kEvilDungeon, sf::IntRect({64, 224}, {32, 64})}, {at.x, at.y - kTileSize}, kTileSize * 2, shade(sf::Color(200, 195, 190))); break;
                 case Decor::None: break;
             }
         }
     }
+    if (wallTexture) window_.draw(faces, sf::RenderStates(wallTexture));
     if (tileset) window_.draw(details, sf::RenderStates(tileset));
     window_.draw(feet);
 
