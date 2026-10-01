@@ -12,7 +12,8 @@ constexpr const char* kSpriteRoot = "assets/sprites/";
 } // namespace
 
 const sf::Texture* SpriteAtlas::texture(const char* sheet) {
-    if (const auto it = textures_.find(sheet); it != textures_.end()) return &it->second;
+    if (const auto it = byPointer_.find(sheet); it != byPointer_.end()) return it->second;
+    if (const auto it = textures_.find(sheet); it != textures_.end()) return byPointer_[sheet] = &it->second;
     if (missing_.count(sheet)) return nullptr;
 
     sf::Texture loaded;
@@ -26,7 +27,7 @@ const sf::Texture* SpriteAtlas::texture(const char* sheet) {
     // Pixel art: nearest-neighbor sampling keeps edges hard when the
     // 16/32px source frames are scaled to the 28px tile.
     loaded.setSmooth(false);
-    return &textures_.emplace(sheet, std::move(loaded)).first->second;
+    return byPointer_[sheet] = &textures_.emplace(sheet, std::move(loaded)).first->second;
 }
 
 bool SpriteAtlas::draw(sf::RenderTarget& target, const SpriteFrame& frame, sf::Vector2f topLeft,

@@ -186,6 +186,25 @@ struct ApplicationTargetingTestAccess {
         check(app.inspecting_ && app.player_.stats().mana==80,"Keyboard inspection is free");
         app.requestTalent(0); app.regenerateLevel(1337);
         check(!app.aimingTalent_ && !app.inspecting_,"Regeneration clears stale targeting state");
+
+        // Click-to-walk: with no danger in sight, clicking far ground walks there.
+        setup();
+        app.monsters_.clear(); app.scheduler_=TurnScheduler{}; app.scheduler_.add(app.player_);
+        app.currentActor_=&app.scheduler_.nextTurn(); app.updateFieldOfView();
+        const auto leftClick=[&](sf::Vector2i pixel) {
+            app.handleTargetingMouse(sf::Event::MouseButtonPressed{sf::Mouse::Button::Left,pixel});
+        };
+        leftClick(pixelAt({24,14}));
+        check(app.autoExploring_ && app.travelGoal_ && app.travelGoal_->x==24 && app.travelGoal_->y==14,
+            "Clicking distant known ground starts walking there");
+        for(int i=0;i<40 && app.autoExploring_;++i) { sf::sleep(sf::milliseconds(105)); app.stepAutoExplore(); }
+        check(!app.autoExploring_ && app.player_.position().x==24 && app.player_.position().y==14,
+            "Walking stops exactly at the clicked tile");
+        // Clicking the portrait opens the bag; the name opens the talent trees.
+        leftClick({40,40});
+        check(app.inventoryOpen_,"Clicking the portrait opens the inventory");
+        app.inventoryOpen_=false; leftClick({150,40});
+        check(app.mode_==GameMode::AbilityChoice,"Clicking the character name opens the talent trees");
         app.window_.close();
         return failures ? 1 : 0;
     }

@@ -3,6 +3,7 @@
 #include <SFML/Graphics.hpp>
 
 #include <map>
+#include <unordered_map>
 #include <string>
 #include <vector>
 
@@ -82,6 +83,16 @@ public:
                           float width = 330.f, sf::FloatRect bounds = {{0, 0}, {1280, 720}}) const;
 
 private:
+    // SFML shapes text (HarfBuzz) whenever an sf::Text is built, which costs
+    // hundreds of microseconds. Every distinct string is shaped once and the
+    // sf::Text reused; only its position and colour change per draw. Both
+    // caches are simply cleared when they grow large (log lines, changing
+    // numbers), which is cheap compared with reshaping every frame.
+    struct ShapedText { sf::Text text; float width; };
+    ShapedText& shaped(const std::string& str, unsigned size, Font f) const;
+    mutable std::unordered_map<std::string, ShapedText> textCache_;
+    mutable std::unordered_map<std::string, std::vector<std::string>> wrapCache_;
+
     sf::Font body_, bold_, title_;
     sf::Texture stone_;
     mutable std::map<std::string, sf::Texture> icons_;

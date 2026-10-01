@@ -64,20 +64,33 @@ sf::Image makeStone() {
     return image;
 }
 
+// Panels and slots are built from many thin coloured strips. Each strip is
+// appended to a pending vertex batch instead of being drawn on its own, and
+// the batch goes out in a single draw call: before anything that isn't a
+// plain quad (text, textures, circles) and at the end of every Kit method.
+// Debug builds in particular pay heavily per draw call.
+std::vector<sf::Vertex> gQuads;
+sf::RenderTarget* gQuadTarget = nullptr;
+
+void flushQuads(sf::RenderTarget& target) {
+    if (!gQuads.empty() && gQuadTarget) gQuadTarget->draw(gQuads.data(), gQuads.size(), sf::PrimitiveType::Triangles);
+    gQuads.clear();
+    gQuadTarget = &target;
+}
+
 void rect(sf::RenderTarget& target, sf::FloatRect r, sf::Color fill) {
-    sf::RectangleShape shape(r.size);
-    shape.setPosition(r.position);
-    shape.setFillColor(fill);
-    target.draw(shape);
+    if (gQuadTarget != &target) flushQuads(target);
+    const float l = r.position.x, t = r.position.y, rr = l + r.size.x, b = t + r.size.y;
+    for (const sf::Vector2f v : {sf::Vector2f{l, t}, {rr, t}, {rr, b}, {l, t}, {rr, b}, {l, b}})
+        gQuads.push_back(sf::Vertex{v, fill});
 }
 
 void outline(sf::RenderTarget& target, sf::FloatRect r, sf::Color color, float thickness) {
-    sf::RectangleShape shape({r.size.x - 2 * thickness, r.size.y - 2 * thickness});
-    shape.setPosition({r.position.x + thickness, r.position.y + thickness});
-    shape.setFillColor(sf::Color::Transparent);
-    shape.setOutlineColor(color);
-    shape.setOutlineThickness(thickness);
-    target.draw(shape);
+    const float l = r.position.x, t = r.position.y, w = r.size.x, h = r.size.y;
+    rect(target, {{l, t}, {w, thickness}}, color);
+    rect(target, {{l, t + h - thickness}, {w, thickness}}, color);
+    rect(target, {{l, t + thickness}, {thickness, h - 2 * thickness}}, color);
+    rect(target, {{l + w - thickness, t + thickness}, {thickness, h - 2 * thickness}}, color);
 }
 
 sf::FloatRect shrink(sf::FloatRect r, float by) {
@@ -85,6 +98,7 @@ sf::FloatRect shrink(sf::FloatRect r, float by) {
 }
 
 void gem(sf::RenderTarget& target, sf::Vector2f center) {
+    flushQuads(target);
     sf::CircleShape ring(8.f);
     ring.setOrigin({8.f, 8.f});
     ring.setPosition(center);
@@ -118,9 +132,26 @@ const sf::Font& Kit::font(Font f) const {
     return f == Font::Title ? title_ : f == Font::Bold ? bold_ : body_;
 }
 
+Kit::ShapedText& Kit::shaped(const std::string& str, unsigned size, Font f) const {
+    std::string key;
+    key.reserve(str.size() + 8);
+    key += static_cast<char>('0' + static_cast<int>(f));
+    key += std::to_string(size);
+    key += '|';
+    key += str;
+    if (const auto it = textCache_.find(key); it != textCache_.end()) return it->second;
+    if (textCache_.size() > 4000) textCache_.clear();
+    sf::Text t(font(f), sf::String::fromUtf8(str.begin(), str.end()), size);
+    const float width = t.findCharacterPos(t.getString().getSize()).x;
+    return textCache_.emplace(std::move(key), ShapedText{std::move(t), width}).first->second;
+}
+
 float Kit::text(sf::RenderTarget& target, const std::string& str, sf::Vector2f position, unsigned size,
                 sf::Color color, Font f, bool shadow) const {
-    sf::Text t(font(f), sf::String::fromUtf8(str.begin(), str.end()), size);
+    flushQuads(target);
+    if (str.empty()) return 0.f;
+    auto& entry = shaped(str, size, f);
+    sf::Text& t = entry.text;
     const sf::Vector2f p{std::round(position.x), std::round(position.y)};
     if (shadow) {
         t.setFillColor(sf::Color(0, 0, 0, static_cast<std::uint8_t>(color.a * 0.85f)));
@@ -130,12 +161,12 @@ float Kit::text(sf::RenderTarget& target, const std::string& str, sf::Vector2f p
     t.setFillColor(color);
     t.setPosition(p);
     target.draw(t);
-    return t.getLocalBounds().size.x;
+    return entry.width;
 }
 
 float Kit::textWidth(const std::string& str, unsigned size, Font f) const {
-    sf::Text t(font(f), sf::String::fromUtf8(str.begin(), str.end()), size);
-    return t.findCharacterPos(t.getString().getSize()).x;
+    if (str.empty()) return 0.f;
+    return shaped(str, size, f).width;
 }
 
 void Kit::textCentered(sf::RenderTarget& target, const std::string& str, sf::FloatRect box, unsigned size,
@@ -147,6 +178,10 @@ void Kit::textCentered(sf::RenderTarget& target, const std::string& str, sf::Flo
 }
 
 std::vector<std::string> Kit::wrap(const std::string& str, float width, unsigned size, Font f) const {
+    std::string key = std::to_string(static_cast<int>(width)) + ':' + std::to_string(size) + ':' +
+                      std::to_string(static_cast<int>(f)) + '|' + str;
+    if (const auto it = wrapCache_.find(key); it != wrapCache_.end()) return it->second;
+    if (wrapCache_.size() > 1000) wrapCache_.clear();
     std::vector<std::string> lines;
     std::istringstream paragraphs(str);
     std::string paragraph;
@@ -164,6 +199,7 @@ std::vector<std::string> Kit::wrap(const std::string& str, float width, unsigned
         }
         lines.push_back(line);
     }
+    wrapCache_.emplace(std::move(key), lines);
     return lines;
 }
 
@@ -177,6 +213,7 @@ void Kit::paragraph(sf::RenderTarget& target, const std::string& str, float x, f
 }
 
 void Kit::stone(sf::RenderTarget& target, sf::FloatRect r, sf::Color shade) const {
+    flushQuads(target);
     sf::RectangleShape shape(r.size);
     shape.setPosition(r.position);
     shape.setTexture(&stone_);
@@ -201,11 +238,13 @@ void Kit::frame(sf::RenderTarget& target, sf::FloatRect r, bool ornate) const {
         const float rr = r.position.x + r.size.x - 2, b = r.position.y + r.size.y - 2;
         for (const sf::Vector2f c : {sf::Vector2f{l, t}, {rr, t}, {l, b}, {rr, b}}) gem(target, c);
     }
+    flushQuads(target);
 }
 
 void Kit::panel(sf::RenderTarget& target, sf::FloatRect r, bool ornate, sf::Color shade) const {
     stone(target, r, shade);
     frame(target, r, ornate);
+    flushQuads(target);
 }
 
 void Kit::inset(sf::RenderTarget& target, sf::FloatRect r, sf::Color glow) const {
@@ -220,6 +259,7 @@ void Kit::inset(sf::RenderTarget& target, sf::FloatRect r, sf::Color glow) const
     if (glow.a) {
         outline(target, r, glow, 2.f);
     }
+    flushQuads(target);
 }
 
 void Kit::button(sf::RenderTarget& target, sf::FloatRect r, const std::string& label, bool hover, bool enabled,
@@ -232,6 +272,7 @@ void Kit::button(sf::RenderTarget& target, sf::FloatRect r, const std::string& l
          enabled ? sf::Color(220, 186, 126) : sf::Color(80, 74, 66));
     rect(target, {{r.position.x + 1, r.position.y + r.size.y - 2}, {r.size.x - 2, 1}}, sf::Color(40, 28, 14));
     textCentered(target, label, r, size, enabled ? sf::Color(250, 238, 214) : kMuted, Font::Bold);
+    flushQuads(target);
 }
 
 void Kit::bar(sf::RenderTarget& target, sf::FloatRect r, float fraction, sf::Color fill, const std::string& label,
@@ -246,11 +287,13 @@ void Kit::bar(sf::RenderTarget& target, sf::FloatRect r, float fraction, sf::Col
     rect(target, {{filled.position.x, filled.position.y + inner.size.y - 2}, {filled.size.x, 2}}, sf::Color(0, 0, 0, 70));
     outline(target, r, sf::Color(96, 76, 46), 1.f);
     if (!label.empty()) textCentered(target, label, r, size, sf::Color(250, 244, 232), Font::Bold);
+    flushQuads(target);
 }
 
 void Kit::divider(sf::RenderTarget& target, float x, float top, float bottom) const {
     rect(target, {{x - 2, top}, {4, bottom - top}}, sf::Color(70, 52, 30));
     rect(target, {{x - 1, top}, {1, bottom - top}}, sf::Color(196, 156, 82));
+    flushQuads(target);
     for (const float y : {top, bottom}) {
         sf::CircleShape knob(4.f);
         knob.setOrigin({4.f, 4.f});
@@ -260,15 +303,18 @@ void Kit::divider(sf::RenderTarget& target, float x, float top, float bottom) co
         knob.setOutlineColor(sf::Color(196, 156, 82));
         target.draw(knob);
     }
+    flushQuads(target);
 }
 
 void Kit::heading(sf::RenderTarget& target, const std::string& str, sf::Vector2f position, unsigned size) const {
     const float w = text(target, str, position, size, kGold, Font::Title);
     const float y = position.y + font(Font::Title).getLineSpacing(size) + 2;
     rect(target, {{position.x, y}, {w, 1}}, sf::Color(140, 108, 62, 180));
+    flushQuads(target);
 }
 
 bool Kit::icon(sf::RenderTarget& target, const std::string& name, sf::FloatRect r, sf::Color tint) const {
+    flushQuads(target);
     if (name.empty() || missingIcons_.count(name)) return false;
     auto it = icons_.find(name);
     if (it == icons_.end()) {
@@ -329,6 +375,7 @@ sf::FloatRect Kit::tooltip(sf::RenderTarget& target, const std::vector<Line>& li
         if (!l.text.empty()) text(target, l.text, {pos.x + kPad, y}, l.line->size, l.line->color, l.line->font);
         y += l.height;
     }
+    flushQuads(target);
     return box;
 }
 

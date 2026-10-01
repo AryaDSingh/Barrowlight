@@ -3,6 +3,7 @@
 #include <SFML/Graphics.hpp>
 
 #include <map>
+#include <unordered_map>
 #include <string>
 
 namespace engine {
@@ -36,6 +37,9 @@ private:
     const sf::Texture* texture(const char* sheet);
 
     std::map<std::string, sf::Texture> textures_;
+    // Sheet names are string literals, so their address identifies them:
+    // a pointer lookup avoids building a std::string for every tile drawn.
+    std::unordered_map<const char*, const sf::Texture*> byPointer_;
     std::map<std::string, bool> missing_;
 };
 

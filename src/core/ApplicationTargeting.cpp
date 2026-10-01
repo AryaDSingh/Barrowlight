@@ -22,7 +22,7 @@ constexpr DungeonAction kDungeonActions[]{
     {"Inventory","B","knapsack"},{"Talent trees","T","tree-branch"},
     {"Use / pick up","G","locked-chest"},{"Wait a turn","Space","hourglass"},{"Rest","R","campfire"},
     {"Auto-explore","Z","compass"},{"Return to town","H","village"},{"Cleanse","C","aura"},
-    {"Save game","F5","scroll-unfurled"},{"Load game","F9","spell-book"}};
+    {"Save game","F5","scroll-unfurled"},{"Load game","F9","spell-book"},{"Inspect enemies","I","third-eye"}};
 constexpr std::size_t kDungeonActionCount = std::size(kDungeonActions);
 sf::FloatRect dungeonActionRect(std::size_t index) {
     using namespace playLayout;
@@ -52,6 +52,9 @@ const char* className(PlayerClass c) {
         case PlayerClass::Mage: return "Mage"; case PlayerClass::Spellblade: return "Spellblade"; }
     return "";
 }
+// Clickable parts of the character column.
+const sf::FloatRect kPortraitArea{{14,14},{64,64}}, kNameArea{{84,14},{160,66}}, kXpArea{{14,136},{228,32}};
+const sf::FloatRect kMinimapArea{{18,playLayout::minimapY+4},{220,142}};
 bool harmfulStatus(StatusEffectType t) {
     return isCleansable(t) || t==StatusEffectType::Stun || t==StatusEffectType::Wither || t==StatusEffectType::Shock;
 }
@@ -132,6 +135,18 @@ std::optional<std::size_t> Application::hoveredLogLine() const {
     return static_cast<std::size_t>(first+row);
 }
 
+// The map tile under a point on the minimap (same fit as renderMinimap).
+std::optional<Position> Application::minimapTile(sf::Vector2f p) const {
+    if (!kMinimapArea.contains(p) || map_.width()<=0 || map_.height()<=0) return std::nullopt;
+    const float scale=std::floor(std::min(kMinimapArea.size.x/map_.width(),kMinimapArea.size.y/map_.height()));
+    if (scale<1.f) return std::nullopt;
+    const sf::Vector2f origin{kMinimapArea.position.x+(kMinimapArea.size.x-scale*map_.width())/2,
+                              kMinimapArea.position.y+(kMinimapArea.size.y-scale*map_.height())/2};
+    const Position tile{static_cast<int>((p.x-origin.x)/scale),static_cast<int>((p.y-origin.y)/scale)};
+    if (!map_.inBounds(tile.x,tile.y)) return std::nullopt;
+    return tile;
+}
+
 void Application::renderMinimap(sf::FloatRect area) {
     if (map_.width()<=0 || map_.height()<=0) return;
     const float scale=std::floor(std::min(area.size.x/map_.width(),area.size.y/map_.height()));
@@ -175,7 +190,7 @@ void Application::renderBattleHud() {
     // --- Character column ---------------------------------------------------
     ui_.panel(window_,{{0,0},{static_cast<float>(sidebarWidth),720}});
     const sf::FloatRect portrait{{14,14},{64,64}};
-    ui_.inset(window_,portrait,sf::Color(140,108,62));
+    ui_.inset(window_,portrait,hovered(portrait)?ui::kGold:sf::Color(140,108,62));
     sprites_.draw(window_,playerSpriteFrame(),{portrait.position.x+4,portrait.position.y+4},56.f);
     ui_.text(window_,className(playerClass_),{90,14},20,ui::kGold,ui::Font::Title);
     ui_.text(window_,"Level "+std::to_string(player_.level()),{90,42},16,ui::kText,ui::Font::Bold);
@@ -223,7 +238,7 @@ void Application::renderBattleHud() {
     ui_.text(window_,"Map",{14,minimapY-22},14,ui::kGold,ui::Font::Title);
     const sf::FloatRect minimap{{14,minimapY},{228,150}};
     ui_.inset(window_,minimap);
-    renderMinimap({{minimap.position.x+4,minimap.position.y+4},{minimap.size.x-8,minimap.size.y-8}});
+    renderMinimap(kMinimapArea);
 
     const int quiet=dangerNearby()?0:quietTurns_;
     ui_.text(window_,"Town recall: "+std::to_string(quiet)+"/10 quiet turns",{14,minimapY+156},13,quiet>=10?ui::kGood:ui::kMuted);
@@ -285,7 +300,7 @@ void Application::renderBattleHud() {
     for(int dir=0;dir<2;++dir) ui_.button(window_,pageButton(dir),dir?">":"<",hovered(pageButton(dir)),true,16);
     ui_.text(window_,"Page "+std::to_string(talentPage_+1)+"/2",{pageButtonX+4,hotbarY+30},13,ui::kMuted);
     ui_.text(window_,"PgUp/PgDn",{pageButtonX+4,hotbarY+46},12,ui::kMuted);
-    ui_.text(window_,"Hover a slot for details, click or press its number to use it.",{hotbarX,hotbarY+60},13,ui::kMuted);
+    ui_.text(window_,"Click or press a number to use. Right-click a slot to change it.",{hotbarX,hotbarY+60},13,ui::kMuted);
 }
 
 std::vector<Actor*> Application::targetingEnemies() const {
@@ -445,7 +460,14 @@ void Application::handleTargetingMouse(const sf::Event& event) {
     }
     if (const auto* click = event.getIf<sf::Event::MouseButtonPressed>()) {
         mousePixel_ = click->position;
-        if (click->button == sf::Mouse::Button::Right) { cancelTargeting(); return; }
+        if (click->button == sf::Mouse::Button::Right) {
+            // Right-clicking a hotbar slot opens the talents to rebind it.
+            if (!aimingTalent_ && !inspecting_) {
+                const auto p=window_.mapPixelToCoords(click->position);
+                for (std::size_t slot=0;slot<kPageSize;++slot) if (hotbarRect(slot).contains(p)) { openTalentTrees(); return; }
+            }
+            cancelTargeting(); return;
+        }
         if (click->button != sf::Mouse::Button::Left) return;
         const auto p=window_.mapPixelToCoords(click->position);
         if(aimingTalent_ || inspecting_) {
@@ -465,7 +487,25 @@ void Application::handleTargetingMouse(const sf::Event& event) {
             }
             else if(action=="Save game") saveGame();
             else if(action=="Load game") loadGame();
+            else if(action=="Inspect enemies") handleTargetingKey(sf::Keyboard::Key::I,false);
             return;
+        }
+        if(!aimingTalent_ && !inspecting_) {
+            if(kPortraitArea.contains(p)) { openInventory(); return; }
+            if(kNameArea.contains(p) || kXpArea.contains(p)) { openTalentTrees(); return; }
+            if(const auto tile=minimapTile(p)) {
+                if(exploredMap_.at(tile->x,tile->y)==Visibility::Hidden || !map_.isWalkable(tile->x,tile->y)) log("You haven't explored there yet.");
+                else if(!startTravel(*tile)) log("Can't walk away while danger is near.");
+                return;
+            }
+            // Clicking a curable effect cleanses it (the Cleanse talent decides if it can).
+            if(const auto status=hoveredStatus()) {
+                if(isCleansable(status->type)) {
+                    for(std::size_t index=0;index<player_.talents().knownTalents().size();++index)
+                        if(player_.talents().knownTalents()[index].id=="basic.cleanse") { requestTalent(index); break; }
+                } else log(statusName(status->type)," can't be cleansed.");
+                return;
+            }
         }
         for (int dir=0;dir<2;++dir) if (pageButton(dir).contains(p)) { changeTalentPage(dir?1:-1); return; }
         if (const auto index = talentAtPixel(click->position)) { requestTalent(*index); return; }
@@ -474,21 +514,24 @@ void Application::handleTargetingMouse(const sf::Event& event) {
         targetCursor_ = *tile;
         if (aimingTalent_) { tryUseTalent(*aimingTalent_, targetCursor_); return; }
         if (inspecting_) return; // Explicit I/Tab inspection remains a free mode.
-        if (exploredMap_.at(tile->x,tile->y)!=Visibility::Visible) {
-            log("Click visible ground to move one step."); return;
-        }
-        if (auto* target=dynamic_cast<Monster*>(actorAt(*tile,&player_)); target && !target->allied && !target->tactics.concealed) {
+        const auto vision=exploredMap_.at(tile->x,tile->y);
+        if (auto* target=dynamic_cast<Monster*>(actorAt(*tile,&player_));
+            vision==Visibility::Visible && target && !target->allied && !target->tactics.concealed) {
             for (std::size_t i=0;i<player_.talents().knownTalents().size();++i)
                 if (player_.talents().knownTalents()[i].id=="basic.attack") {
                     tryUseTalent(i,*tile); return;
                 }
             return;
         }
-        if (!map_.isWalkable(tile->x,tile->y)) { log("Choose visible walkable ground."); return; }
+        if (vision==Visibility::Hidden) { log("You haven't explored there yet."); return; }
+        if (!map_.isWalkable(tile->x,tile->y)) { log("You can't walk there."); return; }
         const auto from=player_.position();
         const int dx=tile->x-from.x,dy=tile->y-from.y;
-        if (!dx && !dy) return; // Clicking yourself does not wait or spend a turn.
-        // Dominant-axis cardinal movement, no pathfinding or repeated movement.
+        // Clicking yourself uses what's underfoot: items, chests, stairs, vaults.
+        if (!dx && !dy) { pickupItem(); return; }
+        // Farther away: walk there over known ground. With danger nearby that
+        // isn't allowed, so fall back to a single step toward the click.
+        if (std::abs(dx)+std::abs(dy)>1 && startTravel(*tile)) return;
         const Position step=std::abs(dx)>=std::abs(dy)?Position{dx>0?1:-1,0}:Position{0,dy>0?1:-1};
         if (const auto* enemy=dynamic_cast<const Monster*>(actorAt({from.x+step.x,from.y+step.y},&player_)); enemy && !enemy->allied && !enemy->tactics.concealed) {
             log("An enemy blocks that step. Click it to attack or select an ability."); return;
@@ -576,7 +619,8 @@ void Application::renderHudTooltips() {
     // --- Mode banner along the bottom of the map ----------------------------
     if (autoExploring_ || restTurns_>0 || aimingTalent_ || inspecting_) {
         ui_.panel(window_,kModeBanner,false,sf::Color(150,140,130));
-        const std::string text=autoExploring_ ? "Exploring. Any key or click stops; danger and discoveries pause it." :
+        const std::string text=autoExploring_ && travelGoal_ ? "Walking. Any key or click stops; danger and new sightings pause it." :
+            autoExploring_ ? "Exploring. Any key or click stops; danger and discoveries pause it." :
             restTurns_>0 ? "Resting. Any key or click stops; recovers life, mana and cooldowns." :
             aimingTalent_ ? "Aim with mouse or arrows, Tab cycles targets, Enter or click casts" :
             "Inspecting: mouse or arrows, Tab for the next enemy, I or Esc closes";
@@ -643,9 +687,22 @@ void Application::renderHudTooltips() {
         std::vector<Line> lines{{statusName(status->type),harmfulStatus(status->type)?ui::kBad:ui::kGood,18,ui::Font::Title},
             {status->type==StatusEffectType::BattleRhythm?"Ready until used":"Remaining: "+std::to_string(status->turnsRemaining)+" status ticks",ui::kMuted,14},
             {""},{statusTooltip(*status),ui::kText,15}};
-        if (isCleansable(status->type)) lines.push_back({"C: Cleanse removes this effect.",ui::kInfo,15});
+        if (isCleansable(status->type)) lines.push_back({"Click or press C to cleanse it.",ui::kInfo,15});
         ui_.tooltip(window_,lines,*mouse,320,screen);
         return;
+    }
+
+    // --- Clickable parts of the character column ------------------------------
+    if (mouse && !aimingTalent_ && !inspecting_) {
+        const auto hint=[&](const std::string& title,const std::string& detail) {
+            ui_.tooltip(window_,{{title,ui::kGold,16,ui::Font::Bold},{detail,ui::kMuted,14}},*mouse,240,screen);
+        };
+        if (kPortraitArea.contains(*mouse)) { hint("Inventory","Click to open your equipment and bag (B)."); return; }
+        if (kNameArea.contains(*mouse) || kXpArea.contains(*mouse)) { hint("Talents","Click to open your talent trees (T)."); return; }
+        if (const auto tile=minimapTile(*mouse)) {
+            hint("Map",exploredMap_.at(tile->x,tile->y)==Visibility::Hidden?"Unexplored.":"Click to walk there.");
+            return;
+        }
     }
 
     // --- Action buttons -------------------------------------------------------

@@ -215,6 +215,8 @@ sf::FloatRect bagRect(std::size_t cell) {
 const sf::FloatRect kBagArea{{kBagX,kBagY},{kBagStride*kBagColumns,kBagStride*(kBagPageSize/kBagColumns)}};
 const sf::FloatRect kCloseButton{{1170,18},{94,32}};
 const sf::FloatRect kPrevPage{{kBagX,kBagY+kBagArea.size.y+8},{120,30}}, kNextPage{{kBagX+436,kBagY+kBagArea.size.y+8},{120,30}};
+// Buttons for the selected item, so nothing needs a keyboard.
+const sf::FloatRect kUseButton{{kBagX,kBagY+kBagArea.size.y+50},{200,36}}, kDropButton{{kBagX+210,kBagY+kBagArea.size.y+50},{160,36}};
 bool inBag(sf::Vector2i p) { return kBagArea.contains(sf::Vector2f(p)); }
 std::optional<std::size_t> inventoryHit(sf::Vector2i p,std::size_t page,std::size_t count) {
     for(int i=0;i<kEquipmentSlotCount;++i)
@@ -255,6 +257,8 @@ void Application::handleInventoryMouse(const sf::Event& event) {
             if(kCloseButton.contains(sf::Vector2f(p))) { inventoryOpen_=false; inventoryDragSource_.reset(); return; }
             if(kPrevPage.contains(sf::Vector2f(p))) { if(inventoryBagPage_) --inventoryBagPage_; return; }
             if(kNextPage.contains(sf::Vector2f(p))) { inventoryBagPage_=std::min(inventoryBagPage_+1,pages-1); return; }
+            if(kUseButton.contains(sf::Vector2f(p))) { handleInventoryKey(sf::Keyboard::Key::Enter); return; }
+            if(kDropButton.contains(sf::Vector2f(p))) { handleInventoryKey(sf::Keyboard::Key::D); return; }
         }
         const auto hit=inventoryHit(p,inventoryBagPage_,count);
         if(!hit) return;
@@ -343,11 +347,19 @@ void Application::renderInventory() {
         ui_.textCentered(window_,"Page "+std::to_string(inventoryBagPage_+1)+" of "+std::to_string(pages),
             {{kPrevPage.position.x+120,kPrevPage.position.y},{316,30}},15,ui::kMuted);
     }
+    {
+        const bool onGear=inventorySelection_<kEquipmentSlotCount;
+        const bool hasItem=onGear?inventory.equipped(static_cast<EquipmentSlot>(inventorySelection_))!=nullptr:
+            inventorySelection_-kEquipmentSlotCount<bag.size();
+        ui_.button(window_,kUseButton,onGear?"Remove (Enter)":"Equip (Enter)",mouse && kUseButton.contains(*mouse),hasItem);
+        ui_.button(window_,kDropButton,mode_==GameMode::Town?"Sell in the shop":"Drop (D)",mouse && kDropButton.contains(*mouse),
+            hasItem && !onGear && mode_!=GameMode::Town);
+    }
     if(bag.size()>Inventory::capacity)
-        ui_.text(window_,"Overflow kept: drop or sell items before picking up more.",{kBagX,kBagY+kBagArea.size.y+46},14,sf::Color(232,196,130));
+        ui_.text(window_,"Overflow kept: drop or sell items before picking up more.",{kBagX+390,kBagY+kBagArea.size.y+58},14,sf::Color(232,196,130));
 
     // --- Help and the latest message --------------------------------------
-    y=510;
+    y=520;
     ui_.text(window_,"Controls",{kBagX,y},16,ui::kGold,ui::Font::Bold); y+=24;
     for(const char* line:{"Drag an item onto a slot to equip it, or back to the bag to remove it.",
                           "Right-click to equip or remove. Hover to compare with what you wear.",

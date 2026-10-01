@@ -32,6 +32,43 @@ std::optional<Position> exploreStep(const Map& map, const ExploredMap& vision, P
     }
     return std::nullopt;
 }
+
+// First step of the shortest known-ground route to `goal`, for click-to-walk.
+std::optional<Position> travelStep(const Map& map, const ExploredMap& vision, Position start, Position goal) {
+    struct Node { Position tile, firstStep; };
+    std::queue<Node> frontier;
+    std::vector<bool> seen(static_cast<std::size_t>(map.width())*map.height());
+    seen[static_cast<std::size_t>(start.y)*map.width()+start.x]=true;
+    frontier.push({start,start});
+    while (!frontier.empty()) {
+        const auto node=frontier.front(); frontier.pop();
+        for (const auto d:directions) {
+            const Position next{node.tile.x+d.x,node.tile.y+d.y};
+            if (!map.isWalkable(next.x,next.y) || vision.at(next.x,next.y)==Visibility::Hidden) continue;
+            const auto index=static_cast<std::size_t>(next.y)*map.width()+next.x;
+            if (seen[index]) continue;
+            seen[index]=true;
+            const Position first=sameExploreTile(node.tile,start)?next:node.firstStep;
+            if (sameExploreTile(next,goal)) return first;
+            frontier.push({next,first});
+        }
+    }
+    return std::nullopt;
+}
+}
+
+bool Application::startTravel(Position goal) {
+    if (mode_!=GameMode::Playing || inventoryOpen_ || vaultMenu_ || exitMenu_) return false;
+    if (dangerNearby() || combatThisTurn_) return false; // callers fall back to a single step
+    if (!map_.isWalkable(goal.x,goal.y) || exploredMap_.at(goal.x,goal.y)==Visibility::Hidden ||
+        !travelStep(map_,exploredMap_,player_.position(),goal)) {
+        log("No known route there."); return true;
+    }
+    cancelTargeting(); restTurns_=0;
+    exploreSeenInterests_=visibleExploreInterests();
+    exploreStepsLeft_=map_.width()*map_.height();
+    travelGoal_=goal; autoExploring_=true; exploreClock_.restart();
+    return true;
 }
 
 std::vector<std::string> Application::visibleExploreInterests() const {
@@ -59,7 +96,9 @@ std::vector<std::string> Application::visibleExploreInterests() const {
 void Application::stopAutoExplore(const char* reason) {
     if (!autoExploring_) return;
     autoExploring_=false;
-    log("Auto-explore stopped: ",reason);
+    const bool walking=travelGoal_.has_value();
+    travelGoal_.reset();
+    if (reason) log(walking?"Stopped walking: ":"Auto-explore stopped: ",reason);
 }
 
 void Application::startAutoExplore() {
@@ -77,7 +116,7 @@ void Application::startAutoExplore() {
     // opening, floor transition or ability use is performed by automation.
     exploreSeenInterests_=visibleExploreInterests();
     exploreStepsLeft_=map_.width()*map_.height()*4;
-    autoExploring_=true; exploreClock_.restart();
+    travelGoal_.reset(); autoExploring_=true; exploreClock_.restart();
     log("Auto-exploring. Stops for danger or new discoveries; any key/click cancels.");
 }
 
@@ -96,8 +135,10 @@ void Application::stepAutoExplore() {
     if (exploreClock_.getElapsedTime().asMilliseconds()<100) return;
     exploreClock_.restart();
     if (exploreStepsLeft_--<=0) { stopAutoExplore("step limit reached. Continue manually or press Z again."); return; }
-    const auto step=exploreStep(map_,exploredMap_,player_.position());
-    if (!step) { stopAutoExplore("no reachable unexplored area. Check stairs or sealed vaults manually."); return; }
+    if (travelGoal_ && sameExploreTile(player_.position(),*travelGoal_)) { stopAutoExplore(nullptr); return; }
+    const auto step=travelGoal_?travelStep(map_,exploredMap_,player_.position(),*travelGoal_):
+                                 exploreStep(map_,exploredMap_,player_.position());
+    if (!step) { stopAutoExplore(travelGoal_?"the route is no longer known.":"no reachable unexplored area. Check stairs or sealed vaults manually."); return; }
     // tryMovePlayer normally bump-attacks. Never permit that during exploration;
     // friendly skeletons can still swap places through the normal movement path.
     if (auto* blocker=actorAt(*step,&player_)) {
@@ -112,6 +153,12 @@ void Application::stepAutoExplore() {
         stopAutoExplore("damage, danger or a character choice needs your attention."); return;
     }
     const auto p=player_.position();
+    // A click-to-walk trip ends at its destination; only new sightings stop it early.
+    if (travelGoal_) {
+        if (sameExploreTile(p,*travelGoal_)) stopAutoExplore(nullptr);
+        else if (newInterest()) stopAutoExplore("something new came into view.");
+        return;
+    }
     const bool onItem=std::any_of(groundItems_.begin(),groundItems_.end(),[&](const auto& item) {
         return sameExploreTile(item->position(),p);
     });

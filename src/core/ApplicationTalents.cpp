@@ -10,8 +10,8 @@ namespace engine {
 namespace {
 constexpr sf::Keyboard::Key bindingKeys[]{sf::Keyboard::Key::Num1,sf::Keyboard::Key::Num2,sf::Keyboard::Key::Num3,
     sf::Keyboard::Key::Num4,sf::Keyboard::Key::Num5,sf::Keyboard::Key::Num6,sf::Keyboard::Key::Num7,sf::Keyboard::Key::Num8,sf::Keyboard::Key::Num9};
-// ToME-style layout: every visible tree as an icon row in three columns,
-// details and actions in a framed panel on the right.
+// ToME-style layout: trees grouped under category headings in three
+// columns, details and actions in a framed panel on the right.
 const sf::FloatRect playButton{{1100,18},{156,36}};
 const sf::FloatRect kDetails{{848,70},{410,636}};
 const sf::FloatRect treeButton{{866,566},{184,36}}, abilityButton{{1058,566},{184,36}},
@@ -19,25 +19,73 @@ const sf::FloatRect treeButton{{866,566},{184,36}}, abilityButton{{1058,566},{18
 const sf::FloatRect kBindingDialog{{230,246},{820,258}};
 const sf::FloatRect cancelBindingButton{{kBindingDialog.position.x+kBindingDialog.size.x-138,kBindingDialog.position.y+16},{120,30}};
 constexpr float kTreeColumnX[]{28,300,572};
-constexpr float kTreeTop=78, kTreeRowHeight=104, kIcon=50, kIconStride=60;
-constexpr std::size_t kTreesPerColumn=6;
+constexpr float kTreeTop=70, kCategoryHeight=30, kTreeRowHeight=96, kIcon=50, kIconStride=60, kColumnWidth=250;
+
+enum class TreeCategory { Martial, Magic, Utility, Defence, Hybrid };
+struct CategoryInfo { const char* name; sf::Color color; };
+CategoryInfo categoryInfo(TreeCategory c) {
+    switch(c) {
+        case TreeCategory::Martial: return {"Martial",sf::Color(222,120,96)};
+        case TreeCategory::Magic: return {"Magic",sf::Color(128,156,240)};
+        case TreeCategory::Utility: return {"Utility",sf::Color(124,204,144)};
+        case TreeCategory::Defence: return {"Defence",sf::Color(208,176,112)};
+        case TreeCategory::Hybrid: return {"Hybrid",sf::Color(190,132,222)};
+    }
+    return {"",ui::kText};
+}
+TreeCategory treeCategory(const std::string& id) {
+    if (id=="one_handed" || id=="two_handed" || id=="bow") return TreeCategory::Martial;
+    if (id=="fire" || id=="ice" || id=="lightning" || id=="arcane") return TreeCategory::Magic;
+    if (id=="stealth" || id=="acrobatics") return TreeCategory::Utility;
+    if (id=="shield" || id=="cloth" || id=="light_armour" || id=="heavy_armour") return TreeCategory::Defence;
+    return TreeCategory::Hybrid;
+}
+
 // Locked hidden trees stay off the screen, unless an older save already owns one.
 bool treeVisible(const Player& player,std::size_t tree) {
     return hiddenTreeAvailable(player,kTalentTrees[tree].id) || treeAccess(player,kTalentTrees[tree].id);
 }
-std::vector<std::size_t> visibleTrees(const Player& player) {
-    std::vector<std::size_t> result;
-    for(std::size_t i=0;i<kTalentTrees.size();++i)
-        if(treeVisible(player,i)) result.push_back(i);
-    return result;
+
+// Where every visible tree and category heading goes. `trees` is in on-screen
+// order (column by column), which keyboard browsing follows too.
+struct TreeLayout {
+    std::vector<std::size_t> trees;
+    std::vector<sf::Vector2f> origins;
+    std::vector<std::pair<TreeCategory,sf::Vector2f>> headings;
+};
+TreeLayout layoutTrees(const Player& player) {
+    TreeLayout layout;
+    float columnY[3]{kTreeTop,kTreeTop,kTreeTop};
+    const auto place=[&](int column,TreeCategory category,const std::vector<std::size_t>& trees) {
+        if (trees.empty()) return;
+        layout.headings.push_back({category,{kTreeColumnX[column],columnY[column]}});
+        columnY[column]+=kCategoryHeight;
+        for (const auto tree:trees) {
+            layout.trees.push_back(tree);
+            layout.origins.push_back({kTreeColumnX[column],columnY[column]});
+            columnY[column]+=kTreeRowHeight;
+        }
+    };
+    const auto treesIn=[&](TreeCategory category) {
+        std::vector<std::size_t> result;
+        for (std::size_t i=0;i<kTalentTrees.size();++i)
+            if (treeCategory(kTalentTrees[i].id)==category && treeVisible(player,i)) result.push_back(i);
+        return result;
+    };
+    place(0,TreeCategory::Martial,treesIn(TreeCategory::Martial));
+    place(0,TreeCategory::Utility,treesIn(TreeCategory::Utility));
+    place(1,TreeCategory::Magic,treesIn(TreeCategory::Magic));
+    place(2,TreeCategory::Defence,treesIn(TreeCategory::Defence));
+    // Hybrid trees only show for saves that already own one; split them
+    // between the two shorter columns.
+    const auto hybrid=treesIn(TreeCategory::Hybrid);
+    place(1,TreeCategory::Hybrid,std::vector<std::size_t>(hybrid.begin(),hybrid.begin()+std::min<std::size_t>(2,hybrid.size())));
+    if (hybrid.size()>2) place(2,TreeCategory::Hybrid,std::vector<std::size_t>(hybrid.begin()+2,hybrid.end()));
+    return layout;
 }
-sf::Vector2f treeOrigin(std::size_t visibleRow) {
-    return {kTreeColumnX[std::min<std::size_t>(visibleRow/kTreesPerColumn,2)],kTreeTop+kTreeRowHeight*(visibleRow%kTreesPerColumn)};
-}
-sf::FloatRect treeHeaderRect(std::size_t visibleRow) { return {treeOrigin(visibleRow),{250,22}}; }
-sf::FloatRect abilityRect(std::size_t visibleRow,std::size_t ability) {
-    const auto o=treeOrigin(visibleRow);
-    return {{o.x+4+kIconStride*ability,o.y+26},{kIcon,kIcon}};
+sf::FloatRect treeHeaderRect(sf::Vector2f origin) { return {origin,{kColumnWidth,22}}; }
+sf::FloatRect abilityRect(sf::Vector2f origin,std::size_t ability) {
+    return {{origin.x+4+kIconStride*ability,origin.y+24},{kIcon,kIcon}};
 }
 sf::FloatRect bindingRect(std::size_t slot) {
     return {{kBindingDialog.position.x+28+86.f*(slot%9),kBindingDialog.position.y+76+86.f*(slot/9)},{74,74}};
@@ -45,9 +93,10 @@ sf::FloatRect bindingRect(std::size_t slot) {
 }
 
 sf::FloatRect Application::talentTreeAbilityRect(std::size_t tree, std::size_t ability) const {
-    const auto visible=visibleTrees(player_);
-    const auto row=static_cast<std::size_t>(std::find(visible.begin(),visible.end(),tree)-visible.begin());
-    return abilityRect(row,ability);
+    const auto layout=layoutTrees(player_);
+    for (std::size_t row=0;row<layout.trees.size();++row)
+        if (layout.trees[row]==tree) return abilityRect(layout.origins[row],ability);
+    return {};
 }
 
 void Application::handleTreeMouse(const sf::Event& event) {
@@ -68,13 +117,13 @@ void Application::handleTreeMouse(const sf::Event& event) {
     if(abilityButton.contains(p)) { handleTreeKey(sf::Keyboard::Key::A,false); return; }
     if(bindButton.contains(p)) { handleTreeKey(sf::Keyboard::Key::B,false); return; }
     if(variantButton.contains(p)) { handleTreeKey(sf::Keyboard::Key::V,false); return; }
-    const auto visible=visibleTrees(player_);
-    for(std::size_t row=0;row<visible.size();++row) {
-        if(treeHeaderRect(row).contains(p)) {
-            treeSelection_=visible[row]; abilitySelection_=0; imbueSelection_=0; treeFeedback_.clear(); return;
+    const auto layout=layoutTrees(player_);
+    for(std::size_t row=0;row<layout.trees.size();++row) {
+        if(treeHeaderRect(layout.origins[row]).contains(p)) {
+            treeSelection_=layout.trees[row]; abilitySelection_=0; imbueSelection_=0; treeFeedback_.clear(); return;
         }
-        for(std::size_t i=0;i<4;++i) if(abilityRect(row,i).contains(p)) {
-            treeSelection_=visible[row]; abilitySelection_=i; imbueSelection_=0; treeFeedback_.clear(); return;
+        for(std::size_t i=0;i<4;++i) if(abilityRect(layout.origins[row],i).contains(p)) {
+            treeSelection_=layout.trees[row]; abilitySelection_=i; imbueSelection_=0; treeFeedback_.clear(); return;
         }
     }
 }
@@ -98,8 +147,16 @@ void Application::handleTreeKey(sf::Keyboard::Key key, bool shift) {
     if (key==sf::Keyboard::Key::Up || key==sf::Keyboard::Key::Down || key==sf::Keyboard::Key::Left || key==sf::Keyboard::Key::Right || key==sf::Keyboard::Key::A || key==sf::Keyboard::Key::Enter) bindingTalent_=false;
     if (key==sf::Keyboard::Key::F5) { saveGame(); return; }
     if (key==sf::Keyboard::Key::T || key==sf::Keyboard::Key::Escape) { closeTalentTrees(); return; }
-    if (key==sf::Keyboard::Key::Up) { do { treeSelection_=(treeSelection_+kTalentTrees.size()-1)%kTalentTrees.size(); } while (!treeVisible(player_,treeSelection_)); abilitySelection_=0; }
-    if (key==sf::Keyboard::Key::Down) { do { treeSelection_=(treeSelection_+1)%kTalentTrees.size(); } while (!treeVisible(player_,treeSelection_)); abilitySelection_=0; }
+    if (key==sf::Keyboard::Key::Up || key==sf::Keyboard::Key::Down) {
+        // Browse in on-screen order, category by category.
+        const auto order=layoutTrees(player_).trees;
+        if (!order.empty()) {
+            const auto at=static_cast<std::size_t>(std::find(order.begin(),order.end(),treeSelection_)-order.begin());
+            const std::size_t current=at<order.size()?at:0;
+            treeSelection_=order[(current+(key==sf::Keyboard::Key::Up?order.size()-1:1))%order.size()];
+        }
+        abilitySelection_=0;
+    }
     if (key==sf::Keyboard::Key::Left) abilitySelection_=(abilitySelection_+3)%4;
     if (key==sf::Keyboard::Key::Right) abilitySelection_=(abilitySelection_+1)%4;
     const auto& tree=kTalentTrees[treeSelection_];
@@ -155,18 +212,26 @@ void Application::renderTalentTrees() {
                                    {"Ability points",player_.abilityPoints()}}) {
         const std::string text=label+": "+std::to_string(value);
         const sf::FloatRect box{{x,20},{ui_.textWidth(text,16,ui::Font::Bold)+24,30}};
-        ui_.button(window_,box,text,false,true,16);
+        ui_.inset(window_,box,sf::Color(140,108,62));
+        ui_.textCentered(window_,text,box,16,ui::kGold,ui::Font::Bold);
         x+=box.size.x+10;
     }
     ui_.button(window_,playButton,"Continue (T)",hovered(playButton));
 
-    // --- Every visible tree, three columns of icon rows -----------------------
-    const auto visible=visibleTrees(player_);
+    // --- Trees by category, three columns of icon rows ------------------------
+    const auto layout=layoutTrees(player_);
     for(float dx:{kTreeColumnX[1]-14,kTreeColumnX[2]-14,836.f}) ui_.divider(window_,dx,72,700);
-    for(std::size_t row=0;row<visible.size();++row) {
-        const auto t=visible[row];
+    for(const auto& [category,at]:layout.headings) {
+        const auto info=categoryInfo(category);
+        const float w=ui_.text(window_,info.name,{at.x,at.y},19,info.color,ui::Font::Title);
+        sf::RectangleShape rule({kColumnWidth-w-10,1}); rule.setPosition({at.x+w+10,at.y+13});
+        rule.setFillColor(sf::Color(info.color.r,info.color.g,info.color.b,110)); window_.draw(rule);
+    }
+    for(std::size_t row=0;row<layout.trees.size();++row) {
+        const auto t=layout.trees[row];
+        const auto origin=layout.origins[row];
         const auto& tree=kTalentTrees[t]; const auto* access=treeAccess(player_,tree.id);
-        const auto header=treeHeaderRect(row);
+        const auto header=treeHeaderRect(origin);
         const sf::Color headerColor=access?(access->specialized?ui::kGold:ui::kGood):ui::kMuted;
         sf::RectangleShape dash({10,2}); dash.setPosition({header.position.x,header.position.y+11});
         dash.setFillColor(headerColor); window_.draw(dash);
@@ -175,7 +240,7 @@ void Application::renderTalentTrees() {
         for(std::size_t i=0;i<4;++i) {
             const auto& d=talentCatalog()[t*4+i];
             const int rank=player_.talents().rankOf(d.id);
-            const auto r=abilityRect(row,i);
+            const auto r=abilityRect(origin,i);
             const bool chosen=t==treeSelection_ && i==abilitySelection_;
             ui_.inset(window_,r,chosen?ui::kGold:hovered(r)?ui::kBronze:i==3?sf::Color(120,70,150,120):sf::Color::Transparent);
             ui_.icon(window_,talentIcon(d.ranks[0]),{{r.position.x+6,r.position.y+6},{r.size.x-12,r.size.y-12}},
@@ -199,7 +264,7 @@ void Application::renderTalentTrees() {
     ui_.inset(window_,bigIcon,ui::kBronze);
     ui_.icon(window_,talentIcon(t0),{{bigIcon.position.x+7,bigIcon.position.y+7},{42,42}},rank?ui::kGold:ui::kText);
     ui_.text(window_,t0.name,{left+68,y},22,ui::kGold,ui::Font::Title);
-    ui_.text(window_,std::string(tree.name)+(access?(access->specialized?", specialised":", open"):", locked")+
+    ui_.text(window_,std::string(categoryInfo(treeCategory(tree.id)).name)+" / "+tree.name+(access?(access->specialized?", specialised":", open"):", locked")+
         (abilitySelection_==3?", advanced":"")+(t0.passive?", passive":""),{left+68,y+30},14,access?ui::kGood:ui::kMuted);
     y+=68;
     ui_.text(window_,"Current rank: "+std::to_string(rank)+" of 3",{left,y},15,ui::kText,ui::Font::Bold); y+=22;
@@ -246,9 +311,9 @@ void Application::renderTalentTrees() {
         left,y,width,14,treeFeedback_.empty()?ui::kMuted:sf::Color(255,226,150),ui::Font::Body,704);
 
     // Hover tooltip for an ability icon you're not already inspecting.
-    if(!bindingTalent_ && mouse) for(std::size_t row=0;row<visible.size();++row) for(std::size_t i=0;i<4;++i) {
-        if(!abilityRect(row,i).contains(*mouse)) continue;
-        const auto& hd=talentCatalog()[visible[row]*4+i];
+    if(!bindingTalent_ && mouse) for(std::size_t row=0;row<layout.trees.size();++row) for(std::size_t i=0;i<4;++i) {
+        if(!abilityRect(layout.origins[row],i).contains(*mouse)) continue;
+        const auto& hd=talentCatalog()[layout.trees[row]*4+i];
         ui_.tooltip(window_,{{hd.ranks[0].name,ui::kGold,17,ui::Font::Title},
             {"Rank "+std::to_string(player_.talents().rankOf(hd.id))+" of 3"+(hd.ranks[0].passive?", passive":""),ui::kMuted,13},
             {hd.ranks[0].description,ui::kText,14},{"Click to see ranks and learn it.",ui::kInfo,13}},*mouse,300);

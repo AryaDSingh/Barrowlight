@@ -106,6 +106,7 @@ private:
     void renderHudTooltips();
     void renderMapHints();
     void renderMinimap(sf::FloatRect area);
+    std::optional<Position> minimapTile(sf::Vector2f screen) const;
     bool onMap(sf::Vector2f screen) const;
     std::optional<std::size_t> hoveredLogLine() const;
     SpriteFrame playerSpriteFrame() const;
@@ -270,6 +271,11 @@ private:
     sf::Clock exploreClock_;
     std::vector<std::string> exploreSeenInterests_;
     void startAutoExplore();
+    // Click-to-walk: auto-explore's stepping, aimed at one known tile. Returns
+    // false when walking isn't possible right now (danger nearby), so the
+    // caller can take a single step instead.
+    bool startTravel(Position goal);
+    std::optional<Position> travelGoal_;
     void stepAutoExplore();
     void stopAutoExplore(const char* reason);
     std::vector<std::string> visibleExploreInterests() const;
