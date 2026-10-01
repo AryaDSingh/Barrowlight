@@ -94,7 +94,6 @@ void checkFloor(const GeneratedDungeon& d, const DungeonGenerationParams& params
             check(regular.insert(name).second, "hand-made modules are distinct" + where);
 
     check(d.landmark == LandmarkKind::None || !params.includeBossRoom, "boss floors have no landmark" + where);
-    check(!d.props.empty(), "floors have some props" + where);
     for (const Prop& prop : d.props)
         for (int i = 0; i < propWidth(prop.kind); ++i) {
             const auto& tile = map.tileAt(prop.pos.x + i, prop.pos.y);
@@ -183,6 +182,25 @@ int main() {
         landmarks += generateDungeon(params, seed).landmark != LandmarkKind::None;
     }
     std::cout << landmarks << "/200 ordinary floors have a landmark\n";
+
+    // Props come as arrangements: throne rooms, galleries and storage corners.
+    int furnished = 0, thrones = 0, statues = 0, storage = 0;
+    for (unsigned seed = 1; seed <= 150; ++seed) {
+        DungeonGenerationParams params;
+        params.includeBossRoom = false;
+        params.region = static_cast<FloorRegion>(seed % 3);
+        const auto d = generateDungeon(params, seed);
+        furnished += !d.props.empty();
+        for (const Prop& prop : d.props) {
+            thrones += prop.kind == PropKind::Throne || prop.kind == PropKind::SkeletonThrone;
+            statues += prop.kind == PropKind::Statue;
+            storage += prop.kind == PropKind::Barrel || prop.kind == PropKind::Crate || prop.kind == PropKind::Sacks;
+        }
+    }
+    std::cout << furnished << "/150 floors furnished: " << thrones << " thrones, " << statues << " statues, "
+              << storage << " storage props\n";
+    check(furnished >= 135, "nearly every floor gets some arrangement");
+    check(statues % 2 == 0, "statues come in pairs");
     check(landmarks >= 100, "at least half of ordinary floors have a landmark");
 
     DungeonGenerationParams exampleParams;

@@ -14,8 +14,14 @@ namespace engine {
 
 namespace {
 
-// Props stand against walls, away from encounters, the start, sockets and
-// set pieces, and only where they leave every floor tile reachable.
+// Props are placed as small arrangements with a purpose, never one by one:
+//   Throne rooms - a throne centred on a long back wall, facing a deep room,
+//                  flanked by a matching pair of statues (Sanctum, Crypts).
+//   Galleries    - a pair of statues at either end of a long back wall.
+//   Storage      - barrels, crates and sacks stacked into a room corner.
+// "Back wall" means floor with a visible wall face directly behind it. Every
+// arrangement keeps clear of encounters, the start, sockets, set pieces and
+// other arrangements, and is kept only if every floor tile stays reachable.
 void placeProps(GeneratedDungeon& d, FloorRegion region, std::mt19937& rng) {
     Map& map = d.map;
     const int w = map.width(), h = map.height();
@@ -38,9 +44,11 @@ void placeProps(GeneratedDungeon& d, FloorRegion region, std::mt19937& rng) {
         }
         return count;
     };
+    const auto wall = [&](int x, int y) { return !map.inBounds(x, y) || map.tileAt(x, y).type == TileType::Wall; };
+    const auto floorAt = [&](int x, int y) { return map.inBounds(x, y) && map.tileAt(x, y).type == TileType::Floor && map.isWalkable(x, y); };
     const auto near = [](Position a, Position b, int r) { return std::abs(a.x - b.x) <= r && std::abs(a.y - b.y) <= r; };
     const auto allowed = [&](Position p) {
-        if (!map.isWalkable(p.x, p.y) || map.tileAt(p.x, p.y).type != TileType::Floor) return false;
+        if (!floorAt(p.x, p.y)) return false;
         const int lx = p.x % kModuleWidth, ly = p.y % kModuleHeight;
         if ((lx >= 8 && lx <= 12 && (ly <= 2 || ly >= kModuleHeight - 3)) ||
             (ly >= 4 && ly <= 8 && (lx <= 2 || lx >= kModuleWidth - 3))) return false; // keep sockets clear
@@ -51,39 +59,83 @@ void placeProps(GeneratedDungeon& d, FloorRegion region, std::mt19937& rng) {
         if (d.landmark != LandmarkKind::None && near(p, d.landmarkAltar, 4)) return false;
         for (const Prop& prop : d.props)
             for (int i = 0; i < propWidth(prop.kind); ++i)
-                if (near(p, {prop.pos.x + i, prop.pos.y}, 1)) return false; // never clumped
-        // Against a wall: props line rooms instead of floating in them.
-        const auto wall = [&](int x, int y) { return map.inBounds(x, y) && map.tileAt(x, y).type == TileType::Wall; };
-        return wall(p.x, p.y - 1) || wall(p.x - 1, p.y) || wall(p.x + 1, p.y);
+                if (near(p, {prop.pos.x + i, prop.pos.y}, 1)) return false; // arrangements never touch
+        return true;
     };
-
-    // Weights per kind: Barrel, Crate, Sacks, Throne, SkeletonThrone, Statue.
-    std::array<int, 6> weights{4, 4, 2, 1, 0, 0};
-    if (region == FloorRegion::Sanctum) weights = {1, 1, 0, 2, 0, 2};
-    if (region == FloorRegion::Crypts) weights = {0, 1, 0, 1, 2, 1};
-    std::discrete_distribution<int> pickKind(weights.begin(), weights.end());
-
-    std::vector<Position> candidates;
-    for (int y = 1; y < h - 1; ++y)
-        for (int x = 1; x < w - 1; ++x) candidates.push_back({x, y});
-    std::shuffle(candidates.begin(), candidates.end(), rng);
-    const int target = std::uniform_int_distribution<int>(10, 16)(rng);
     int baseline = reachable();
-    for (const Position p : candidates) {
-        if (static_cast<int>(d.props.size()) >= target) break;
-        const auto kind = static_cast<PropKind>(pickKind(rng) + 1);
-        const int width = propWidth(kind);
-        bool fits = true;
-        for (int i = 0; i < width && fits; ++i) fits = allowed({p.x + i, p.y});
-        if (!fits) continue;
-        for (int i = 0; i < width; ++i) map.setTile(p.x + i, p.y, Tile{TileType::Wall, false, true});
-        const int now = reachable();
-        if (now != baseline - width) {
-            for (int i = 0; i < width; ++i) map.setTile(p.x + i, p.y, Tile{TileType::Floor, true, true});
-            continue;
+    // Places a whole arrangement or nothing.
+    const auto tryGroup = [&](const std::vector<Prop>& group) {
+        for (const Prop& prop : group)
+            for (int i = 0; i < propWidth(prop.kind); ++i)
+                if (!allowed({prop.pos.x + i, prop.pos.y})) return false;
+        int tiles = 0;
+        for (const Prop& prop : group)
+            for (int i = 0; i < propWidth(prop.kind); ++i, ++tiles)
+                map.setTile(prop.pos.x + i, prop.pos.y, Tile{TileType::Wall, false, true});
+        if (reachable() != baseline - tiles) {
+            for (const Prop& prop : group)
+                for (int i = 0; i < propWidth(prop.kind); ++i)
+                    map.setTile(prop.pos.x + i, prop.pos.y, Tile{TileType::Floor, true, true});
+            return false;
         }
-        baseline = now;
-        d.props.push_back({kind, p});
+        baseline -= tiles;
+        d.props.insert(d.props.end(), group.begin(), group.end());
+        return true;
+    };
+    const auto roll = [&](int low, int high) { return std::uniform_int_distribution<int>(low, high)(rng); };
+
+    // Back-wall runs: horizontal stretches of floor with wall directly behind.
+    struct Run { int y, x0, x1; };
+    std::vector<Run> runs;
+    for (int y = 1; y < h - 1; ++y)
+        for (int x = 1; x < w - 1; ++x) {
+            if (!(floorAt(x, y) && wall(x, y - 1))) continue;
+            int end = x;
+            while (end + 1 < w - 1 && floorAt(end + 1, y) && wall(end + 1, y - 1)) ++end;
+            runs.push_back({y, x, end});
+            x = end;
+        }
+    std::shuffle(runs.begin(), runs.end(), rng);
+    const auto depth = [&](int x, int y) { int n = 0; while (n < 6 && floorAt(x, y + n)) ++n; return n; };
+
+    // --- Throne rooms and galleries ---------------------------------------
+    const bool grand = region != FloorRegion::Barracks;
+    int thrones = grand ? roll(1, 2) : roll(0, 1);
+    int galleries = grand ? roll(1, 2) : 0;
+    const PropKind throne = region == FloorRegion::Crypts ? PropKind::SkeletonThrone : PropKind::Throne;
+    for (const Run& run : runs) {
+        const int length = run.x1 - run.x0 + 1, c = (run.x0 + run.x1) / 2;
+        if (thrones > 0 && length >= 5 && depth(c, run.y) >= 4) {
+            std::vector<Prop> group{{throne, {c, run.y}}};
+            if (grand && length >= 9) {
+                group.push_back({PropKind::Statue, {c - 4, run.y}});
+                group.push_back({PropKind::Statue, {c + 3, run.y}});
+            }
+            if (tryGroup(group)) { --thrones; continue; }
+        }
+        if (galleries > 0 && length >= 12 && depth(run.x0 + 1, run.y) >= 3 && depth(run.x1 - 1, run.y) >= 3) {
+            if (tryGroup({{PropKind::Statue, {run.x0 + 1, run.y}}, {PropKind::Statue, {run.x1 - 2, run.y}}})) --galleries;
+        }
+    }
+
+    // --- Storage corners -------------------------------------------------------
+    std::vector<PropKind> stock{PropKind::Barrel, PropKind::Crate, PropKind::Sacks};
+    int storage = roll(4, 6);
+    if (region == FloorRegion::Sanctum) { stock = {PropKind::Crate, PropKind::Barrel}; storage = roll(2, 3); }
+    if (region == FloorRegion::Crypts) { stock = {PropKind::Crate}; storage = roll(1, 2); }
+    for (const Run& run : runs) {
+        if (storage <= 0) break;
+        // A corner: the run's end meets a side wall.
+        const bool left = wall(run.x0 - 1, run.y), right = wall(run.x1 + 1, run.y);
+        if (!left && !right) continue;
+        const int dir = left ? 1 : -1;
+        const int x = left ? run.x0 : run.x1;
+        const auto item = [&]() { return stock[static_cast<std::size_t>(roll(0, static_cast<int>(stock.size()) - 1))]; };
+        std::vector<Prop> group{{item(), {x, run.y}}, {item(), {x + dir, run.y}}};
+        const int extra = roll(0, 2);
+        if (extra >= 1) group.push_back({item(), {x, run.y + 1}});
+        if (extra >= 2) group.push_back({item(), {x + 2 * dir, run.y}});
+        if (tryGroup(group)) --storage;
     }
 }
 
