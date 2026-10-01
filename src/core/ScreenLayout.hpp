@@ -35,6 +35,20 @@ inline sf::FloatRect townRow(int i) { return {{40, 140.f + 42.f * i}, {620, 38}}
 inline const sf::FloatRect kTownPrevious{{40, 530}, {140, 34}}, kTownNext{{520, 530}, {140, 34}};
 inline const sf::FloatRect kTownPreview{{690, 96}, {554, 480}};
 inline const sf::FloatRect kTownTrade{{714, 512}, {300, 44}};
+inline const sf::FloatRect kTownLeaveShop{{1084, 512}, {140, 44}};
+
+// The town square: a 31x13 grid of 40px cells under the top bar. Each
+// building is a click target; the merchant's list opens over the square.
+inline constexpr float kTownCell = 40.f;
+inline const sf::FloatRect kTownScene{{20, 76}, {31 * kTownCell, 13 * kTownCell}};
+inline sf::FloatRect townCells(float c, float r, float w, float h) {
+    return {{kTownScene.position.x + c * kTownCell, kTownScene.position.y + r * kTownCell}, {w * kTownCell, h * kTownCell}};
+}
+inline const sf::FloatRect kTownInnSpot = townCells(0, 1, 9, 7);
+inline const sf::FloatRect kTownStashSpot = townCells(9, 8, 4, 3);
+inline const sf::FloatRect kTownFountainSpot = townCells(12, 1, 6, 6);
+inline const sf::FloatRect kTownMerchantSpot = townCells(18, 1, 7, 7);
+inline const sf::FloatRect kTownGateSpot = townCells(25, 0, 6, 7);
 
 // --- Dungeon selection ------------------------------------------------------------
 inline sf::FloatRect dungeonCard(int i) { return {{40.f + 610.f * i, 100}, {590, 150}}; }

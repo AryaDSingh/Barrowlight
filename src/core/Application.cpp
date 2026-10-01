@@ -403,7 +403,7 @@ void Application::drawActorShadow(sf::Vector2f tileTopLeft) {
 // Darkness with pools of light: the map is multiplied by a light map that
 // starts at a dim ambient level, plus additive radial lights (the player's
 // own, torches, stairs, an unused shrine). Remembered areas stay readable.
-void Application::renderLighting(const std::vector<std::pair<sf::Vector2f, sf::Color>>& lights) {
+bool Application::ensureLightBlob() {
     if (!lightBlob_) {
         constexpr unsigned kSize = 128;
         sf::Image blob(sf::Vector2u{kSize, kSize}, sf::Color::Transparent);
@@ -415,10 +415,15 @@ void Application::renderLighting(const std::vector<std::pair<sf::Vector2f, sf::C
                 blob.setPixel({x, y}, sf::Color(255, 255, 255, static_cast<std::uint8_t>(255 * falloff)));
             }
         lightBlob_.emplace();
-        if (!lightBlob_->loadFromImage(blob)) { lightBlob_.reset(); return; }
+        if (!lightBlob_->loadFromImage(blob)) { lightBlob_.reset(); return false; }
         lightBlob_->setSmooth(true);
-        lightMap_.emplace(sf::Vector2u{static_cast<unsigned>(kMapWidth), static_cast<unsigned>(kMapHeight)});
     }
+    return true;
+}
+
+void Application::renderLighting(const std::vector<std::pair<sf::Vector2f, sf::Color>>& lights) {
+    if (!ensureLightBlob()) return;
+    if (!lightMap_) lightMap_.emplace(sf::Vector2u{static_cast<unsigned>(kMapWidth), static_cast<unsigned>(kMapHeight)});
     auto& target = *lightMap_;
     const sf::Color ambient(170, 160, 182);
     target.clear(ambient);

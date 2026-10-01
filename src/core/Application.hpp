@@ -271,6 +271,7 @@ private:
     int gold_=0, quietTurns_=0, restTurns_=0;
     bool combatThisTurn_=false, exitMenu_=false, selling_=false;
     std::size_t shopSelection_=0;
+    bool merchantOpen_=false; // the merchant list over the town square
     sf::Clock restClock_;
     bool autoExploring_=false;
     int exploreStepsLeft_=0;
@@ -316,6 +317,11 @@ private:
     void handleTownKey(sf::Keyboard::Key key);
     void handleTownMouse(const sf::Event& event);
     void renderTown();
+    // The town square (ApplicationTown.cpp): buildings drawn from the
+    // dungeon art, lit at night, each one a click target.
+    void renderTownSquare();
+    void renderMerchant();
+    std::optional<sf::RenderTexture> townLight_;
     void renderTravel();
     void handleTravelKey(sf::Keyboard::Key key);
     void handleTravelMouse(const sf::Event& event);
@@ -428,6 +434,7 @@ private:
     std::optional<sf::Texture> lightBlob_;
     std::optional<sf::RenderTexture> lightMap_;
     void renderLighting(const std::vector<std::pair<sf::Vector2f, sf::Color>>& lights);
+    bool ensureLightBlob();
     void drawActorShadow(sf::Vector2f tileTopLeft);
 
     // Character animation (ApplicationAnimation.cpp): purely cosmetic and

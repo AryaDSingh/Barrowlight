@@ -33,6 +33,7 @@ void Application::handleTownMouse(const sf::Event& event) {
     if(dungeonMenu_) { handleDungeonMouse(event); return; }
     if(const auto* moved=event.getIf<sf::Event::MouseMoved>()) {
         mousePixel_=moved->position;
+        if(!merchantOpen_) return;
         const auto& bag=player_.inventory().items();
         const auto stock=rewardItemDefinitions();
         const auto count=selling_?bag.size():stock.size();
@@ -41,7 +42,7 @@ void Application::handleTownMouse(const sf::Event& event) {
             if(contains(townRow(static_cast<int>(row)),moved->position)) { shopSelection_=first+row; break; }
     }
     if(const auto* wheel=event.getIf<sf::Event::MouseWheelScrolled>()) {
-        if(wheel->position.x>kTownPreview.position.x) return;
+        if(!merchantOpen_ || wheel->position.x>kTownPreview.position.x) return;
         const auto stock=rewardItemDefinitions();
         const auto count=selling_?player_.inventory().items().size():stock.size();
         if(!count) return;
@@ -51,11 +52,20 @@ void Application::handleTownMouse(const sf::Event& event) {
     if(!click || click->button!=sf::Mouse::Button::Left) return;
     const auto p=click->position;
     if(contains(kTownDungeons,p)) { handleTownKey(sf::Keyboard::Key::M); return; }
-    if(contains(kTownBuy,p)) { selling_=false; shopSelection_=0; return; }
-    if(contains(kTownSell,p)) { selling_=true; shopSelection_=0; return; }
     if(contains(kTownInn,p)) { handleTownKey(sf::Keyboard::Key::R); return; }
     if(contains(kTownEquipment,p)) { openInventory(); return; }
     if(contains(kTownReturn,p)) { handleTownKey(sf::Keyboard::Key::D); return; }
+    if(!merchantOpen_) {
+        // The square: every building is a door to its service.
+        if(contains(kTownMerchantSpot,p)) { merchantOpen_=true; selling_=false; shopSelection_=0; }
+        else if(contains(kTownInnSpot,p)) handleTownKey(sf::Keyboard::Key::R);
+        else if(contains(kTownStashSpot,p)) openInventory();
+        else if(contains(kTownGateSpot,p)) handleTownKey(sf::Keyboard::Key::M);
+        return;
+    }
+    if(contains(kTownLeaveShop,p)) { merchantOpen_=false; return; }
+    if(contains(kTownBuy,p)) { selling_=false; shopSelection_=0; return; }
+    if(contains(kTownSell,p)) { selling_=true; shopSelection_=0; return; }
     if(contains(kTownTrade,p)) { handleTownKey(sf::Keyboard::Key::Enter); return; }
     const auto stock=rewardItemDefinitions();
     const auto count=selling_?player_.inventory().items().size():stock.size();
@@ -116,7 +126,7 @@ void Application::reviveInTown() {
     }
     if(!landed) { log("No free return tile; revival has not spent a life."); return; }
     if(!restoreState(next)) return;
-    mode_=GameMode::Town; selling_=false; shopSelection_=0;
+    mode_=GameMode::Town; selling_=false; shopSelection_=0; merchantOpen_=false;
     log("Revived in town. Extra lives left: ",extraLives_,". Return leads to the floor entrance.");
 }
 
@@ -127,7 +137,7 @@ void Application::returnToTown() {
     }
     cancelTargeting(); inventoryOpen_=false; vaultMenu_=0; shrineMenu_=false; exitMenu_=false; restTurns_=0;
     dissolveMinions();
-    selling_=false; shopSelection_=0; dungeonMenu_=false; mode_=GameMode::Town;
+    selling_=false; shopSelection_=0; merchantOpen_=false; dungeonMenu_=false; mode_=GameMode::Town;
     log("Waystone returns you to town. Your dungeon progress is preserved.");
 }
 
@@ -209,17 +219,25 @@ void Application::handleTownKey(sf::Keyboard::Key key) {
     if(key==sf::Keyboard::Key::M) {
         dungeonMenu_=true; dungeonSelection_=dungeonIndex(currentFloor_); dungeonDepth_=(currentFloor_-1)%10+1; return;
     }
-    if (key==sf::Keyboard::Key::Escape) { window_.close(); return; }
+    if (key==sf::Keyboard::Key::Escape) {
+        if (merchantOpen_) merchantOpen_=false; else window_.close();
+        return;
+    }
     if (key==sf::Keyboard::Key::B) { openInventory(); return; }
     if (key==sf::Keyboard::Key::D) {
-        mode_=GameMode::Playing; resumeLevelUpSequence(); updateFieldOfView();
+        merchantOpen_=false; mode_=GameMode::Playing; resumeLevelUpSequence(); updateFieldOfView();
         log("Returned to the exact place you left on floor ",currentFloor_,"."); return;
     }
     if (key==sf::Keyboard::Key::R) {
         player_.stats().hp=player_.stats().maxHp; player_.stats().mana=player_.stats().maxMana;
         player_.talents().resetCooldowns(); log("Recovered HP, mana and ability cooldowns at the inn."); return;
     }
-    if (key==sf::Keyboard::Key::Tab) { selling_=!selling_; shopSelection_=0; }
+    if (key==sf::Keyboard::Key::Tab) {
+        // Tab visits the merchant, then switches between buying and selling.
+        if (merchantOpen_) selling_=!selling_; else { merchantOpen_=true; selling_=false; }
+        shopSelection_=0;
+    }
+    if (!merchantOpen_) return;
     const auto stock=rewardItemDefinitions();
     const std::size_t count=selling_?player_.inventory().items().size():stock.size();
     if (!count) { shopSelection_=0; return; }
@@ -259,7 +277,18 @@ void Application::renderTown() {
     ui_.button(window_,kTownEquipment,"Equipment (B)",hovered(kTownEquipment));
     ui_.button(window_,kTownDungeons,"Choose dungeon (M)",hovered(kTownDungeons));
     ui_.button(window_,kTownReturn,"Return to floor (D)",hovered(kTownReturn));
+    renderTownSquare();
+    if (merchantOpen_) renderMerchant();
+    if (!logMessages_.empty()) ui_.text(window_,logMessages_.back(),{40,612},16,sf::Color(232,196,130));
+    ui_.text(window_,merchantOpen_?"Tab buy or sell   Enter trade   Esc back to the square   F5/F9 save or load":
+        "Click a building to visit it   D resume   R inn   B stash   M dungeons   Tab merchant   F5/F9 save or load",{40,684},14,ui::kMuted);
+    if (inventoryOpen_) renderInventory();
+}
 
+void Application::renderMerchant() {
+    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
+    const auto hovered=[&](const sf::FloatRect& r){ return !inventoryOpen_ && mouse && r.contains(*mouse); };
+    ui_.panel(window_,{{kTownScene.position.x,kTownScene.position.y},{kTownScene.size.x,kTownScene.size.y}},true);
     // --- Merchant list ---------------------------------------------------------
     ui_.button(window_,kTownBuy,"Buy",hovered(kTownBuy) || !selling_);
     ui_.button(window_,kTownSell,"Sell",hovered(kTownSell) || selling_);
@@ -332,15 +361,12 @@ void Application::renderTown() {
         const bool canTrade=selling_?salePrice(*bag[shopSelection_])>0:(gold_>=kShopPrice && !player_.inventory().full());
         ui_.button(window_,kTownTrade,selling_?"Sell for "+std::to_string(salePrice(*bag[shopSelection_]))+" gold (Enter)":
             "Buy for "+std::to_string(kShopPrice)+" gold (Enter)",hovered(kTownTrade),canTrade,16);
-        if(!selling_ && player_.inventory().full()) ui_.text(window_,"Your bag is full.",{kTownTrade.position.x+316,kTownTrade.position.y+12},15,ui::kBad);
-        else if(!selling_ && gold_<kShopPrice) ui_.text(window_,"Not enough gold.",{kTownTrade.position.x+316,kTownTrade.position.y+12},15,ui::kBad);
+        if(!selling_ && player_.inventory().full()) ui_.text(window_,"Your bag is full.",{kTownTrade.position.x,kTownTrade.position.y-28},15,ui::kBad);
+        else if(!selling_ && gold_<kShopPrice) ui_.text(window_,"Not enough gold.",{kTownTrade.position.x,kTownTrade.position.y-28},15,ui::kBad);
     } else {
         ui_.textCentered(window_,selling_?"Nothing to sell.":"Nothing in stock.",kTownPreview,18,ui::kMuted);
     }
-    ui_.text(window_,"Floors you leave pause. Returning resumes where you stood; nothing respawns.",{40,596},15,ui::kMuted);
-    if (!logMessages_.empty()) ui_.text(window_,logMessages_.back(),{40,624},16,sf::Color(232,196,130));
-    ui_.text(window_,"D resume   R inn   B equipment   M dungeons   Tab buy or sell   F5/F9 save or load",{40,684},14,ui::kMuted);
-    if (inventoryOpen_) renderInventory();
+    ui_.button(window_,kTownLeaveShop,"Leave (Esc)",hovered(kTownLeaveShop),true,16);
 }
 
 void Application::handleDungeonKey(sf::Keyboard::Key key) {

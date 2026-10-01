@@ -430,8 +430,13 @@ struct ApplicationRewardsTestAccess {
         app.player_.inventory().take(app.player_.inventory().items().size()-1); app.inventoryBagPage_=0;
         click(1190,35); check(!app.inventoryOpen_ && app.player_.position().x==10,"Inventory close click cannot activate the underlying world");
 
-        app.mode_=GameMode::Town; app.gold_=100; app.selling_=false; app.shopSelection_=0;
+        app.mode_=GameMode::Town; app.gold_=100; app.selling_=false; app.shopSelection_=0; app.merchantOpen_=false;
+        snapshot("ui-town-square.png");
+        app.mousePixel_=screen::center(screen::kTownGateSpot); snapshot("ui-town-hover.png"); app.mousePixel_.reset();
         const auto itemIdBefore=app.nextItemId_;
+        clickOn(screen::kTownTrade);
+        check(app.gold_==100 && app.nextItemId_==itemIdBefore && !app.merchantOpen_,"Shop buttons are inert until the merchant is visited");
+        clickOn(screen::kTownMerchantSpot); check(app.merchantOpen_,"Clicking the merchant's stall opens the merchant");
         clickOn(screen::kTownTrade);
         check(app.gold_==100 && app.nextItemId_==itemIdBefore && app.player_.inventory().items().size()==50,"Full bag purchase spends no gold or item IDs");
         clickOn(screen::kTownSell); const int goldBeforeSale=app.gold_; clickOn(screen::kTownTrade);
@@ -439,6 +444,9 @@ struct ApplicationRewardsTestAccess {
         clickOn(screen::kTownBuy); const int goldBeforeBuy=app.gold_; clickOn(screen::kTownTrade);
         check(app.gold_==goldBeforeBuy-30 && app.player_.inventory().items().size()==50,"Buy button trades exactly one stock item");
         snapshot("ui-town.png");
+        clickOn(screen::kTownLeaveShop); check(!app.merchantOpen_,"Leave returns to the town square");
+        clickOn(screen::kTownGateSpot); check(app.dungeonMenu_,"Clicking the gate opens the dungeon choice");
+        app.handleTownKey(sf::Keyboard::Key::Escape); check(!app.dungeonMenu_ && app.window_.isOpen(),"Esc leaves the dungeon choice");
         clickOn(screen::kTownReturn); check(app.mode_==GameMode::Playing && app.player_.position().x==10,"Town return button resumes the same floor position");
 
         // Landmark shrine: kneel beside the altar, pick one blessing, then it's spent.
