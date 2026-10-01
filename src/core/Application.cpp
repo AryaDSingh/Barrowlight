@@ -415,6 +415,7 @@ void Application::handleEvent(const sf::Event& input) {
     }
     if(exitMenu_ && !event->is<sf::Event::KeyPressed>()) { handleTravelMouse(*event); return; }
     if(vaultMenu_ && !event->is<sf::Event::KeyPressed>()) { handleVaultMouse(*event); return; }
+    if(shrineMenu_ && !event->is<sf::Event::KeyPressed>()) { handleShrineMouse(*event); return; }
     if (mode_ == GameMode::Playing && !inventoryOpen_ && !vaultMenu_ && !exitMenu_) handleTargetingMouse(*event);
 
     if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
@@ -424,6 +425,7 @@ void Application::handleEvent(const sf::Event& input) {
             return;
         }
         if (vaultMenu_) { handleVaultKey(keyPressed->code); return; }
+        if (shrineMenu_) { handleShrineKey(keyPressed->code); return; }
         if (keyPressed->code == sf::Keyboard::Key::Escape) {
             if (mode_ == GameMode::AbilityChoice) { handleTreeKey(keyPressed->code,keyPressed->shift); return; }
             if (inventoryOpen_) {
@@ -1327,6 +1329,7 @@ void Application::regenerateLevel(unsigned int seed) {
     talentPage_ = 0;
     const auto theme=floorTheme(currentFloor_);
     DungeonGenerationParams params;
+    params.region=theme.region;
     // Only specific floors generate with a boss room at all -- every
     // other floor is a pure "clear it, find the door" dungeon. kFinalFloor
     // (10) is a placeholder using the same GoblinWarlord as
@@ -1339,6 +1342,7 @@ void Application::regenerateLevel(unsigned int seed) {
     vaultExists_=dungeon.hasVault; vaultOpened_=false; vaultClaimed_=false;
     vaultCenter_=dungeon.vaultCenter; vaultEntrance_=dungeon.vaultEntrance;
     vaultRewards_.clear();
+    landmark_=dungeon.landmark; landmarkAltar_=dungeon.landmarkAltar; landmarkUsed_=false; shrineMenu_=false;
 
     map_ = dungeon.map;
 
@@ -1452,6 +1456,7 @@ SaveGameState Application::captureState(bool includeFloors) {
     state.lootRngState = loot_.state();
     state.chestPosition = chestPosition_; state.chestExists = chestExists_; state.chestClaimed = chestClaimed_;
     state.ordinaryDrops = ordinaryDrops_;
+    state.landmark=static_cast<int>(landmark_); state.landmarkAltar=landmarkAltar_; state.landmarkUsed=landmarkUsed_;
     state.vaultExists=vaultExists_; state.vaultOpened=vaultOpened_; state.vaultClaimed=vaultClaimed_;
     state.vaultCenter=vaultCenter_; state.vaultEntrance=vaultEntrance_;
     const auto saveItem = [&](const Item& item, int location) {
@@ -1521,7 +1526,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     if(state.extraLives<0 || state.extraLives>2 || (!state.adventureMode && state.extraLives!=0)) { log("Invalid death-mode state."); return false; }
     autoExploring_=false; exploreSeenInterests_.clear();
     inventoryDragSource_.reset();
-    inventoryOpen_=false; vaultMenu_=0; exitMenu_=false; restTurns_=0;
+    inventoryOpen_=false; vaultMenu_=0; shrineMenu_=false; exitMenu_=false; restTurns_=0;
     inventorySelection_=0; cancelTargeting(); mousePixel_.reset(); talentPage_=0;
     TalentSet restoredTalents;
     for (const auto& saved:state.playerTalents) {
@@ -1598,6 +1603,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     loot_.restore(state.lootRngState);
     chestPosition_ = state.chestPosition; chestExists_ = state.chestExists; chestClaimed_ = state.chestClaimed;
     ordinaryDrops_ = state.ordinaryDrops;
+    landmark_=static_cast<LandmarkKind>(state.landmark); landmarkAltar_=state.landmarkAltar; landmarkUsed_=state.landmarkUsed;
     vaultExists_=state.vaultExists; vaultOpened_=state.vaultOpened; vaultClaimed_=state.vaultClaimed;
     vaultCenter_=state.vaultCenter; vaultEntrance_=state.vaultEntrance;
     vaultRewards_.clear(); if (vaultExists_ && !vaultClaimed_) vaultRewards_.resize(3);
@@ -1664,7 +1670,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
 void Application::update() {
     if (autoExploring_) { stepAutoExplore(); return; }
     if (restTurns_<=0) return;
-    if (mode_!=GameMode::Playing || inventoryOpen_ || vaultMenu_ || exitMenu_ || dangerNearby()) {
+    if (mode_!=GameMode::Playing || inventoryOpen_ || vaultMenu_ || shrineMenu_ || exitMenu_ || dangerNearby()) {
         restTurns_=0; log("Rest stopped."); return;
     }
     bool ready=quietTurns_>=10 && player_.stats().hp>=player_.stats().maxHp && player_.stats().mana>=player_.stats().maxMana;
@@ -1849,7 +1855,8 @@ void Application::render() {
                 continue;
             }
 
-            const TileType tileType = map_.tileAt(x, y).type;
+            const bool altarTile = landmark_ != LandmarkKind::None && x == landmarkAltar_.x && y == landmarkAltar_.y;
+            const TileType tileType = altarTile ? TileType::Floor : map_.tileAt(x, y).type;
             sf::Color baseColor;
             if (tileType == TileType::Wall) {
                 baseColor = themeColor(theme.wall);
@@ -1876,7 +1883,7 @@ void Application::render() {
                 window_.draw(tileShape);
             }
 
-            switch (decorAt(map_, x, y, currentFloor_, theme.region)) {
+            switch (altarTile ? Decor::None : decorAt(map_, x, y, currentFloor_, theme.region)) {
                 case Decor::Torch:
                     // Raised a little so it sits on the wall face, not at its foot.
                     sprites_.draw(window_, torchFrame(x, y, animationClock_.getElapsedTime().asSeconds()),
@@ -1893,6 +1900,7 @@ void Application::render() {
         }
     }
 
+    renderLandmark();
     renderGroundItems();
     for (auto& m : monsters_) {
         if (m->stats().hp <= 0) {
@@ -1996,10 +2004,11 @@ void Application::render() {
 
     renderTravel();
     renderVault();
-    if (vaultMenu_ || exitMenu_) mapHints_.clear();
+    renderShrine();
+    if (vaultMenu_ || shrineMenu_ || exitMenu_) mapHints_.clear();
     renderMapHints();
     if (inventoryOpen_) renderInventory();
-    else if (!vaultMenu_ && !exitMenu_) renderHudTooltips();
+    else if (!vaultMenu_ && !shrineMenu_ && !exitMenu_) renderHudTooltips();
     window_.display();
 }
 

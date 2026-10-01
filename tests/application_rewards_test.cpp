@@ -54,6 +54,7 @@ struct ApplicationRewardsTestAccess {
             app.mode_ = GameMode::Playing; app.playerClass_ = cls;
             app.autoExploring_=false; app.restTurns_=0; app.quietTurns_=0; app.combatThisTurn_=false;
             app.vaultExists_=app.vaultOpened_=app.vaultClaimed_=false; app.vaultMenu_=0; app.exitMenu_=false;
+            app.landmark_=LandmarkKind::None; app.landmarkUsed_=false; app.shrineMenu_=false;
             app.floorCache_.clear(); app.floorEntrance_={1,1}; app.floorExit_={30,20};
             app.currentFloor_ = 1; app.boss_ = nullptr;
             app.pendingFinalVictory_ = false;
@@ -441,6 +442,24 @@ struct ApplicationRewardsTestAccess {
         check(app.gold_==goldBeforeBuy-30 && app.player_.inventory().items().size()==50,"Buy button trades exactly one stock item");
         snapshot("ui-town.png");
         clickOn(screen::kTownReturn); check(app.mode_==GameMode::Playing && app.player_.position().x==10,"Town return button resumes the same floor position");
+
+        // Landmark shrine: kneel beside the altar, pick one blessing, then it's spent.
+        setup(PlayerClass::Mage);
+        app.landmark_=LandmarkKind::Shrine; app.landmarkAltar_={11,10};
+        app.map_.setTile(11,10,Tile{TileType::Wall,false,false}); app.updateFieldOfView();
+        app.player_.stats().hp=40; app.gold_=0;
+        app.pickupItem();
+        check(app.shrineMenu_,"G beside the altar opens the shrine");
+        snapshot("ui-shrine.png");
+        clickOn(screen::shrineChoice(2));
+        check(app.shrineMenu_ && !app.landmarkUsed_,"An unaffordable blessing is refused without spending the shrine");
+        clickOn(screen::shrineChoice(0));
+        check(!app.shrineMenu_ && app.landmarkUsed_ && app.player_.stats().hp==app.player_.stats().maxHp,
+            "Restoration heals fully and spends the shrine");
+        app.pickupItem();
+        check(!app.shrineMenu_,"A spent shrine stays closed");
+        roundTrip();
+        check(app.landmark_==LandmarkKind::Shrine && app.landmarkUsed_ && app.landmarkAltar_.x==11,"Save/load keeps the landmark and its state");
 
         setup(PlayerClass::Mage);
         app.vaultExists_=true; app.vaultEntrance_={11,10}; app.vaultMenu_=1;

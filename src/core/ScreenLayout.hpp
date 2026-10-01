@@ -52,4 +52,9 @@ inline sf::FloatRect vaultRewardCard(int i) { return {{60.f + 400.f * i, 110}, {
 inline sf::FloatRect vaultCommit(int menu) { return menu == 1 ? sf::FloatRect{{330, 514}, {300, 44}} : sf::FloatRect{{60, 490}, {320, 46}}; }
 inline sf::FloatRect vaultCancel(int menu) { return menu == 1 ? sf::FloatRect{{650, 514}, {300, 44}} : sf::FloatRect{{396, 490}, {300, 46}}; }
 
+// --- Shrine (landmark event) --------------------------------------------------------
+inline const sf::FloatRect kShrineDialog{{230, 110}, {820, 470}};
+inline sf::FloatRect shrineChoice(int i) { return {{262.f + 258.f * i, 210}, {240, 290}}; }
+inline const sf::FloatRect kShrineLeave{{540, 518}, {200, 40}};
+
 } // namespace engine::screen

@@ -4,6 +4,8 @@
 #include <vector>
 
 #include "core/Position.hpp"
+#include "world/FloorTheme.hpp"
+#include "world/Landmark.hpp"
 #include "world/Map.hpp"
 
 namespace engine {
@@ -15,6 +17,12 @@ struct DungeonGenerationParams {
     bool includeBossRoom = true;
     // A sealed vault module, placed in neither the start nor the final cell.
     bool includeVault = false;
+    // Chooses the procedural cell styles and the landmark's local name.
+    FloorRegion region = FloorRegion::Barracks;
+    // Chance that a non-boss floor is built around a landmark set piece.
+    float landmarkChance = 0.6f;
+    // Share of ordinary cells built procedurally; the rest are hand-made.
+    float proceduralShare = 0.5f;
 };
 
 struct GeneratedDungeon {
@@ -30,11 +38,15 @@ struct GeneratedDungeon {
     Position bossRoomCenter;                  // valid only if hasBossRoom
     int roomCount = 0;                        // modules on the floor
     std::vector<std::string> moduleNames;     // row-major, for debugging/printing
+    LandmarkKind landmark = LandmarkKind::None;
+    Position landmarkAltar{};                 // the solid altar tile; valid if landmark != None
 };
 
-// Builds a floor from a 3x3 grid of hand-authored modules (see
-// DungeonModules.hpp), drawn without repeats from the regular pool and
-// randomly mirrored. Adjacent modules connect through 3-wide sockets: a
+// Builds a floor from a 3x3 grid of module-sized cells (see
+// DungeonModules.hpp). Most floors are built around a landmark set piece in
+// a random cell; every other ordinary cell is either generated (see
+// ProceduralModules.hpp) or a hand-made module drawn without repeats from
+// the regular pool, randomly mirrored. Adjacent modules connect through 3-wide sockets: a
 // random spanning tree of the grid guarantees the floor is one connected
 // space, then most remaining neighbor pairs are opened too, so there are
 // usually several routes between modules and monsters can arrive from

@@ -114,6 +114,8 @@ set(WORLD_HEADERS
     src/world/Pathfinder.hpp
     src/world/DungeonGenerator.hpp
     src/world/DungeonModules.hpp
+    src/world/ProceduralModules.hpp
+    src/world/Landmark.hpp
 )
 
 set(AI_HEADERS
@@ -142,6 +144,7 @@ add_executable(roguelike
     src/core/ApplicationTravel.cpp
     src/core/ApplicationExplore.cpp
     src/core/ApplicationLoot.cpp
+    src/core/ApplicationLandmark.cpp
     src/core/ApplicationHidden.cpp
     src/core/ApplicationTalents.cpp
     src/world/TalentTargeting.cpp
@@ -153,6 +156,7 @@ add_executable(roguelike
     src/world/Pathfinder.cpp
     src/world/DungeonGenerator.cpp
     src/world/DungeonModules.cpp
+    src/world/ProceduralModules.cpp
     src/ai/Chaser.cpp
     src/ai/Kiter.cpp
     src/ai/Support.cpp
@@ -312,6 +316,7 @@ add_executable(dungeon_test
     src/world/Map.cpp
     src/world/DungeonGenerator.cpp
     src/world/DungeonModules.cpp
+    src/world/ProceduralModules.cpp
     ${COMMON_HEADERS}
     ${WORLD_HEADERS}
 )

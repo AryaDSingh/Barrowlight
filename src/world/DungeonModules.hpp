@@ -24,6 +24,9 @@ namespace engine {
 //      module has no A, its center tile is the anchor.
 //   V  vault gate: wall until the player opens it (vault module only)
 //   C  vault cache: center of the sealed 5x5 vault room (vault module only)
+//   S  landmark altar: a solid object the player interacts with from beside
+//      it (landmark modules only). Landmarks get no encounter unless an A
+//      asks for one.
 struct ModuleTemplate {
     std::string name;
     std::vector<std::string> rows;
@@ -40,9 +43,13 @@ const std::vector<ModuleTemplate>& regularModules();
 const ModuleTemplate& bossModule();
 // Holds the sealed vault room; its gate is exactly 3 tiles from the cache.
 const ModuleTemplate& vaultModule();
+// Set pieces with an event (each has one S). Index matches LandmarkKind - 1.
+const std::vector<ModuleTemplate>& landmarkModules();
 
 // One message per broken authoring rule across every module; empty when
 // all modules are valid.
 std::vector<std::string> validateModules();
+// The same rules for one regular module (used to check procedural cells).
+std::vector<std::string> validateRegularModule(const ModuleTemplate& module);
 
 } // namespace engine

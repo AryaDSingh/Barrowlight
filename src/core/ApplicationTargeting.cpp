@@ -172,6 +172,8 @@ void Application::renderMinimap(sf::FloatRect area) {
         if (m->stats().hp>0 && !m->tactics.concealed && exploredMap_.at(p.x,p.y)==Visibility::Visible)
             cell(p.x,p.y,m->allied?sf::Color(110,230,230):sf::Color(230,70,60),0.5f);
     }
+    if (landmark_!=LandmarkKind::None && exploredMap_.at(landmarkAltar_.x,landmarkAltar_.y)!=Visibility::Hidden)
+        cell(landmarkAltar_.x,landmarkAltar_.y,landmarkUsed_?sf::Color(150,140,120):sf::Color(255,190,90),1.f);
     cell(player_.position().x,player_.position().y,sf::Color(255,214,90),1.f);
     window_.draw(cells);
     // The rectangle the main view currently shows.
@@ -515,6 +517,21 @@ void Application::handleTargetingMouse(const sf::Event& event) {
         if (aimingTalent_) { tryUseTalent(*aimingTalent_, targetCursor_); return; }
         if (inspecting_) return; // Explicit I/Tab inspection remains a free mode.
         const auto vision=exploredMap_.at(tile->x,tile->y);
+        // The landmark altar: use it from beside it, or walk over first.
+        if (landmark_!=LandmarkKind::None && vision!=Visibility::Hidden && same(*tile,landmarkAltar_)) {
+            if (nearAltar()) { openShrine(); return; }
+            std::optional<Position> best;
+            const auto from=player_.position();
+            for (const Position d:{Position{1,0},Position{-1,0},Position{0,1},Position{0,-1}}) {
+                const Position n{landmarkAltar_.x+d.x,landmarkAltar_.y+d.y};
+                if (!map_.isWalkable(n.x,n.y) || exploredMap_.at(n.x,n.y)==Visibility::Hidden) continue;
+                if (!best || std::abs(n.x-from.x)+std::abs(n.y-from.y)<std::abs(best->x-from.x)+std::abs(best->y-from.y)) best=n;
+            }
+            if (!best) { log("You can't reach the altar from here."); return; }
+            if (!startTravel(*best)) { log("Danger is too close to kneel at the altar."); return; }
+            travelToAltar_=autoExploring_;
+            return;
+        }
         if (auto* target=dynamic_cast<Monster*>(actorAt(*tile,&player_));
             vision==Visibility::Visible && target && !target->allied && !target->tactics.concealed) {
             for (std::size_t i=0;i<player_.talents().knownTalents().size();++i)

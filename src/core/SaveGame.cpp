@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include "entities/Item.hpp"
 #include "entities/RunProgression.hpp"
+#include "world/Landmark.hpp"
 #include "entities/HiddenTrees.hpp"
 
 namespace engine {
@@ -39,7 +40,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 22;
+constexpr int kSaveFormatVersion = 23;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -333,6 +334,7 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
     for (int floor:state.deathlessSpentFloors) out << ' ' << floor;
     out << '\n' << state.dungeonLevels[0] << ' ' << state.dungeonLevels[1] << '\n';
     out << state.adventureMode << ' ' << state.extraLives << '\n';
+    out << state.landmark << ' ' << state.landmarkAltar.x << ' ' << state.landmarkAltar.y << ' ' << state.landmarkUsed << '\n';
     return static_cast<bool>(out);
 }
 
@@ -340,7 +342,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
+    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
         return std::nullopt;
     }
 
@@ -600,6 +602,10 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
     }
     state.dungeonLevels={};
     if(version>=21 && (!(in>>state.adventureMode>>state.extraLives) || state.extraLives<0 || state.extraLives>2 || (!state.adventureMode && state.extraLives!=0))) return std::nullopt;
+    if (version>=23 && !(in>>state.landmark>>state.landmarkAltar.x>>state.landmarkAltar.y>>state.landmarkUsed)) return std::nullopt;
+    if (state.landmark<0 || state.landmark>=kLandmarkKindCount) return std::nullopt;
+    if (state.landmark && (!state.map.inBounds(state.landmarkAltar.x,state.landmarkAltar.y) ||
+        state.map.isWalkable(state.landmarkAltar.x,state.landmarkAltar.y))) return std::nullopt;
     if (version>=15 && state.currentFloor<kRunFinalFloor && !state.map.isWalkable(state.floorExit.x,state.floorExit.y)) return std::nullopt;
     if (!validProgression(state)) return std::nullopt;
     if (!validItems(state)) return std::nullopt;

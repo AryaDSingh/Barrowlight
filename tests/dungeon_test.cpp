@@ -6,14 +6,17 @@
 // vault, a clear boss arena, distinct modules, and safe start spacing.
 // Also prints one example layout for eyeballing.
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <queue>
+#include <random>
 #include <set>
 #include <vector>
 
 #include "world/DungeonGenerator.hpp"
 #include "world/DungeonModules.hpp"
+#include "world/ProceduralModules.hpp"
 
 using namespace engine;
 
@@ -86,7 +89,21 @@ void checkFloor(const GeneratedDungeon& d, const DungeonGenerationParams& params
 
     std::set<std::string> regular;
     for (const auto& name : d.moduleNames)
-        if (name != bossModule().name && name != vaultModule().name) check(regular.insert(name).second, "modules are distinct" + where);
+        if (name != bossModule().name && name != vaultModule().name && name.rfind("Procedural", 0) != 0 &&
+            name != landmarkModules()[0].name)
+            check(regular.insert(name).second, "hand-made modules are distinct" + where);
+
+    check(d.landmark == LandmarkKind::None || !params.includeBossRoom, "boss floors have no landmark" + where);
+    if (d.landmark != LandmarkKind::None) {
+        const Position a = d.landmarkAltar;
+        check(!map.isWalkable(a.x, a.y), "the landmark altar is solid" + where);
+        bool approachable = false;
+        for (const Position n : {Position{a.x + 1, a.y}, Position{a.x - 1, a.y}, Position{a.x, a.y + 1}, Position{a.x, a.y - 1}})
+            approachable |= map.isWalkable(n.x, n.y) && reached[static_cast<std::size_t>(n.y * map.width() + n.x)];
+        check(approachable, "the landmark altar can be reached" + where);
+        const int dx = a.x - d.playerStart.x, dy = a.y - d.playerStart.y;
+        check(dx * dx + dy * dy > 64, "the landmark isn't in the starting cell" + where);
+    }
 
     check(!d.otherRoomCenters.empty(), "there are encounter anchors" + where);
     for (const Position& p : d.otherRoomCenters) {
@@ -105,6 +122,7 @@ void printDungeon(const GeneratedDungeon& d) {
             for (const Position& a : d.otherRoomCenters) if (is(a)) c = 'g';
             if (d.hasBossRoom && is(d.bossRoomCenter)) c = 'B';
             if (d.hasVault && is(d.vaultCenter)) c = 'V';
+            if (d.landmark != LandmarkKind::None && is(d.landmarkAltar)) c = 'S';
             if (is(d.playerStart)) c = '@';
             std::cout << c;
         }
@@ -129,10 +147,37 @@ int main() {
                 DungeonGenerationParams params;
                 params.includeBossRoom = boss;
                 params.includeVault = vault;
+                params.region = static_cast<FloorRegion>(seed % 3);
                 checkFloor(generateDungeon(params, seed), params, seed);
                 ++floors;
             }
     std::cout << floors << " generated floors checked\n";
+
+    // Procedural cells must obey the hand-made authoring rules, for every style.
+    std::mt19937 rng(7);
+    int procedural = 0, open = 0;
+    for (int style = 0; style < 4; ++style)
+        for (int i = 0; i < 200; ++i) {
+            const auto module = proceduralModule(static_cast<ProceduralStyle>(style), rng);
+            for (const auto& error : validateRegularModule(module)) {
+                std::cout << "[FAIL] " << module.name << ": " << error << '\n';
+                ++failures;
+            }
+            int floor = 0;
+            for (const auto& row : module.rows) floor += static_cast<int>(std::count(row.begin(), row.end(), '.'));
+            open += floor * 2 >= kModuleWidth * kModuleHeight;
+            ++procedural;
+        }
+    std::cout << procedural << " procedural cells checked, " << open << " at least half floor\n";
+
+    int landmarks = 0;
+    for (unsigned seed = 1; seed <= 200; ++seed) {
+        DungeonGenerationParams params;
+        params.includeBossRoom = false;
+        landmarks += generateDungeon(params, seed).landmark != LandmarkKind::None;
+    }
+    std::cout << landmarks << "/200 ordinary floors have a landmark\n";
+    check(landmarks >= 100, "at least half of ordinary floors have a landmark");
 
     DungeonGenerationParams exampleParams;
     exampleParams.includeBossRoom = false;

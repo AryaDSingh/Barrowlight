@@ -58,7 +58,7 @@ std::optional<Position> travelStep(const Map& map, const ExploredMap& vision, Po
 }
 
 bool Application::startTravel(Position goal) {
-    if (mode_!=GameMode::Playing || inventoryOpen_ || vaultMenu_ || exitMenu_) return false;
+    if (mode_!=GameMode::Playing || inventoryOpen_ || vaultMenu_ || shrineMenu_ || exitMenu_) return false;
     if (dangerNearby() || combatThisTurn_) return false; // callers fall back to a single step
     if (!map_.isWalkable(goal.x,goal.y) || exploredMap_.at(goal.x,goal.y)==Visibility::Hidden ||
         !travelStep(map_,exploredMap_,player_.position(),goal)) {
@@ -86,6 +86,7 @@ std::vector<std::string> Application::visibleExploreInterests() const {
         if (vaultOpened_) add("cache",vaultCenter_);
     }
     add("stairs",floorEntrance_);
+    if (landmark_!=LandmarkKind::None && !landmarkUsed_) add("landmark",landmarkAltar_);
     if (map_.isWalkable(floorExit_.x,floorExit_.y)) add("stairs",floorExit_);
     for (int y=0;y<map_.height();++y) for (int x=0;x<map_.width();++x)
         if (exploredMap_.at(x,y)==Visibility::Visible && map_.tileAt(x,y).type==TileType::Door)
@@ -97,12 +98,12 @@ void Application::stopAutoExplore(const char* reason) {
     if (!autoExploring_) return;
     autoExploring_=false;
     const bool walking=travelGoal_.has_value();
-    travelGoal_.reset();
+    travelGoal_.reset(); travelToAltar_=false;
     if (reason) log(walking?"Stopped walking: ":"Auto-explore stopped: ",reason);
 }
 
 void Application::startAutoExplore() {
-    if (mode_!=GameMode::Playing || inventoryOpen_ || vaultMenu_ || exitMenu_) return;
+    if (mode_!=GameMode::Playing || inventoryOpen_ || vaultMenu_ || shrineMenu_ || exitMenu_) return;
     if (dangerNearby() || combatThisTurn_) {
         log("Cannot auto-explore: enemies, attack warnings or harmful effects are present.");
         return;
@@ -121,7 +122,7 @@ void Application::startAutoExplore() {
 }
 
 void Application::stepAutoExplore() {
-    if (!window_.isOpen() || mode_!=GameMode::Playing || inventoryOpen_ || vaultMenu_ || exitMenu_) {
+    if (!window_.isOpen() || mode_!=GameMode::Playing || inventoryOpen_ || vaultMenu_ || shrineMenu_ || exitMenu_) {
         stopAutoExplore("another screen opened."); return;
     }
     if (dangerNearby() || combatThisTurn_) { stopAutoExplore("danger detected."); return; }
@@ -135,7 +136,11 @@ void Application::stepAutoExplore() {
     if (exploreClock_.getElapsedTime().asMilliseconds()<100) return;
     exploreClock_.restart();
     if (exploreStepsLeft_--<=0) { stopAutoExplore("step limit reached. Continue manually or press Z again."); return; }
-    if (travelGoal_ && sameExploreTile(player_.position(),*travelGoal_)) { stopAutoExplore(nullptr); return; }
+    if (travelGoal_ && sameExploreTile(player_.position(),*travelGoal_)) {
+        const bool altar=travelToAltar_; stopAutoExplore(nullptr);
+        if (altar && nearAltar()) openShrine();
+        return;
+    }
     const auto step=travelGoal_?travelStep(map_,exploredMap_,player_.position(),*travelGoal_):
                                  exploreStep(map_,exploredMap_,player_.position());
     if (!step) { stopAutoExplore(travelGoal_?"the route is no longer known.":"no reachable unexplored area. Check stairs or sealed vaults manually."); return; }
@@ -155,7 +160,10 @@ void Application::stepAutoExplore() {
     const auto p=player_.position();
     // A click-to-walk trip ends at its destination; only new sightings stop it early.
     if (travelGoal_) {
-        if (sameExploreTile(p,*travelGoal_)) stopAutoExplore(nullptr);
+        if (sameExploreTile(p,*travelGoal_)) {
+            const bool altar=travelToAltar_; stopAutoExplore(nullptr);
+            if (altar && nearAltar()) openShrine();
+        }
         else if (newInterest()) stopAutoExplore("something new came into view.");
         return;
     }

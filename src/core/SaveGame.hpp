@@ -81,6 +81,11 @@ struct SaveGameState {
     int ordinaryDrops = 0;
     bool vaultExists=false, vaultOpened=false, vaultClaimed=false;
     Position vaultCenter{}, vaultEntrance{};
+    // The floor's landmark set piece (LandmarkKind as an int), its solid
+    // altar tile and whether its event has been used. Version 23+.
+    int landmark=0;
+    Position landmarkAltar{};
+    bool landmarkUsed=false;
     struct TalentSaveData {
         std::string id;
         int cooldown = 0;

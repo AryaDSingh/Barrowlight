@@ -7,6 +7,29 @@
 
 namespace engine {
 
+// Landmark set pieces. One may anchor a floor; the rest of the floor is
+// procedural and hand-made cells around it.
+const std::vector<ModuleTemplate>& landmarkModules() {
+    static const std::vector<ModuleTemplate> modules{
+    {"Shrine", {
+        "#########...#########",
+        "#...................#",
+        "#..#.............#..#",
+        "#.....#.......#.....#",
+        "#...................#",
+        ".......#.....#.......",
+        "..........S..........",
+        ".......#.....#.......",
+        "#...................#",
+        "#.....#.......#.....#",
+        "#..#.............#..#",
+        "#...................#",
+        "#########...#########",
+    }},
+    };
+    return modules;
+}
+
 // New modules go in regularModules() below -- see DungeonModules.hpp for
 // the authoring rules. dungeon_test fails with a description of the
 // problem if one is broken.
@@ -247,7 +270,7 @@ bool isSocket(int x, int y) {
 
 bool isFloorChar(char c) { return c == '.' || c == 'A' || c == 'C'; }
 
-void validateModule(const ModuleTemplate& module, bool boss, bool vault,
+void validateModule(const ModuleTemplate& module, bool boss, bool vault, bool landmark,
                     std::vector<std::string>& errors) {
     const auto fail = [&](const std::string& what) { errors.push_back(module.name + ": " + what); };
     if (static_cast<int>(module.rows.size()) != kModuleHeight) {
@@ -268,9 +291,10 @@ void validateModule(const ModuleTemplate& module, bool boss, bool vault,
                 fail("border tile (" + std::to_string(x) + "," + std::to_string(y) +
                      (isSocket(x, y) ? ") is a socket and must be floor" : ") must be wall"));
             const char c = at(x, y);
-            if (c != '#' && !isFloorChar(c) && c != 'V')
+            if (c != '#' && !isFloorChar(c) && c != 'V' && c != 'S')
                 fail(std::string("unknown character '") + c + "'");
             if ((c == 'V' || c == 'C') && !vault) fail("V/C are only allowed in the vault module");
+            if (c == 'S' && !landmark) fail("S (altar) is only allowed in landmark modules");
         }
 
     std::set<std::pair<int, int>> reached;
@@ -287,15 +311,26 @@ void validateModule(const ModuleTemplate& module, bool boss, bool vault,
         }
     }
 
-    std::pair<int, int> cache{-1, -1}, gate{-1, -1};
+    std::pair<int, int> cache{-1, -1}, gate{-1, -1}, altar{-1, -1};
     std::vector<std::pair<int, int>> anchors;
     for (int y = 0; y < kModuleHeight; ++y)
         for (int x = 0; x < kModuleWidth; ++x) {
             if (at(x, y) == 'C') cache = {x, y};
             if (at(x, y) == 'V') gate = {x, y};
             if (at(x, y) == 'A') anchors.push_back({x, y});
+            if (at(x, y) == 'S') altar = {x, y};
         }
-    if (anchors.empty()) anchors.push_back({kModuleWidth / 2, kModuleHeight / 2});
+    // Landmarks are calm set pieces: they only get encounters where an A asks for one.
+    if (anchors.empty() && !landmark) anchors.push_back({kModuleWidth / 2, kModuleHeight / 2});
+    if (landmark) {
+        if (altar.first < 0) fail("needs an S (altar)");
+        else {
+            bool approachable = false;
+            for (const auto [dx, dy] : {std::pair{1, 0}, {-1, 0}, {0, 1}, {0, -1}})
+                approachable |= reached.count({altar.first + dx, altar.second + dy}) > 0;
+            if (!approachable) fail("the altar needs reachable floor beside it");
+        }
+    }
 
     const auto inVault = [&](int x, int y) {
         return vault && std::abs(x - cache.first) <= 2 && std::abs(y - cache.second) <= 2;
@@ -333,9 +368,16 @@ std::vector<std::string> validateModules() {
     std::vector<std::string> errors;
     if (static_cast<int>(regularModules().size()) < kModuleGrid * kModuleGrid)
         errors.push_back("regular pool needs at least " + std::to_string(kModuleGrid * kModuleGrid) + " modules");
-    for (const auto& module : regularModules()) validateModule(module, false, false, errors);
-    validateModule(bossModule(), true, false, errors);
-    validateModule(vaultModule(), false, true, errors);
+    for (const auto& module : regularModules()) validateModule(module, false, false, false, errors);
+    validateModule(bossModule(), true, false, false, errors);
+    validateModule(vaultModule(), false, true, false, errors);
+    for (const auto& module : landmarkModules()) validateModule(module, false, false, true, errors);
+    return errors;
+}
+
+std::vector<std::string> validateRegularModule(const ModuleTemplate& module) {
+    std::vector<std::string> errors;
+    validateModule(module, false, false, false, errors);
     return errors;
 }
 

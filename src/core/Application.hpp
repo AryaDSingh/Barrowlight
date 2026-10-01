@@ -13,6 +13,7 @@
 #include "core/SoundManager.hpp"
 #include "core/SpriteAtlas.hpp"
 #include "core/UiKit.hpp"
+#include "world/Landmark.hpp"
 #include "core/SaveGame.hpp"
 #include "core/TurnScheduler.hpp"
 #include "entities/AIBehavior.hpp"
@@ -276,6 +277,22 @@ private:
     // caller can take a single step instead.
     bool startTravel(Position goal);
     std::optional<Position> travelGoal_;
+    bool travelToAltar_ = false; // open the shrine on arriving beside its altar
+
+    // This floor's landmark set piece (see world/Landmark.hpp) and its event.
+    LandmarkKind landmark_ = LandmarkKind::None;
+    Position landmarkAltar_{};
+    bool landmarkUsed_ = false;
+    bool shrineMenu_ = false;
+    bool nearAltar() const;
+    void openShrine();
+    std::string blessingCost(int choice) const;
+    bool canAffordBlessing(int choice) const;
+    void chooseBlessing(int choice);
+    void handleShrineKey(sf::Keyboard::Key key);
+    void handleShrineMouse(const sf::Event& event);
+    void renderLandmark();
+    void renderShrine();
     void stepAutoExplore();
     void stopAutoExplore(const char* reason);
     std::vector<std::string> visibleExploreInterests() const;

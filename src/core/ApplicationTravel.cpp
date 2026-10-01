@@ -125,7 +125,7 @@ void Application::returnToTown() {
     if (dangerNearby() || quietTurns_<10 || combatThisTurn_) {
         log("Waystone needs 10 quiet turns. Progress: ",quietTurns_,"/10. R: wait safely."); return;
     }
-    cancelTargeting(); inventoryOpen_=false; vaultMenu_=0; exitMenu_=false; restTurns_=0;
+    cancelTargeting(); inventoryOpen_=false; vaultMenu_=0; shrineMenu_=false; exitMenu_=false; restTurns_=0;
     dissolveMinions();
     selling_=false; shopSelection_=0; dungeonMenu_=false; mode_=GameMode::Town;
     log("Waystone returns you to town. Your dungeon progress is preserved.");
@@ -173,6 +173,7 @@ void Application::travelFloor(int destination,bool fromTown) {
     next.ordinaryDrops=floor.ordinaryDrops;
     next.vaultExists=floor.vaultExists; next.vaultOpened=floor.vaultOpened; next.vaultClaimed=floor.vaultClaimed;
     next.vaultCenter=floor.vaultCenter; next.vaultEntrance=floor.vaultEntrance;
+    next.landmark=floor.landmark; next.landmarkAltar=floor.landmarkAltar; next.landmarkUsed=floor.landmarkUsed;
     next.items.erase(std::remove_if(next.items.begin(),next.items.end(),[](const auto& item){return item.location<=-2;}),next.items.end());
     for (const auto& item:floor.items) if (item.location<=-2) next.items.push_back(item);
     next.playerPosition=(fromTown || down)?floor.floorEntrance:floor.floorExit;

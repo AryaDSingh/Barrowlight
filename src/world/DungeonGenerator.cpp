@@ -7,6 +7,7 @@
 #include <random>
 
 #include "world/DungeonModules.hpp"
+#include "world/ProceduralModules.hpp"
 
 namespace engine {
 
@@ -100,6 +101,15 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     }
     const int bossCell = params.includeBossRoom ? finalCell : -1;
 
+    // Landmark: any cell except the start, the final cell and the vault.
+    int landmarkCell = -1;
+    if (!params.includeBossRoom && std::uniform_real_distribution<float>(0.f, 1.f)(rng) < params.landmarkChance) {
+        std::vector<int> candidates;
+        for (int cell = 0; cell < kCells; ++cell)
+            if (cell != startCell && cell != finalCell && cell != vaultCell) candidates.push_back(cell);
+        landmarkCell = candidates[std::uniform_int_distribution<std::size_t>(0, candidates.size() - 1)(rng)];
+    }
+
     // --- Pick and stamp modules -------------------------------------------
     const auto& pool = regularModules();
     std::vector<std::size_t> picks(pool.size());
@@ -113,9 +123,16 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     std::array<std::vector<Position>, kCells> anchors;
     std::uniform_int_distribution<int> coin(0, 1);
 
+    std::uniform_real_distribution<float> share(0.f, 1.f);
     for (int cell = 0; cell < kCells; ++cell) {
+        ModuleTemplate generated;
+        const bool special = cell == bossCell || cell == vaultCell || cell == landmarkCell;
+        const bool procedural = !special && share(rng) < params.proceduralShare;
+        if (procedural) generated = proceduralModule(pickProceduralStyle(params.region, rng), rng);
         const ModuleTemplate& module = cell == bossCell ? bossModule()
                                      : cell == vaultCell ? vaultModule()
+                                     : cell == landmarkCell ? landmarkModules()[0]
+                                     : procedural ? generated
                                      : pool[picks[nextPick++ % picks.size()]];
         result.moduleNames[cell] = module.name;
         const auto rows = mirrored(module.rows, coin(rng) == 1, coin(rng) == 1);
@@ -125,14 +142,15 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
             for (int x = 0; x < kModuleWidth; ++x) {
                 const char c = rows[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)];
                 const Position p{originX + x, originY + y};
-                const bool wall = c == '#' || c == 'V';
+                const bool wall = c == '#' || c == 'V' || c == 'S';
                 result.map.setTile(p.x, p.y, wall ? Tile{TileType::Wall, false, false}
                                                   : Tile{TileType::Floor, true, true});
                 if (c == 'A') anchors[cell].push_back(p);
                 if (c == 'C') result.vaultCenter = p;
                 if (c == 'V') result.vaultEntrance = p;
+                if (c == 'S') result.landmarkAltar = p;
             }
-        if (anchors[cell].empty())
+        if (anchors[cell].empty() && cell != landmarkCell)
             anchors[cell].push_back({originX + kModuleWidth / 2, originY + kModuleHeight / 2});
 
         // Seal every socket that doesn't lead into an opened neighbor
@@ -163,6 +181,7 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
         result.bossRoomCenter = {(bossCell % kModuleGrid) * kModuleWidth + kModuleWidth / 2,
                                  (bossCell / kModuleGrid) * kModuleHeight + kModuleHeight / 2};
     result.roomCount = kCells;
+    if (landmarkCell >= 0) result.landmark = LandmarkKind::Shrine;
     return result;
 }
 

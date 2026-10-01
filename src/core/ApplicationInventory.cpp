@@ -62,6 +62,7 @@ void Application::pickupItem() {
     });
     if (found == groundItems_.end()) {
         if (interactStairs()) return;
+        if (nearAltar()) { openShrine(); return; }
         log("Nothing here to pick up.");
         return;
     }
