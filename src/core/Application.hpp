@@ -1,6 +1,8 @@
 #pragma once
 
+#include <climits>
 #include <deque>
+#include <unordered_map>
 #include <memory>
 #include <map>
 #include <optional>
@@ -424,6 +426,33 @@ private:
     std::optional<sf::RenderTexture> lightMap_;
     void renderLighting(const std::vector<std::pair<sf::Vector2f, sf::Color>>& lights);
     void drawActorShadow(sf::Vector2f tileTopLeft);
+
+    // Character animation (ApplicationAnimation.cpp): purely cosmetic and
+    // time-based. Actors glide between tiles, face where they move or
+    // strike, play idle/walk/attack rows, and dead monsters play their death
+    // row where they fell. The camera slides instead of jumping.
+    struct ActorAnim {
+        bool initialised = false;
+        Position lastTile{}, fromTile{};
+        float moveStart = -10.f, attackStart = -10.f, phase = 0.f;
+        bool faceLeft = false;
+    };
+    struct ActorPose { sf::Vector2f screen; int row = 0, frame = 0; bool flip = false; };
+    struct Corpse { SpriteFrame base; sf::Color tint; Position tile; float start; bool faceLeft; };
+    std::unordered_map<const Actor*, ActorAnim> actorAnims_;
+    std::vector<Corpse> corpses_;
+    sf::Vector2f cameraShiftStart_{};
+    float cameraShiftTime_ = -10.f;
+    int previousCameraX_ = INT_MIN, previousCameraY_ = INT_MIN;
+    float animNow() const;
+    sf::Vector2f cameraShift() const;
+    void updateCameraShift();
+    void notifyAttack(const Actor& actor, Position target);
+    ActorPose actorPose(const Actor& actor);
+    static SpriteFrame animatedFrame(const SpriteFrame& base, int row, int frame);
+    void recordCorpse(const Monster& monster, const SpriteFrame& base, sf::Color tint);
+    void forgetActor(const Actor& actor);
+    void renderCorpses();
     GameMode mode_ = GameMode::ClassSelection;
     PlayerClass playerClass_ = PlayerClass::Spellblade; // meaningless until selectClass() runs
     bool wonGame_ = false; // meaningless unless mode_ == GameOver -- see checkAndHandleDeath

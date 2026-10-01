@@ -30,8 +30,9 @@ public:
     // bottom-aligned and horizontally centered so taller-than-wide frames
     // (doors, 48px minotaurs) still stand on the tile's floor line.
     // `tint` multiplies the sprite's colors (White = unchanged).
+    // `flip` mirrors it left-to-right (sheets face right).
     bool draw(sf::RenderTarget& target, const SpriteFrame& frame, sf::Vector2f topLeft, float size,
-              sf::Color tint = sf::Color::White);
+              sf::Color tint = sf::Color::White, bool flip = false);
 
     // Batching: the sheet's texture (nullptr if missing), and the quad
     // draw() would emit for a frame, appended to a triangle list instead.

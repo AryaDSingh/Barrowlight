@@ -484,8 +484,9 @@ void Application::updateCamera() {
 }
 
 sf::Vector2f Application::worldToScreen(int tileX, int tileY) const {
-    return {kMapLeft + static_cast<float>(tileX - cameraX_) * kTileSize,
-            kMapTop + static_cast<float>(tileY - cameraY_) * kTileSize};
+    const auto shift = cameraShift();
+    return {kMapLeft + static_cast<float>(tileX - cameraX_) * kTileSize + shift.x,
+            kMapTop + static_cast<float>(tileY - cameraY_) * kTileSize + shift.y};
 }
 
 void Application::processEvents() {
@@ -828,7 +829,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     const int wasConcealed=player_.statusEffects().magnitudeOf(StatusEffectType::Concealed);
     bool landedAny=false, killedAny=false;
     // Commit point: validation and preview above are side-effect free.
-    if (talent.effectKind==TalentEffectKind::Damage) combatThisTurn_=true;
+    if (talent.effectKind==TalentEffectKind::Damage) { combatThisTurn_=true; notifyAttack(player_,cursor); }
     cancelTargeting();
 
     player_.stats().mana -= talent.manaCost;
@@ -1126,6 +1127,7 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
             if (decision.target == nullptr) {
                 break;
             }
+            notifyAttack(actor, decision.target->position());
 
             if(decision.healAmount>0 && decision.target->stats().hp>0) {
                 const int healed=std::min(decision.healAmount,decision.target->stats().maxHp-decision.target->stats().hp);
@@ -1400,6 +1402,12 @@ std::vector<Actor*> Application::aliveAllies(const Actor* exclude) {
 }
 
 void Application::removeDeadMonsters() {
+    for (const auto& m : monsters_)
+        if (m->stats().hp <= 0) {
+            const MonsterLook look = monsterLook(m->type());
+            recordCorpse(*m, look.frame, m->allied ? sf::Color(120, 235, 235) : look.tint);
+            forgetActor(*m);
+        }
     monsters_.erase(std::remove_if(monsters_.begin(), monsters_.end(),
                                     [](const std::unique_ptr<Monster>& m) {
                                         return m->stats().hp <= 0;
@@ -1476,6 +1484,7 @@ void Application::regenerateLevel(unsigned int seed) {
     landmark_=dungeon.landmark; landmarkAltar_=dungeon.landmarkAltar; landmarkUsed_=false; shrineMenu_=false;
 
     map_ = dungeon.map;
+    actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN;
     setProps(dungeon.props);
 
     player_.setPosition(dungeon.playerStart);
@@ -1716,6 +1725,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     mode_ = GameMode::Playing;
 
     map_ = state.map;
+    actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN;
     exploredMap_ = state.exploredMap;
 
     player_.setPosition(state.playerPosition);
@@ -1968,6 +1978,7 @@ void Application::render() {
     }
 
     updateCamera();
+    updateCameraShift();
 
     // Only the camera-visible range, not the whole map -- both a real
     // performance win now that the map (60x32, Prompt 18) is bigger
@@ -1977,9 +1988,9 @@ void Application::render() {
     // trailing edge.
     const auto theme=floorTheme(currentFloor_);
     auto themeColor=[](ThemeColor c) { return sf::Color(c.r,c.g,c.b); };
-    const int viewStartX = cameraX_;
-    const int viewEndX = std::min(map_.width(), cameraX_ + static_cast<int>(kMapWidth / kTileSize));
-    const int viewStartY = cameraY_;
+    const int viewStartX = std::max(0, cameraX_ - 1);
+    const int viewEndX = std::min(map_.width(), cameraX_ + static_cast<int>(kMapWidth / kTileSize) + 1);
+    const int viewStartY = std::max(0, cameraY_ - 1);
     const int viewEndY = std::min(map_.height(), cameraY_ + static_cast<int>(kMapHeight / kTileSize));
 
     // Everything on the map is drawn through a view clipped to the map
@@ -2151,6 +2162,7 @@ void Application::render() {
             lights.push_back({{at.x + kTileSize / 2, at.y - kTileSize * 0.2f}, sf::Color(255, 160, 80)});
         }
     renderGroundItems();
+    renderCorpses();
     for (auto& m : monsters_) {
         if (m->stats().hp <= 0) {
             continue;
@@ -2159,8 +2171,9 @@ void Application::render() {
             continue; // only draw what the player can currently see -- see Prompt 7 notes
         }
 
-        const sf::Vector2f screenPos = worldToScreen(m->position().x, m->position().y);
-        if (!onMap(screenPos)) continue;
+        const ActorPose pose = actorPose(*m);
+        const sf::Vector2f screenPos = pose.screen;
+        if (!onMap(worldToScreen(m->position().x, m->position().y))) continue;
 
         // Elite/Nightmare border (Prompt 22): an outline in the tier's
         // color around the monster's tile. An outline rather than the old
@@ -2187,8 +2200,8 @@ void Application::render() {
         const sf::Vector2f spritePos{screenPos.x + (kTileSize - spriteSize) / 2.f,
                                      screenPos.y + kTileSize - spriteSize};
         // Allies keep their art but are washed cyan, matching the old ally color.
-        if (!sprites_.draw(window_, look.frame, spritePos, spriteSize,
-                           m->allied ? sf::Color(120, 235, 235) : look.tint)) {
+        if (!sprites_.draw(window_, animatedFrame(look.frame, pose.row, pose.frame), spritePos, spriteSize,
+                           m->allied ? sf::Color(120, 235, 235) : look.tint, pose.flip)) {
             sf::RectangleShape monsterShape({kTileSize - 1.f, kTileSize - 1.f});
             monsterShape.setPosition(screenPos);
             monsterShape.setFillColor(m->allied ? sf::Color(90,220,220) : monsterColor(m->type()));
@@ -2209,9 +2222,11 @@ void Application::render() {
         if(m->tactics.retreat>0) drawText("Retreat",screenPos.x-8,screenPos.y+14,10,sf::Color(255,220,90));
     }
 
-    const sf::Vector2f playerPos = worldToScreen(player_.position().x, player_.position().y);
+    const ActorPose playerPose = actorPose(player_);
+    const sf::Vector2f playerPos = playerPose.screen;
     drawActorShadow(playerPos);
-    if (!sprites_.draw(window_, playerFrame(playerClass_), playerPos, kTileSize)) {
+    if (!sprites_.draw(window_, animatedFrame(playerFrame(playerClass_), playerPose.row, playerPose.frame), playerPos, kTileSize,
+                       sf::Color::White, playerPose.flip)) {
         sf::RectangleShape playerShape({kTileSize - 1.f, kTileSize - 1.f});
         playerShape.setPosition(playerPos);
         playerShape.setFillColor(sf::Color(240, 200, 60));

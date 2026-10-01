@@ -44,7 +44,7 @@ void SpriteAtlas::append(sf::VertexArray& triangles, const SpriteFrame& frame, s
 }
 
 bool SpriteAtlas::draw(sf::RenderTarget& target, const SpriteFrame& frame, sf::Vector2f topLeft,
-                       float size, sf::Color tint) {
+                       float size, sf::Color tint, bool flip) {
     const sf::Texture* tex = texture(frame.sheet);
     if (!tex) return false;
 
@@ -53,8 +53,9 @@ bool SpriteAtlas::draw(sf::RenderTarget& target, const SpriteFrame& frame, sf::V
     const float scale = size / std::max(w, h);
 
     sf::Sprite sprite(*tex, frame.rect);
-    sprite.setScale({scale, scale});
-    sprite.setPosition({topLeft.x + (size - w * scale) / 2.f, topLeft.y + (size - h * scale)});
+    sprite.setScale({flip ? -scale : scale, scale});
+    const float left = topLeft.x + (size - w * scale) / 2.f;
+    sprite.setPosition({flip ? left + w * scale : left, topLeft.y + (size - h * scale)});
     sprite.setColor(tint);
     target.draw(sprite);
     return true;

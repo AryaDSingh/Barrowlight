@@ -95,8 +95,9 @@ std::optional<Position> Application::screenToWorld(sf::Vector2i pixel) const {
     // mapPixelToCoords handles resizing using SFML's unchanged logical view.
     const auto p = window_.mapPixelToCoords(pixel);
     if (!onMap(p)) return std::nullopt;
-    const Position tile{cameraX_ + (static_cast<int>(p.x) - kMapLeft) / kTile,
-        cameraY_ + (static_cast<int>(p.y) - kMapTop) / kTile};
+    const auto shift = cameraShift();
+    const Position tile{cameraX_ + static_cast<int>(std::floor((p.x - shift.x - kMapLeft) / kTile)),
+        cameraY_ + static_cast<int>(std::floor((p.y - shift.y - kMapTop) / kTile))};
     if (!map_.inBounds(tile.x, tile.y)) return std::nullopt;
     return tile;
 }
