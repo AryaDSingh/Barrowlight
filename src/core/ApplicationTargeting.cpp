@@ -172,6 +172,7 @@ void Application::renderMinimap(sf::FloatRect area) {
         const auto p=m->position();
         if (m->stats().hp>0 && !m->tactics.concealed && exploredMap_.at(p.x,p.y)==Visibility::Visible)
             cell(p.x,p.y,m->allied?sf::Color(110,230,230):sf::Color(230,70,60),0.5f);
+        else if (sensedMonster(*m)) cell(p.x,p.y,sf::Color(170,60,55),0.5f);
     }
     if (landmark_!=LandmarkKind::None && exploredMap_.at(landmarkAltar_.x,landmarkAltar_.y)!=Visibility::Hidden)
         cell(landmarkAltar_.x,landmarkAltar_.y,landmarkUsed_?sf::Color(150,140,120):sf::Color(255,190,90),1.f);
@@ -745,6 +746,15 @@ void Application::renderHudTooltips() {
     if (!inspectTile) return;
     for (const auto& monster:monsters_) {
         if (!same(monster->position(),*inspectTile)) continue;
+        if (sensedMonster(*monster)) {
+            const auto at=worldToScreen(inspectTile->x,inspectTile->y);
+            ui_.tooltip(window_,{{monster->name(),ui::kGold,18,ui::Font::Title},
+                {"Hunting you from out of sight.",ui::kBad,15},
+                {std::to_string(monster->stats().hp)+"/"+std::to_string(monster->stats().maxHp)+" life",ui::kMuted,14}},
+                {at.x+kTile,at.y},300,{{static_cast<float>(kMapLeft),static_cast<float>(kMapTop)},
+                {static_cast<float>(kMapWidth),static_cast<float>(kMapHeight)}});
+            return;
+        }
         auto details=inspectMonster(*monster,exploredMap_);
         if (details.empty()) continue; // dead or hidden actors never disclose information
         std::vector<Line> lines;

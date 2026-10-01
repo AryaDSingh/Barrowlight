@@ -263,6 +263,9 @@ private:
     void handleDungeonMouse(const sf::Event& event);
     AIDecision enemyDecision(Monster& monster, Actor* opponent);
     void alertEnemyGroup(Monster& source, Position target);
+    // ToME-style awareness: an enemy hunting you (alerted, not concealed)
+    // stays shown out of sight until it loses track of you.
+    bool sensedMonster(const Monster& m) const;
     void scaleDungeonMonster(Monster& monster,int floor);
     Position floorEntrance_{}, floorExit_{};
     int gold_=0, quietTurns_=0, restTurns_=0;

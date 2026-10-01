@@ -23,6 +23,12 @@ void Application::alertEnemyGroup(Monster& source,Position target) {
     source.tactics.alert=8; source.tactics.lastKnown=target;
 }
 
+bool Application::sensedMonster(const Monster& m) const {
+    const auto p=m.position();
+    return !m.allied && m.stats().hp>0 && m.tactics.alert>0 && !m.tactics.concealed &&
+        exploredMap_.at(p.x,p.y)!=Visibility::Visible;
+}
+
 AIDecision Application::enemyDecision(Monster& m,Actor* opponent) {
     auto& t=m.tactics;
     const auto here=m.position();

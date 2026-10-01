@@ -2163,11 +2163,16 @@ void Application::render() {
         }
     renderGroundItems();
     renderCorpses();
+    // Visible monsters are drawn under the lighting; monsters hunting you
+    // from out of sight are drawn after it as faded silhouettes.
+    const auto drawMonsters = [&](bool sensedPass) {
     for (auto& m : monsters_) {
         if (m->stats().hp <= 0) {
             continue;
         }
-        if (m->tactics.concealed || exploredMap_.at(m->position().x, m->position().y) != Visibility::Visible) {
+        const bool sensed = sensedMonster(*m);
+        if (sensed != sensedPass) continue;
+        if (!sensed && (m->tactics.concealed || exploredMap_.at(m->position().x, m->position().y) != Visibility::Visible)) {
             continue; // only draw what the player can currently see -- see Prompt 7 notes
         }
 
@@ -2200,8 +2205,10 @@ void Application::render() {
         const sf::Vector2f spritePos{screenPos.x + (kTileSize - spriteSize) / 2.f,
                                      screenPos.y + kTileSize - spriteSize};
         // Allies keep their art but are washed cyan, matching the old ally color.
+        sf::Color tint = m->allied ? sf::Color(120, 235, 235) : look.tint;
+        if (sensed) tint = sf::Color(tint.r * 3 / 5, tint.g * 3 / 5, std::min(255, tint.b * 3 / 4 + 40), 150);
         if (!sprites_.draw(window_, animatedFrame(look.frame, pose.row, pose.frame), spritePos, spriteSize,
-                           m->allied ? sf::Color(120, 235, 235) : look.tint, pose.flip)) {
+                           tint, pose.flip)) {
             sf::RectangleShape monsterShape({kTileSize - 1.f, kTileSize - 1.f});
             monsterShape.setPosition(screenPos);
             monsterShape.setFillColor(m->allied ? sf::Color(90,220,220) : monsterColor(m->type()));
@@ -2220,7 +2227,10 @@ void Application::render() {
         hpFront.setFillColor(sf::Color(220, 60, 60));
         window_.draw(hpFront);
         if(m->tactics.retreat>0) drawText("Retreat",screenPos.x-8,screenPos.y+14,10,sf::Color(255,220,90));
+        if (sensed) drawText("!", screenPos.x + kTileSize - 9.f, screenPos.y - 4.f, 14, sf::Color(255, 80, 60));
     }
+    };
+    drawMonsters(false);
 
     const ActorPose playerPose = actorPose(player_);
     const sf::Vector2f playerPos = playerPose.screen;
@@ -2234,6 +2244,7 @@ void Application::render() {
     }
 
     renderLighting(lights);
+    drawMonsters(true);
 
     // Visible committed danger remains visible even if the caster leaves sight.
     for (const auto& m:monsters_) if (m->stats().hp>0 && m->intent()) {
