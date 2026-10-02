@@ -21,7 +21,7 @@ constexpr float kDeathSeconds = 0.8f, kCorpseFadeSeconds = 1.2f;
 constexpr float kTile = static_cast<float>(playLayout::tileSize);
 }
 
-float Application::animNow() const { return animationClock_.getElapsedTime().asSeconds(); }
+float Application::animNow() const { return animationClock_.getElapsedTime().asSeconds() + animTimeOffset_; }
 
 sf::Vector2f Application::cameraShift() const {
     const float t = (animNow() - cameraShiftTime_) / kStepSeconds;
@@ -101,7 +101,7 @@ void Application::recordCorpse(const Monster& monster, const SpriteFrame& base, 
     corpses_.push_back(corpse);
 }
 
-void Application::forgetActor(const Actor& actor) { actorAnims_.erase(&actor); }
+void Application::forgetActor(const Actor& actor) { actorAnims_.erase(&actor); hitFlash_.erase(&actor); }
 
 // Monsters that just died play their death row, then fade where they fell.
 void Application::renderCorpses() {

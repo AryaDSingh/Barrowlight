@@ -635,6 +635,31 @@ struct ApplicationRewardsTestAccess {
             check(estimateTalentDamage(basicAttack(),app.player_,*target).normal==before+4,"Killer Instinct adds damage against wounded enemies");
         }
 
+        // Combat effects: worn statuses, telegraphs, and spells caught mid-flight.
+        setup(PlayerClass::Mage);
+        {
+            auto* burning=enemy({14,10}); burning->statusEffects().apply({StatusEffectType::Burn,3,2});
+            auto* shocked=enemy({12,13}); shocked->statusEffects().apply({StatusEffectType::Shock,3,0}); shocked->statusEffects().apply({StatusEffectType::Stun,1,0});
+            auto* chilled=enemy({7,9}); chilled->statusEffects().apply({StatusEffectType::Chill,3,20}); chilled->statusEffects().apply({StatusEffectType::Marked,3,1});
+            auto* poisoned=enemy({8,12}); poisoned->statusEffects().apply({StatusEffectType::Poison,3,1});
+            auto* blaster=enemy({16,8});
+            blaster->intent()=EnemyIntent{{16,8},{15,10},1,1,5,IntentKind::MagicStrike};
+            app.player_.statusEffects().apply({StatusEffectType::Guard,2,3});
+            app.updateFieldOfView(); app.updateCamera();
+            const float now=app.animNow();
+            app.spawnVfx({Application::Vfx::Kind::Lightning,{10.5f,10.5f},{14.5f,10.5f},sf::Color(175,205,255),0,.4f,1.f});
+            app.spawnVfx({Application::Vfx::Kind::Bolt,{10.5f,10.5f},{7.5f,9.5f},sf::Color(255,140,50),0,.3f});
+            app.spawnVfx({Application::Vfx::Kind::Burst,{12.5f,13.5f},{12.5f,13.5f},sf::Color(255,140,50),0,.5f,2.f});
+            app.spawnVfx({Application::Vfx::Kind::Slash,{10.5f,10.5f},{8.5f,12.5f},sf::Color(255,220,200),0,.4f});
+            app.animTimeOffset_=0; (void)now;
+            app.animTimeOffset_+=.12f; snapshot("ui-vfx.png");
+            app.player_.statusEffects().apply({StatusEffectType::Concealed,3,1});
+            app.spawnVfx({Application::Vfx::Kind::Smoke,{10.5f,10.5f},{10.5f,10.5f},sf::Color(120,120,140),0,.9f,.9f});
+            app.animTimeOffset_+=.25f; snapshot("ui-vfx-conceal.png");
+            app.animTimeOffset_=0;
+            check(!app.vfx_.empty(),"Spells leave visible effects while they play");
+        }
+
         // Very rare events: each leads to a unique item.
         const auto ordinaryBases=rewardItemDefinitions();
         check(uniqueItemDefinitions().size()==14 && std::none_of(ordinaryBases.begin(),ordinaryBases.end(),

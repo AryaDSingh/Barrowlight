@@ -893,6 +893,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
 
     player_.stats().mana -= talent.manaCost;
     player_.stats().hp -= talent.hpCost;
+    spawnTalentVfx(talent, beforeMovement, cursor, target);
 
     if (talent.boneSwap) {
         if (!affected.empty()) { affected.front()->setPosition(beforeMovement); player_.setPosition(blinkDestination); applyMovementTalents(beforeMovement); }
@@ -931,6 +932,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             const int hpBefore=target->stats().hp;
             if (applyTalentDamage(hitTalent, player_, *target)) {
                 landedAny=true; killedAny=killedAny || target->stats().hp<=0;
+                if (target->stats().hp<hpBefore) flashActor(*target);
                 if (!combo.empty()) log(target->name(), ": ", combo, "Hit dealt ",hpBefore-target->stats().hp," damage.");
                 if (!couldStun && (talent.consumeChill || (talent.onHitEffect && talent.onHitEffect->type==StatusEffectType::Stun)))
                     log(target->name(), " is protected from another stun.");
@@ -1040,6 +1042,8 @@ void Application::processMonsterTurns() {
                         monster->recoveryActions=1;
                         log(actor->name(), " will recover for one player action after this attack.");
                     }
+                    if (exploredMap_.at(intent.target.x,intent.target.y)==Visibility::Visible) spawnReleaseVfx(intent);
+                    suppressAttackVfx_=true;
                     if (intent.kind==IntentKind::Summon) {
                         AIDecision summon;
                         summon.type=AIActionType::Summon; summon.movePosition=intent.target;
@@ -1069,6 +1073,7 @@ void Application::processMonsterTurns() {
                             executeAIDecision(*actor,hit,chillMagnitude);
                         }
                     }
+                    suppressAttackVfx_=false;
                 }
             } else if (monster && monster->allied) {
                 actMinion(*monster,chilledMove);
@@ -1199,6 +1204,7 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
             bool dodged = false;
             if (decision.attackPower > 0) {
                 dodged = rollChance(std::min(.60f,dodgeChance(decision.target->stats().dexterity)+(decision.target->statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(*decision.target)+ascendancyDodgeBonus(*decision.target))/100.f));
+                spawnAttackVfx(actor, *decision.target, decision.scalingStat==ScalingStat::Intelligence, dodged);
                 if (dodged) {
                     if (decision.target->talents().passiveValue(PassiveKind::Slippery)) decision.target->statusEffects().apply({StatusEffectType::Opening,2,0});
                     log(decision.target->name(), " dodges ", actor.name(), "'s attack!");
@@ -1232,6 +1238,7 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     guard+=armourGuardBonus(*decision.target)+ascendancyGuardBonus(*decision.target);
                     damage=std::max(0,damage-guard);
                     decision.target->stats().hp -= damage;
+                    if (damage>0) flashActor(*decision.target);
                     if (marked) { decision.target->statusEffects().consumeMark(); log("Marked consumed: +25% direct damage before Guard."); }
                     if (guard) log("Guard reduced the incoming hit by up to ",guard," damage.");
                     if (damage>0) decision.target->statusEffects().remove(StatusEffectType::Concealed);
@@ -1485,6 +1492,9 @@ void Application::removeDeadMonsters() {
     for (const auto& m : monsters_)
         if (m->stats().hp <= 0) {
             const MonsterLook look = monsterLook(*m);
+            if (exploredMap_.at(m->position().x, m->position().y) == Visibility::Visible && !m->tactics.concealed)
+                spawnVfx({Vfx::Kind::Puff, {m->position().x + .5f, m->position().y + .5f}, {m->position().x + .5f, m->position().y + .5f},
+                          m->allied ? sf::Color(120, 200, 220) : sf::Color(200, 50, 40), 0, .5f, .7f});
             recordCorpse(*m, look.frame, m->allied ? sf::Color(120, 235, 235) : look.tint, look.rows[4], look.frames[4], look.scale);
             forgetActor(*m);
         }
@@ -1568,7 +1578,8 @@ void Application::regenerateLevel(unsigned int seed) {
     landmark_=dungeon.landmark; landmarkAltar_=dungeon.landmarkAltar; landmarkUsed_=false; shrineMenu_=false;
 
     map_ = dungeon.map;
-    actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN;
+    actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN; vfx_.clear(); hitFlash_.clear();
+    vfx_.clear(); hitFlash_.clear();
     setProps(dungeon.props);
 
     player_.setPosition(dungeon.playerStart);
@@ -1816,7 +1827,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     mode_ = GameMode::Playing;
 
     map_ = state.map;
-    actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN;
+    actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN; vfx_.clear(); hitFlash_.clear();
     exploredMap_ = state.exploredMap;
 
     player_.setPosition(state.playerPosition);
@@ -2303,6 +2314,7 @@ void Application::render() {
         // Allies keep their art but are washed cyan, matching the old ally color.
         sf::Color tint = m->allied ? sf::Color(120, 235, 235) : look.tint;
         if (sensed) tint = sf::Color(tint.r * 3 / 5, tint.g * 3 / 5, std::min(255, tint.b * 3 / 4 + 40), 150);
+        drawHitFlash(*m, lookFrame(look, pose.row, pose.frame), spritePos, spriteSize, pose.flip);
         if (!sprites_.draw(window_, lookFrame(look, pose.row, pose.frame), spritePos, spriteSize,
                            tint, pose.flip)) {
             sf::RectangleShape monsterShape({kTileSize - 1.f, kTileSize - 1.f});
@@ -2333,34 +2345,26 @@ void Application::render() {
     const ActorPose playerPose = actorPose(player_);
     const sf::Vector2f playerPos = playerPose.screen;
     drawActorShadow(playerPos);
-    if (!sprites_.draw(window_, animatedFrame(playerFrame(playerClass_), playerPose.row, playerPose.frame), playerPos, kTileSize,
-                       sf::Color::White, playerPose.flip)) {
+    // Concealed, the player is a faint shape in the smoke.
+    const bool hidden = player_.statusEffects().has(StatusEffectType::Concealed);
+    const SpriteFrame playerSprite = animatedFrame(playerFrame(playerClass_), playerPose.row, playerPose.frame);
+    if (!sprites_.draw(window_, playerSprite, playerPos, kTileSize,
+                       hidden ? sf::Color(150, 150, 175, 120) : sf::Color::White, playerPose.flip)) {
         sf::RectangleShape playerShape({kTileSize - 1.f, kTileSize - 1.f});
         playerShape.setPosition(playerPos);
         playerShape.setFillColor(sf::Color(240, 200, 60));
         window_.draw(playerShape);
     }
 
+    drawHitFlash(player_, playerSprite, playerPos, kTileSize, playerPose.flip);
+    addVfxLights(lights);
     renderLighting(lights);
     drawMonsters(true);
+    renderStatusVfx();
+    renderVfx();
 
     // Visible committed danger remains visible even if the caster leaves sight.
-    for (const auto& m:monsters_) if (m->stats().hp>0 && m->intent()) {
-        const auto& intent=*m->intent();
-        for (int y=intent.target.y-intent.radius;y<=intent.target.y+intent.radius;++y)
-            for (int x=intent.target.x-intent.radius;x<=intent.target.x+intent.radius;++x) {
-                if (!intent.contains({x,y}) || !map_.isWalkable(x,y) || !hasLineOfFire(map_,intent.target,{x,y}) ||
-                    exploredMap_.at(x,y)!=Visibility::Visible || x<viewStartX || x>=viewEndX || y<viewStartY || y>=viewEndY) continue;
-                sf::RectangleShape warning({kTileSize-3.f,kTileSize-3.f});
-                warning.setPosition(worldToScreen(x,y));
-                warning.setFillColor(intent.kind==IntentKind::Summon ? sf::Color(195,100,255,160) : intent.radius ? sf::Color(255,145,30,145) : sf::Color(255,55,55,170));
-                warning.setOutlineThickness(-2.f);
-                warning.setOutlineColor(sf::Color::Yellow);
-                window_.draw(warning);
-                const auto at=worldToScreen(x,y);
-                drawText(std::to_string(intent.playerActionsRemaining),at.x+2,at.y,12,sf::Color::White);
-            }
-    }
+    renderTelegraphs(viewStartX, viewStartY, viewEndX, viewEndY);
 
     renderTargetingOverlay();
     window_.setView(window_.getDefaultView());

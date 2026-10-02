@@ -496,6 +496,7 @@ private:
     float cameraShiftTime_ = -10.f;
     int previousCameraX_ = INT_MIN, previousCameraY_ = INT_MIN;
     float animNow() const;
+    float animTimeOffset_ = 0; // lets tests freeze animation at a chosen moment
     sf::Vector2f cameraShift() const;
     void updateCameraShift();
     void notifyAttack(const Actor& actor, Position target);
@@ -504,6 +505,33 @@ private:
     void recordCorpse(const Monster& monster, const SpriteFrame& base, sf::Color tint, int deathRow = 4, int deathFrames = 10, float scale = 1.f);
     void forgetActor(const Actor& actor);
     void renderCorpses();
+
+    // Combat effects (ApplicationEffects.cpp): cosmetic, time-based, in
+    // tile space so they follow the camera. `from`/`to` are tile centres;
+    // `radius` is in tiles (or a scale, for lightning).
+    struct Vfx {
+        enum class Kind { Bolt, Arrow, Lightning, Slash, Burst, Ring, Puff, Smoke, Pillar, Sparkle } kind;
+        sf::Vector2f from, to;
+        sf::Color color;
+        float start = 0, duration = .3f, radius = 1.f;
+        unsigned seed = 0;
+    };
+    std::vector<Vfx> vfx_;
+    float vfxSlot_ = 0;          // when the next attack's effects may start, so a burst of turns plays in order
+    bool suppressAttackVfx_ = false;
+    std::unordered_map<const Actor*, float> hitFlash_;
+    sf::Vector2f tileToScreen(sf::Vector2f tile) const;
+    void spawnVfx(Vfx v, float delay = 0);
+    void nextVfxSlot(float gap);
+    void flashActor(const Actor& actor);
+    void spawnTalentVfx(const Talent& talent, Position from, Position cursor, const TalentTarget& target);
+    void spawnAttackVfx(const Actor& attacker, const Actor& target, bool magic, bool dodged);
+    void spawnReleaseVfx(const EnemyIntent& intent);
+    void addVfxLights(std::vector<std::pair<sf::Vector2f, sf::Color>>& lights);
+    void renderVfx();
+    void renderStatusVfx();
+    void drawHitFlash(const Actor& actor, const SpriteFrame& frame, sf::Vector2f topLeft, float size, bool flip);
+    void renderTelegraphs(int viewStartX, int viewStartY, int viewEndX, int viewEndY);
     GameMode mode_ = GameMode::ClassSelection;
     PlayerClass playerClass_ = PlayerClass::Spellblade; // meaningless until selectClass() runs
     bool wonGame_ = false; // meaningless unless mode_ == GameOver -- see checkAndHandleDeath
