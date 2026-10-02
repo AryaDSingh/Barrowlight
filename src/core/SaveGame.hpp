@@ -90,6 +90,10 @@ struct SaveGameState {
     // Blocking props (version 24+). Their tiles are saved as walls; loading
     // makes them see-through again.
     std::vector<Prop> props;
+    // Ascendancy and trials (format 26): see entities/Ascendancy.hpp.
+    std::string ascendancy;
+    int ascendancyPoints=0, trialKeys=0, trialsCleared=0;
+    int trial=0, trialReturnFloor=0; // inside a trial arena: which, and the dungeon floor to return to
     struct TalentSaveData {
         std::string id;
         int cooldown = 0;

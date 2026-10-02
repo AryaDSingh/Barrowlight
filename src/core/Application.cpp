@@ -276,7 +276,21 @@ sf::Color themeTint(sf::Color c, float boost) {
     return sf::Color(ch(c.r), ch(c.g), ch(c.b));
 }
 
-struct MonsterLook { SpriteFrame frame; sf::Color tint = sf::Color::White; };
+// Most sheets are the standard 10x5 grid; `rows`/`frames` remap the
+// animation rows (idle, gesture, walk, attack, death) for sheets laid out
+// differently, and `scale` enlarges a creature beyond its frame.
+struct MonsterLook {
+    SpriteFrame frame;
+    sf::Color tint = sf::Color::White;
+    float scale = 1.f;
+    std::array<int, 5> rows{0, 1, 2, 3, 4};
+    std::array<int, 5> frames{10, 10, 10, 10, 10};
+};
+SpriteFrame lookFrame(const MonsterLook& look, int row, int frame) {
+    const int r = std::clamp(row, 0, 4);
+    const int w = look.frame.rect.size.x, h = look.frame.rect.size.y;
+    return {look.frame.sheet, sf::IntRect({frame * look.frames[r] / 10 * w, look.frame.rect.position.y + look.rows[r] * h}, {w, h})};
+}
 
 // Bosses and named encounters get the most distinctive sheets in the
 // pack; regular enemies share the generic goblin/skeleton art, tinted
@@ -286,6 +300,12 @@ MonsterLook monsterLook(MonsterType type);
 MonsterLook monsterLook(const Monster& monster) {
     if (monster.eventChampion == kChampionDemon) return {idleFrame("calciumtrice/monsters/RedMinotaur.png", 0, 48, 52)};
     if (monster.eventChampion == kChampionRevenant) return {idleFrame("calciumtrice/heroes/BlackKnight.png"), sf::Color(200, 190, 255)};
+    // The trial guardians: a living statue (64px frames: idle, walk, attack, death rows) and a fallen saint.
+    if (monster.eventChampion == kChampionStoneWarden)
+        return {idleFrame("calciumtrice/monsters/statue_spritesheet_no_green.png", 0, 64, 64), sf::Color::White, 1.15f,
+                {0, 0, 1, 2, 3}, {4, 4, 8, 5, 6}};
+    if (monster.eventChampion == kChampionFallenSaint)
+        return {idleFrame("calciumtrice/heroes/EvilCleric.png"), sf::Color(205, 175, 255), 1.6f};
     return monsterLook(monster.type());
 }
 
@@ -569,6 +589,7 @@ void Application::handleEvent(const sf::Event& input) {
         handleInventoryMouse(*event);
         return; // inventory mouse actions must never click through onto the map
     }
+    if(ascendancyMenu_ && !event->is<sf::Event::KeyPressed>()) { handleAscendancyMouse(*event); return; }
     if(mode_==GameMode::Town && !event->is<sf::Event::KeyPressed>()) {
         handleTownMouse(*event);
         return;
@@ -583,6 +604,7 @@ void Application::handleEvent(const sf::Event& input) {
     if (mode_ == GameMode::Playing && !inventoryOpen_ && !vaultMenu_ && !exitMenu_) handleTargetingMouse(*event);
 
     if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
+        if (ascendancyMenu_) { handleAscendancyKey(keyPressed->code); return; }
         if (mode_==GameMode::Town) { handleTownKey(keyPressed->code); return; }
         if (exitMenu_) {
             handleTravelKey(keyPressed->code);
@@ -675,6 +697,7 @@ void Application::handleEvent(const sf::Event& input) {
         }
         if (keyPressed->code == sf::Keyboard::Key::T) { openTalentTrees(); return; }
         if (keyPressed->code == sf::Keyboard::Key::P) { openLevelUp(); return; }
+        if (keyPressed->code == sf::Keyboard::Key::Y) { openAscendancy(); return; }
         if (keyPressed->code == sf::Keyboard::Key::C) {
             for (std::size_t i=0;i<player_.talents().knownTalents().size();++i)
                 if (player_.talents().knownTalents()[i].id=="basic.cleanse") { requestTalent(i); break; }
@@ -1175,8 +1198,9 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
             }
             bool dodged = false;
             if (decision.attackPower > 0) {
-                dodged = rollChance(std::min(.60f,dodgeChance(decision.target->stats().dexterity)+(decision.target->statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(*decision.target))/100.f));
+                dodged = rollChance(std::min(.60f,dodgeChance(decision.target->stats().dexterity)+(decision.target->statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(*decision.target)+ascendancyDodgeBonus(*decision.target))/100.f));
                 if (dodged) {
+                    if (decision.target->talents().passiveValue(PassiveKind::Slippery)) decision.target->statusEffects().apply({StatusEffectType::Opening,2,0});
                     log(decision.target->name(), " dodges ", actor.name(), "'s attack!");
                     soundManager_.play(SoundEffect::Dodge);
                 } else {
@@ -1205,7 +1229,7 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     }
                     int guard=decision.target->statusEffects().magnitudeOf(StatusEffectType::Guard);
                     if (guard && decision.target->inventory().equipped(EquipmentSlot::OffHand)) guard+=decision.target->talents().passiveValue(PassiveKind::ShieldTraining);
-                    guard+=armourGuardBonus(*decision.target);
+                    guard+=armourGuardBonus(*decision.target)+ascendancyGuardBonus(*decision.target);
                     damage=std::max(0,damage-guard);
                     decision.target->stats().hp -= damage;
                     if (marked) { decision.target->statusEffects().consumeMark(); log("Marked consumed: +25% direct damage before Guard."); }
@@ -1344,6 +1368,13 @@ void Application::checkAndHandleDeath(Actor& actor) {
         return;
     }
     if (defeated) rewardMonster(*defeated, &actor == boss_);
+    if (defeated) {
+        // Juggernaut's Rampage: every kill shortens running cooldowns.
+        if (const int rampage=player_.talents().passiveValue(PassiveKind::Rampage))
+            for (std::size_t i=0;i<player_.talents().knownTalents().size();++i)
+                player_.talents().setCooldownRemaining(i,std::max(0,player_.talents().cooldownRemaining(i)-rampage));
+        if (&actor == boss_) onBossDefeated(*defeated);
+    }
 
     if (&actor == boss_) {
         boss_ = nullptr; // must clear before removeDeadMonsters() erases the underlying object
@@ -1416,7 +1447,8 @@ void Application::grantXpAndAnnounce(int amount) {
 }
 
 bool Application::pointsToSpend() const {
-    return player_.unspentAttributePoints() > 0 || player_.abilityPoints() > 0 || player_.treePoints() > 0;
+    return player_.unspentAttributePoints() > 0 || player_.abilityPoints() > 0 || player_.treePoints() > 0 ||
+           player_.ascendancyPoints > 0;
 }
 
 // Points are spent at the player's leisure: attributes first if any are
@@ -1426,6 +1458,7 @@ void Application::openLevelUp() {
     cancelTargeting();
     inventoryOpen_ = false;
     if (player_.unspentAttributePoints() > 0) mode_ = GameMode::AttributeAllocation;
+    else if (player_.ascendancyPoints > 0 && player_.abilityPoints() <= 0 && player_.treePoints() <= 0) openAscendancy();
     else openTalentTrees();
 }
 
@@ -1452,7 +1485,7 @@ void Application::removeDeadMonsters() {
     for (const auto& m : monsters_)
         if (m->stats().hp <= 0) {
             const MonsterLook look = monsterLook(*m);
-            recordCorpse(*m, look.frame, m->allied ? sf::Color(120, 235, 235) : look.tint);
+            recordCorpse(*m, look.frame, m->allied ? sf::Color(120, 235, 235) : look.tint, look.rows[4], look.frames[4], look.scale);
             forgetActor(*m);
         }
     monsters_.erase(std::remove_if(monsters_.begin(), monsters_.end(),
@@ -1480,6 +1513,8 @@ void Application::selectClass(PlayerClass cls) {
     player_.trees().clear();
     player_.bloodRelic=false; player_.animationRelic=false; player_.deathlessSpentFloors.clear();
     player_.treePoints()=1; player_.abilityPoints()=3;
+    player_.ascendancy.clear(); player_.ascendancyPoints=0; player_.trialKeys=0; player_.trialsCleared=0;
+    trial_=0; trialReturnFloor_=0; ascendancyMenu_=false; trialMenu_=false;
     pendingFinalVictory_ = false;
 
     progressionReviewPending_=true;
@@ -1630,6 +1665,9 @@ void Application::regenerateLevel(unsigned int seed) {
 SaveGameState Application::captureState(bool includeFloors) {
     SaveGameState state;
     state.adventureMode=adventureMode_; state.extraLives=extraLives_;
+    state.ascendancy=player_.ascendancy; state.ascendancyPoints=player_.ascendancyPoints;
+    state.trialKeys=player_.trialKeys; state.trialsCleared=player_.trialsCleared;
+    state.trial=trial_; state.trialReturnFloor=trialReturnFloor_;
     state.map = map_;
     state.exploredMap = exploredMap_;
     state.playerPosition = player_.position();
@@ -1699,7 +1737,8 @@ SaveGameState Application::captureState(bool includeFloors) {
 
     state.floorEntrance=floorEntrance_; state.floorExit=floorExit_;
     state.gold=gold_; state.quietTurns=quietTurns_; state.inTown=mode_==GameMode::Town;
-    if (includeFloors) for (const auto& entry:floorCache_) if (entry.first!=currentFloor_) state.savedFloors.push_back(entry.second);
+    // In a trial the current map is the arena, so every cached dungeon floor is kept.
+    if (includeFloors) for (const auto& entry:floorCache_) if (entry.first!=currentFloor_ || trial_) state.savedFloors.push_back(entry.second);
     return state;
 }
 
@@ -1787,6 +1826,10 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     progressionReviewPending_=state.progressionReviewPending;
     defeatedBossName_=state.defeatedBossName;
     adventureMode_=state.adventureMode; extraLives_=state.extraLives;
+    player_.ascendancy=state.ascendancy; player_.ascendancyPoints=state.ascendancyPoints;
+    player_.trialKeys=state.trialKeys; player_.trialsCleared=state.trialsCleared;
+    trial_=state.trial; trialReturnFloor_=state.trialReturnFloor;
+    ascendancyMenu_=false; trialMenu_=false;
     player_.level() = state.playerLevel;
     player_.bloodRelic=state.bloodRelic; player_.animationRelic=state.animationRelic; player_.deathlessSpentFloors=state.deathlessSpentFloors;
     player_.xp() = state.playerXp;
@@ -2254,13 +2297,13 @@ void Application::render() {
         // Sized relative to a 32px character frame, so the 48px minotaur
         // stands taller than its tile instead of shrinking to fit it.
         const float spriteSize =
-            kTileSize * static_cast<float>(std::max(look.frame.rect.size.x, look.frame.rect.size.y)) / 32.f;
+            kTileSize * static_cast<float>(std::max(look.frame.rect.size.x, look.frame.rect.size.y)) / 32.f * look.scale;
         const sf::Vector2f spritePos{screenPos.x + (kTileSize - spriteSize) / 2.f,
                                      screenPos.y + kTileSize - spriteSize};
         // Allies keep their art but are washed cyan, matching the old ally color.
         sf::Color tint = m->allied ? sf::Color(120, 235, 235) : look.tint;
         if (sensed) tint = sf::Color(tint.r * 3 / 5, tint.g * 3 / 5, std::min(255, tint.b * 3 / 4 + 40), 150);
-        if (!sprites_.draw(window_, animatedFrame(look.frame, pose.row, pose.frame), spritePos, spriteSize,
+        if (!sprites_.draw(window_, lookFrame(look, pose.row, pose.frame), spritePos, spriteSize,
                            tint, pose.flip)) {
             sf::RectangleShape monsterShape({kTileSize - 1.f, kTileSize - 1.f});
             monsterShape.setPosition(screenPos);
@@ -2270,13 +2313,15 @@ void Application::render() {
 
         const float hpFraction =
             static_cast<float>(m->stats().hp) / static_cast<float>(m->stats().maxHp);
+        // Oversized creatures (the trial guardians) carry their bar above their heads.
+        const float barY = screenPos.y - 6.f - std::max(0.f, (spriteSize - kTileSize) * 0.55f);
         sf::RectangleShape hpBack({kTileSize - 1.f, 4.f});
-        hpBack.setPosition({screenPos.x, screenPos.y - 6.f});
+        hpBack.setPosition({screenPos.x, barY});
         hpBack.setFillColor(sf::Color(40, 20, 20));
         window_.draw(hpBack);
 
         sf::RectangleShape hpFront({(kTileSize - 1.f) * hpFraction, 4.f});
-        hpFront.setPosition({screenPos.x, screenPos.y - 6.f});
+        hpFront.setPosition({screenPos.x, barY});
         hpFront.setFillColor(sf::Color(220, 60, 60));
         window_.draw(hpFront);
         if(m->tactics.retreat>0) drawText("Retreat",screenPos.x-8,screenPos.y+14,10,sf::Color(255,220,90));
@@ -2338,6 +2383,7 @@ void Application::render() {
     renderTravel();
     renderVault();
     renderShrine();
+    renderAscendancy();
     if (vaultMenu_ || shrineMenu_ || exitMenu_) mapHints_.clear();
     renderMapHints();
     if (inventoryOpen_) renderInventory();

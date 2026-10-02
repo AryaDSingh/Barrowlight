@@ -172,7 +172,7 @@ void Application::spawnFloorChest() {
 void Application::rewardMonster(Monster& monster, bool boss) {
     if (monster.vaultGuard && vaultCleared()) log("Vault cleared! Return to its cache and press G to choose a rare item.");
     if (!monster.rewardsEligible()) return;
-    if (monster.eventChampion) grantUnique(monster.position());
+    if (monster.eventChampion && !trialGuardianChampion(monster.eventChampion)) grantUnique(monster.position());
     const bool unique=isUniqueMonster(monster.type());
     const bool special=unique || monster.tier()!=MonsterTier::Base;
     const int quality = boss || unique ? 2 : static_cast<int>(monster.tier());

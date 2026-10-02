@@ -31,6 +31,7 @@ bool Application::dangerNearby() const {
 
 void Application::handleTownMouse(const sf::Event& event) {
     if(dungeonMenu_) { handleDungeonMouse(event); return; }
+    if(trialMenu_) { handleTrialMenuMouse(event); return; }
     if(const auto* moved=event.getIf<sf::Event::MouseMoved>()) {
         mousePixel_=moved->position;
         if(!merchantOpen_) return;
@@ -61,6 +62,7 @@ void Application::handleTownMouse(const sf::Event& event) {
         else if(contains(kTownInnSpot,p)) handleTownKey(sf::Keyboard::Key::R);
         else if(contains(kTownStashSpot,p)) openInventory();
         else if(contains(kTownGateSpot,p)) handleTownKey(sf::Keyboard::Key::M);
+        else if(contains(kTownObeliskSpot,p)) trialMenu_=true;
         return;
     }
     if(contains(kTownLeaveShop,p)) { merchantOpen_=false; return; }
@@ -103,6 +105,12 @@ void Application::startRest() {
 void Application::reviveInTown() {
     // Resolve only from the death screen, after the combat iteration has ended.
     if(mode_!=GameMode::GameOver || wonGame_ || !adventureMode_ || extraLives_<=0) return;
+    if(trial_) {
+        // A fall in a trial revives in town too; the dungeon floor it was entered from comes back first.
+        player_.stats().hp=player_.stats().maxHp;
+        leaveTrialState();
+        mode_=GameMode::GameOver;
+    }
     auto next=captureState();
     --next.extraLives;
     next.inTown=true; next.quietTurns=10;
@@ -132,6 +140,7 @@ void Application::reviveInTown() {
 
 void Application::returnToTown() {
     if (mode_!=GameMode::Playing) return;
+    if (trial_) { exitTrial(); return; }
     if (dangerNearby() || quietTurns_<10 || combatThisTurn_) {
         log("Waystone needs 10 quiet turns. Progress: ",quietTurns_,"/10. R: wait safely."); return;
     }
@@ -142,6 +151,7 @@ void Application::returnToTown() {
 }
 
 bool Application::interactStairs() {
+    if (trial_ && sameTile(player_.position(),floorEntrance_)) { exitTrial(); return true; }
     if (sameTile(player_.position(),floorEntrance_)) {
         if (currentFloor_==1) returnToTown();
         else travelFloor(currentFloor_-1);
@@ -174,19 +184,9 @@ void Application::travelFloor(int destination,bool fromTown) {
         return;
     }
     const auto& floor=found->second;
-    // Import the floor only. Character, money, inventory, item IDs and loot RNG
-    // remain the current campaign's values, never those in the archived snapshot.
     auto next=current; next.inTown=false;
-    next.map=floor.map; next.exploredMap=floor.exploredMap; next.monsters=floor.monsters;
-    next.currentFloor=destination; next.floorEntrance=floor.floorEntrance; next.floorExit=floor.floorExit;
-    next.chestPosition=floor.chestPosition; next.chestExists=floor.chestExists; next.chestClaimed=floor.chestClaimed;
-    next.ordinaryDrops=floor.ordinaryDrops;
-    next.vaultExists=floor.vaultExists; next.vaultOpened=floor.vaultOpened; next.vaultClaimed=floor.vaultClaimed;
-    next.vaultCenter=floor.vaultCenter; next.vaultEntrance=floor.vaultEntrance;
-    next.landmark=floor.landmark; next.landmarkAltar=floor.landmarkAltar; next.landmarkUsed=floor.landmarkUsed;
-    next.props=floor.props;
-    next.items.erase(std::remove_if(next.items.begin(),next.items.end(),[](const auto& item){return item.location<=-2;}),next.items.end());
-    for (const auto& item:floor.items) if (item.location<=-2) next.items.push_back(item);
+    importFloor(next,floor);
+    next.currentFloor=destination;
     next.playerPosition=(fromTown || down)?floor.floorEntrance:floor.floorExit;
     // A monster may have wandered onto the return stairs before we left. Find
     // the nearest free connected tile without deleting or moving that monster.
@@ -207,6 +207,21 @@ void Application::travelFloor(int destination,bool fromTown) {
     if (restoreState(next,false)) log("Returned to preserved floor ",destination,".");
 }
 
+// Import the floor only. Character, money, inventory, item IDs and loot RNG
+// remain the current campaign's values, never those in the archived snapshot.
+void Application::importFloor(SaveGameState& next, const SaveGameState& floor) {
+    next.map=floor.map; next.exploredMap=floor.exploredMap; next.monsters=floor.monsters;
+    next.floorEntrance=floor.floorEntrance; next.floorExit=floor.floorExit;
+    next.chestPosition=floor.chestPosition; next.chestExists=floor.chestExists; next.chestClaimed=floor.chestClaimed;
+    next.ordinaryDrops=floor.ordinaryDrops;
+    next.vaultExists=floor.vaultExists; next.vaultOpened=floor.vaultOpened; next.vaultClaimed=floor.vaultClaimed;
+    next.vaultCenter=floor.vaultCenter; next.vaultEntrance=floor.vaultEntrance;
+    next.landmark=floor.landmark; next.landmarkAltar=floor.landmarkAltar; next.landmarkUsed=floor.landmarkUsed;
+    next.props=floor.props;
+    next.items.erase(std::remove_if(next.items.begin(),next.items.end(),[](const auto& item){return item.location<=-2;}),next.items.end());
+    for (const auto& item:floor.items) if (item.location<=-2) next.items.push_back(item);
+}
+
 void Application::handleTownKey(sf::Keyboard::Key key) {
     if (key==sf::Keyboard::Key::F5) { saveGame(); return; }
     if (key==sf::Keyboard::Key::F9) { loadGame(); return; }
@@ -216,6 +231,8 @@ void Application::handleTownKey(sf::Keyboard::Key key) {
         return;
     }
     if(dungeonMenu_) { handleDungeonKey(key); return; }
+    if(trialMenu_) { handleTrialMenuKey(key); return; }
+    if(key==sf::Keyboard::Key::Y) { openAscendancy(); return; }
     if(key==sf::Keyboard::Key::M) {
         dungeonMenu_=true; dungeonSelection_=dungeonIndex(currentFloor_); dungeonDepth_=(currentFloor_-1)%10+1; return;
     }
@@ -283,6 +300,8 @@ void Application::renderTown() {
     ui_.text(window_,merchantOpen_?"Tab buy or sell   Enter trade   Esc back to the square   F5/F9 save or load":
         "Click a building to visit it   D resume   R inn   B stash   M dungeons   Tab merchant   F5/F9 save or load",{40,684},14,ui::kMuted);
     if (inventoryOpen_) renderInventory();
+    renderTrialMenu();
+    renderAscendancy();
 }
 
 void Application::renderMerchant() {
@@ -461,7 +480,8 @@ void Application::renderTravel() {
     if (exploredMap_.at(p.x,p.y)==Visibility::Visible && onMap(at))
         ui_.icon(window_,"jump-across",{{at.x+3,at.y+3},{22,22}},ui::kInfo);
     if (sameTile(player_.position(),floorEntrance_))
-        mapHints_.push_back({currentFloor_==1?"Entrance. G: return to town (needs 10 quiet turns)":"Stairs up. G: ascend to the previous floor",ui::kInfo});
+        mapHints_.push_back({trial_?(boss_?"The way out. It stays shut while the guardian lives.":"The way out. G: leave the trial for town"):
+            currentFloor_==1?"Entrance. G: return to town (needs 10 quiet turns)":"Stairs up. G: ascend to the previous floor",ui::kInfo});
     if (!exitMenu_) return;
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };

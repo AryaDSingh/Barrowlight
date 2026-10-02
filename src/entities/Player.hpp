@@ -49,6 +49,7 @@ public:
             result.intelligence += b.intelligence;
             result.maxHp += b.maxHp; result.maxMana += b.maxMana;
         }
+        result.maxHp += result.maxHp * talents().passiveValue(PassiveKind::IronSkin) / 100; // Juggernaut's Iron Skin
         result.hp = std::clamp(stats().hp, 0, result.maxHp);
         result.mana = std::clamp(stats().mana, 0, result.maxMana);
         return result;
@@ -64,6 +65,11 @@ public:
     }
 
     bool bloodRelic=false, animationRelic=false;
+    // Ascendancy (entities/Ascendancy.hpp): the chosen ascendancy's id
+    // (empty until the first trial), unspent ascendancy points, and the
+    // trials' sigils held and trials cleared (bit n-1 = trial n).
+    std::string ascendancy;
+    int ascendancyPoints=0, trialKeys=0, trialsCleared=0;
     std::vector<int> deathlessSpentFloors;
     int& level() { return level_; }
     int level() const { return level_; }

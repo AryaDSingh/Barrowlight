@@ -231,6 +231,36 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         add(16,"shadow_archer.unseen",2,passive("Unseen","A direct kill begun while Concealed refreshes concealment to 2/3/4 responses. At most once per Conceal cast; a qualifying kill can preserve your concealment.",PassiveKind::Unseen,2));
         t=attack("Death from Shadows","A heavy bow shot with +50% damage while Concealed. After firing, gain Concealment for two responses. Long cooldown; does not reset Unseen.",12,8,12,true); t.returnConcealed=true; t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Concealed,2,1};
         add(16,"shadow_archer.death",3,t);
+
+        // Ascendancy nodes (Ascendancy.hpp): one rank, bought with ascendancy points.
+        auto node=[&](const char* treeId,const char* id,ScalingStat stat,Talent t) {
+            t.id=id; t.tree=TalentTree::Blade; t.scalingStat=stat; t.scalingCooldown=t.cooldownTurns;
+            TalentDefinition d; d.id=id; d.treeId=treeId; d.tier=0; d.ranks={t,t,t};
+            out.push_back(d);
+        };
+        constexpr auto Str=ScalingStat::Strength, Dex=ScalingStat::Dexterity, Int=ScalingStat::Intelligence;
+        t=buff("Unstoppable","Shake off Poison, Burn, Chill, Marked and curses, then brace: Guard 5 for four turns.",StatusEffectType::Guard,4,5,4,14);
+        t.cleanse=true; node("juggernaut","juggernaut.unstoppable",Str,t);
+        t=attack("Earthshaker","Slam the ground: hits everything within two tiles, pushes survivors back and stuns them. Bosses resist repeated stuns.",8,6,12,false,2);
+        t.pushDistance=1; t.onHitEffect=StatusEffectInstance{StatusEffectType::Stun,1,0}; node("juggernaut","juggernaut.earthshaker",Str,t);
+        node("juggernaut","juggernaut.rampage",Str,passive("Rampage","Every enemy you kill reduces all your running cooldowns by one turn.",PassiveKind::Rampage,1));
+        node("juggernaut","juggernaut.last_stand",Str,passive("Last Stand","Below a third of your maximum life, your attacks deal +5 damage and direct hits on you deal 3 less.",PassiveKind::LastStand,5));
+        node("juggernaut","juggernaut.iron_skin",Str,passive("Iron Skin","+15% maximum life.",PassiveKind::IronSkin,15));
+        node("juggernaut","juggernaut.crushing_blows",Str,passive("Crushing Blows","Your attacks deal +50% damage to stunned enemies.",PassiveKind::CrushingBlows,50));
+        node("elementalist","elementalist.fury",Int,buff("Elemental Fury","Your attacks and spells deal +6 damage for four turns.",StatusEffectType::Empowered,4,6,8,15));
+        node("elementalist","elementalist.ward",Int,buff("Elemental Ward","Wrap yourself in elements: Guard 6 for five turns.",StatusEffectType::Guard,5,6,8,14));
+        node("elementalist","elementalist.conduit",Int,passive("Conduit","Consuming Burn, Chill or Shock (Meteor, Shatter, Discharge and the like) restores 5 mana.",PassiveKind::Conduit,5));
+        node("elementalist","elementalist.lingering",Int,passive("Lingering Elements","Burn, Chill and Shock you apply last two turns longer.",PassiveKind::LingeringElements,2));
+        node("elementalist","elementalist.overload",Int,passive("Elemental Overload","Applying Burn, Chill or Shock to an enemy already suffering a different one bursts for 6 damage.",PassiveKind::Overload,6));
+        node("elementalist","elementalist.attunement",Int,passive("Attunement","Spells deal +3 damage to enemies suffering Burn, Chill or Shock.",PassiveKind::Attunement,3));
+        t=buff("Smoke Veil","Vanish in smoke: Concealed for three responses, as hard to spot as a fully trained Conceal.",StatusEffectType::Concealed,3,3,4,12);
+        node("trickster","trickster.smoke_veil",Dex,t);
+        t=attack("Fan of Knives","Hit every adjacent enemy and Mark them: their next direct hit taken deals +25%.",7,5,8,false,1);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,3,1}; node("trickster","trickster.fan_of_knives",Dex,t);
+        node("trickster","trickster.opportunist",Dex,passive("Opportunist","Critical hits while Concealed or with Opening deal +50% critical damage.",PassiveKind::Opportunist,50));
+        node("trickster","trickster.slippery",Dex,passive("Slippery","Dodging an attack grants Opening.",PassiveKind::Slippery,1));
+        node("trickster","trickster.quick_hands",Dex,passive("Quick Hands","+8% dodge chance. Total dodge is capped at 60%.",PassiveKind::QuickHands,8));
+        node("trickster","trickster.killer_instinct",Dex,passive("Killer Instinct","Your attacks deal +4 damage to enemies below half their life.",PassiveKind::KillerInstinct,4));
         return out;
     }();
     return catalog;

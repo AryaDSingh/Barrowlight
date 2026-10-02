@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <array>
 #include <iomanip>
@@ -10,6 +11,8 @@
 #include "entities/Item.hpp"
 #include "entities/RunProgression.hpp"
 #include "world/Landmark.hpp"
+#include "entities/Ascendancy.hpp"
+#include <bitset>
 #include "entities/HiddenTrees.hpp"
 
 namespace engine {
@@ -40,7 +43,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 25;
+constexpr int kSaveFormatVersion = 26;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -118,7 +121,15 @@ bool validItems(const SaveGameState& state) {
 bool validProgression(const SaveGameState& s) {
     if (s.playerLevel<1 || s.playerLevel>kRunMaxLevel || s.treePoints<0 || s.abilityPoints<0 || s.trees.size()>kTalentTrees.size() || s.hotbar.size()>18) return false;
     if (s.playerClass==PlayerClass::Spellblade) return false;
-    int treeSpent=0,abilitySpent=0;
+    int treeSpent=0,abilitySpent=0,ascendancyNodes=0;
+    const int fullTrials=(1<<kTrialCount)-1;
+    if (s.trialKeys<0 || s.trialKeys>fullTrials || s.trialsCleared<0 || (s.trialsCleared & ~s.trialKeys) ||
+        ((s.trialsCleared & 2) && !(s.trialsCleared & 1)) || s.ascendancyPoints<0) return false;
+    if (s.ascendancy.empty() != (s.trialsCleared==0)) return false;
+    if (!s.ascendancy.empty()) {
+        const auto* a=findAscendancy(s.ascendancy);
+        if (!a || a->cls!=s.playerClass) return false;
+    }
     std::unordered_set<std::string> trees,known,bound;
     for (std::size_t i=0;i<s.trees.size();++i) {
         const auto& access=s.trees[i]; const auto* d=findTree(access.id);
@@ -133,6 +144,11 @@ bool validProgression(const SaveGameState& s) {
         if (!known.insert(t.id).second || t.rank<1 || t.rank>3 || t.cooldown<0 || t.cooldown>10000) return false;
         if (t.id=="basic.attack" || t.id=="basic.cleanse") { if (t.rank!=1) return false; continue; }
         const auto* d=findTalentDefinition(t.id);
+        if (d && isAscendancyTree(d->treeId)) {
+            if (d->treeId!=s.ascendancy || t.rank!=1 || (d->ranks[0].passive && t.cooldown)) return false;
+            ++ascendancyNodes;
+            continue;
+        }
         if (!d || !trees.count(d->treeId)) return false;
         if (isImbueVariant(t.id)) {
             const auto base=std::find_if(s.playerTalents.begin(),s.playerTalents.end(),[](const auto& other){return other.id=="spellblade.imbue";});
@@ -158,6 +174,7 @@ bool validProgression(const SaveGameState& s) {
         }
         abilitySpent+=t.rank;
     }
+    if (ascendancyNodes+s.ascendancyPoints!=static_cast<int>(std::bitset<8>(static_cast<unsigned>(s.trialsCleared)).count())) return false;
     if (s.trees.empty() && !s.progressionReviewPending) return false;
     if (!known.count("basic.attack") || !known.count("basic.cleanse") || abilitySpent+s.abilityPoints!=s.playerLevel+2) return false;
     for (const auto& tree:s.trees) if (tree.specialized) {
@@ -281,6 +298,9 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
     out << static_cast<int>(state.playerClass) << '\n';
     out << state.playerLevel << ' ' << state.playerXp << '\n';
     out << state.currentFloor << '\n';
+    // Inside a trial, currentFloor only sets the arena's difficulty; the
+    // dungeon floor waiting for the player's return is among savedFloors.
+    if (version>=26) out << state.trial << ' ' << state.trialReturnFloor << '\n';
     out << state.playerStats.hp << ' ' << state.playerStats.maxHp << ' '
         << state.playerStats.mana << ' ' << state.playerStats.maxMana << ' '
         << state.playerStats.strength << ' ' << state.playerStats.dexterity << ' '
@@ -354,6 +374,9 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
         for (const auto& prop : state.props) out << ' ' << static_cast<int>(prop.kind) << ' ' << prop.pos.x << ' ' << prop.pos.y;
         out << '\n';
     }
+    if (version>=26)
+        out << (state.ascendancy.empty() ? std::string("-") : state.ascendancy) << ' ' << state.ascendancyPoints << ' '
+            << state.trialKeys << ' ' << state.trialsCleared << '\n';
     return static_cast<bool>(out);
 }
 
@@ -361,7 +384,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
+    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
         return std::nullopt;
     }
 
@@ -413,6 +436,9 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         !state.map.isWalkable(state.playerPosition.x, state.playerPosition.y)) {
         return std::nullopt;
     }
+    if (version>=26 && (!(in>>state.trial>>state.trialReturnFloor) || state.trial<0 || state.trial>kTrialCount ||
+        (state.trial && (state.trialReturnFloor<1 || state.trialReturnFloor>kRunFinalFloor)) || (!state.trial && state.trialReturnFloor)))
+        return std::nullopt;
     if (!(in >> state.playerStats.hp >> state.playerStats.maxHp >> state.playerStats.mana >>
           state.playerStats.maxMana >> state.playerStats.strength >>
           state.playerStats.dexterity >> state.playerStats.intelligence >>
@@ -563,8 +589,9 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
             >>state.inTown>>state.gold>>state.quietTurns>>count) || count>=kRunFinalFloor || (depth>0 && count) ||
             state.gold<0 || state.gold>100000000 || state.quietTurns<0 || state.quietTurns>10 ||
             !state.map.isWalkable(state.floorEntrance.x,state.floorEntrance.y) ||
-            (state.currentFloor<10 && !state.map.isWalkable(state.floorExit.x,state.floorExit.y))) return std::nullopt;
-        std::unordered_set<int> floors{state.currentFloor};
+            (!state.trial && state.currentFloor<10 && !state.map.isWalkable(state.floorExit.x,state.floorExit.y))) return std::nullopt;
+        std::unordered_set<int> floors;
+        if (!state.trial) floors.insert(state.currentFloor);
         for (std::size_t i=0;i<count;++i) {
             auto floor=readSaveState(in,depth+1);
             if (!floor || !floors.insert(floor->currentFloor).second) return std::nullopt;
@@ -638,9 +665,13 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
             state.props.push_back(prop);
         }
     }
+    if (version>=26) {
+        if (!(in>>state.ascendancy>>state.ascendancyPoints>>state.trialKeys>>state.trialsCleared)) return std::nullopt;
+        if (state.ascendancy=="-") state.ascendancy.clear();
+    }
     if (state.landmark && (!state.map.inBounds(state.landmarkAltar.x,state.landmarkAltar.y) ||
         state.map.isWalkable(state.landmarkAltar.x,state.landmarkAltar.y))) return std::nullopt;
-    if (version>=15 && state.currentFloor<kRunFinalFloor && !state.map.isWalkable(state.floorExit.x,state.floorExit.y)) return std::nullopt;
+    if (version>=15 && !state.trial && state.currentFloor<kRunFinalFloor && !state.map.isWalkable(state.floorExit.x,state.floorExit.y)) return std::nullopt;
     if (!validProgression(state)) return std::nullopt;
     if (!validItems(state)) return std::nullopt;
     const auto& stats = state.playerStats;
@@ -654,6 +685,10 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         const auto bonus = Item(*findItemDefinition(item.definitionId), item.instanceId, {}, item.affixes, item.rollTier).bonuses();
         maxHp += bonus.maxHp; maxMana += bonus.maxMana;
     }
+    // Iron Skin (an ascendancy passive) raises maximum life by a percentage.
+    for (const auto& t : state.playerTalents)
+        if (const auto* d = findTalentDefinition(t.id); d && d->ranks[0].passiveKind == PassiveKind::IronSkin)
+            maxHp += maxHp * d->ranks[0].passiveMagnitude / 100;
     if (stats.hp < 0 || stats.hp > maxHp || stats.mana < 0 || stats.mana > maxMana)
         return std::nullopt;
     return state;

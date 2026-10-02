@@ -52,7 +52,10 @@ enum class WeaponRequirement { None, OneHanded, TwoHanded, Shield, Bow, Melee };
 enum class ArmourRequirement { None, Cloth, Light, Heavy };
 inline bool isMagicTree(TalentTree tree) { return tree >= TalentTree::Fire && tree <= TalentTree::Arcane; }
 
-enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship, Ambush, Footwork, Kindle, StaticCharge, Frostbite, ArcaneEfficiency, ClothWard, Spellweave, LightEvasion, LightPrecision, HeavyBrace, HeavyResolve, BattleRhythm, GravePact, Deathless, Unseen };
+enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship, Ambush, Footwork, Kindle, StaticCharge, Frostbite, ArcaneEfficiency, ClothWard, Spellweave, LightEvasion, LightPrecision, HeavyBrace, HeavyResolve, BattleRhythm, GravePact, Deathless, Unseen,
+    // Ascendancy passives (entities/Ascendancy.hpp).
+    Rampage, LastStand, IronSkin, CrushingBlows, Conduit, LingeringElements, Overload, Attunement,
+    Opportunist, Slippery, QuickHands, KillerInstinct };
 
 struct Talent {
     std::string name;

@@ -20,9 +20,18 @@ inline constexpr int kRareEventFloor = 7;
 inline constexpr float kRareEventChance = 0.08f;
 
 // The rare events' champions (Monster::eventChampion); saved, append only.
-inline constexpr int kChampionRevenant = 1, kChampionDemon = 2, kEventChampionKinds = 2;
+// The trial guardians (entities/Ascendancy.hpp) use the same marker.
+inline constexpr int kChampionRevenant = 1, kChampionDemon = 2, kChampionStoneWarden = 3, kChampionFallenSaint = 4,
+                     kEventChampionKinds = 4;
+inline bool trialGuardianChampion(int champion) { return champion == kChampionStoneWarden || champion == kChampionFallenSaint; }
 inline const char* championName(int champion) {
-    return champion == kChampionDemon ? "The Unchained Demon" : champion == kChampionRevenant ? "The Risen King" : "";
+    switch (champion) {
+        case kChampionRevenant: return "The Risen King";
+        case kChampionDemon: return "The Unchained Demon";
+        case kChampionStoneWarden: return "The Stone Warden";
+        case kChampionFallenSaint: return "The Fallen Saint";
+        default: return "";
+    }
 }
 
 // Fountains are gargoyles set into a wall face, so their altar tile is drawn

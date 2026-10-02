@@ -93,10 +93,10 @@ SpriteFrame Application::animatedFrame(const SpriteFrame& base, int row, int fra
     return {base.sheet, sf::IntRect({frame * w, base.rect.position.y + row * h}, {w, h})};
 }
 
-void Application::recordCorpse(const Monster& monster, const SpriteFrame& base, sf::Color tint) {
+void Application::recordCorpse(const Monster& monster, const SpriteFrame& base, sf::Color tint, int deathRow, int deathFrames, float scale) {
     const auto p = monster.position();
     if (exploredMap_.at(p.x, p.y) != Visibility::Visible || monster.tactics.concealed) return;
-    Corpse corpse{base, tint, p, animNow(), false};
+    Corpse corpse{base, tint, p, animNow(), false, deathRow, deathFrames, scale};
     if (const auto it = actorAnims_.find(&monster); it != actorAnims_.end()) corpse.faceLeft = it->second.faceLeft;
     corpses_.push_back(corpse);
 }
@@ -113,11 +113,11 @@ void Application::renderCorpses() {
         const auto at = worldToScreen(c.tile.x, c.tile.y);
         if (!onMap(at)) continue;
         const float t = now - c.start;
-        const int frame = std::min(kFrames - 1, static_cast<int>(t / kDeathSeconds * kFrames));
+        const int frame = std::min(c.deathFrames - 1, static_cast<int>(t / kDeathSeconds * c.deathFrames));
         sf::Color tint = c.tint;
         if (t > kDeathSeconds) tint.a = static_cast<std::uint8_t>(tint.a * std::max(0.f, 1.f - (t - kDeathSeconds) / kCorpseFadeSeconds));
-        const float size = kTile * std::max(c.base.rect.size.x, c.base.rect.size.y) / 32.f;
-        sprites_.draw(window_, animatedFrame(c.base, kDeathRow, frame), {at.x + (kTile - size) / 2, at.y + kTile - size}, size,
+        const float size = kTile * std::max(c.base.rect.size.x, c.base.rect.size.y) / 32.f * c.scale;
+        sprites_.draw(window_, animatedFrame(c.base, c.deathRow, frame), {at.x + (kTile - size) / 2, at.y + kTile - size}, size,
                       tint, c.faceLeft);
     }
 }

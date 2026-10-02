@@ -226,6 +226,29 @@ private:
     bool pointsToSpend() const;
     void openLevelUp();
 
+    // Ascendancy and its trials (ApplicationAscendancy.cpp). trial_ is the
+    // trial arena the player is in (0 = none); trialReturnFloor_ the
+    // dungeon floor waiting in floorCache_ to be put back afterwards.
+    int trial_=0, trialReturnFloor_=0;
+    bool ascendancyMenu_=false, trialMenu_=false;
+    std::size_t ascendancySelection_=0;
+    void onBossDefeated(const Monster& boss);
+    void completeTrial(int trial);
+    std::string trialAvailability(int trial) const; // empty when the trial can be entered
+    bool enterTrial(int trial);
+    bool leaveTrialState();
+    void exitTrial();
+    void openAscendancy();
+    bool learnAscendancyNode(std::size_t node);
+    void handleAscendancyKey(sf::Keyboard::Key key);
+    void handleAscendancyMouse(const sf::Event& event);
+    void renderAscendancy();
+    void handleTrialMenuKey(sf::Keyboard::Key key);
+    void handleTrialMenuMouse(const sf::Event& event);
+    void renderTrialMenu();
+    // Copies a cached floor's world (map, monsters, loot...) into `next`.
+    static void importFloor(SaveGameState& next, const SaveGameState& floor);
+
     // Draws the AttributeAllocation screen: how many points remain,
     // and what each of Strength/Dexterity/Intelligence currently does
     // for this character. Same standalone-screen approach as every
@@ -466,7 +489,7 @@ private:
         bool faceLeft = false;
     };
     struct ActorPose { sf::Vector2f screen; int row = 0, frame = 0; bool flip = false; };
-    struct Corpse { SpriteFrame base; sf::Color tint; Position tile; float start; bool faceLeft; };
+    struct Corpse { SpriteFrame base; sf::Color tint; Position tile; float start; bool faceLeft; int deathRow = 4, deathFrames = 10; float scale = 1.f; };
     std::unordered_map<const Actor*, ActorAnim> actorAnims_;
     std::vector<Corpse> corpses_;
     sf::Vector2f cameraShiftStart_{};
@@ -478,7 +501,7 @@ private:
     void notifyAttack(const Actor& actor, Position target);
     ActorPose actorPose(const Actor& actor);
     static SpriteFrame animatedFrame(const SpriteFrame& base, int row, int frame);
-    void recordCorpse(const Monster& monster, const SpriteFrame& base, sf::Color tint);
+    void recordCorpse(const Monster& monster, const SpriteFrame& base, sf::Color tint, int deathRow = 4, int deathFrames = 10, float scale = 1.f);
     void forgetActor(const Actor& actor);
     void renderCorpses();
     GameMode mode_ = GameMode::ClassSelection;

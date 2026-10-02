@@ -44,6 +44,12 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
     if (target.statusEffects().has(StatusEffectType::Chill)) damage+=kit.passiveValue(PassiveKind::Frostbite);
     if (kind==WeaponKind::OneHanded && attacker.statusEffects().has(StatusEffectType::Guard) && talent.targeting==TargetingMode::AdjacentEnemy)
         damage+=kit.passiveValue(PassiveKind::Riposte);
+    // Ascendancy passives.
+    if (attacker.talents().passiveValue(PassiveKind::LastStand) && attacker.stats().hp*3<=attacker.stats().maxHp)
+        damage+=kit.passiveValue(PassiveKind::LastStand);
+    if (target.stats().maxHp>0 && target.stats().hp*2<target.stats().maxHp) damage+=kit.passiveValue(PassiveKind::KillerInstinct);
+    if (isSpell(talent) && (target.statusEffects().has(StatusEffectType::Burn) || target.statusEffects().has(StatusEffectType::Chill) ||
+        target.statusEffects().has(StatusEffectType::Shock))) damage+=kit.passiveValue(PassiveKind::Attunement);
     if (talent.committedBloodlust>=0) damage+=talent.committedBloodlust;
     else if (kind==WeaponKind::TwoHanded && attacker.stats().hp*2<=attacker.stats().maxHp) damage+=kit.passiveValue(PassiveKind::Bloodlust);
     if (isSpell(talent) && (target.statusEffects().has(StatusEffectType::Burn) ||
@@ -58,19 +64,25 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
     if ((talent.consumeShock && target.statusEffects().has(StatusEffectType::Shock)) ||
         (talent.consumeChill && target.statusEffects().has(StatusEffectType::Chill)) ||
         (talent.consumeBurn && target.statusEffects().has(StatusEffectType::Burn))) percent=percent*(100+talent.statusBonusPercent)/100;
+    if (target.statusEffects().has(StatusEffectType::Stun)) percent=percent*(100+kit.passiveValue(PassiveKind::CrushingBlows))/100;
     damage=damage*percent/100;
     if (attacker.statusEffects().has(StatusEffectType::Chill)) damage=damage*(100-attacker.statusEffects().magnitudeOf(StatusEffectType::Chill))/100;
     if (target.statusEffects().magnitudeOf(StatusEffectType::Marked)>0) damage=damage*(100+kMarkedDamagePercent)/100;
     int guard=target.statusEffects().magnitudeOf(StatusEffectType::Guard);
     if (guard && target.inventory().equipped(EquipmentSlot::OffHand)) guard+=target.talents().passiveValue(PassiveKind::ShieldTraining);
-    guard+=armourGuardBonus(target);
-    const int critical=std::max(0,static_cast<int>(damage*critDamageMultiplier(talent.bonusCritDamageMultiplier))-guard);
+    guard+=armourGuardBonus(target)+ascendancyGuardBonus(target);
+    const bool opportune=attacker.statusEffects().has(StatusEffectType::Concealed) || attacker.statusEffects().has(StatusEffectType::Opening);
+    const float critBonus=talent.bonusCritDamageMultiplier+(opportune ? kit.passiveValue(PassiveKind::Opportunist)/100.f : 0.f);
+    const int critical=std::max(0,static_cast<int>(damage*critDamageMultiplier(critBonus))-guard);
     damage=std::max(0,damage-guard);
     return {damage,critical};
 }
 
 bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
-    if (rollChance(std::min(.60f,dodgeChance(target.stats().dexterity)+(target.statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(target))/100.f))) return false;
+    if (rollChance(std::min(.60f,dodgeChance(target.stats().dexterity)+(target.statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(target)+ascendancyDodgeBonus(target))/100.f))) {
+        if (target.talents().passiveValue(PassiveKind::Slippery)) target.statusEffects().apply({StatusEffectType::Opening,2,0});
+        return false;
+    }
     const auto estimate = estimateTalentDamage(talent, attacker, target);
     int damage = estimate.normal;
     // Global crit: multiplies the result of everything above (including
@@ -104,6 +116,11 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
     target.statusEffects().consumeMark();
     if (isMeleeAttack(talent)) applyImbueHit(attacker,target);
     if (damage>0) target.statusEffects().remove(StatusEffectType::Concealed);
+    if (const int conduit=attacker.talents().passiveValue(PassiveKind::Conduit);
+        conduit && ((talent.consumeShock && target.statusEffects().has(StatusEffectType::Shock)) ||
+                    (talent.consumeBurn && target.statusEffects().has(StatusEffectType::Burn)) ||
+                    (talent.consumeChill && target.statusEffects().has(StatusEffectType::Chill))))
+        attacker.stats().mana=std::min(attacker.stats().maxMana,attacker.stats().mana+conduit);
     if (talent.consumeShock) target.statusEffects().remove(StatusEffectType::Shock);
     if (talent.consumeBurn) target.statusEffects().remove(StatusEffectType::Burn);
     if (talent.consumeChill && target.statusEffects().has(StatusEffectType::Chill)) {
@@ -119,8 +136,18 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
     // already dead has no meaning.
     if (talent.onHitEffect.has_value() && target.stats().hp > 0 &&
         rollChance(talent.onHitChance)) {
-        if (talent.onHitEffect->type!=StatusEffectType::Stun || !armourResistsStun(target))
-            target.statusEffects().apply(*talent.onHitEffect);
+        auto effect=*talent.onHitEffect;
+        const auto ailment=[](StatusEffectType t){ return t==StatusEffectType::Burn || t==StatusEffectType::Chill || t==StatusEffectType::Shock; };
+        if (ailment(effect.type)) {
+            effect.turnsRemaining+=attacker.talents().passiveValue(PassiveKind::LingeringElements);
+            // Elemental Overload: a second, different ailment bursts.
+            const int burst=attacker.talents().passiveValue(PassiveKind::Overload);
+            bool other=false;
+            for (const auto& e:target.statusEffects().active()) other=other || (ailment(e.type) && e.type!=effect.type);
+            if (burst && other) target.stats().hp-=burst;
+        }
+        if (effect.type!=StatusEffectType::Stun || !armourResistsStun(target))
+            target.statusEffects().apply(effect);
     }
 
     return true;

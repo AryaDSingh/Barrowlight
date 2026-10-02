@@ -50,6 +50,18 @@ inline const sf::FloatRect kTownStashSpot = townCells(9, 8, 4, 3);
 inline const sf::FloatRect kTownFountainSpot = townCells(12, 1, 6, 6);
 inline const sf::FloatRect kTownMerchantSpot = townCells(18, 1, 7, 7);
 inline const sf::FloatRect kTownGateSpot = townCells(25, 0, 6, 7);
+inline const sf::FloatRect kTownObeliskSpot = townCells(21, 8, 4, 4);
+
+// --- Ascendancy: six node cards in two rows -----------------------------------------
+inline const sf::FloatRect kAscendDialog{{110, 40}, {1060, 640}};
+inline sf::FloatRect ascendNode(int i) { return {{140.f + 336.f * (i % 3), 170.f + 222.f * (i / 3)}, {320, 208}}; }
+inline const sf::FloatRect kAscendLearn{{760, 618}, {240, 42}}, kAscendClose{{1012, 618}, {136, 42}};
+
+// --- The trial obelisk ---------------------------------------------------------------
+inline const sf::FloatRect kTrialDialog{{220, 90}, {840, 540}};
+inline sf::FloatRect trialCard(int i) { return {{250.f + 400.f * i, 190}, {380, 340}}; }
+inline sf::FloatRect trialEnter(int i) { return {{270.f + 400.f * i, 476}, {340, 40}}; }
+inline const sf::FloatRect kTrialClose{{560, 566}, {160, 40}};
 
 // --- Dungeon selection ------------------------------------------------------------
 inline sf::FloatRect dungeonCard(int i) { return {{40.f + 610.f * i, 100}, {590, 150}}; }

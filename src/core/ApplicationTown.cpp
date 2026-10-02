@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "core/ScreenLayout.hpp"
+#include "entities/Ascendancy.hpp"
 
 namespace engine {
 
@@ -150,7 +151,7 @@ void Application::renderTownSquare() {
     put(tileArt(32, 304, 16, 16), foot(23, 5.f), kProp * 0.8f);
     put(tileArt(64, 304, 16, 16), foot(18.4f, 4.6f), kProp);
     put(tileArt(128, 304, 16, 16), foot(24.4f, 4.6f), kProp);
-    person("calciumtrice/heroes/DesertRogue.png", 22.f, 7.1f, true, 1.1f);
+    person("calciumtrice/heroes/DesertRogue.png", 17.6f, 6.3f, true, 1.1f);
     lights.push_back({cell(21.5f, 5.f), sf::Color(255, 200, 120), 4.5f});
 
     // --- The descent: the great gate, guarded -----------------------------------
@@ -161,9 +162,25 @@ void Application::renderTownSquare() {
     person("calciumtrice/heroes/BronzeKnight.png", 26.4f, 5.6f, false, 0.2f);
     lights.push_back({cell(28.f, 2.6f), sf::Color(200, 70, 120), 4.f});
 
+    // --- The trial obelisk: a skull-crowned pillar that glows while a trial waits ---
+    {
+        bool ready = false;
+        for (int t = 1; t <= kTrialCount; ++t) ready = ready || trialAvailability(t).empty();
+        const auto base = foot(22.5f, 10.6f);
+        if (ready) {
+            const float pulse = 0.5f + 0.5f * std::sin(now * 2.f);
+            sf::CircleShape glow(kCell * 1.2f);
+            glow.setScale({1.f, 0.45f}); glow.setOrigin({kCell * 1.2f, kCell * 1.2f}); glow.setPosition({base.x, base.y - 4});
+            glow.setFillColor(sf::Color(200, 110, 255, static_cast<std::uint8_t>(60 + 70 * pulse)));
+            window_.draw(glow);
+        }
+        put(evilArt(64, 96, 32, 96), base, 1.7f, ready ? sf::Color(235, 215, 255) : sf::Color(170, 165, 180));
+        lights.push_back({{base.x, base.y - kCell * 2.5f}, ready ? sf::Color(200, 120, 255) : sf::Color(140, 130, 170), ready ? 3.4f : 2.2f});
+    }
+
     // --- Townsfolk in the square ------------------------------------------------
     person("calciumtrice/heroes/Peasant.png", 5.f, 10.2f, true, 3.1f);
-    person("calciumtrice/heroes/YoungThief.png", 25.5f, 10.f, false, 2.6f);
+    person("calciumtrice/heroes/YoungThief.png", 27.5f, 10.f, false, 2.6f);
     put(tileArt(0, 304, 16, 16), foot(0.6f, 11.6f), kProp);
     put(tileArt(16, 304, 16, 16), foot(1.4f, 11.8f), kProp);
     put(tileArt(64, 304, 16, 16), foot(29.6f, 11.6f), kProp);
@@ -190,6 +207,8 @@ void Application::renderTownSquare() {
          "Click to trade (Tab)"},
         {&kTownGateSpot, "The Descent", "Choose a dungeon and depth, or resume the floor you left.",
          "Click to choose (M). D resumes where you left off."},
+        {&kTownObeliskSpot, "Trial Obelisk", "Sigils from the Goblin Warlord and the Lich open trials here. Win them to ascend.",
+         "Click to approach."},
     };
     for (const auto& s : stations)
         if (hovering(*s.spot)) lights.push_back({{s.spot->position.x + s.spot->size.x / 2, s.spot->position.y + s.spot->size.y * 0.55f},

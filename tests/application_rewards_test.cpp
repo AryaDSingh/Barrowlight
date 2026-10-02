@@ -56,6 +56,8 @@ struct ApplicationRewardsTestAccess {
             app.autoExploring_=false; app.restTurns_=0; app.quietTurns_=0; app.combatThisTurn_=false;
             app.vaultExists_=app.vaultOpened_=app.vaultClaimed_=false; app.vaultMenu_=0; app.exitMenu_=false;
             app.landmark_=LandmarkKind::None; app.landmarkUsed_=false; app.shrineMenu_=false;
+            app.player_.ascendancy.clear(); app.player_.ascendancyPoints=app.player_.trialKeys=app.player_.trialsCleared=0;
+            app.trial_=app.trialReturnFloor_=0; app.ascendancyMenu_=app.trialMenu_=false;
             app.setProps({});
             app.floorCache_.clear(); app.floorEntrance_={1,1}; app.floorExit_={30,20};
             app.currentFloor_ = 1; app.boss_ = nullptr;
@@ -449,8 +451,8 @@ struct ApplicationRewardsTestAccess {
         snapshot("ui-town-square.png");
         app.mousePixel_=screen::center(screen::kTownGateSpot); snapshot("ui-town-hover.png"); app.mousePixel_.reset();
         const auto itemIdBefore=app.nextItemId_;
-        clickOn(screen::kTownTrade);
-        check(app.gold_==100 && app.nextItemId_==itemIdBefore && !app.merchantOpen_,"Shop buttons are inert until the merchant is visited");
+        clickOn(screen::kTownSell);
+        check(app.gold_==100 && app.nextItemId_==itemIdBefore && !app.merchantOpen_ && !app.selling_,"Shop buttons are inert until the merchant is visited");
         clickOn(screen::kTownMerchantSpot); check(app.merchantOpen_,"Clicking the merchant's stall opens the merchant");
         clickOn(screen::kTownTrade);
         check(app.gold_==100 && app.nextItemId_==itemIdBefore && app.player_.inventory().items().size()==50,"Full bag purchase spends no gold or item IDs");
@@ -542,6 +544,77 @@ struct ApplicationRewardsTestAccess {
               std::all_of(app.monsters_.begin(),app.monsters_.end(),[](const auto& m){return m->tier()==MonsterTier::Nightmare && m->tactics.alert>0;}),
               "Stoking the brazier brings two hunting nightmare champions");
         snapshot("ui-pit-champions.png");
+
+        // Ascendancy: the Warlord's sigil opens the first trial at the town obelisk.
+        setup(PlayerClass::Warrior);
+        {
+            auto warlord=createMonster(MonsterType::GoblinWarlord,{12,10}); auto* w=warlord.get();
+            app.monsters_.push_back(std::move(warlord)); app.boss_=w; app.scheduler_.add(*w);
+            w->stats().hp=0; app.checkAndHandleDeath(*w); app.removeDeadMonsters();
+        }
+        check(app.player_.trialKeys==1 && app.player_.trialsCleared==0,"The Goblin Warlord drops the Stone Sigil");
+        app.mode_=GameMode::Town; app.merchantOpen_=false;
+        snapshot("ui-town-obelisk.png");
+        clickOn(screen::kTownObeliskSpot); check(app.trialMenu_,"The obelisk opens the trials");
+        snapshot("ui-trials.png");
+        const auto dungeonPos=app.player_.position(); const int dungeonFloor=app.currentFloor_;
+        clickOn(screen::trialEnter(1)); check(app.trial_==0,"The second trial stays sealed without its sigil");
+        clickOn(screen::trialEnter(0));
+        check(app.trial_==1 && app.mode_==GameMode::Playing && app.boss_ && app.boss_->eventChampion==kChampionStoneWarden,
+              "Entering the trial meets the Stone Warden");
+        snapshot("ui-trial-arena.png");
+        app.player_.setPosition(app.floorEntrance_); app.interactStairs();
+        check(app.trial_==1 && app.mode_==GameMode::Playing,"There is no leaving the trial while its guardian lives");
+        roundTrip();
+        check(app.trial_==1 && app.boss_ && app.boss_->name()=="The Stone Warden","Save/load keeps the trial and its guardian");
+        app.boss_->setPosition({app.player_.position().x,app.player_.position().y-3}); app.updateFieldOfView();
+        snapshot("ui-trial-warden.png");
+        auto* warden=app.boss_; warden->stats().hp=0; app.checkAndHandleDeath(*warden); app.removeDeadMonsters();
+        check(app.player_.trialsCleared==1 && app.player_.ascendancy=="juggernaut" && app.player_.ascendancyPoints==1 && app.ascendancyMenu_,
+              "Winning the trial grants the Juggernaut ascendancy, a point, and opens the choice");
+        snapshot("ui-ascendancy.png");
+        const int lifeBeforeSkin=app.player_.stats().maxHp;
+        clickOn(screen::ascendNode(4)); clickOn(screen::kAscendLearn);
+        check(app.player_.talents().rankOf("juggernaut.iron_skin")==1 && app.player_.ascendancyPoints==0 &&
+              app.player_.stats().maxHp==lifeBeforeSkin+lifeBeforeSkin*15/100,
+              "Learning Iron Skin spends the point and raises maximum life by 15%");
+        clickOn(screen::ascendNode(1)); clickOn(screen::kAscendLearn);
+        check(!app.player_.talents().rankOf("juggernaut.earthshaker"),"A second node needs a second point");
+        clickOn(screen::kAscendClose); check(!app.ascendancyMenu_,"Close leaves the ascendancy screen");
+        roundTrip();
+        check(app.player_.talents().rankOf("juggernaut.iron_skin")==1 && app.player_.stats().maxHp==lifeBeforeSkin+lifeBeforeSkin*15/100 &&
+              app.player_.ascendancy=="juggernaut",
+              "Save/load keeps the ascendancy and its nodes");
+        app.player_.setPosition(app.floorEntrance_); app.interactStairs();
+        check(app.trial_==0 && app.mode_==GameMode::Town && app.currentFloor_==dungeonFloor &&
+              app.player_.position().x==dungeonPos.x && app.player_.position().y==dungeonPos.y,
+              "Leaving the won trial returns to town with the dungeon floor as it was");
+        app.mode_=GameMode::Playing; app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Y});
+        check(app.ascendancyMenu_,"Y opens the ascendancy screen"); app.ascendancyMenu_=false;
+        // The second trial: the Lich's sigil, after the first is won.
+        app.player_.trialKeys|=2; app.mode_=GameMode::Town;
+        check(app.enterTrial(2) && app.boss_ && app.boss_->eventChampion==kChampionFallenSaint && app.boss_->type()==MonsterType::Lich,
+              "The Bone Sigil opens the Trial of the Fallen and its saint");
+        app.boss_->setPosition({app.player_.position().x,app.player_.position().y-3}); app.updateFieldOfView();
+        snapshot("ui-trial-saint.png");
+        app.boss_->stats().hp=0; app.checkAndHandleDeath(*app.boss_); app.removeDeadMonsters();
+        check(app.player_.trialsCleared==3 && app.player_.ascendancyPoints==1,"The second trial grants the second point");
+        clickOn(screen::ascendNode(1)); clickOn(screen::kAscendLearn);
+        check(app.player_.talents().rankOf("juggernaut.earthshaker")==1 && app.player_.ascendancyPoints==0,"The second point buys a second node");
+        app.ascendancyMenu_=false; roundTrip();
+        check(app.player_.trialsCleared==3 && app.player_.talents().rankOf("juggernaut.earthshaker")==1,"Both trials and nodes survive save/load");
+        app.player_.setPosition(app.floorEntrance_); app.interactStairs();
+        check(app.trial_==0 && app.mode_==GameMode::Town,"The second trial also returns to town");
+
+        // Ascendancy passives feed the damage formula.
+        setup(PlayerClass::Thief);
+        {
+            auto* target=enemy({11,10});
+            const auto before=estimateTalentDamage(basicAttack(),app.player_,*target).normal;
+            target->stats().hp=target->stats().maxHp/3;
+            app.player_.talents().learnTalent(findTalentDefinition("trickster.killer_instinct")->ranks[0]);
+            check(estimateTalentDamage(basicAttack(),app.player_,*target).normal==before+4,"Killer Instinct adds damage against wounded enemies");
+        }
 
         // Very rare events: each leads to a unique item.
         const auto ordinaryBases=rewardItemDefinitions();
