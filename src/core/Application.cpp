@@ -204,6 +204,8 @@ std::pair<SpriteFrame, const char*> propFrame(PropKind kind) {
         case PropKind::Throne: return {{kEvilDungeon, sf::IntRect({28, 384}, {40, 64})}, kEvilDungeon};
         case PropKind::SkeletonThrone: return {{kEvilDungeon, sf::IntRect({124, 384}, {40, 72})}, kEvilDungeon};
         case PropKind::Statue: return {{kEvilDungeon, sf::IntRect({176, 408}, {72, 112})}, kEvilDungeon};
+        case PropKind::OilBarrel: return {{kTileset, sf::IntRect({80, 304}, {16, 16})}, kTileset};
+        case PropKind::Brazier: case PropKind::ColdBrazier: return {{kTileset, sf::IntRect({448, 304}, {16, 16})}, kTileset}; // blank: drawn by renderSurfaces
     }
     return {{kTileset, sf::IntRect({64, 304}, {16, 16})}, kTileset};
 }
@@ -814,6 +816,8 @@ bool Application::tryMovePlayer(int dx, int dy) {
     const Position target{current.x + dx, current.y + dy};
 
     if (!map_.isWalkable(target.x, target.y)) {
+        // Walking into a brazier or an oil barrel knocks it over.
+        if (!autoExploring_ && knockOver(target, {dx, dy})) { combatThisTurn_ = true; finishInventoryTurn(); return true; }
         return false; // wall or map edge -- a pure input mistake, no turn consumed
     }
 
@@ -977,6 +981,11 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     }
 
     afterHiddenCast(talent,landedAny,killedAny,wasConcealed);
+    if (const Element element=talentElement(talent); element!=Element::None) {
+        std::vector<Position> touched=target.area;
+        if (!target.path.empty()) touched.push_back(target.path.back());
+        applyElement(element,touched);
+    }
     if (talent.selfBuffEffect && !talent.returnConcealed && talent.effectKind!=TalentEffectKind::SelfBuff) player_.statusEffects().apply(*talent.selfBuffEffect);
     if (talent.shape==EffectShape::Movement || talent.retreatDistance>0) { applyMovementTalents(beforeMovement); }
     player_.talents().startCooldown(talentIndex);
@@ -991,6 +1000,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
 }
 
 void Application::advanceEnemyIntents() {
+    tickSurfaces();
     for (auto& m:monsters_) {
         if (m->allied && m->remainingLife>0 && --m->remainingLife==0) { m->stats().hp=0; scheduler_.remove(*m); log("A temporary skeleton dissolves."); }
         if (m->intent() && m->intent()->playerActionsRemaining>0) --m->intent()->playerActionsRemaining;
@@ -1047,6 +1057,13 @@ void Application::processMonsterTurns() {
                         log(actor->name(), " will recover for one player action after this attack.");
                     }
                     if (exploredMap_.at(intent.target.x,intent.target.y)==Visibility::Visible) spawnReleaseVfx(intent);
+                    if (intent.kind==IntentKind::MagicStrike && monster->type()==MonsterType::Bomber) {
+                        std::vector<Position> blast;
+                        for (int y=intent.target.y-intent.radius;y<=intent.target.y+intent.radius;++y)
+                            for (int x=intent.target.x-intent.radius;x<=intent.target.x+intent.radius;++x)
+                                if (intent.contains({x,y})) blast.push_back({x,y});
+                        applyElement(Element::Fire,blast);
+                    }
                     suppressAttackVfx_=true;
                     if (intent.kind==IntentKind::Summon) {
                         AIDecision summon;
@@ -1183,12 +1200,22 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
     }
 
     switch (decision.type) {
-        case AIActionType::Move:
-            if (map_.isWalkable(decision.movePosition.x, decision.movePosition.y) &&
-                !isOccupied(decision.movePosition, &actor)) {
-                actor.setPosition(decision.movePosition);
+        case AIActionType::Move: {
+            Position step = decision.movePosition;
+            if (hazardousSurface(step) && !hazardousSurface(actor.position())) {
+                // Sidestep around the hazard if a safe tile also leads that way, else wait.
+                Position best = actor.position();
+                for (int dy = -1; dy <= 1; ++dy)
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        const Position n{actor.position().x + dx, actor.position().y + dy};
+                        if ((dx || dy) && std::max(std::abs(n.x - step.x), std::abs(n.y - step.y)) <= 1 && map_.isWalkable(n.x, n.y) &&
+                            !hazardousSurface(n) && !isOccupied(n, &actor) && !(n.x == step.x && n.y == step.y)) { best = n; }
+                    }
+                step = best;
             }
+            if (map_.isWalkable(step.x, step.y) && !isOccupied(step, &actor)) actor.setPosition(step);
             break;
+        }
 
         case AIActionType::Attack:
         case AIActionType::UseAbility: {
@@ -1555,7 +1582,7 @@ void Application::computeLight() {
             const bool altar = landmark_ != LandmarkKind::None && x == landmarkAltar_.x && y == landmarkAltar_.y;
             if (!altar && propIndexAt(x, y) < 0 && decorAt(map_, x, y, currentFloor_, theme.region) == Decor::Torch &&
                 map_.isWalkable(x, y + 1))
-            { light({x, y + 1}, 3); wallTorches_.push_back({x, y + 1}); } // a wall torch lights the floor in front of it
+            { if (torchLit(x, y)) light({x, y + 1}, 3); wallTorches_.push_back({x, y + 1}); } // a lit wall torch lights the floor in front of it
         }
     if (map_.inBounds(floorEntrance_.x, floorEntrance_.y)) light(floorEntrance_, 2);
     if (map_.inBounds(floorExit_.x, floorExit_.y)) light(floorExit_, 2);
@@ -1569,10 +1596,29 @@ void Application::computeLight() {
                         light({landmarkAltar_.x + o.x + d.x, landmarkAltar_.y + o.y + d.y}, 2);
     }
     if (vaultExists_ && map_.inBounds(vaultCenter_.x, vaultCenter_.y)) light(vaultCenter_, 1);
+    // Braziers, and burning ground.
+    for (const auto& prop : props_) if (prop.kind == PropKind::Brazier) light(prop.pos, 3);
+    if (surfaces_.size() == litTiles_.size())
+        for (int y = 0; y < map_.height(); ++y)
+            for (int x = 0; x < map_.width(); ++x)
+                if (surfaces_[static_cast<std::size_t>(y * map_.width() + x)].type == SurfaceType::Fire)
+                    for (int dy = -1; dy <= 1; ++dy)
+                        for (int dx = -1; dx <= 1; ++dx)
+                            if (map_.inBounds(x + dx, y + dy)) litTiles_[static_cast<std::size_t>((y + dy) * map_.width() + x + dx)] = 1;
     // Burning creatures are torches too.
     if (player_.statusEffects().has(StatusEffectType::Burn)) light(player_.position(), 2);
     for (const auto& m : monsters_)
         if (m->stats().hp > 0 && m->statusEffects().has(StatusEffectType::Burn)) light(m->position(), 2);
+}
+
+bool Application::torchLit(int x, int y) const {
+    const bool lit = decorHash(x, y, currentFloor_ + 77) % 3 != 0;
+    return torchToggles_.count({x, y}) ? !lit : lit;
+}
+
+void Application::setTorchLit(int x, int y, bool lit) {
+    if (torchLit(x, y) == lit) return;
+    if (!torchToggles_.erase({x, y})) torchToggles_.insert({x, y});
 }
 
 void Application::toggleLight() {
@@ -1718,6 +1764,7 @@ void Application::regenerateLevel(unsigned int seed) {
     }
 
     for (auto& m:monsters_) scaleDungeonMonster(*m,currentFloor_);
+    seedSurfaces(seed);
     spawnFixedItems();
     spawnFloorChest();
     exploredMap_ = ExploredMap(map_);
@@ -1753,6 +1800,11 @@ SaveGameState Application::captureState(bool includeFloors) {
     state.trialKeys=player_.trialKeys; state.trialsCleared=player_.trialsCleared;
     state.trial=trial_; state.trialReturnFloor=trialReturnFloor_;
     state.lightSource=player_.lightSource; state.lightLit=player_.lightLit;
+    for (int y=0;y<map_.height();++y) for (int x=0;x<map_.width();++x) {
+        const auto s=surfaceAt({x,y});
+        if (s!=SurfaceType::None) state.surfaces.push_back({x,y,static_cast<int>(s),surfaces_[static_cast<std::size_t>(y*map_.width()+x)].turns});
+    }
+    for (const auto& t:torchToggles_) state.torchToggles.push_back({t.first,t.second});
     state.map = map_;
     state.exploredMap = exploredMap_;
     state.playerPosition = player_.position();
@@ -1915,6 +1967,11 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     player_.trialKeys=state.trialKeys; player_.trialsCleared=state.trialsCleared;
     trial_=state.trial; trialReturnFloor_=state.trialReturnFloor;
     player_.lightSource=state.lightSource; player_.lightLit=state.lightLit;
+    surfaces_.assign(static_cast<std::size_t>(state.map.width()*state.map.height()),{});
+    for (const auto& [x,y,type,turns]:state.surfaces)
+        surfaces_[static_cast<std::size_t>(y*state.map.width()+x)]={static_cast<SurfaceType>(type),turns};
+    torchToggles_.clear();
+    for (const auto& t:state.torchToggles) torchToggles_.insert({t.x,t.y});
     ascendancyMenu_=false; trialMenu_=false;
     player_.level() = state.playerLevel;
     player_.bloodRelic=state.bloodRelic; player_.animationRelic=state.animationRelic; player_.deathlessSpentFloors=state.deathlessSpentFloors;
@@ -2304,7 +2361,8 @@ void Application::render() {
             }
             switch (altarTile || propIndexAt(x, y) >= 0 ? Decor::None : decorAt(map_, x, y, currentFloor_, theme.region)) {
                 case Decor::Torch:
-                    SpriteAtlas::append(details, torchFrame(x, y, now), {at.x, at.y - kTileSize * 0.45f}, kTileSize, shade(sf::Color::White));
+                    SpriteAtlas::append(details, torchLit(x, y) ? torchFrame(x, y, now) : SpriteFrame{kTileset, sf::IntRect({160, 304}, {16, 16})},
+                                        {at.x, at.y - kTileSize * 0.45f}, kTileSize, shade(sf::Color::White));
                     break;
                 case Decor::Banner:
                     SpriteAtlas::append(details, bannerFrame(theme.region, x), {at.x, at.y - kTileSize * 0.9f}, kTileSize * 1.8f,
@@ -2344,10 +2402,12 @@ void Application::render() {
         }
     // Wall torches glow whenever they, or the floor they light, are in view.
     for (const auto& lit : wallTorches_)
-        if (exploredMap_.at(lit.x, lit.y) == Visibility::Visible || exploredMap_.at(lit.x, lit.y - 1) == Visibility::Visible) {
+        if (torchLit(lit.x, lit.y - 1) &&
+            (exploredMap_.at(lit.x, lit.y) == Visibility::Visible || exploredMap_.at(lit.x, lit.y - 1) == Visibility::Visible)) {
             const auto at = worldToScreen(lit.x, lit.y - 1);
             lights.push_back({{at.x + kTileSize / 2, at.y}, sf::Color(255, 160, 80)});
         }
+    renderSurfaces(lights, viewStartX, viewStartY, viewEndX, viewEndY);
     renderGroundItems();
     renderCorpses();
     // Visible monsters are drawn under the lighting; monsters hunting you
@@ -2440,6 +2500,7 @@ void Application::render() {
     addVfxLights(lights);
     renderLighting(lights);
     drawMonsters(true);
+    renderSurfaceGlow(viewStartX, viewStartY, viewEndX, viewEndY);
     renderStatusVfx();
     renderVfx();
 

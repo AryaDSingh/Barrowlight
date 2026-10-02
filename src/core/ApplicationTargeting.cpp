@@ -815,6 +815,30 @@ void Application::renderHudTooltips() {
             {static_cast<float>(kMapWidth),static_cast<float>(kMapHeight)}});
         return;
     }
+    // No creature there: describe the ground or fixture instead.
+    if (exploredMap_.at(inspectTile->x,inspectTile->y)==Visibility::Hidden) return;
+    std::vector<Line> lines;
+    if (const auto s=surfaceAt(*inspectTile); s!=SurfaceType::None) {
+        lines.push_back({surfaceName(s),ui::kGold,16,ui::Font::Bold});
+        lines.push_back({surfaceHint(s),ui::kText,14});
+    }
+    if (const int index=propIndexAt(inspectTile->x,inspectTile->y); index>=0) {
+        const auto kind=props_[static_cast<std::size_t>(index)].kind;
+        const char* hint=kind==PropKind::Brazier?"Lights the dark. Walk into it to spill burning coals; cold puts it out.":
+            kind==PropKind::ColdBrazier?"Unlit. A fire spell lights it.":
+            kind==PropKind::OilBarrel?"Fire or lightning blows it up; an arrow punctures it; walk into it to flood the floor with oil.":nullptr;
+        if (hint) { lines.push_back({propName(kind),ui::kGold,16,ui::Font::Bold}); lines.push_back({hint,ui::kText,14}); }
+    }
+    for (const auto& front:wallTorches_) if (front.x==inspectTile->x && (front.y==inspectTile->y || front.y-1==inspectTile->y)) {
+        const bool lit=torchLit(front.x,front.y-1);
+        lines.push_back({lit?"Wall torch":"Unlit wall torch",ui::kGold,16,ui::Font::Bold});
+        lines.push_back({lit?"Cold or an arrow puts it out.":"A fire spell lights it.",ui::kText,14});
+        break;
+    }
+    if (lines.empty()) return;
+    const auto at=worldToScreen(inspectTile->x,inspectTile->y);
+    ui_.tooltip(window_,lines,{at.x+kTile,at.y},280,{{static_cast<float>(kMapLeft),static_cast<float>(kMapTop)},
+        {static_cast<float>(kMapWidth),static_cast<float>(kMapHeight)}});
 }
 
 // Short contextual prompts ("item at your feet", vault, stairs) stack in

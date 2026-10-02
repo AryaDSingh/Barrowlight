@@ -11,6 +11,7 @@
 #include "entities/Item.hpp"
 #include "entities/RunProgression.hpp"
 #include "world/Landmark.hpp"
+#include "world/Surfaces.hpp"
 #include "entities/Ascendancy.hpp"
 #include <bitset>
 #include "entities/HiddenTrees.hpp"
@@ -43,7 +44,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 28;
+constexpr int kSaveFormatVersion = 29;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -380,6 +381,13 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
         out << (state.ascendancy.empty() ? std::string("-") : state.ascendancy) << ' ' << state.ascendancyPoints << ' '
             << state.trialKeys << ' ' << state.trialsCleared << '\n';
     if (version>=28) out << state.lightSource << ' ' << state.lightLit << '\n';
+    if (version>=29) {
+        out << state.surfaces.size();
+        for (const auto& [x,y,type,turns] : state.surfaces) out << ' ' << x << ' ' << y << ' ' << type << ' ' << turns;
+        out << ' ' << state.torchToggles.size();
+        for (const auto& t : state.torchToggles) out << ' ' << t.x << ' ' << t.y;
+        out << '\n';
+    }
     return static_cast<bool>(out);
 }
 
@@ -387,7 +395,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
+    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
         return std::nullopt;
     }
 
@@ -675,6 +683,22 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         if (state.ascendancy=="-") state.ascendancy.clear();
     }
     if (version>=28 && (!(in>>state.lightSource>>state.lightLit) || state.lightSource<0 || state.lightSource>2)) return std::nullopt;
+    if (version>=29) {
+        std::size_t count=0;
+        if (!(in>>count) || count>static_cast<std::size_t>(state.map.width()*state.map.height())) return std::nullopt;
+        for (std::size_t i=0;i<count;++i) {
+            int x=0,y=0,type=0,turns=0;
+            if (!(in>>x>>y>>type>>turns) || !state.map.inBounds(x,y) || !state.map.isWalkable(x,y) ||
+                type<1 || type>kSurfaceTypeMax || turns<0 || turns>50) return std::nullopt;
+            state.surfaces.push_back({x,y,type,turns});
+        }
+        if (!(in>>count) || count>1000) return std::nullopt;
+        for (std::size_t i=0;i<count;++i) {
+            Position p;
+            if (!(in>>p.x>>p.y) || !state.map.inBounds(p.x,p.y)) return std::nullopt;
+            state.torchToggles.push_back(p);
+        }
+    }
     if (state.landmark && (!state.map.inBounds(state.landmarkAltar.x,state.landmarkAltar.y) ||
         state.map.isWalkable(state.landmarkAltar.x,state.landmarkAltar.y))) return std::nullopt;
     if (version>=15 && !state.trial && state.currentFloor<kRunFinalFloor && !state.map.isWalkable(state.floorExit.x,state.floorExit.y)) return std::nullopt;

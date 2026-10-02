@@ -2,6 +2,7 @@
 
 #include <climits>
 #include <deque>
+#include <set>
 #include <unordered_map>
 #include <memory>
 #include <map>
@@ -16,6 +17,7 @@
 #include "core/SpriteAtlas.hpp"
 #include "core/UiKit.hpp"
 #include "world/Landmark.hpp"
+#include "world/Surfaces.hpp"
 #include "core/SaveGame.hpp"
 #include "core/TurnScheduler.hpp"
 #include "entities/AIBehavior.hpp"
@@ -28,6 +30,7 @@
 #include "world/TalentTargeting.hpp"
 
 namespace engine {
+Element talentElement(const Talent& t); // what an ability does to the ground (ApplicationSurfaces.cpp)
 
 // Which top-level screen the game is currently showing. Introduced at
 // Prompt 15 alongside the multi-class system -- before this, the
@@ -354,6 +357,7 @@ private:
     void handleTownKey(sf::Keyboard::Key key);
     void handleTownMouse(const sf::Event& event);
     void renderTown();
+    friend Element talentElement(const Talent& t);
     // Which music fits the current screen and floor (called from run()
     // only, so the UI tests stay silent).
     void updateMusic();
@@ -545,6 +549,26 @@ private:
     int playerLightRadius() const;
     bool canSee(const Actor& viewer, Position target) const; // light-wise only; line of sight is checked separately
     void toggleLight();
+
+    // Surfaces and fixtures (ApplicationSurfaces.cpp, world/Surfaces.hpp).
+    std::vector<SurfaceTile> surfaces_;
+    std::set<std::pair<int, int>> torchToggles_; // wall torches whose lit state differs from the floor's default
+    bool torchLit(int x, int y) const;
+    void setTorchLit(int x, int y, bool lit);
+    SurfaceType surfaceAt(Position p) const;
+    void setSurface(Position p, SurfaceType type, int turns);
+    void clearSurfaces();
+    bool visibleTile(Position p) const;
+    void applyElement(Element element, const std::vector<Position>& tiles);
+    void electrify(const std::vector<Position>& seeds);
+    void shockStanding(const std::vector<Position>& pool);
+    void explodeOilBarrel(std::size_t index);
+    bool knockOver(Position tile, Position direction);
+    void tickSurfaces();
+    bool hazardousSurface(Position p) const;
+    void seedSurfaces(unsigned seed);
+    void renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>& lights, int x0, int y0, int x1, int y1);
+    void renderSurfaceGlow(int x0, int y0, int x1, int y1);
     GameMode mode_ = GameMode::ClassSelection;
     PlayerClass playerClass_ = PlayerClass::Spellblade; // meaningless until selectClass() runs
     bool wonGame_ = false; // meaningless unless mode_ == GameOver -- see checkAndHandleDeath

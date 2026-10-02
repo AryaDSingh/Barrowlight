@@ -218,6 +218,7 @@ void Application::importFloor(SaveGameState& next, const SaveGameState& floor) {
     next.vaultCenter=floor.vaultCenter; next.vaultEntrance=floor.vaultEntrance;
     next.landmark=floor.landmark; next.landmarkAltar=floor.landmarkAltar; next.landmarkUsed=floor.landmarkUsed;
     next.props=floor.props;
+    next.surfaces=floor.surfaces; next.torchToggles=floor.torchToggles;
     next.items.erase(std::remove_if(next.items.begin(),next.items.end(),[](const auto& item){return item.location<=-2;}),next.items.end());
     for (const auto& item:floor.items) if (item.location<=-2) next.items.push_back(item);
 }

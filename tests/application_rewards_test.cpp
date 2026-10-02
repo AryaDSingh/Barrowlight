@@ -356,7 +356,88 @@ struct ApplicationRewardsTestAccess {
             app.currentFloor_=2; app.regenerateLevel(77); app.updateFieldOfView(); app.updateCamera();
             snapshot("ui-darkness-floor.png");
             app.toggleLight(); snapshot("ui-darkness-floor-doused.png"); app.toggleLight();
+            {
+                int puddles=0,braziers=0,oil=0;
+                for (int y=0;y<app.map_.height();++y) for (int x=0;x<app.map_.width();++x) {
+                    puddles+=app.surfaceAt({x,y})==SurfaceType::Water; oil+=app.surfaceAt({x,y})==SurfaceType::Oil;
+                }
+                for (const auto& prop:app.props_) braziers+=prop.kind==PropKind::Brazier || prop.kind==PropKind::ColdBrazier;
+                check(puddles>0 && oil>0 && braziers>0,"New floors get puddles, oil slicks and braziers");
+                std::vector<Position> all; for(int y=0;y<app.map_.height();++y) for(int x=0;x<app.map_.width();++x) all.push_back({x,y});
+                app.darknessEnabled_=false; app.exploredMap_.update(all);
+                for (const auto& prop:app.props_) if (prop.kind==PropKind::Brazier) { app.player_.setPosition({prop.pos.x,prop.pos.y+1}); break; }
+                app.updateCamera(); snapshot("ui-surfaces-floor.png"); app.darknessEnabled_=true;
+            }
         }
+        // Surfaces: the elements meet oil, water, ice and fire.
+        setup(PlayerClass::Mage);
+        {
+            app.clearSurfaces();
+            for (int x=13;x<=16;++x) app.setSurface({x,10},SurfaceType::Oil,0);
+            app.player_.talents().learnTalent(findTalentDefinition("fire.ember_bolt")->ranks[0]);
+            std::size_t ember=0;
+            for (std::size_t i=0;i<app.player_.talents().knownTalents().size();++i) if (app.player_.talents().knownTalents()[i].id=="fire.ember_bolt") ember=i;
+            app.player_.stats().mana=80;
+            check(app.tryUseTalent(ember,{13,10}) && app.surfaceAt({13,10})==SurfaceType::Fire,"An Ember Bolt ignites the oil it lands in");
+            check(app.surfaceAt({14,10})==SurfaceType::Fire,"Fire spreads along the oil each turn");
+            auto* walker=enemy({15,12});
+            app.setSurface({15,11},SurfaceType::Fire,4);
+            AIDecision step; step.type=AIActionType::Move; step.movePosition={15,11};
+            app.executeAIDecision(*walker,step,0);
+            check(!(walker->position().x==15 && walker->position().y==11),"Monsters won't step into fire on purpose");
+            app.setSurface({11,10},SurfaceType::Fire,4); app.tickSurfaces();
+            app.player_.setPosition({11,10}); app.tickSurfaces();
+            check(app.player_.statusEffects().has(StatusEffectType::Burn),"Standing in flames sets you burning");
+            app.player_.setPosition({10,10}); app.player_.statusEffects().active().clear();
+
+            for (int x=4;x<=8;++x) app.setSurface({x,15},SurfaceType::Water,0);
+            auto* wader=enemy({8,15}); const int waderHp=wader->stats().hp;
+            app.applyElement(Element::Lightning,{{4,15}});
+            check(app.surfaceAt({8,15})==SurfaceType::Electrified && wader->stats().hp<waderHp && wader->statusEffects().has(StatusEffectType::Shock),
+                  "Lightning runs through the whole pool and shocks whoever stands in it");
+            snapshot("ui-surfaces.png");
+            app.applyElement(Element::Ice,{{5,15}});
+            check(app.surfaceAt({5,15})==SurfaceType::Ice,"Cold freezes water");
+            app.applyElement(Element::Fire,{{5,15}});
+            check(app.surfaceAt({5,15})==SurfaceType::Water,"Fire melts ice back to water");
+            app.applyElement(Element::Ice,{{13,10}});
+            check(app.surfaceAt({13,10})==SurfaceType::None,"Cold puts out burning ground");
+
+            // Braziers and oil barrels.
+            auto props=app.props_;
+            props.push_back({PropKind::ColdBrazier,{20,5}}); props.push_back({PropKind::OilBarrel,{24,15}});
+            app.map_.setTile(20,5,Tile{TileType::Wall,false,true}); app.map_.setTile(24,15,Tile{TileType::Wall,false,true});
+            app.setProps(props);
+            app.applyElement(Element::Fire,{{20,6}});
+            check(app.props_[static_cast<std::size_t>(app.propIndexAt(20,5))].kind==PropKind::Brazier,"Fire lights a cold brazier beside it");
+            app.updateFieldOfView();
+            check(app.tileLit({20,7}),"A lit brazier lights the dark around it");
+            app.applyElement(Element::Ice,{{21,5}});
+            check(app.props_[static_cast<std::size_t>(app.propIndexAt(20,5))].kind==PropKind::ColdBrazier,"Cold smothers a brazier");
+            app.applyElement(Element::Fire,{{20,6}});
+            app.player_.setPosition({20,6}); app.updateFieldOfView();
+            check(app.tryMovePlayer(0,-1) && app.propIndexAt(20,5)<0 && app.surfaceAt({20,5})==SurfaceType::Fire && app.surfaceAt({20,4})==SurfaceType::Fire,
+                  "Walking into a lit brazier knocks it over and spills fire");
+            auto* bystander=enemy({25,15}); const int bystanderHp=bystander->stats().hp;
+            app.applyElement(Element::Fire,{{23,15}});
+            check(app.propIndexAt(24,15)<0 && bystander->stats().hp<bystanderHp && app.surfaceAt({24,15})==SurfaceType::Fire,
+                  "Fire blows up an oil barrel, burning those beside it");
+
+            // Wall torches: an arrow snuffs them, fire lights them again.
+            app.updateFieldOfView();
+            if (!app.wallTorches_.empty()) {
+                const auto front=app.wallTorches_.front();
+                const bool was=app.torchLit(front.x,front.y-1);
+                app.applyElement(was?Element::Arrow:Element::Fire,{front});
+                check(app.torchLit(front.x,front.y-1)!=was,"Arrows snuff wall torches and fire lights them");
+            }
+            app.player_.setPosition({10,10}); app.updateFieldOfView();
+            app.player_.talents()=TalentSet({basicAttack(),findTalentDefinition("arcane.bolt")->ranks[0],basicCleanse()});
+            app.player_.talents().setRank(1,3); // the fixture's own kit, so the save is valid
+            roundTrip();
+            check(app.surfaceAt({5,15})==SurfaceType::Water && app.surfaceAt({8,15})!=SurfaceType::None,"Save/load keeps the surfaces");
+        }
+
         // Auto-explore still sweeps a dark room by torchlight.
         setup(PlayerClass::Mage); app.darknessEnabled_=true;
         app.player_.setPosition({2,2}); app.updateFieldOfView();

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <tuple>
+
 #include <optional>
 #include <cstdint>
 #include <string>
@@ -94,7 +96,10 @@ struct SaveGameState {
     std::string ascendancy;
     int ascendancyPoints=0, trialKeys=0, trialsCleared=0;
     int trial=0, trialReturnFloor=0;
-    int lightSource=1; bool lightLit=true; // format 28 // inside a trial arena: which, and the dungeon floor to return to
+    int lightSource=1; bool lightLit=true; // format 28
+    // Format 29: ground surfaces (x, y, type, turns) and wall torches lit or put out.
+    std::vector<std::tuple<int,int,int,int>> surfaces;
+    std::vector<Position> torchToggles; // inside a trial arena: which, and the dungeon floor to return to
     struct TalentSaveData {
         std::string id;
         int cooldown = 0;

@@ -150,6 +150,7 @@ add_executable(roguelike
     src/core/ApplicationTown.cpp
     src/core/ApplicationAscendancy.cpp
     src/core/ApplicationEffects.cpp
+    src/core/ApplicationSurfaces.cpp
     src/core/ApplicationHidden.cpp
     src/core/ApplicationTalents.cpp
     src/world/TalentTargeting.cpp
