@@ -76,7 +76,7 @@ struct ApplicationRewardsTestAccess {
             app.player_.stats() = app.player_.baseStats();
             const auto tree=cls==PlayerClass::Mage ? "arcane" : "one_handed";
             const auto id=cls==PlayerClass::Mage ? "arcane.bolt" : "one_handed.quick_strike";
-            app.player_.trees()={{tree,false}}; app.player_.treePoints()=0; app.player_.abilityPoints()=0;
+            app.player_.trees()={{tree,false}}; app.player_.treePoints()=0; app.player_.abilityPoints()=earnedAbilityPoints(1)-3;
             app.player_.talents()=TalentSet({basicAttack(),findTalentDefinition(id)->ranks[0],basicCleanse()});
             app.player_.talents().setRank(1,3);
             app.player_.statusEffects().active().clear();
@@ -279,7 +279,7 @@ struct ApplicationRewardsTestAccess {
 
         // Rank-up preserves an explicitly arranged hotbar including empty slots.
         setup(PlayerClass::Mage);
-        app.player_.talents().setRank(1,1); app.player_.abilityPoints()=2;
+        app.player_.talents().setRank(1,1); app.player_.abilityPoints()=earnedAbilityPoints(1)-1;
         app.player_.talents().hotbar()={"basic.attack","","basic.cleanse","","","","arcane.bolt"};
         const auto bar=app.player_.talents().hotbar();
         check(purchaseAbility(app.player_,*findTalentDefinition("arcane.bolt")) &&
@@ -376,7 +376,7 @@ struct ApplicationRewardsTestAccess {
         app.mode_=GameMode::GameOver; snapshot("ui-game-over.png"); clickOn(screen::kRestart);
         check(app.mode_==GameMode::ClassSelection,"Restart click opens class selection");
         snapshot("ui-class-selection.png"); clickOn(screen::classCard(1));
-        check(app.playerClass_==PlayerClass::Mage && app.mode_==GameMode::AbilityChoice && app.player_.treePoints()==1 && app.player_.abilityPoints()==3,
+        check(app.playerClass_==PlayerClass::Mage && app.mode_==GameMode::AbilityChoice && app.player_.treePoints()==1 && app.player_.abilityPoints()==earnedAbilityPoints(1),
             "Class card starts Mage without spending talent points");
         snapshot("ui-talent-start.png"); click(1140,40);
         check(app.mode_==GameMode::AbilityChoice,"Continue cannot bypass the first tree choice");
@@ -388,7 +388,26 @@ struct ApplicationRewardsTestAccess {
         click(950,584);
         check(app.player_.treePoints()==0 && treeAccess(app.player_,"fire"),"Unlock button spends exactly one tree point");
         click(1140,584);
-        check(app.player_.abilityPoints()==2 && app.player_.talents().rankOf(talentCatalog()[fire*4].id)==1,"Learn button spends exactly one ability point");
+        check(app.player_.abilityPoints()==earnedAbilityPoints(1)-1 && app.player_.talents().rankOf(talentCatalog()[fire*4].id)==1,"Learn button spends exactly one ability point");
+        {
+            // Five ranks: rank ups continue past 3 and rank 5 adds the mastery.
+            const auto& fireball=*findTalentDefinition("fire.fireball");
+            check(fireball.ranks[4].areaRadius==3 && fireball.ranks[3].areaRadius==2 && !fireball.mastery.empty() &&
+                  fireball.ranks[4].damagePercent==200 && fireball.ranks[4].manaCost>fireball.ranks[0].manaCost,
+                  "Rank 5 Fireball has its mastery, double damage and a higher mana cost");
+            const int pointsBefore=app.player_.abilityPoints(), oldRank=app.player_.talents().rankOf(fireball.id);
+            app.player_.abilityPoints()=10;
+            while (purchaseAbility(app.player_,*findTalentDefinition(talentCatalog()[fire*4].id))) {}
+            check(app.player_.talents().rankOf(talentCatalog()[fire*4].id)==kMaxTalentRank,"Abilities rank up to 5");
+            for (std::size_t i=0;i<app.player_.talents().knownTalents().size();++i)
+                if (app.player_.talents().knownTalents()[i].id==talentCatalog()[fire*4].id) app.player_.talents().setRank(i,1);
+            app.player_.abilityPoints()=pointsBefore; (void)oldRank;
+            Player probe({0,0},statsForClass(PlayerClass::Mage),TalentSet{});
+            probe.abilityPoints()=0; grantXp(probe,xpForNextLevel(1));
+            check(probe.level()==2 && probe.abilityPoints()==2,"Even levels grant an extra ability point");
+            grantXp(probe,xpForNextLevel(2));
+            check(probe.level()==3 && probe.abilityPoints()==3,"Odd levels grant the usual one");
+        }
         click(950,628); snapshot("ui-binding.png");
         check(app.bindingTalent_,"Assign button opens the binding picker");
         click(290,440);
@@ -704,7 +723,7 @@ struct ApplicationRewardsTestAccess {
         snapshot("ui-dungeon-selection.png"); clickOn(screen::kDungeonBack);
         check(!app.dungeonMenu_,"Cancelling dungeon selection spends nothing");
         const auto raiseLevel=[&](int level) {
-            app.player_.level()=level; app.player_.abilityPoints()=level-1;
+            app.player_.level()=level; app.player_.abilityPoints()=earnedAbilityPoints(level)-3;
             app.player_.treePoints()=earnedTreePoints(level)-1;
         };
         raiseLevel(12); app.player_.stats().hp=60; app.player_.stats().mana=40;

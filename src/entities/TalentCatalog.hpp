@@ -46,8 +46,56 @@ struct TalentDefinition {
     std::string id;
     std::string treeId;
     int tier = 0;
-    std::array<Talent, 3> ranks;
+    std::array<Talent, kMaxTalentRank> ranks;
+    std::string mastery; // what rank 5 adds beyond bigger numbers, if anything
 };
+
+// Rank 5 masteries: mostly utility rather than raw damage. Applied to the
+// fifth rank only, after the ordinary rank curve.
+inline void applyMastery(TalentDefinition& d) {
+    Talent& m = d.ranks[kMaxTalentRank - 1];
+    const auto mark = [&] { m.onHitEffect = StatusEffectInstance{StatusEffectType::Marked, 3, 1}; m.onHitChance = 1.f; };
+    const auto longer = [&] { if (m.selfBuffEffect) ++m.selfBuffEffect->turnsRemaining; };
+    const auto dodge = [&](int amount) { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Evasion, 1, amount}; };
+    const auto stun = [&](int turns) { m.onHitEffect = StatusEffectInstance{StatusEffectType::Stun, turns, 0}; m.onHitChance = 1.f; };
+    const std::string& id = d.id;
+    if (id == "one_handed.quick_strike") { mark(); d.mastery = "Marks the target: its next direct hit taken deals +25%."; }
+    else if (id == "one_handed.parry") { longer(); d.mastery = "Guard lasts one enemy response longer."; }
+    else if (id == "one_handed.execution") { m.conditionalHpFraction = .4f; d.mastery = "Double damage from 40% HP instead of 30%."; }
+    else if (id == "two_handed.cleave") { m.pushDistance = 1; d.mastery = "Pushes surviving targets one tile away."; }
+    else if (id == "two_handed.fury") { m.hpCost = 0; d.mastery = "Costs no life."; }
+    else if (id == "two_handed.whirlwind") { m.pushDistance = 2; d.mastery = "Pushes surviving targets two tiles away."; }
+    else if (id == "shield.bash") { m.pushDistance = 2; d.mastery = "Pushes two tiles."; }
+    else if (id == "shield.guard") { longer(); d.mastery = "Guard lasts one enemy response longer."; }
+    else if (id == "shield.shockwave") { m.areaRadius = 2; d.mastery = "Reaches enemies up to two tiles away."; }
+    else if (id == "bow.quick_shot") { mark(); d.mastery = "Marks the target: its next direct hit taken deals +25%."; }
+    else if (id == "bow.volley") { m.areaRadius = 3; d.mastery = "The burst covers three tiles."; }
+    else if (id == "bow.piercing_shot") { m.bonusCritChance += .2f; d.mastery = "A further +20% critical chance."; }
+    else if (id == "stealth.conceal") { longer(); d.mastery = "Hide for four responses."; }
+    else if (id == "stealth.strike") { m.retreatDistance = 2; d.mastery = "Slip up to two tiles away after striking."; }
+    else if (id == "stealth.vanish_strike") { longer(); d.mastery = "Stay concealed for three responses."; }
+    else if (id == "acrobatics.tumble") { dodge(15); d.mastery = "+15% dodge for one enemy response after tumbling."; }
+    else if (id == "acrobatics.vault_kick") { stun(1); d.mastery = "The kick stuns for one enemy turn."; }
+    else if (id == "acrobatics.leap") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 30; d.mastery = "+30% dodge instead of +20%."; }
+    else if (id == "fire.ember_bolt") { if (m.onHitEffect) m.onHitEffect->magnitude = 2; d.mastery = "Burn deals 2 damage per turn."; }
+    else if (id == "fire.fireball") { m.areaRadius = 3; d.mastery = "The explosion covers three tiles."; }
+    else if (id == "fire.meteor") { m.statusBonusPercent = 100; d.mastery = "Consuming Burn doubles the hit (+100%)."; }
+    else if (id == "ice.shard") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 4; d.mastery = "Chill lasts four turns."; }
+    else if (id == "ice.nova") { m.areaRadius = 2; d.mastery = "Reaches enemies up to two tiles away."; }
+    else if (id == "ice.shatter") { m.statusBonusPercent = 100; d.mastery = "Consuming Chill doubles the hit (+100%)."; }
+    else if (id == "lightning.bolt") { m.cooldownTurns = 1; d.mastery = "Cooldown 1."; }
+    else if (id == "lightning.chain") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    else if (id == "lightning.discharge") { m.statusBonusPercent = 100; d.mastery = "Consuming Shock doubles the hit (+100%)."; }
+    else if (id == "arcane.bolt") { m.manaCost = std::max(1, m.manaCost / 2); d.mastery = "Costs half as much mana."; }
+    else if (id == "arcane.blink") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    else if (id == "arcane.mind_shatter") { stun(2); d.mastery = "Stuns for two enemy turns (bosses still resist repeats)."; }
+    else if (id == "cloth.gather_mana") { m.restoreHpPercent = 10; d.mastery = "Also restores 10% of maximum life."; }
+    else if (id == "cloth.pulse") { m.pushDistance = 3; d.mastery = "Pushes survivors three tiles."; }
+    else if (id == "light_armour.sidestep") { dodge(15); d.mastery = "+15% dodge for one enemy response after the step."; }
+    else if (id == "light_armour.parting_strike") { m.retreatDistance = 3; d.mastery = "Retreat three tiles instead of two."; }
+    else if (id == "heavy_armour.shoulder_check") { stun(1); d.mastery = "The check stuns for one enemy turn."; }
+    else if (id == "heavy_armour.second_wind") { m.cleanse = true; d.mastery = "Also removes Poison, Burn, Chill, Marked and curses."; }
+}
 
 // Explicit rank profiles share existing targeting/effect data. No runtime content loader.
 inline const std::vector<TalentDefinition>& talentCatalog() {
@@ -88,28 +136,37 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             if (tree==13) t.weaponRequirement=WeaponRequirement::Melee;
             if (tree==16) t.weaponRequirement=WeaponRequirement::Bow;
             if (tree>=13) t.scalingStat=tree==16?ScalingStat::Dexterity:ScalingStat::Intelligence;
-            TalentDefinition d{id,kTalentTrees[tree].id,tier,{t,t,t}};
-            for (int rank=1; rank<3; ++rank) {
+            TalentDefinition d{id,kTalentTrees[tree].id,tier,{t,t,t,t,t}};
+            // The rank curve, by rank index 1-4 (ranks 2-5).
+            for (int rank=1; rank<kMaxTalentRank; ++rank) {
                 auto& r=d.ranks[rank];
                 if (r.passive) {
-                    if (r.passiveKind==PassiveKind::Marksmanship || r.passiveKind==PassiveKind::Footwork)
-                        r.passiveMagnitude = rank==1 ? 12 : 15;
-                    else if (r.passiveKind==PassiveKind::ArcaneEfficiency) r.passiveMagnitude = rank==1 ? 20 : 30;
+                    constexpr int precise[]{10,12,15,18,20}, efficient[]{10,20,30,35,40};
+                    if (r.passiveKind==PassiveKind::Marksmanship || r.passiveKind==PassiveKind::Footwork) r.passiveMagnitude=precise[rank];
+                    else if (r.passiveKind==PassiveKind::ArcaneEfficiency) r.passiveMagnitude=efficient[rank];
                     else r.passiveMagnitude += rank;
                 }
-                else if (r.shape==EffectShape::Movement) { if (rank==2) ++r.moveDistance; else r.manaCost=std::max(0,r.manaCost-1); }
+                else if (r.shape==EffectShape::Movement) {
+                    if (rank>=2) ++r.moveDistance;
+                    if (rank>=4) ++r.moveDistance;
+                    if (rank==3 || rank==4) r.cooldownTurns=std::max(1,t.cooldownTurns-1);
+                }
                 else if (r.effectKind==TalentEffectKind::SelfBuff) {
-                    if (rank==1) r.manaCost=std::max(0,r.manaCost-1);
-                    else { r.manaCost=std::max(0,r.manaCost-1); r.cooldownTurns=std::max(1,r.cooldownTurns-1); }
-                } else r.damagePercent = rank==1 ? 120 : 145;
+                    if (rank>=2) r.cooldownTurns=std::max(1,r.cooldownTurns-1);
+                    if (rank>=3 && r.selfBuffEffect) ++r.selfBuffEffect->turnsRemaining;
+                    if (rank>=4) r.cooldownTurns=std::max(1,r.cooldownTurns-1);
+                } else {
+                    constexpr int percent[]{100,120,145,170,200};
+                    r.damagePercent=percent[rank];
+                }
                 r.tags=talentTags(r);
             }
             if (d.id=="bow.piercing_shot" || d.id=="two_handed.fury") {
-                d.ranks[1].damagePercent=112;
-                d.ranks[2].damagePercent=d.id=="bow.piercing_shot" ? 125 : 112;
-                --d.ranks[2].cooldownTurns;
+                constexpr int piercing[]{100,112,125,137,150}, fury[]{100,112,112,125,125};
+                for (int rank=1; rank<kMaxTalentRank; ++rank) d.ranks[rank].damagePercent=d.id=="bow.piercing_shot" ? piercing[rank] : fury[rank];
+                for (int rank=2; rank<kMaxTalentRank; ++rank) d.ranks[rank].cooldownTurns=t.cooldownTurns-1;
             }
-            for (int rank=0; rank<3; ++rank) {
+            for (int rank=0; rank<kMaxTalentRank; ++rank) {
                 auto& r=d.ranks[rank];
                 if (r.selfBuffEffect && r.selfBuffEffect->type==StatusEffectType::Concealed)
                     r.selfBuffEffect->magnitude=rank+1;
@@ -121,17 +178,20 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             // Spell costs double at every rank, before Arcane Efficiency.
             // Keep rank discounts proportional and catalogue/preview costs aligned.
             if (tree>=6 && tree<=9) for (auto& r:d.ranks) if (!r.passive) r.manaCost*=2;
-            if (tree>=10 && tree<=12) for (int rank=0; rank<3; ++rank) {
+            if (tree>=10 && tree<=12) for (int rank=0; rank<kMaxTalentRank; ++rank) {
                 auto& r=d.ranks[rank];
                 // Explicit modest armour profiles: no hidden mana or cooldown discounts.
                 r.manaCost=t.manaCost; r.cooldownTurns=t.cooldownTurns;
-                if (r.passive) r.passiveMagnitude=t.passiveMagnitude*(rank==0?100:rank==1?125:150)/100;
-                if (t.restoreMana) r.restoreMana=rank==0?6:rank==1?7:9;
-                if (t.restoreHpPercent) r.restoreHpPercent=rank==0?10:rank==1?12:15;
+                if (r.selfBuffEffect) r.selfBuffEffect=t.selfBuffEffect;
+                if (r.moveDistance) r.moveDistance=t.moveDistance+(rank>=2)+(rank>=4);
+                if (r.passive) r.passiveMagnitude=t.passiveMagnitude*(100+25*rank)/100;
+                constexpr int mana[]{6,7,9,10,12}, life[]{10,12,15,17,20};
+                if (t.restoreMana) r.restoreMana=mana[rank];
+                if (t.restoreHpPercent) r.restoreHpPercent=life[rank];
             }
-            if (tree>=13) for (int rank=0;rank<3;++rank) {
+            if (tree>=13) for (int rank=0;rank<kMaxTalentRank;++rank) {
                 auto& r=d.ranks[rank]; r.manaCost=t.manaCost; r.cooldownTurns=t.cooldownTurns;
-                r.summonRank=rank+1;
+                r.summonRank=std::min(rank+1,3);
                 if (d.id=="spellblade.imbue" && rank>0) r.manaCost=3;
                 if (t.summonDuration) r.summonDuration=5+rank;
                 if (t.drainPercent) r.drainPercent=40+10*rank;
@@ -140,102 +200,108 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                     r.selfBuffEffect->turnsRemaining+=rank;
                 if (r.returnConcealed && r.selfBuffEffect) r.selfBuffEffect->magnitude=rank+1;
             }
-            d.ranks[0].tags=talentTags(t); out.push_back(std::move(d));
+            // Higher ranks cost more: +10% mana per rank over rank 1, rounded
+            // to the nearest point (so the cheapest abilities barely move).
+            for (int rank=1; rank<kMaxTalentRank; ++rank) if (!d.ranks[rank].passive && d.ranks[0].manaCost>0)
+                d.ranks[rank].manaCost=(d.ranks[0].manaCost*(100+10*rank)+50)/100;
+            if (tree<13) applyMastery(d);
+            for (auto& r:d.ranks) r.tags=talentTags(r);
+            out.push_back(std::move(d));
         };
         Talent t;
         add(0,"one_handed.quick_strike",0,attack("Quick Strike","A free, efficient melee strike.",4,0,1));
         add(0,"one_handed.parry",1,buff("Parry","Reduce incoming direct damage by 3 for two enemy responses.",StatusEffectType::Guard,2,3,2,5));
-        add(0,"one_handed.riposte",2,passive("Riposte","While using one-handed weapons, Guard enables +4/5/6 direct melee damage.",PassiveKind::Riposte,4));
+        add(0,"one_handed.riposte",2,passive("Riposte","While using one-handed weapons, Guard enables +4/5/6/7/8 direct melee damage.",PassiveKind::Riposte,4));
         t=attack("Execution","Double damage against an enemy at or below 30% HP.",8,4,5); t.conditionalHpFraction=.3f; t.conditionalMultiplier=2; add(0,"one_handed.execution",3,t);
         add(1,"two_handed.cleave",0,attack("Cleave","A heavy swing hitting all four adjacent tiles.",5,3,3,false,1));
         t=attack("Berserker's Fury","A heavy blow paid for with 5 HP.",14,0,4); t.hpCost=5; add(1,"two_handed.fury",1,t);
-        add(1,"two_handed.bloodlust",2,passive("Bloodlust","With a two-handed weapon, direct damage gains +4/5/6 while at or below half HP.",PassiveKind::Bloodlust,4));
+        add(1,"two_handed.bloodlust",2,passive("Bloodlust","With a two-handed weapon, direct damage gains +4/5/6/7/8 while at or below half HP.",PassiveKind::Bloodlust,4));
         t=attack("Whirlwind","Strike in a two-tile circle and push surviving targets one tile away.",8,6,6,false,2); t.pushDistance=1; add(1,"two_handed.whirlwind",3,t);
         t=attack("Shield Bash","Strike, push one tile and Mark for the next direct hit (+25%, 3 enemy turns).",4,1,3); t.pushDistance=1; t.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,3,1}; add(2,"shield.bash",0,t);
         add(2,"shield.guard",1,buff("Guard","Reduce incoming direct damage by 4 for two enemy responses.",StatusEffectType::Guard,2,4,3,6));
-        add(2,"shield.training",2,passive("Shield Training","While a shield is equipped, Guard blocks 4/5/6 extra damage per direct hit.",PassiveKind::ShieldTraining,4));
+        add(2,"shield.training",2,passive("Shield Training","While a shield is equipped, Guard blocks 4/5/6/7/8 extra damage per direct hit.",PassiveKind::ShieldTraining,4));
         t=attack("Shield Shockwave","Strike adjacent enemies and stun successful hits for one enemy turn.",5,5,7,false,1); t.onHitEffect=StatusEffectInstance{StatusEffectType::Stun,1,0}; add(2,"shield.shockwave",3,t);
         add(3,"bow.quick_shot",0,attack("Quick Shot","An efficient projectile intercepted by the first enemy.",5,2,1,true));
         t=attack("Volley","Burst in a two-tile circle and Mark survivors for the next direct hit (+25%, 3 enemy turns).",5,6,4,true,2);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,3,1}; add(3,"bow.volley",1,t);
-        add(3,"bow.marksmanship",2,passive("Marksmanship","Bow attacks gain 10/12/15% critical chance while you have Opening from waiting or movement abilities.",PassiveKind::Marksmanship,10));
+        add(3,"bow.marksmanship",2,passive("Marksmanship","Bow attacks gain 10/12/15/18/20% critical chance while you have Opening from waiting or movement abilities.",PassiveKind::Marksmanship,10));
         t=attack("Piercing Shot","A precision shot with +20% critical chance and 2x critical damage; stops at first enemy.",10,5,7,true); t.bonusCritChance=.2f; t.bonusCritDamageMultiplier=.5f; add(3,"bow.piercing_shot",3,t);
         add(4,"stealth.conceal",0,buff("Conceal","Hide for three responses. Nearby enemies roll to detect you: rank, your DEX and distance help; enemy DEX increases risk. Detection, attacks and damage reveal you.",StatusEffectType::Concealed,3,1,3,7));
         t=attack("Ambush Strike","A melee strike requiring Concealment; attacking reveals you.",9,2,4); t.requiresStealth=true; add(4,"stealth.strike",1,t);
-        add(4,"stealth.ambush",2,passive("Ambush","Direct damage from Concealment gains +4/5/6 damage, including spells and ranged attacks.",PassiveKind::Ambush,4));
+        add(4,"stealth.ambush",2,passive("Ambush","Direct damage from Concealment gains +4/5/6/7/8 damage, including spells and ranged attacks.",PassiveKind::Ambush,4));
         t=attack("Vanish Strike","Strike, then retreat up to three tiles and gain Concealment for two enemy responses, using this ability's rank for detection.",8,5,7); t.retreatDistance=3; t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Concealed,2,1}; add(4,"stealth.vanish_strike",3,t);
         add(5,"acrobatics.tumble",0,move("Tumble","Move up to three visible tiles, stopping before obstacles and actors.",3,2,4));
         t=attack("Vault Kick","Kick, then retreat up to three tiles even if the hit is dodged.",4,3,4); t.retreatDistance=3; add(5,"acrobatics.vault_kick",1,t);
-        add(5,"acrobatics.footwork",2,passive("Footwork","Successful movement abilities grant +10/12/15% dodge for one enemy response.",PassiveKind::Footwork,10));
+        add(5,"acrobatics.footwork",2,passive("Footwork","Successful movement abilities grant +10/12/15/18/20% dodge for one enemy response.",PassiveKind::Footwork,10));
         t=move("Evasive Leap","Move up to four tiles and gain +20% dodge for two enemy responses.",4,4,6); t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Evasion,2,20}; add(5,"acrobatics.leap",3,t);
         t=attack("Ember Bolt","A flame projectile; successful hits Burn for 1 damage per turn over three enemy turns.",4,2,1,true); t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,1}; add(6,"fire.ember_bolt",0,t);
         t=attack("Fireball","Explode at first impact, burning enemies for 1 damage per turn over three enemy turns.",5,6,5,true,2); t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,1}; add(6,"fire.fireball",1,t);
-        add(6,"fire.kindle",2,passive("Kindle","Successful movement abilities Burn visible adjacent enemies for 4/5/6 damage per turn over two turns. Once per action; reveals you.",PassiveKind::Kindle,4));
+        add(6,"fire.kindle",2,passive("Kindle","Successful movement abilities Burn visible adjacent enemies for 4/5/6/7/8 damage per turn over two turns. Once per action; reveals you.",PassiveKind::Kindle,4));
         t=attack("Meteor","Consume an existing Burn on a successful hit for +50% direct damage.",11,9,7,true); t.consumeBurn=true; t.statusBonusPercent=50; add(6,"fire.meteor",3,t);
         t=attack("Ice Shard","Chill on hit: -20% outgoing damage and movement on alternate turns for three enemy turns.",4,2,2,true); t.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,3,20}; add(7,"ice.shard",0,t);
         t=attack("Frost Nova","Chill adjacent enemies for three turns; helps create an escape.",4,4,5,false,1); t.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,3,20}; add(7,"ice.nova",1,t);
-        add(7,"ice.frostbite",2,passive("Frostbite","Direct hits against Chilled enemies deal +4/5/6 damage, from any tree.",PassiveKind::Frostbite,4));
+        add(7,"ice.frostbite",2,passive("Frostbite","Direct hits against Chilled enemies deal +4/5/6/7/8 damage, from any tree.",PassiveKind::Frostbite,4));
         t=attack("Shatter","Consume Chill on hit for +50% direct damage and a one-turn Stun.",9,6,7,true); t.consumeChill=true; t.statusBonusPercent=50; add(7,"ice.shatter",3,t);
         add(8,"lightning.bolt",0,attack("Lightning Bolt","A direct lightning projectile.",5,2,2,true));
         t=attack("Chain Lightning","Jump to one visible enemy within three tiles of impact, for half damage. Terrain blocks the jump.",6,5,5,true); t.chain=true; add(8,"lightning.chain",1,t);
-        add(8,"lightning.static_charge",2,passive("Static Charge","Direct Lightning hits apply Shock for 4/5/6 turns. Shock does not stack and empowers Discharge.",PassiveKind::StaticCharge,4));
+        add(8,"lightning.static_charge",2,passive("Static Charge","Direct Lightning hits apply Shock for 4/5/6/7/8 turns. Shock does not stack and empowers Discharge.",PassiveKind::StaticCharge,4));
         t=attack("Discharge","Consume Shock on a successful hit for +50% direct damage. Cannot reapply Shock.",11,6,7,true); t.consumeShock=true; t.statusBonusPercent=50; add(8,"lightning.discharge",3,t);
         t=attack("Arcane Bolt","Mark on a successful hit: next direct hit gains +25% damage, within 3 enemy turns.",3,2,1,true);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,3,1}; add(9,"arcane.bolt",0,t);
         add(9,"arcane.blink",1,move("Blink","Move up to three visible tiles; terrain and actors block travel.",3,4,4));
-        add(9,"arcane.efficiency",2,passive("Arcane Efficiency","Magic abilities cost 10/20/30% less mana (rounded down, minimum one).",PassiveKind::ArcaneEfficiency,10));
+        add(9,"arcane.efficiency",2,passive("Arcane Efficiency","Magic abilities cost 10/20/30/35/40% less mana (rounded down, minimum one).",PassiveKind::ArcaneEfficiency,10));
         t=attack("Mind Shatter","A direct force spell that stuns on a successful hit. Does not chain or travel as a projectile.",7,6,7,true); t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Stun,1,0}; add(9,"arcane.mind_shatter",3,t);
-        t=Talent{}; t.name="Gather Mana"; t.description="Spend a turn restoring 6/7/9 mana. Requires cloth or no armour.";
+        t=Talent{}; t.name="Gather Mana"; t.description="Spend a turn restoring 6/7/9/10/12 mana. Requires cloth or no armour.";
         t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.restoreMana=6; t.cooldownTurns=8;
         add(10,"cloth.gather_mana",0,t);
-        add(10,"cloth.ward",1,passive("Loose Weave","With cloth or no armour and at least half mana, gain +8/10/12% dodge. Total dodge is capped at 60%.",PassiveKind::ClothWard,8));
-        add(10,"cloth.spellweave",2,passive("Spellweave","With cloth or no armour, magic-tree hits against Burn, Chill or Shock gain +4/5/6 damage. Multiple ailments do not stack this bonus.",PassiveKind::Spellweave,4));
+        add(10,"cloth.ward",1,passive("Loose Weave","With cloth or no armour and at least half mana, gain +8/10/12/14/16% dodge. Total dodge is capped at 60%.",PassiveKind::ClothWard,8));
+        add(10,"cloth.spellweave",2,passive("Spellweave","With cloth or no armour, magic-tree hits against Burn, Chill or Shock gain +4/5/6/7/8 damage. Multiple ailments do not stack this bonus.",PassiveKind::Spellweave,4));
         t=attack("Repelling Pulse","With cloth or no armour, hit adjacent enemies and push survivors two tiles. Intelligence-scaled; creates room to cast.",5,6,7,false,1); t.pushDistance=2;
         add(10,"cloth.pulse",3,t);
-        add(11,"light_armour.sidestep",0,move("Sidestep","Requires light armour. Move up to 2/2/3 visible tiles, gaining Opening and triggering movement talents.",2,0,5));
-        add(11,"light_armour.evasion",1,passive("Agile Fit","With light armour and Opening from waiting or movement abilities, gain +8/10/12% dodge. Total dodge is capped at 60%.",PassiveKind::LightEvasion,8));
-        add(11,"light_armour.precision",2,passive("Moving Aim","With light armour and Opening, all direct attacks gain +10/12/15% critical chance. Combines with Bow's Marksmanship.",PassiveKind::LightPrecision,10));
+        add(11,"light_armour.sidestep",0,move("Sidestep","Requires light armour. Move up to 2/2/3/3/4 visible tiles, gaining Opening and triggering movement talents.",2,0,5));
+        add(11,"light_armour.evasion",1,passive("Agile Fit","With light armour and Opening from waiting or movement abilities, gain +8/10/12/14/16% dodge. Total dodge is capped at 60%.",PassiveKind::LightEvasion,8));
+        add(11,"light_armour.precision",2,passive("Moving Aim","With light armour and Opening, all direct attacks gain +10/12/15/17/20% critical chance. Combines with Bow's Marksmanship.",PassiveKind::LightPrecision,10));
         t=attack("Parting Strike","Requires light armour. Strike and Mark an adjacent enemy, then retreat two tiles even on a miss. No weapon requirement.",6,3,6); t.retreatDistance=2; t.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,3,1};
         add(11,"light_armour.parting_strike",3,t);
         t=attack("Shoulder Check","Requires heavy armour. Strike an adjacent enemy and push them one tile. No shield required.",5,2,4); t.pushDistance=1;
         add(12,"heavy_armour.shoulder_check",0,t);
-        add(12,"heavy_armour.brace",1,passive("Brace","With heavy armour and Opening from waiting or movement abilities, reduce direct hits by 2/2/3 damage. Stacks with Guard; does not block damage over time.",PassiveKind::HeavyBrace,2));
-        add(12,"heavy_armour.resolve",2,passive("Unyielding","While wearing heavy armour, gain a 20/25/30% chance to resist an incoming Stun. Existing stuns are not removed.",PassiveKind::HeavyResolve,20));
-        t=Talent{}; t.name="Second Wind"; t.description="Requires heavy armour. Spend a turn recovering 10/12/15% of maximum HP (rounded up). Costs 4 mana, cooldown 10.";
+        add(12,"heavy_armour.brace",1,passive("Brace","With heavy armour and Opening from waiting or movement abilities, reduce direct hits by 2/2/3/3/4 damage. Stacks with Guard; does not block damage over time.",PassiveKind::HeavyBrace,2));
+        add(12,"heavy_armour.resolve",2,passive("Unyielding","While wearing heavy armour, gain a 20/25/30/35/40% chance to resist an incoming Stun. Existing stuns are not removed.",PassiveKind::HeavyResolve,20));
+        t=Talent{}; t.name="Second Wind"; t.description="Requires heavy armour. Spend a turn recovering 10/12/15/17/20% of maximum HP (rounded up). Costs 4/4/5/5/6 mana, cooldown 10.";
         t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.restoreHpPercent=10; t.manaCost=4; t.cooldownTurns=10;
         add(12,"heavy_armour.second_wind",3,t);
         t=buff("Imbue Weapon","V: choose an owned element, then bind 1-9. Five turns or three landed melee hits; all variants share rank and cooldown. Melee weapon required.",StatusEffectType::FlameBlade,6,3,4,8);
         add(13,"spellblade.imbue",0,t);
         t=attack("Spellstrike","INT-scaled melee spell. Triggers Kindle on this hit, Frostbite, Static Charge and Spellweave when learned.",7,6,4); t.spellstrike=true;
         add(13,"spellblade.strike",1,t);
-        add(13,"spellblade.rhythm",2,passive("Battle Rhythm","Casting a spell grants +4/5/6 damage to your next melee attack. A landed melee attack reduces one running spell cooldown by one, once per action.",PassiveKind::BattleRhythm,4));
+        add(13,"spellblade.rhythm",2,passive("Battle Rhythm","Casting a spell grants +4/5/6/7/8 damage to your next melee attack. A landed melee attack reduces one running spell cooldown by one, once per action.",PassiveKind::BattleRhythm,4));
         t=attack("Elemental Release","Consume Burn, Chill, Shock, Marked, Poison, Stun, Wither and Hunter's Mark on adjacent enemies: +25% damage per type consumed. Guard and buffs are preserved.",7,10,8,false,1); t.releaseAilments=true;
         add(13,"spellblade.release",3,t);
         t=Talent{}; t.name="Raise Skeleton"; t.description="Raise an adjacent ally. Cap: 1 + INT/10, maximum 5. Rank and INT improve its stats. Allies dissolve on travel."; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.summonCount=1; t.manaCost=8; t.cooldownTurns=5;
         add(14,"animation.raise",0,t);
         t=Talent{}; t.name="Bone Swap"; t.description="Swap with a visible allied skeleton. Empty ground still spends the cast. Counts as movement for your movement talents."; t.targeting=TargetingMode::RangedEnemyInSight; t.effectKind=TalentEffectKind::SelfBuff; t.boneSwap=true; t.manaCost=4; t.cooldownTurns=4;
         add(14,"animation.swap",1,t);
-        add(14,"animation.pact",2,passive("Grave Pact","Slain minions explode for 4/5/6 damage to adjacent enemies. Expiration, gear-cap dissolution and travel never explode.",PassiveKind::GravePact,4));
-        t=Talent{}; t.name="Army of the Dead"; t.description="Raise up to three adjacent temporary skeletons for 5/6/7 actions. They do not count toward the normal cap. Only one army at a time."; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.summonCount=3; t.summonDuration=5; t.manaCost=16; t.cooldownTurns=12;
+        add(14,"animation.pact",2,passive("Grave Pact","Slain minions explode for 4/5/6/7/8 damage to adjacent enemies. Expiration, gear-cap dissolution and travel never explode.",PassiveKind::GravePact,4));
+        t=Talent{}; t.name="Army of the Dead"; t.description="Raise up to three adjacent temporary skeletons for 5/6/7/8/9 actions. They do not count toward the normal cap. Only one army at a time."; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.summonCount=3; t.summonDuration=5; t.manaCost=16; t.cooldownTurns=12;
         add(14,"animation.army",3,t);
-        add(15,"blood_magic.pact",0,buff("Blood Pact","For 3/4/5 subsequent actions, spells spend HP instead of mana. A spell cannot spend your last HP. Activating this pact costs mana.",StatusEffectType::BloodPact,4,1,2,9));
-        t=attack("Drain Life","Direct spell: heal for 40/50/60% of actual HP removed, excluding overkill. Empty ground or a miss gives no healing.",7,8,5,true); t.projectile=false; t.drainPercent=40;
+        add(15,"blood_magic.pact",0,buff("Blood Pact","For 3/4/5/6/7 subsequent actions, spells spend HP instead of mana. A spell cannot spend your last HP. Activating this pact costs mana.",StatusEffectType::BloodPact,4,1,2,9));
+        t=attack("Drain Life","Direct spell: heal for 40/50/60/70/80% of actual HP removed, excluding overkill. Empty ground or a miss gives no healing.",7,8,5,true); t.projectile=false; t.drainPercent=40;
         add(15,"blood_magic.drain",1,t);
-        add(15,"blood_magic.deathless",2,passive("Deathless","Once per newly explored floor, survive lethal damage at 1 HP. Revisiting floors or town does not recharge it. Ranks 2/3 also grant 1/2 Guard for one response.",PassiveKind::Deathless,1));
-        t=buff("Wither","Curse visible ground for 3/4/5 enemy turns. Each direct hit you land on the cursed enemy heals 2 HP, capped by HP actually removed.",StatusEffectType::Wither,3,2,8,9); t.targeting=TargetingMode::RangedEnemyInSight;
+        add(15,"blood_magic.deathless",2,passive("Deathless","Once per newly explored floor, survive lethal damage at 1 HP. Revisiting floors or town does not recharge it. Ranks 2-5 also grant 1-4 Guard for one response.",PassiveKind::Deathless,1));
+        t=buff("Wither","Curse visible ground for 3/4/5/6/7 enemy turns. Each direct hit you land on the cursed enemy heals 2 HP, capped by HP actually removed.",StatusEffectType::Wither,3,2,8,9); t.targeting=TargetingMode::RangedEnemyInSight;
         add(15,"blood_magic.wither",3,t);
-        t=attack("Shadow Shot","Bow shot requiring Concealment: 35/45/55% chance to remain concealed after firing. Detection and damage can still reveal you.",7,4,4,true); t.requiresStealth=true; t.stayHiddenPercent=35;
+        t=attack("Shadow Shot","Bow shot requiring Concealment: 35/45/55/65/75% chance to remain concealed after firing. Detection and damage can still reveal you.",7,4,4,true); t.requiresStealth=true; t.stayHiddenPercent=35;
         add(16,"shadow_archer.shot",0,t);
         t=buff("Hunter's Mark","Mark visible ground for 3 turns. That enemy's stealth detection chance is halved, with a 5% minimum when it can check. Casting reveals you.",StatusEffectType::HuntersMark,3,50,3,5); t.targeting=TargetingMode::RangedEnemyInSight; t.huntersMark=true;
         add(16,"shadow_archer.mark",1,t);
-        add(16,"shadow_archer.unseen",2,passive("Unseen","A direct kill begun while Concealed refreshes concealment to 2/3/4 responses. At most once per Conceal cast; a qualifying kill can preserve your concealment.",PassiveKind::Unseen,2));
+        add(16,"shadow_archer.unseen",2,passive("Unseen","A direct kill begun while Concealed refreshes concealment to 2/3/4/5/6 responses. At most once per Conceal cast; a qualifying kill can preserve your concealment.",PassiveKind::Unseen,2));
         t=attack("Death from Shadows","A heavy bow shot with +50% damage while Concealed. After firing, gain Concealment for two responses. Long cooldown; does not reset Unseen.",12,8,12,true); t.returnConcealed=true; t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Concealed,2,1};
         add(16,"shadow_archer.death",3,t);
 
         // Ascendancy nodes (Ascendancy.hpp): one rank, bought with ascendancy points.
         auto node=[&](const char* treeId,const char* id,ScalingStat stat,Talent t) {
             t.id=id; t.tree=TalentTree::Blade; t.scalingStat=stat; t.scalingCooldown=t.cooldownTurns;
-            TalentDefinition d; d.id=id; d.treeId=treeId; d.tier=0; d.ranks={t,t,t};
+            TalentDefinition d; d.id=id; d.treeId=treeId; d.tier=0; d.ranks={t,t,t,t,t};
             out.push_back(d);
         };
         constexpr auto Str=ScalingStat::Strength, Dex=ScalingStat::Dexterity, Int=ScalingStat::Intelligence;

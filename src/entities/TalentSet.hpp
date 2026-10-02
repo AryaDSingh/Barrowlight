@@ -35,7 +35,7 @@ public:
     const std::vector<Talent>& knownTalents() const { return knownTalents_; }
     Talent effectiveTalent(std::size_t index) const;
     int rank(std::size_t index) const { return index < ranks_.size() ? ranks_[index] : 0; }
-    void setRank(std::size_t index, int value) { if (index < ranks_.size()) ranks_[index] = std::clamp(value, 1, 3); }
+    void setRank(std::size_t index, int value) { if (index < ranks_.size()) ranks_[index] = std::clamp(value, 1, kMaxTalentRank); }
     int rankOf(const std::string& id) const {
         for (std::size_t i=0; i<knownTalents_.size(); ++i) if (knownTalents_[i].id==id) return rank(i);
         return 0;

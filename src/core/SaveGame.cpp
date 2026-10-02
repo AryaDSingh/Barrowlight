@@ -43,7 +43,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 26;
+constexpr int kSaveFormatVersion = 27;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -56,7 +56,7 @@ bool readTalentStates(std::istream& in, std::vector<SaveGameState::TalentSaveDat
     for (std::size_t i = 0; i < count; ++i) {
         SaveGameState::TalentSaveData talent;
         if (!(in >> talent.id >> talent.cooldown >> talent.rank) || talent.id.size() > 100 ||
-            talent.rank<1 || talent.rank>3 || talent.cooldown < 0 || talent.cooldown > 10000 || !ids.insert(talent.id).second) return false;
+            talent.rank<1 || talent.rank>kMaxTalentRank || talent.cooldown < 0 || talent.cooldown > 10000 || !ids.insert(talent.id).second) return false;
         talents.push_back(std::move(talent));
     }
     return true;
@@ -141,7 +141,7 @@ bool validProgression(const SaveGameState& s) {
     // Hidden trees are locked to new purchases, but saves that already own
     // one keep it.
     for (const auto& t:s.playerTalents) {
-        if (!known.insert(t.id).second || t.rank<1 || t.rank>3 || t.cooldown<0 || t.cooldown>10000) return false;
+        if (!known.insert(t.id).second || t.rank<1 || t.rank>kMaxTalentRank || t.cooldown<0 || t.cooldown>10000) return false;
         if (t.id=="basic.attack" || t.id=="basic.cleanse") { if (t.rank!=1) return false; continue; }
         const auto* d=findTalentDefinition(t.id);
         if (d && isAscendancyTree(d->treeId)) {
@@ -176,7 +176,7 @@ bool validProgression(const SaveGameState& s) {
     }
     if (ascendancyNodes+s.ascendancyPoints!=static_cast<int>(std::bitset<8>(static_cast<unsigned>(s.trialsCleared)).count())) return false;
     if (s.trees.empty() && !s.progressionReviewPending) return false;
-    if (!known.count("basic.attack") || !known.count("basic.cleanse") || abilitySpent+s.abilityPoints!=s.playerLevel+2) return false;
+    if (!known.count("basic.attack") || !known.count("basic.cleanse") || abilitySpent+s.abilityPoints!=earnedAbilityPoints(s.playerLevel)) return false;
     for (const auto& tree:s.trees) if (tree.specialized) {
         int investment=0;
         for (const auto& t:s.playerTalents) { const auto* d=findTalentDefinition(t.id); if (d && !isImbueVariant(d->id) && d->treeId==tree.id && d->tier<3) investment+=t.rank; }
@@ -348,7 +348,9 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
     }
     out << state.lootRngState << ' ' << state.ordinaryDrops << ' ' << state.chestExists << ' '
         << state.chestClaimed << ' ' << state.chestPosition.x << ' ' << state.chestPosition.y << '\n';
-    out << state.treePoints << ' ' << state.abilityPoints << ' ' << state.trees.size() << '\n';
+    // Older layouts predate format 27's larger ability point budget.
+    const int abilityPoints=version<27 ? state.abilityPoints-(earnedAbilityPoints(state.playerLevel)-(state.playerLevel+2)) : state.abilityPoints;
+    out << state.treePoints << ' ' << abilityPoints << ' ' << state.trees.size() << '\n';
     for (const auto& tree:state.trees) out << tree.id << ' ' << tree.specialized << '\n';
     out << state.hotbar.size() << '\n';
     for (const auto& id:state.hotbar) out << (id.empty()?"-":id) << '\n';
@@ -384,7 +386,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
+    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
         return std::nullopt;
     }
 
@@ -570,6 +572,8 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         return std::nullopt;
     std::size_t treeCount=0,barCount=0;
     if (!(in >> state.treePoints >> state.abilityPoints >> treeCount) || treeCount>kTalentTrees.size()) return std::nullopt;
+    // Format 27 raised the ability point budget; older characters get the difference.
+    if (version<27) state.abilityPoints+=earnedAbilityPoints(state.playerLevel)-(state.playerLevel+2);
     for (std::size_t i=0;i<treeCount;++i) {
         Player::TreeAccess tree;
         if (!(in>>tree.id>>tree.specialized)) return std::nullopt;

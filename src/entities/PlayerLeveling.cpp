@@ -29,6 +29,7 @@ void grantXp(Player& player, int amount) {
         player.refreshEquipmentStats();
         player.unspentAttributePoints() += kAttributePointsPerLevel;
         ++player.abilityPoints();
+        if (grantsExtraAbilityPoint(player.level())) ++player.abilityPoints();
         if (grantsTreePoint(player.level())) ++player.treePoints();
         // Full heal on level-up, same as before -- max mana isn't
         // touched here at all anymore (it only grows from Intelligence

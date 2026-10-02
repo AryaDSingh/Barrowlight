@@ -1512,7 +1512,7 @@ void Application::selectClass(PlayerClass cls) {
     nextItemId_ = 1;
     player_.trees().clear();
     player_.bloodRelic=false; player_.animationRelic=false; player_.deathlessSpentFloors.clear();
-    player_.treePoints()=1; player_.abilityPoints()=3;
+    player_.treePoints()=1; player_.abilityPoints()=earnedAbilityPoints(1);
     player_.ascendancy.clear(); player_.ascendancyPoints=0; player_.trialKeys=0; player_.trialsCleared=0;
     trial_=0; trialReturnFloor_=0; ascendancyMenu_=false; trialMenu_=false;
     pendingFinalVictory_ = false;

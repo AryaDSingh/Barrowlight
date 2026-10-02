@@ -57,7 +57,7 @@ int main() {
     original.playerXp = 37;   // deliberately not the default (0)
     original.floorEntrance={1,1}; original.floorExit={3,2};
     original.currentFloor = 6; // deliberately not the default (1)
-    original.trees={{"one_handed",false}}; original.treePoints=0; original.abilityPoints=0;
+    original.trees={{"one_handed",false}}; original.treePoints=0; original.abilityPoints=3; // level 4 earns 9; 6 are spent below
     original.playerStats.hp = 17;
     original.playerStats.maxHp = 30;
     original.playerStats.mana = 9;

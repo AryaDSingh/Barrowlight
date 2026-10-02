@@ -97,7 +97,7 @@ private:
     int level_ = 1;
     int xp_ = 0;
     std::vector<TreeAccess> trees_;
-    int treePoints_ = 1, abilityPoints_ = 3;
+    int treePoints_ = 1, abilityPoints_ = 4;
     int unspentAttributePoints_ = 0;
 };
 

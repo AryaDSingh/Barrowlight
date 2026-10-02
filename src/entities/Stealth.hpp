@@ -15,7 +15,8 @@ inline float stealthDetectionChance(int playerDexterity, int enemyDexterity,
     const float dy=static_cast<float>(player.y)-enemy.y;
     const float distance=std::sqrt(dx*dx+dy*dy);
     if (distance>kStealthDetectionRadius) return 0.f;
-    const float rankBonus=.12f*(std::clamp(concealmentRank,1,3)-1);
+    // Ranks 2-3 help a lot; ranks 4-5 a little more.
+    const float rankBonus=.12f*(std::clamp(concealmentRank,1,3)-1)+.05f*std::clamp(concealmentRank-3,0,2);
     const float agilityBonus=.015f*std::clamp(playerDexterity,0,16);
     const float perceptionBonus=.008f*std::clamp(enemyDexterity,0,60);
     const float distanceBonus=.22f*std::max(0.f,distance-1.f);

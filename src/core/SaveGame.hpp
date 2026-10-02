@@ -101,7 +101,7 @@ struct SaveGameState {
         bool operator==(const TalentSaveData& other) const { return id == other.id && cooldown == other.cooldown && rank == other.rank; }
     };
     std::vector<TalentSaveData> playerTalents; // learned order, identity and running cooldown
-    int treePoints=1, abilityPoints=3;
+    int treePoints=1, abilityPoints=4;
     std::vector<Player::TreeAccess> trees;
     std::vector<std::string> hotbar;
     bool progressionReviewPending=false, pendingFinalVictory=false;

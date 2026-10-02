@@ -14,6 +14,10 @@ enum class TalentTree {
     OneHanded, TwoHanded, Shield, Bow, Stealth, Acrobatics, Fire, Ice, Lightning, Arcane, Cloth, LightArmour, HeavyArmour, Spellblade, Animation, BloodMagic, ShadowArcher,
 };
 
+// Abilities and talents have five ranks; rank 5 often adds a mastery effect
+// (TalentDefinition::mastery).
+inline constexpr int kMaxTalentRank = 5;
+
 enum class TargetingMode {
     Self,               // affects the caster only (Blink, Immolate's origin)
     AdjacentEnemy,      // must target an enemy in one of the 4 adjacent tiles

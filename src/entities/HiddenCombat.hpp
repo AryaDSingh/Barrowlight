@@ -24,7 +24,7 @@ inline void applyImbueHit(Actor& attacker,Actor& target) {
         if (!attacker.statusEffects().has(type)) continue;
         if (target.stats().hp>0) {
             const StatusEffectType effects[]{StatusEffectType::Burn,StatusEffectType::Chill,StatusEffectType::Shock,StatusEffectType::Marked};
-            target.statusEffects().apply({effects[i],3+(rank==3),i==0?2+(rank==3):i==1?20+5*(rank-1):1});
+            target.statusEffects().apply({effects[i],3+(rank>=3),i==0?2+(rank>=3):i==1?20+5*(std::min(rank,3)-1):1});
         }
         for (auto& e:attacker.statusEffects().active()) if (e.type==type) --e.magnitude;
         if (attacker.statusEffects().magnitudeOf(type)<=0) attacker.statusEffects().remove(type);

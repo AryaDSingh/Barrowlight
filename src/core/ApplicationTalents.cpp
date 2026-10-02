@@ -1,4 +1,5 @@
 #include "core/Application.hpp"
+#include "entities/RunProgression.hpp"
 #include "core/GameIcons.hpp"
 #include "entities/TalentProgression.hpp"
 #include "entities/Stealth.hpp"
@@ -138,7 +139,7 @@ void Application::openTalentTrees() {
 }
 void Application::closeTalentTrees() {
     if (player_.trees().empty()) { treeFeedback_="Unlock your first tree with the Unlock button or Enter before continuing."; return; }
-    if (player_.abilityPoints()==3 && player_.level()==1) { treeFeedback_="Learn at least one ability with the Learn button or A before continuing."; return; }
+    if (player_.abilityPoints()==earnedAbilityPoints(1) && player_.level()==1) { treeFeedback_="Learn at least one ability with the Learn button or A before continuing."; return; }
     progressionReviewPending_=false;
     mode_=GameMode::Playing; resumeLevelUpSequence();
 }
@@ -245,9 +246,9 @@ void Application::renderTalentTrees() {
             ui_.inset(window_,r,chosen?ui::kGold:hovered(r)?ui::kBronze:i==3?sf::Color(120,70,150,120):sf::Color::Transparent);
             ui_.icon(window_,talentIcon(d.ranks[0]),{{r.position.x+6,r.position.y+6},{r.size.x-12,r.size.y-12}},
                 rank?sf::Color(240,230,206):access?sf::Color(150,142,128):sf::Color(84,80,76));
-            const std::string label=std::to_string(rank)+"/3";
+            const std::string label=std::to_string(rank)+"/"+std::to_string(kMaxTalentRank);
             ui_.text(window_,label,{r.position.x+(r.size.x-ui_.textWidth(label,13,ui::Font::Bold))/2,r.position.y+r.size.y+1},13,
-                rank==3?ui::kGood:rank?ui::kText:access?ui::kMuted:sf::Color(170,70,60),ui::Font::Bold);
+                rank==kMaxTalentRank?ui::kRare:rank>=3?ui::kGood:rank?ui::kText:access?ui::kMuted:sf::Color(170,70,60),ui::Font::Bold);
         }
     }
 
@@ -267,21 +268,21 @@ void Application::renderTalentTrees() {
     ui_.text(window_,std::string(categoryInfo(treeCategory(tree.id)).name)+" / "+tree.name+(access?(access->specialized?", specialised":", open"):", locked")+
         (abilitySelection_==3?", advanced":"")+(t0.passive?", passive":""),{left+68,y+30},14,access?ui::kGood:ui::kMuted);
     y+=68;
-    ui_.text(window_,"Current rank: "+std::to_string(rank)+" of 3",{left,y},15,ui::kText,ui::Font::Bold); y+=22;
+    ui_.text(window_,"Current rank: "+std::to_string(rank)+" of "+std::to_string(kMaxTalentRank),{left,y},15,ui::kText,ui::Font::Bold); y+=22;
     if (t0.armourRequirement!=ArmourRequirement::None) {
         const bool active=armourMatches(player_,t0.armourRequirement);
         ui_.paragraph(window_,std::string(active?"Equipment matches: ":"Inactive: ")+armourRequirementText(t0.armourRequirement),
             left,y,width,14,active?ui::kGood:ui::kBad);
     }
     y+=4;
-    ui_.paragraph(window_,t0.description,left,y,width,15,ui::kText,ui::Font::Body,332);
-    y=342;
+    ui_.paragraph(window_,t0.description,left,y,width,15,ui::kText,ui::Font::Body,292);
+    y=298;
     // Rank table.
     const char* headings[]{"Rank","Damage","Mana","Cooldown","Move","Extra"};
     const float columns[]{0,48,124,180,262,316};
     for(int c=0;c<6;++c) ui_.text(window_,headings[c],{left+columns[c],y},14,ui::kGold,ui::Font::Bold);
     y+=22;
-    for (int r=0;r<3;++r) {
+    for (int r=0;r<kMaxTalentRank;++r) {
         const auto& t=d.ranks[r];
         const sf::Color c=r<rank?ui::kGood:ui::kText;
         const std::string cells[]{std::to_string(r+1),
@@ -291,9 +292,14 @@ void Application::renderTalentTrees() {
             t.restoreHpPercent?std::to_string(t.restoreHpPercent)+"% HP":
             t.selfBuffEffect && t.selfBuffEffect->type==StatusEffectType::Concealed?std::to_string(t.selfBuffEffect->magnitude):"-"};
         for(int col=0;col<6;++col) ui_.text(window_,cells[col],{left+columns[col],y},14,c);
-        y+=20;
+        y+=19;
     }
-    y+=10;
+    y+=4;
+    if (!d.mastery.empty()) {
+        ui_.paragraph(window_,"Rank 5 mastery: "+d.mastery,left,y,width,14,rank>=kMaxTalentRank?ui::kRare:sf::Color(214,170,96),ui::Font::Bold,y+40);
+        y+=4;
+    }
+    y+=4;
     const auto treeReason=treePurchaseReason(player_,playerClass_,tree);
     const auto reason=abilityPurchaseReason(player_,d);
     ui_.paragraph(window_,treeReason.empty()?(access?"You can specialise in this tree for 1 tree point.":"Unlock this tree for 1 tree point."):
@@ -303,7 +309,7 @@ void Application::renderTalentTrees() {
     ui_.text(window_,"Tree investment: "+std::to_string(treeInvestment(player_,tree.id)),{left,548},13,ui::kMuted);
 
     ui_.button(window_,treeButton,access?"Specialise (Enter)":"Unlock tree (Enter)",hovered(treeButton),treeReason.empty(),14);
-    ui_.button(window_,abilityButton,rank>=3?"Maximum rank":rank?"Rank up (A)":"Learn (A)",hovered(abilityButton),reason.empty(),14);
+    ui_.button(window_,abilityButton,rank>=kMaxTalentRank?"Maximum rank":rank?"Rank up (A)":"Learn (A)",hovered(abilityButton),reason.empty(),14);
     ui_.button(window_,bindButton,"Assign hotbar (B)",hovered(bindButton),rank>0 && !t0.passive,14);
     if(d.id=="spellblade.imbue") ui_.button(window_,variantButton,"Next element (V)",hovered(variantButton),rank>0,14);
     y=656;
@@ -315,7 +321,7 @@ void Application::renderTalentTrees() {
         if(!abilityRect(layout.origins[row],i).contains(*mouse)) continue;
         const auto& hd=talentCatalog()[layout.trees[row]*4+i];
         ui_.tooltip(window_,{{hd.ranks[0].name,ui::kGold,17,ui::Font::Title},
-            {"Rank "+std::to_string(player_.talents().rankOf(hd.id))+" of 3"+(hd.ranks[0].passive?", passive":""),ui::kMuted,13},
+            {"Rank "+std::to_string(player_.talents().rankOf(hd.id))+" of "+std::to_string(kMaxTalentRank)+(hd.ranks[0].passive?", passive":""),ui::kMuted,13},
             {hd.ranks[0].description,ui::kText,14},{"Click to see ranks and learn it.",ui::kInfo,13}},*mouse,300);
     }
 

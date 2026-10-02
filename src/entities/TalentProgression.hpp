@@ -35,7 +35,7 @@ inline std::string abilityPurchaseReason(const Player& p,const TalentDefinition&
     const auto* access=treeAccess(p,d.treeId);
     if (!access) return "Unlock this tree first.";
     const int rank=p.talents().rankOf(d.id);
-    if (rank>=3) return "Maximum rank (3).";
+    if (rank>=kMaxTalentRank) return "Maximum rank ("+std::to_string(kMaxTalentRank)+").";
     if (p.abilityPoints()<=0) return "No ability points available.";
     if (!rank) {
         constexpr int levels[]{1,1,4,5}, investments[]{0,1,3,4};
