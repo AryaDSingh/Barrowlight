@@ -237,7 +237,10 @@ void Application::renderBattleHud() {
         ui_.text(window_,std::to_string(value),{x+30,y},14,ui::kText,ui::Font::Bold);
     };
     stat("Str",stats.strength,14,220); stat("Dex",stats.dexterity,96,220); stat("Int",stats.intelligence,178,220);
-    ui_.text(window_,std::string(armourName(player_.inventory().armourKind()))+" armour   Gold "+std::to_string(gold_),{14,240},13,ui::kMuted);
+    // armourName already says "armour" for light and heavy; cloth needs it added.
+    const auto kind=player_.inventory().armourKind();
+    const std::string armour=kind==ArmourKind::Cloth?"Cloth armour":armourName(kind);
+    ui_.text(window_,armour+"   Gold "+std::to_string(gold_),{14,240},13,ui::kMuted);
 
     // Status effects: icon tiles, harmful ones rimmed red.
     const auto effects=hudEffects(player_);

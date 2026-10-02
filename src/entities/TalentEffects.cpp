@@ -48,6 +48,9 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
     if (attacker.talents().passiveValue(PassiveKind::LastStand) && attacker.stats().hp*3<=attacker.stats().maxHp)
         damage+=kit.passiveValue(PassiveKind::LastStand);
     if (target.stats().maxHp>0 && target.stats().hp*2<target.stats().maxHp) damage+=kit.passiveValue(PassiveKind::KillerInstinct);
+    // Gear: Cruel adds to every attack; Execution to finishing blows.
+    damage+=attacker.inventory().affixTotal(BonusStat::FlatDamage);
+    if (target.stats().maxHp>0 && target.stats().hp*10<=target.stats().maxHp*3) damage+=attacker.inventory().affixTotal(BonusStat::Execution);
     if (isSpell(talent) && (target.statusEffects().has(StatusEffectType::Burn) || target.statusEffects().has(StatusEffectType::Chill) ||
         target.statusEffects().has(StatusEffectType::Shock))) damage+=kit.passiveValue(PassiveKind::Attunement);
     if (talent.committedBloodlust>=0) damage+=talent.committedBloodlust;
@@ -72,7 +75,8 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
     if (guard && target.inventory().equipped(EquipmentSlot::OffHand)) guard+=target.talents().passiveValue(PassiveKind::ShieldTraining);
     guard+=armourGuardBonus(target)+ascendancyGuardBonus(target);
     const bool opportune=attacker.statusEffects().has(StatusEffectType::Concealed) || attacker.statusEffects().has(StatusEffectType::Opening);
-    const float critBonus=talent.bonusCritDamageMultiplier+(opportune ? kit.passiveValue(PassiveKind::Opportunist)/100.f : 0.f);
+    const float critBonus=talent.bonusCritDamageMultiplier+(opportune ? kit.passiveValue(PassiveKind::Opportunist)/100.f : 0.f)+
+        attacker.inventory().affixTotal(BonusStat::CritDamage)/100.f;
     const int critical=std::max(0,static_cast<int>(damage*critDamageMultiplier(critBonus))-guard);
     damage=std::max(0,damage-guard);
     return {damage,critical};
@@ -94,11 +98,21 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
     // one landing the hit, not the one receiving it, unlike dodge.
     const float aim=talent.tree==TalentTree::Bow && attacker.statusEffects().has(StatusEffectType::Opening) ?
         attacker.talents().passiveValue(PassiveKind::Marksmanship)/100.f : 0.f;
-    if (rollCrit(attacker.stats().dexterity, talent.bonusCritChance+aim+armourCritBonus(attacker)/100.f)) {
+    if (rollCrit(attacker.stats().dexterity, talent.bonusCritChance+aim+(armourCritBonus(attacker)+attacker.inventory().affixTotal(BonusStat::CritChance))/100.f)) {
         damage = estimate.critical;
     }
 
     const int actualDamage=std::min(std::max(0,target.stats().hp),damage);
+    // Gear on hit: life drain and elemental chances.
+    if (damage>0) {
+        const auto& gear=attacker.inventory();
+        if (const int leech=gear.affixTotal(BonusStat::LifeOnHit)) attacker.stats().hp=std::min(attacker.stats().maxHp,attacker.stats().hp+leech);
+        if (target.stats().hp-damage>0) {
+            if (rollChance(gear.affixTotal(BonusStat::BurnChance)/100.f)) target.statusEffects().apply({StatusEffectType::Burn,3,2});
+            if (rollChance(gear.affixTotal(BonusStat::ChillChance)/100.f)) target.statusEffects().apply({StatusEffectType::Chill,3,20});
+            if (rollChance(gear.affixTotal(BonusStat::ShockChance)/100.f)) target.statusEffects().apply({StatusEffectType::Shock,3,0});
+        }
+    }
     const int wither=target.statusEffects().magnitudeOf(StatusEffectType::Wither);
     target.stats().hp -= damage;
     if (actualDamage>0) attacker.stats().hp=std::min(attacker.stats().maxHp,attacker.stats().hp+

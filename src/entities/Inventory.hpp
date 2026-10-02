@@ -22,6 +22,12 @@ public:
     void add(std::unique_ptr<Item> item) { if (item) items_.push_back(std::move(item)); }
 
     const std::vector<std::unique_ptr<Item>>& items() const { return items_; }
+    // An effect affix summed over everything worn (rings, weapon, armour...).
+    int affixTotal(BonusStat stat) const {
+        int total = 0;
+        for (const auto& item : equipment_) if (item) total += item->affixValue(stat);
+        return total;
+    }
     const Item* equipped(EquipmentSlot slot) const {
         const auto index = static_cast<std::size_t>(slot);
         return index < equipment_.size() ? equipment_[index].get() : nullptr;

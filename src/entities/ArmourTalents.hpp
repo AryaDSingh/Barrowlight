@@ -44,10 +44,14 @@ inline int armourGuardBonus(const Actor& actor) {
 }
 // Ascendancy defences (entities/Ascendancy.hpp): Last Stand blunts hits at
 // low life; Quick Hands adds dodge.
+// Gear affixes join them: Warding blunts hits, Nimble adds dodge.
 inline int ascendancyGuardBonus(const Actor& actor) {
-    return actor.talents().passiveValue(PassiveKind::LastStand) && actor.stats().hp*3<=actor.stats().maxHp ? 3 : 0;
+    return (actor.talents().passiveValue(PassiveKind::LastStand) && actor.stats().hp*3<=actor.stats().maxHp ? 3 : 0) +
+           actor.inventory().affixTotal(BonusStat::Warding);
 }
-inline int ascendancyDodgeBonus(const Actor& actor) { return actor.talents().passiveValue(PassiveKind::QuickHands); }
+inline int ascendancyDodgeBonus(const Actor& actor) {
+    return actor.talents().passiveValue(PassiveKind::QuickHands) + actor.inventory().affixTotal(BonusStat::Dodge);
+}
 inline bool armourResistsStun(const Actor& actor) {
     const int chance=armourPassive(actor,PassiveKind::HeavyResolve);
     return chance>0 && rollChance(chance/100.f);

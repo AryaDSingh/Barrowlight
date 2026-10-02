@@ -58,6 +58,7 @@ struct ApplicationRewardsTestAccess {
             app.vaultExists_=app.vaultOpened_=app.vaultClaimed_=false; app.vaultMenu_=0; app.exitMenu_=false;
             app.landmark_=LandmarkKind::None; app.landmarkUsed_=false; app.shrineMenu_=false;
             app.player_.ascendancy.clear(); app.player_.ascendancyPoints=app.player_.trialKeys=app.player_.trialsCleared=0;
+            app.lightOrbs_.clear();
             app.trial_=app.trialReturnFloor_=0; app.ascendancyMenu_=app.trialMenu_=false;
             app.setProps({});
             app.floorCache_.clear(); app.floorEntrance_={1,1}; app.floorExit_={30,20};
@@ -86,6 +87,7 @@ struct ApplicationRewardsTestAccess {
                 const bool edge = x==0 || y==0 || x==31 || y==21;
                 app.map_.setTile(x,y,Tile{edge ? TileType::Wall : TileType::Floor,!edge,!edge});
             }
+            app.clearSurfaces();
             app.monsters_.clear();
             app.exploredMap_ = ExploredMap(app.map_); app.updateFieldOfView();
             app.scheduler_ = TurnScheduler{}; app.scheduler_.add(app.player_);
@@ -480,6 +482,43 @@ struct ApplicationRewardsTestAccess {
             auto acolyte=createMonster(MonsterType::FrostAcolyte,{13,11}); auto* frost=acolyte.get(); app.monsters_.push_back(std::move(acolyte));
             lob.attackPower=1; app.executeAIDecision(*frost,lob,0);
             check(app.surfaceAt({11,11})==SurfaceType::Ice,"Frost Acolytes freeze the ground around their target");
+        }
+
+        // Gear affixes that do things, and loot beams.
+        setup(PlayerClass::Warrior);
+        {
+            const Item named(*findItemDefinition("iron_sword"),999,{},{{"vampiric",1},{"embers",15}},0);
+            check(named.name()=="Vampiric Iron Sword of Embers","Magic and rare items are named by their affixes");
+            app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition("iron_sword"),app.nextItemId_++,Position{},
+                std::vector<RolledAffix>{{"embers",100},{"vampiric",2}},0));
+            app.player_.equip(app.player_.inventory().items().size()-1);
+            app.player_.stats().hp=50;
+            auto* target=enemy({11,10});
+            const bool landed=applyTalentDamage(basicAttack(),app.player_,*target);
+            check(landed && target->statusEffects().has(StatusEffectType::Burn) && app.player_.stats().hp==52,
+                  "Embers sets foes burning and Vampiric heals on every hit");
+            app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition("chain_coat"),app.nextItemId_++,Position{},
+                std::vector<RolledAffix>{{"thorns",5}},0));
+            app.player_.equip(app.player_.inventory().items().size()-1);
+            const int thornedBefore=target->stats().hp;
+            AIDecision bite; bite.type=AIActionType::Attack; bite.target=&app.player_; bite.attackPower=30;
+            app.player_.stats().dexterity=0; app.player_.baseStats().dexterity=0;
+            for (int i=0;i<6 && target->stats().hp==thornedBefore;++i) app.executeAIDecision(*target,bite,0);
+            check(target->stats().hp<thornedBefore,"Thorns hurt melee attackers");
+            app.player_.stats().hp=app.player_.stats().maxHp;
+            app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition("iron_helm"),app.nextItemId_++,Position{},
+                std::vector<RolledAffix>{{"radiant",1}},0));
+            app.player_.equip(app.player_.inventory().items().size()-1);
+            check(app.playerLightRadius()==5,"Radiant gear widens your light");
+            app.monsters_.clear();
+            app.groundItems_.push_back(std::make_unique<Item>(*findItemDefinition("ash_staff"),app.nextItemId_++,Position{12,9},std::vector<RolledAffix>{{"frost",20}},1));
+            app.groundItems_.push_back(std::make_unique<Item>(*findItemDefinition("hunting_bow"),app.nextItemId_++,Position{14,11},
+                std::vector<RolledAffix>{{"precise",4},{"storms",18}},1));
+            app.groundItems_.push_back(std::make_unique<Item>(*findItemDefinition("unique_lichbane"),app.nextItemId_++,Position{9,13},std::vector<RolledAffix>{},5));
+            app.updateFieldOfView();
+            snapshot("ui-loot-beams.png");
+            app.openInventory(); app.inventorySelection_=0; snapshot("ui-affix-tooltip.png"); app.inventoryOpen_=false;
+            app.groundItems_.clear();
         }
 
         // Auto-explore still sweeps a dark room by torchlight.

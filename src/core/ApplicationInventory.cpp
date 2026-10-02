@@ -317,7 +317,8 @@ void Application::renderInventory() {
         else ui_.icon(window_,slotIcon(slot),art,sf::Color(255,255,255,28));
     }
     float y=486;
-    ui_.text(window_,std::string(armourName(inventory.armourKind()))+" armour",{30,y},18,ui::kGold,ui::Font::Title);
+    ui_.text(window_,inventory.armourKind()==ArmourKind::Cloth?std::string("Cloth armour"):std::string(armourName(inventory.armourKind())),
+        {30,y},18,ui::kGold,ui::Font::Title);
     y+=26;
     ui_.paragraph(window_,"Your armour type is the majority of head, body, hands and feet. Empty pieces count as cloth; ties favour the body.",
         30,y,476,14,ui::kMuted);
@@ -394,7 +395,7 @@ void Application::renderInventory() {
     statLine("Max life",bonus.maxHp,after.maxHp-before.maxHp);
     statLine("Max mana",bonus.maxMana,after.maxMana-before.maxMana);
     for(const auto& roll:selected->affixes())
-        lines.push_back({std::string(findAffix(roll.id)->name)+" +"+std::to_string(roll.value),ui::kMagic,15});
+        lines.push_back({affixText(*findAffix(roll.id),roll.value),attributeAffix(findAffix(roll.id)->stat)?ui::kMagic:ui::kInfo,15});
     if(definition.lore) { lines.push_back({""}); lines.push_back({definition.lore,sf::Color(200,150,100),14}); }
     lines.push_back({""});
     lines.push_back({removing?std::string("Equipped: ")+slotName(slot):

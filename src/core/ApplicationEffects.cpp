@@ -245,6 +245,13 @@ void Application::addVfxLights(std::vector<std::pair<sf::Vector2f, sf::Color>>& 
         // A slightly cooler colour so these never take the torches' flicker.
         lights.push_back({tileToScreen(p), sf::Color(v.color.r * 4 / 5, std::min(199, static_cast<int>(v.color.g)), v.color.b)});
     }
+    // Rare and unique drops shed their colour on the floor around them.
+    for (const auto& item : groundItems_) {
+        const auto p = item->position();
+        if (item->rarity() < ItemRarity::Rare || exploredMap_.at(p.x, p.y) != Visibility::Visible) continue;
+        lights.push_back({tileToScreen({p.x + .5f, p.y + .5f}),
+                          item->rarity() == ItemRarity::Unique ? sf::Color(230, 150, 80) : sf::Color(230, 199, 110)});
+    }
     // Burning creatures light their surroundings.
     const auto burning = [&](const Actor& a) {
         const auto p = a.position();
@@ -458,6 +465,46 @@ void Application::renderStatusVfx() {
         draw(*m, pose(*m), static_cast<unsigned>(reinterpret_cast<std::uintptr_t>(m.get()) >> 4));
     }
     window_.draw(shade);
+    window_.draw(glow, sf::BlendAdd);
+}
+
+// Loot beams: a column of light over magic and better drops, taller and
+// brighter the rarer the item, so a good drop is spotted across a room.
+void Application::renderLootBeams() {
+    const float now = animNow();
+    sf::VertexArray glow(sf::PrimitiveType::Triangles);
+    for (const auto& item : groundItems_) {
+        const auto rarity = item->rarity();
+        if (rarity == ItemRarity::Normal) continue;
+        const auto p = item->position();
+        if (exploredMap_.at(p.x, p.y) != Visibility::Visible) continue;
+        const sf::Color c = rarity == ItemRarity::Unique ? sf::Color(240, 136, 52) : rarity == ItemRarity::Rare ? sf::Color(255, 214, 96)
+                                                                                  : sf::Color(120, 160, 255);
+        const float height = kTile * (rarity == ItemRarity::Unique ? 4.f : rarity == ItemRarity::Rare ? 3.f : 1.6f);
+        const float strength = rarity == ItemRarity::Magic ? .55f : 1.f;
+        const float pulse = .8f + .2f * std::sin(now * 3.f + p.x * 1.7f + p.y);
+        const sf::Vector2f base = tileToScreen({p.x + .5f, p.y + .75f}), top{base.x, base.y - height};
+        // Soft outer column and a bright core, both fading upward.
+        const auto column = [&](float width, float alpha) {
+            const sf::Color bottom = withAlpha(c, alpha * strength * pulse), fade = withAlpha(c, 0);
+            const sf::Vector2f l{width / 2, 0};
+            for (const auto& v : {sf::Vertex{base - l, bottom}, sf::Vertex{base + l, bottom}, sf::Vertex{top + l, fade},
+                                  sf::Vertex{base - l, bottom}, sf::Vertex{top + l, fade}, sf::Vertex{top - l, fade}}) glow.append(v);
+        };
+        column(kTile * .75f, .22f);
+        column(kTile * .28f, .5f);
+        column(3.f, .9f);
+        appendCircle(glow, base, kTile * .55f, withAlpha(c, .45f * strength * pulse), withAlpha(c, 0), 18);
+        // Motes drifting up the beam.
+        for (int i = 0; i < (rarity == ItemRarity::Magic ? 2 : 4); ++i) {
+            const float phase = std::fmod(now * .6f + rand01(static_cast<unsigned>(p.x * 31 + p.y), i), 1.f);
+            const float x = (rand01(static_cast<unsigned>(p.y * 17 + p.x), i + 7) - .5f) * kTile * .35f;
+            appendCircle(glow, {base.x + x, base.y - phase * height}, 1.8f, withAlpha(sf::Color::White, (1 - phase) * strength),
+                         withAlpha(c, 0), 6);
+        }
+        if (rarity == ItemRarity::Unique)
+            appendRing(glow, base, kTile * (.35f + .1f * std::sin(now * 2.f)), 2.f, withAlpha(c, .8f), now, now + 4.5f, 20);
+    }
     window_.draw(glow, sf::BlendAdd);
 }
 

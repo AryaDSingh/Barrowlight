@@ -262,6 +262,9 @@ void Application::tickSurfaces() {
             default: break;
         }
     };
+    // Regeneration gear: a little life every fifth action.
+    if (const int regen = player_.inventory().affixTotal(BonusStat::Regeneration); regen && ++regenTicks_ % 5 == 0)
+        player_.stats().hp = std::min(player_.stats().maxHp, player_.stats().hp + regen);
     suffer(player_);
     for (auto& m : monsters_) if (m->stats().hp > 0) suffer(*m);
     if (!shocked.empty()) shockStanding(shocked);

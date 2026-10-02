@@ -1295,6 +1295,13 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     damage=std::max(0,damage-guard);
                     decision.target->stats().hp -= damage;
                     if (damage>0) flashActor(*decision.target);
+                    if (const int thorns=decision.target->inventory().affixTotal(BonusStat::Thorns);
+                        thorns && damage>0 && std::max(std::abs(actor.position().x-decision.target->position().x),
+                                                       std::abs(actor.position().y-decision.target->position().y))<=1) {
+                        actor.stats().hp-=thorns;
+                        log(actor.name()," is cut by thorns for ",thorns,".");
+                        checkAndHandleDeath(actor);
+                    }
                     if (marked) { decision.target->statusEffects().consumeMark(); log("Marked consumed: +25% direct damage before Guard."); }
                     if (guard) log("Guard reduced the incoming hit by up to ",guard," damage.");
                     if (damage>0) decision.target->statusEffects().remove(StatusEffectType::Concealed);
@@ -1432,6 +1439,8 @@ void Application::checkAndHandleDeath(Actor& actor) {
     }
     if (defeated) rewardMonster(*defeated, &actor == boss_);
     if (defeated) {
+        if (const int siphon=player_.inventory().affixTotal(BonusStat::ManaOnKill); siphon && !defeated->allied)
+            player_.stats().mana=std::min(player_.stats().maxMana,player_.stats().mana+siphon);
         // Juggernaut's Rampage: every kill shortens running cooldowns.
         if (const int rampage=player_.talents().passiveValue(PassiveKind::Rampage))
             for (std::size_t i=0;i<player_.talents().knownTalents().size();++i)
@@ -1576,7 +1585,8 @@ void Application::updateFieldOfView() {
 
 int Application::playerLightRadius() const {
     if (!player_.lightLit) return 0;
-    return player_.lightSource == 2 ? 6 : player_.lightSource == 1 ? 4 : 0;
+    const int base = player_.lightSource == 2 ? 6 : player_.lightSource == 1 ? 4 : 0;
+    return base ? base + player_.inventory().affixTotal(BonusStat::LightRadius) : 0;
 }
 
 bool Application::tileLit(Position p) const {
@@ -1624,6 +1634,9 @@ void Application::computeLight() {
     }
     if (vaultExists_ && map_.inBounds(vaultCenter_.x, vaultCenter_.y)) light(vaultCenter_, 1);
     for (const auto& orb : lightOrbs_) light(orb.at, 5);
+    for (const auto& item : groundItems_)
+        if (item->rarity() >= ItemRarity::Rare && map_.inBounds(item->position().x, item->position().y))
+            litTiles_[static_cast<std::size_t>(item->position().y * map_.width() + item->position().x)] = 1;
     // Braziers, and burning ground.
     for (const auto& prop : props_) if (prop.kind == PropKind::Brazier) light(prop.pos, 3);
     if (surfaces_.size() == litTiles_.size())
@@ -2535,6 +2548,7 @@ void Application::render() {
     drawMonsters(true);
     renderSurfaceGlow(viewStartX, viewStartY, viewEndX, viewEndY);
     renderStatusVfx();
+    renderLootBeams();
     renderVfx();
 
     // Visible committed danger remains visible even if the caster leaves sight.

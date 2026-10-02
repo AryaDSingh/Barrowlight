@@ -54,24 +54,69 @@ enum class ItemRarity { Normal, Magic, Rare, Unique };
 inline const char* rarityName(ItemRarity rarity) {
     return rarity == ItemRarity::Unique ? "Unique" : rarity == ItemRarity::Rare ? "Rare" : rarity == ItemRarity::Magic ? "Magic" : "Normal";
 }
-enum class BonusStat { Strength, Dexterity, Intelligence, Hp, Mana };
+// The first five raise attributes; the rest are effects read in combat
+// (see Inventory::affixTotal and the hooks in TalentEffects/Application).
+enum class BonusStat { Strength, Dexterity, Intelligence, Hp, Mana,
+                       BurnChance, ChillChance, ShockChance, LifeOnHit, ManaOnKill, Thorns, Dodge, CritChance,
+                       CritDamage, Regeneration, Warding, LightRadius, Execution, FlatDamage };
 struct AffixDefinition {
     const char* id;
     const char* name;
     BonusStat stat; // same-stat affixes are mutually exclusive
     unsigned int slots; // weapon=1, armour=2, charm=4
     int minimum, maximum, perTier;
+    const char* title = nullptr; // how it names a magic item: "Vampiric" sword, sword "of Embers"
+    bool prefix = false;
 };
-inline constexpr std::array<AffixDefinition, 8> kAffixes{{
-    {"might", "Strength", BonusStat::Strength, 5, 2, 4, 1},
-    {"agility", "Dexterity", BonusStat::Dexterity, 7 | 2032, 1, 3, 1},
-    {"knowledge", "Intelligence", BonusStat::Intelligence, 5, 2, 4, 1},
-    {"vitality", "Max HP", BonusStat::Hp, 14 | 2032, 3, 6, 2},
-    {"reservoir", "Max mana", BonusStat::Mana, 14 | 2032, 3, 6, 2},
-    {"brawn", "Strength", BonusStat::Strength, 10, 1, 2, 1},
-    {"insight", "Intelligence", BonusStat::Intelligence, 2, 1, 2, 1},
-    {"vigor", "Max HP", BonusStat::Hp, 1, 2, 3, 2},
+// Slot bits: weapon 1, body 2, amulet 4, off-hand 8, head 16, cloak 32,
+// hands 64, belt 128, feet 256, rings 512.
+inline constexpr std::array<AffixDefinition, 22> kAffixes{{
+    {"might", "Strength", BonusStat::Strength, 5, 2, 4, 1, "of Might"},
+    {"agility", "Dexterity", BonusStat::Dexterity, 7 | 2032, 1, 3, 1, "of Agility"},
+    {"knowledge", "Intelligence", BonusStat::Intelligence, 5, 2, 4, 1, "of Knowledge"},
+    {"vitality", "Max HP", BonusStat::Hp, 14 | 2032, 3, 6, 2, "of Vitality"},
+    {"reservoir", "Max mana", BonusStat::Mana, 14 | 2032, 3, 6, 2, "of the Well"},
+    {"brawn", "Strength", BonusStat::Strength, 10, 1, 2, 1, "Brawny", true},
+    {"insight", "Intelligence", BonusStat::Intelligence, 2, 1, 2, 1, "Insightful", true},
+    {"vigor", "Max HP", BonusStat::Hp, 1, 2, 3, 2, "Hale", true},
+    // Effects, not just numbers.
+    {"embers", "Burn chance", BonusStat::BurnChance, 1, 15, 25, 3, "of Embers"},
+    {"frost", "Chill chance", BonusStat::ChillChance, 1, 15, 25, 3, "of Frost"},
+    {"storms", "Shock chance", BonusStat::ShockChance, 1 | 512, 15, 25, 3, "of Storms"},
+    {"vampiric", "Life on hit", BonusStat::LifeOnHit, 1 | 512, 1, 2, 0, "Vampiric", true},
+    {"siphon", "Mana on kill", BonusStat::ManaOnKill, 4 | 512 | 1, 3, 5, 1, "of Siphoning"},
+    {"thorns", "Thorns", BonusStat::Thorns, 2 | 8 | 16, 2, 4, 1, "of Thorns"},
+    {"nimble", "Dodge", BonusStat::Dodge, 256 | 32 | 2, 3, 5, 1, "Nimble", true},
+    {"precise", "Critical chance", BonusStat::CritChance, 64 | 512, 3, 6, 1, "Precise", true},
+    {"savage", "Critical damage", BonusStat::CritDamage, 1 | 64, 15, 25, 5, "Savage", true},
+    {"regeneration", "Regeneration", BonusStat::Regeneration, 128 | 4 | 2, 1, 2, 1, "of Regeneration"},
+    {"warding", "Warding", BonusStat::Warding, 8 | 16 | 2, 1, 2, 0, "Warding", true},
+    {"radiant", "Light", BonusStat::LightRadius, 16 | 4, 1, 1, 0, "Radiant", true},
+    {"execution", "Execution", BonusStat::Execution, 1, 3, 5, 1, "of Execution"},
+    {"cruel", "Damage", BonusStat::FlatDamage, 1, 1, 3, 1, "Cruel", true},
 }};
+inline bool attributeAffix(BonusStat stat) { return stat <= BonusStat::Mana; }
+// How a rolled affix reads in a tooltip.
+inline std::string affixText(const AffixDefinition& a, int v) {
+    const std::string n = std::to_string(v);
+    switch (a.stat) {
+        case BonusStat::BurnChance: return n + "% chance to Burn on hit";
+        case BonusStat::ChillChance: return n + "% chance to Chill on hit";
+        case BonusStat::ShockChance: return n + "% chance to Shock on hit";
+        case BonusStat::LifeOnHit: return "+" + n + " life on every hit";
+        case BonusStat::ManaOnKill: return "+" + n + " mana on every kill";
+        case BonusStat::Thorns: return "Melee attackers take " + n + " damage";
+        case BonusStat::Dodge: return "+" + n + "% dodge chance";
+        case BonusStat::CritChance: return "+" + n + "% critical chance";
+        case BonusStat::CritDamage: return "+" + n + "% critical damage";
+        case BonusStat::Regeneration: return "Regenerate " + n + " life every 5 turns";
+        case BonusStat::Warding: return "Direct hits on you deal " + n + " less";
+        case BonusStat::LightRadius: return "+" + n + " light radius";
+        case BonusStat::Execution: return "+" + n + " damage to enemies below 30% life";
+        case BonusStat::FlatDamage: return "+" + n + " damage on every attack";
+        default: return std::string(a.name) + " +" + n;
+    }
+}
 struct RolledAffix { std::string id; int value = 0; };
 inline const AffixDefinition* findAffix(std::string_view id) {
     for (const auto& affix : kAffixes) if (id == affix.id) return &affix;
@@ -84,6 +129,7 @@ inline void addBonus(ItemBonuses& bonus, BonusStat stat, int value) {
         case BonusStat::Intelligence: bonus.intelligence += value; break;
         case BonusStat::Hp: bonus.maxHp += value; break;
         case BonusStat::Mana: bonus.maxMana += value; break;
+        default: break; // effect affixes are read in combat, not added to attributes
     }
 }
 
@@ -186,9 +232,7 @@ public:
     using Entity::Entity;
     Item(const ItemDefinition& definition, std::uint64_t instanceId, Position position = {},
          std::vector<RolledAffix> affixes = {}, int rollTier = 0)
-        : Entity(affixes.empty() ? std::string(definition.name)
-                                 : std::string(rarityName(static_cast<ItemRarity>(affixes.size()))) + " " + definition.name,
-                 '!', position),
+        : Entity(itemName(definition, affixes), '!', position),
           definition_(&definition), instanceId_(instanceId), affixes_(std::move(affixes)), rollTier_(rollTier) {}
     const ItemDefinition* definition() const { return definition_; }
     std::uint64_t instanceId() const { return instanceId_; }
@@ -196,6 +240,23 @@ public:
     int rollTier() const { return rollTier_; }
     ItemRarity rarity() const {
         return definition_ && definition_->unique ? ItemRarity::Unique : static_cast<ItemRarity>(affixes_.size());
+    }
+    // Magic and rare items are named by their affixes: "Vampiric Iron Sword of Embers".
+    static std::string itemName(const ItemDefinition& definition, const std::vector<RolledAffix>& affixes) {
+        if (affixes.empty()) return definition.name;
+        const char* prefix = nullptr; const char* suffix = nullptr;
+        for (const auto& rolled : affixes)
+            if (const auto* a = findAffix(rolled.id); a && a->title) {
+                if (a->prefix && !prefix) prefix = a->title;
+                else if (!a->prefix && !suffix) suffix = a->title;
+            }
+        if (!prefix && !suffix) return std::string(rarityName(static_cast<ItemRarity>(affixes.size()))) + " " + definition.name;
+        return (prefix ? std::string(prefix) + " " : std::string()) + definition.name + (suffix ? std::string(" ") + suffix : std::string());
+    }
+    int affixValue(BonusStat stat) const {
+        int total = 0;
+        for (const auto& rolled : affixes_) if (const auto* a = findAffix(rolled.id); a && a->stat == stat) total += rolled.value;
+        return total;
     }
     ItemBonuses bonuses() const {
         ItemBonuses result = definition_ ? definition_->bonuses : ItemBonuses{};
