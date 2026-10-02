@@ -252,14 +252,7 @@ void Application::addVfxLights(std::vector<std::pair<sf::Vector2f, sf::Color>>& 
         lights.push_back({tileToScreen({p.x + .5f, p.y + .5f}),
                           item->rarity() == ItemRarity::Unique ? sf::Color(230, 150, 80) : sf::Color(230, 199, 110)});
     }
-    // Burning creatures light their surroundings.
-    const auto burning = [&](const Actor& a) {
-        const auto p = a.position();
-        if (!a.statusEffects().has(StatusEffectType::Burn) || exploredMap_.at(p.x, p.y) != Visibility::Visible) return;
-        lights.push_back({tileToScreen({p.x + .5f, p.y + .5f}), sf::Color(255, 130, 60)});
-    };
-    burning(player_);
-    for (const auto& m : monsters_) if (m->stats().hp > 0 && !m->tactics.concealed) burning(*m);
+    // (Burning creatures, torches, braziers and wisps light through computeLight's sources.)
 }
 
 void Application::renderVfx() {

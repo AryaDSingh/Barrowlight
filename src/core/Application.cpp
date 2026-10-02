@@ -482,9 +482,59 @@ void Application::renderLighting(const std::vector<std::pair<sf::Vector2f, sf::C
         target.draw(light, sf::BlendAdd);
     };
     const auto player = worldToScreen(player_.position().x, player_.position().y);
-    const int carried = darknessEnabled_ ? playerLightRadius() : 8;
-    addLight({player.x + kTileSize / 2, player.y + kTileSize / 2}, carried ? sf::Color(255, 214, 160) : sf::Color(120, 120, 150),
-             carried ? carried + 1.2f : 1.6f);
+    if (!darknessEnabled_) addLight({player.x + kTileSize / 2, player.y + kTileSize / 2}, sf::Color(255, 214, 160), 9.2f);
+    else if (!playerLightRadius()) addLight({player.x + kTileSize / 2, player.y + kTileSize / 2}, sf::Color(120, 120, 150), 1.4f);
+    // Lasting lights follow line of sight: each tile takes light only from
+    // sources that can see it, so nothing glows through a wall.
+    {
+        const int cols = static_cast<int>(kMapWidth / kTileSize) + 3, rows = static_cast<int>(kMapHeight / kTileSize) + 3;
+        const int x0 = cameraX_ - 1, y0 = cameraY_ - 1;
+        std::vector<sf::Vector3f> grid(static_cast<std::size_t>(cols * rows), sf::Vector3f{});
+        for (const auto& source : lightSources_) {
+            const float flick = source.flicker ? 0.9f + 0.1f * std::sin(now * 9.f + source.radius * 3.1f + static_cast<float>(source.tiles.empty() ? 0 : source.tiles.front().first)) : 1.f;
+            const float reach = source.radius * flick + .5f;
+            for (const auto& [index, distance] : source.tiles) {
+                const int tx = index % map_.width() - x0, ty = index / map_.width() - y0;
+                if (tx < 0 || ty < 0 || tx >= cols || ty >= rows) continue;
+                // Only what you can see right now is lit: remembered and unknown
+                // ground keeps the gloom, so light never gives away a hidden room.
+                if (exploredMap_.at(index % map_.width(), index / map_.width()) != Visibility::Visible) continue;
+                float i = std::clamp(1.f - distance / reach, 0.f, 1.f);
+                i = .9f * i * i;
+                auto& cell = grid[static_cast<std::size_t>(ty * cols + tx)];
+                cell += sf::Vector3f{source.color.r * i, source.color.g * i, source.color.b * i};
+            }
+        }
+        // Corners average the open tiles around them, so walls don't smear light across.
+        const auto open = [&](int gx, int gy) {
+            const int x = gx + x0, y = gy + y0;
+            return map_.inBounds(x, y) && map_.tileAt(x, y).type != TileType::Wall;
+        };
+        const auto corner = [&](int cx, int cy) {
+            sf::Vector3f sum{}, any{}; int n = 0, m = 0;
+            for (const auto [gx, gy] : {std::pair{cx - 1, cy - 1}, std::pair{cx, cy - 1}, std::pair{cx - 1, cy}, std::pair{cx, cy}}) {
+                if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) continue;
+                const auto& v = grid[static_cast<std::size_t>(gy * cols + gx)];
+                any += v; ++m;
+                if (open(gx, gy)) { sum += v; ++n; }
+            }
+            const sf::Vector3f c = n ? sum / static_cast<float>(n) : (m ? any / static_cast<float>(m) : sf::Vector3f{});
+            const auto clip = [](float v) { return static_cast<std::uint8_t>(std::clamp(v, 0.f, 255.f)); };
+            return sf::Color(clip(c.x), clip(c.y), clip(c.z));
+        };
+        sf::VertexArray quads(sf::PrimitiveType::Triangles);
+        const auto shift = cameraShift();
+        for (int gy = 0; gy < rows; ++gy)
+            for (int gx = 0; gx < cols; ++gx) {
+                const sf::Vector2f tl{(gx + x0 - cameraX_) * kTileSize + shift.x, (gy + y0 - cameraY_) * kTileSize + shift.y};
+                const sf::Vector2f tr{tl.x + kTileSize, tl.y}, br{tl.x + kTileSize, tl.y + kTileSize}, bl{tl.x, tl.y + kTileSize};
+                const sf::Color ctl = corner(gx, gy), ctr = corner(gx + 1, gy), cbr = corner(gx + 1, gy + 1), cbl = corner(gx, gy + 1);
+                if (!(ctl.r | ctl.g | ctl.b | ctr.r | ctr.g | ctr.b | cbr.r | cbr.g | cbr.b | cbl.r | cbl.g | cbl.b)) continue;
+                for (const auto& v : {sf::Vertex{tl, ctl}, sf::Vertex{tr, ctr}, sf::Vertex{br, cbr},
+                                      sf::Vertex{tl, ctl}, sf::Vertex{br, cbr}, sf::Vertex{bl, cbl}}) quads.append(v);
+            }
+        target.draw(quads, sf::BlendAdd);
+    }
     for (const auto& [center, color] : lights) {
         // Fire flickers; other lights hold steady.
         const bool fire = color.g < 200 && color.r > 200;
@@ -1607,19 +1657,29 @@ bool Application::canSee(const Actor& viewer, Position target) const {
 void Application::computeLight() {
     litTiles_.assign(static_cast<std::size_t>(std::max(0, map_.width() * map_.height())), 0);
     wallTorches_.clear();
-    const auto light = [&](Position source, int radius) {
+    lightSources_.clear();
+    const sf::Color fire(255, 150, 70);
+    // Lights what the source can see within `radius`; a coloured source is
+    // also drawn (radius `glow` tiles), anything else only counts for sight.
+    const auto light = [&](Position source, int radius, sf::Color color = sf::Color::Transparent, float glow = 0.f, bool flicker = false) {
         if (radius <= 0 || !map_.inBounds(source.x, source.y)) return;
-        for (const auto& p : computeFieldOfView(map_, source, radius))
-            if (map_.inBounds(p.x, p.y)) litTiles_[static_cast<std::size_t>(p.y * map_.width() + p.x)] = 1;
+        LightSource drawn{color, glow, flicker, {}};
+        for (const auto& p : computeFieldOfView(map_, source, radius)) {
+            if (!map_.inBounds(p.x, p.y)) continue;
+            const int index = p.y * map_.width() + p.x;
+            litTiles_[static_cast<std::size_t>(index)] = 1;
+            if (color.a) drawn.tiles.push_back({index, std::sqrt(static_cast<float>((p.x - source.x) * (p.x - source.x) + (p.y - source.y) * (p.y - source.y)))});
+        }
+        if (color.a) lightSources_.push_back(std::move(drawn));
     };
-    light(player_.position(), playerLightRadius());
+    light(player_.position(), playerLightRadius(), sf::Color(255, 214, 160), playerLightRadius() + 1.2f);
     const auto theme = floorTheme(currentFloor_);
     for (int y = 0; y + 1 < map_.height(); ++y)
         for (int x = 0; x < map_.width(); ++x) {
             const bool altar = landmark_ != LandmarkKind::None && x == landmarkAltar_.x && y == landmarkAltar_.y;
             if (!altar && propIndexAt(x, y) < 0 && decorAt(map_, x, y, currentFloor_, theme.region) == Decor::Torch &&
                 map_.isWalkable(x, y + 1))
-            { if (torchLit(x, y)) light({x, y + 1}, 3); wallTorches_.push_back({x, y + 1}); } // a lit wall torch lights the floor in front of it
+            { if (torchLit(x, y)) light({x, y + 1}, 3, fire, 3.6f, true); wallTorches_.push_back({x, y + 1}); } // a lit wall torch lights the floor in front of it
         }
     if (map_.inBounds(floorEntrance_.x, floorEntrance_.y)) light(floorEntrance_, 2);
     if (map_.inBounds(floorExit_.x, floorExit_.y)) light(floorExit_, 2);
@@ -1633,23 +1693,21 @@ void Application::computeLight() {
                         light({landmarkAltar_.x + o.x + d.x, landmarkAltar_.y + o.y + d.y}, 2);
     }
     if (vaultExists_ && map_.inBounds(vaultCenter_.x, vaultCenter_.y)) light(vaultCenter_, 1);
-    for (const auto& orb : lightOrbs_) light(orb.at, 5);
+    for (const auto& orb : lightOrbs_) light(orb.at, 5, sf::Color(170, 199, 255), 5.4f);
     for (const auto& item : groundItems_)
         if (item->rarity() >= ItemRarity::Rare && map_.inBounds(item->position().x, item->position().y))
             litTiles_[static_cast<std::size_t>(item->position().y * map_.width() + item->position().x)] = 1;
     // Braziers, and burning ground.
-    for (const auto& prop : props_) if (prop.kind == PropKind::Brazier) light(prop.pos, 3);
+    for (const auto& prop : props_) if (prop.kind == PropKind::Brazier) light(prop.pos, 3, fire, 3.6f, true);
     if (surfaces_.size() == litTiles_.size())
         for (int y = 0; y < map_.height(); ++y)
             for (int x = 0; x < map_.width(); ++x)
                 if (surfaces_[static_cast<std::size_t>(y * map_.width() + x)].type == SurfaceType::Fire)
-                    for (int dy = -1; dy <= 1; ++dy)
-                        for (int dx = -1; dx <= 1; ++dx)
-                            if (map_.inBounds(x + dx, y + dy)) litTiles_[static_cast<std::size_t>((y + dy) * map_.width() + x + dx)] = 1;
+                    light({x, y}, 1, sf::Color(255, 130, 60), 1.8f, true);
     // Burning creatures are torches too.
-    if (player_.statusEffects().has(StatusEffectType::Burn)) light(player_.position(), 2);
+    if (player_.statusEffects().has(StatusEffectType::Burn)) light(player_.position(), 2, sf::Color(255, 130, 60), 2.2f, true);
     for (const auto& m : monsters_)
-        if (m->stats().hp > 0 && m->statusEffects().has(StatusEffectType::Burn)) light(m->position(), 2);
+        if (m->stats().hp > 0 && m->statusEffects().has(StatusEffectType::Burn)) light(m->position(), 2, sf::Color(255, 130, 60), 2.2f, true);
 }
 
 bool Application::torchLit(int x, int y) const {
@@ -2445,13 +2503,6 @@ void Application::render() {
             const auto at = worldToScreen(p.x, p.y);
             sprites_.draw(window_, torchFrame(p.x, p.y, now), {at.x - 2, at.y - kTileSize * 0.75f}, kTileSize + 4);
             lights.push_back({{at.x + kTileSize / 2, at.y - kTileSize * 0.2f}, sf::Color(255, 160, 80)});
-        }
-    // Wall torches glow whenever they, or the floor they light, are in view.
-    for (const auto& lit : wallTorches_)
-        if (torchLit(lit.x, lit.y - 1) &&
-            (exploredMap_.at(lit.x, lit.y) == Visibility::Visible || exploredMap_.at(lit.x, lit.y - 1) == Visibility::Visible)) {
-            const auto at = worldToScreen(lit.x, lit.y - 1);
-            lights.push_back({{at.x + kTileSize / 2, at.y}, sf::Color(255, 160, 80)});
         }
     renderSurfaces(lights, viewStartX, viewStartY, viewEndX, viewEndY);
     renderGroundItems();

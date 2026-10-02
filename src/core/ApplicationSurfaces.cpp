@@ -385,17 +385,11 @@ void Application::renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>
             } else if (type == SurfaceType::Ice) {
                 const unsigned hsh = surfaceHash(x, y, 9);
                 line(detail, {c.x - 7, c.y - 4 + unit(hsh) * 6}, {c.x + 6, c.y + 3 - unit(hsh >> 8) * 6}, 1.f, sf::Color(255, 255, 255, 150));
-            } else if (type == SurfaceType::Fire) {
-                lights.push_back({c, sf::Color(255, 140, 60)});
             }
         }
     window_.draw(ground);
     window_.draw(detail);
-    for (const auto& orb : lightOrbs_)
-        if (exploredMap_.at(orb.at.x, orb.at.y) == Visibility::Visible) {
-            const auto at = worldToScreen(orb.at.x, orb.at.y);
-            lights.push_back({{at.x + kTile / 2, at.y + kTile / 2}, sf::Color(170, 199, 255)});
-        }
+
 
     // Fixtures: braziers (iron bowls on legs) and oil barrels' dark stain.
     sf::VertexArray iron(sf::PrimitiveType::Triangles);
@@ -417,7 +411,7 @@ void Application::renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>
         blob(iron, {c.x, c.y}, 9.f, sf::Color(45, 40, 38), metal);
         blob(iron, {c.x, c.y - 1}, 6.f, prop.kind == PropKind::Brazier ? sf::Color(255, 120, 40) : sf::Color(30, 28, 28),
              prop.kind == PropKind::Brazier ? sf::Color(140, 40, 10) : sf::Color(40, 38, 36));
-        if (prop.kind == PropKind::Brazier && vis == Visibility::Visible) lights.push_back({{c.x, c.y - 6}, sf::Color(255, 150, 70)});
+
     }
     window_.draw(iron);
     for (const auto& prop : props_)

@@ -543,6 +543,10 @@ private:
     // adjacent; monsters without darkvision see the same way.
     bool darknessEnabled_ = true; // tests of other systems switch it off
     std::vector<std::uint8_t> litTiles_;
+    // What each light can see, so the drawn light stops at walls instead of
+    // bleeding into the next room: tile index and distance, per source.
+    struct LightSource { sf::Color color; float radius; bool flicker; std::vector<std::pair<int, float>> tiles; };
+    std::vector<LightSource> lightSources_;
     std::vector<Position> wallTorches_; // floor tiles lit by a wall torch on the wall above them
     void computeLight();
     bool tileLit(Position p) const;

@@ -1,3 +1,12 @@
+## Playtest notes (2026-10-01)
+
+- **Shrines need another pass.** The Shrine landmark's blessings (Restoration,
+  Might, Grace) don't land yet; revisit what it offers.
+- Vision: light and sight must not reach past walls (fixed in the same pass
+  as this note: light is now cast per tile from each source's line of sight).
+
+---
+
 ## Latest checkpoint - death modes (2026-09-28)
 
 - Choose Roguelike (default, one life) or Adventure (two extra lives) before
