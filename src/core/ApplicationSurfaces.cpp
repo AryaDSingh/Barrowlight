@@ -86,9 +86,9 @@ void Application::applyElement(Element element, const std::vector<Position>& til
             else if (s == SurfaceType::Ice) { setSurface(p, SurfaceType::Water, 0); steam = true; }
             else if (s == SurfaceType::Water || s == SurfaceType::Electrified) steam = true;
         } else if (element == Element::Ice) {
-            if (s == SurfaceType::Water || s == SurfaceType::Electrified) { setSurface(p, SurfaceType::Ice, 0); froze = true; }
+            if (conducts(s)) { setSurface(p, SurfaceType::Ice, 0); froze = true; }
             else if (s == SurfaceType::Fire) { setSurface(p, SurfaceType::None, 0); steam = true; }
-        } else if (element == Element::Lightning && (s == SurfaceType::Water || s == SurfaceType::Electrified)) {
+        } else if (element == Element::Lightning && conducts(s)) {
             water.push_back(p);
         }
         if (steam && visibleTile(p)) spawnVfx({Vfx::Kind::Puff, {p.x + .5f, p.y + .5f}, {p.x + .5f, p.y + .5f}, sf::Color(200, 210, 220), 0, .6f, .8f});
@@ -146,8 +146,7 @@ void Application::electrify(const std::vector<Position>& seeds) {
         for (const Position d : {Position{1, 0}, Position{-1, 0}, Position{0, 1}, Position{0, -1}}) {
             const Position n{p.x + d.x, p.y + d.y};
             if (!map_.inBounds(n.x, n.y) || seen[static_cast<std::size_t>(n.y * map_.width() + n.x)]) continue;
-            const auto s = surfaceAt(n);
-            if (s != SurfaceType::Water && s != SurfaceType::Electrified) continue;
+            if (!conducts(surfaceAt(n))) continue;
             seen[static_cast<std::size_t>(n.y * map_.width() + n.x)] = 1;
             open.push(n);
         }
@@ -243,6 +242,8 @@ void Application::tickSurfaces() {
             for (const Position d : {Position{1, 0}, Position{-1, 0}, Position{0, 1}, Position{0, -1}})
                 if (surfaceAt({x + d.x, y + d.y}) == SurfaceType::Oil) spreadTo.push_back({x + d.x, y + d.y});
         }
+    for (auto& orb : lightOrbs_) --orb.turns;
+    lightOrbs_.erase(std::remove_if(lightOrbs_.begin(), lightOrbs_.end(), [](const LightOrb& o) { return o.turns <= 0; }), lightOrbs_.end());
     for (auto& s : surfaces_) {
         if (s.type == SurfaceType::Fire && --s.turns <= 0) s = {};
         else if (s.type == SurfaceType::Electrified && --s.turns <= 0) s = {SurfaceType::Water, 0};
@@ -360,6 +361,7 @@ void Application::renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>
                 case SurfaceType::Oil: body = sf::Color(18, 14, 10, 185); break;
                 case SurfaceType::Ice: body = sf::Color(185, 225, 250, 165); break;
                 case SurfaceType::Fire: body = sf::Color(60, 25, 10, 170); break; // scorched ground under the flames
+                case SurfaceType::Blood: body = sf::Color(105, 10, 14, 175); break;
                 default: break;
             }
             // Three overlapping blobs per tile merge with the neighbours into a puddle.
@@ -386,6 +388,11 @@ void Application::renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>
         }
     window_.draw(ground);
     window_.draw(detail);
+    for (const auto& orb : lightOrbs_)
+        if (exploredMap_.at(orb.at.x, orb.at.y) == Visibility::Visible) {
+            const auto at = worldToScreen(orb.at.x, orb.at.y);
+            lights.push_back({{at.x + kTile / 2, at.y + kTile / 2}, sf::Color(170, 199, 255)});
+        }
 
     // Fixtures: braziers (iron bowls on legs) and oil barrels' dark stain.
     sf::VertexArray iron(sf::PrimitiveType::Triangles);
@@ -450,6 +457,14 @@ void Application::renderSurfaceGlow(int x0, int y0, int x1, int y1) {
                 blob(glow, c, kTile * .5f, sf::Color(120, 160, 255, 40), sf::Color(120, 160, 255, 0));
             }
         }
+    for (const auto& orb : lightOrbs_) {
+        if (orb.at.x < x0 || orb.at.x >= x1 || orb.at.y < y0 || orb.at.y >= y1 || exploredMap_.at(orb.at.x, orb.at.y) != Visibility::Visible) continue;
+        const auto at = worldToScreen(orb.at.x, orb.at.y);
+        const sf::Vector2f c{at.x + kTile / 2, at.y + kTile * .1f + std::sin(now * 2.f + orb.at.x) * 3.f};
+        const float fade = orb.turns <= 5 ? orb.turns / 5.f : 1.f;
+        blob(glow, c, kTile * .7f, sf::Color(150, 190, 255, static_cast<std::uint8_t>(70 * fade)), sf::Color(150, 190, 255, 0));
+        blob(glow, c, 4.f, sf::Color(255, 255, 255, static_cast<std::uint8_t>(240 * fade)), sf::Color(170, 200, 255, 0));
+    }
     window_.draw(glow, sf::BlendAdd);
 }
 

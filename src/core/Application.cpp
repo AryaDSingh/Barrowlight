@@ -925,6 +925,12 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         if (talent.restoreMana) log("Mana: ",player_.stats().mana,"/",player_.stats().maxMana);
         if (talent.restoreHpPercent) log("HP: ",player_.stats().hp,"/",player_.stats().maxHp);
         if (talent.cleanse) log("Poison, Burn, Chill, Marked and curses removed. Other effects remain.");
+        if (talent.conjureLight) {
+            lightOrbs_.clear();
+            lightOrbs_.push_back({player_.position(), 40});
+            log("A wisp of light hangs in the air.");
+            updateFieldOfView();
+        }
     } else {
         if (affected.empty()) log(player_.name(), " uses ", talent.name, " on empty ground.");
         for (Actor* target : affected) {
@@ -1233,6 +1239,25 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     log(actor.name()," heals ",decision.target->name()," for ",healed," HP.");
             }
             bool dodged = false;
+            if (decision.attackPower > 0 && !suppressAttackVfx_) {
+                // Slingers lob oil pots; frost acolytes freeze the ground around their target.
+                if (const auto* attacker = dynamic_cast<const Monster*>(&actor); attacker && !attacker->allied) {
+                    const Position at = decision.target->position();
+                    if (attacker->type() == MonsterType::GoblinSlinger) {
+                        bool splashed = false;
+                        for (const Position d : {Position{0, 0}, Position{1, 0}, Position{0, 1}, Position{-1, 0}})
+                            if (surfaceAt({at.x + d.x, at.y + d.y}) == SurfaceType::None && map_.isWalkable(at.x + d.x, at.y + d.y)) {
+                                setSurface({at.x + d.x, at.y + d.y}, SurfaceType::Oil, 0); splashed = true;
+                                if (d.x || d.y) break;
+                            }
+                        if (splashed && visibleTile(at)) log(actor.name(), "'s pot shatters, splashing oil!");
+                    } else if (attacker->type() == MonsterType::FrostAcolyte) {
+                        std::vector<Position> chill;
+                        for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) chill.push_back({at.x + dx, at.y + dy});
+                        applyElement(Element::Ice, chill);
+                    }
+                }
+            }
             if (decision.attackPower > 0) {
                 dodged = rollChance(std::min(.60f,dodgeChance(decision.target->stats().dexterity)+(decision.target->statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(*decision.target)+ascendancyDodgeBonus(*decision.target))/100.f));
                 spawnAttackVfx(actor, *decision.target, decision.scalingStat==ScalingStat::Intelligence, dodged);
@@ -1523,6 +1548,8 @@ void Application::removeDeadMonsters() {
     for (const auto& m : monsters_)
         if (m->stats().hp <= 0) {
             const MonsterLook look = monsterLook(*m);
+            if (!m->allied && bleeds(m->type()) && surfaceAt(m->position()) == SurfaceType::None)
+                setSurface(m->position(), SurfaceType::Blood, 0);
             if (exploredMap_.at(m->position().x, m->position().y) == Visibility::Visible && !m->tactics.concealed)
                 spawnVfx({Vfx::Kind::Puff, {m->position().x + .5f, m->position().y + .5f}, {m->position().x + .5f, m->position().y + .5f},
                           m->allied ? sf::Color(120, 200, 220) : sf::Color(200, 50, 40), 0, .5f, .7f});
@@ -1596,6 +1623,7 @@ void Application::computeLight() {
                         light({landmarkAltar_.x + o.x + d.x, landmarkAltar_.y + o.y + d.y}, 2);
     }
     if (vaultExists_ && map_.inBounds(vaultCenter_.x, vaultCenter_.y)) light(vaultCenter_, 1);
+    for (const auto& orb : lightOrbs_) light(orb.at, 5);
     // Braziers, and burning ground.
     for (const auto& prop : props_) if (prop.kind == PropKind::Brazier) light(prop.pos, 3);
     if (surfaces_.size() == litTiles_.size())
@@ -1624,7 +1652,8 @@ void Application::setTorchLit(int x, int y, bool lit) {
 void Application::toggleLight() {
     if (!player_.lightSource) { log("You carry no light."); return; }
     player_.lightLit = !player_.lightLit;
-    log(player_.lightLit ? "You light your torch." : "You douse your torch. In the dark, many foes can't see you.");
+    const std::string light = player_.lightSource == 2 ? "lantern" : "torch";
+    log(player_.lightLit ? "You light your " + light + "." : "You shutter your " + light + ". In the dark, many foes can't see you.");
     updateFieldOfView();
 }
 
@@ -1649,6 +1678,7 @@ void Application::selectClass(PlayerClass cls) {
     progressionReviewPending_=true;
     loot_.restore(std::random_device{}());
     player_.talents() = TalentSet({basicAttack(),basicCleanse()});
+    if (cls == PlayerClass::Mage) player_.talents().learnTalent(basicLight()); // mages make their own light
     // A fresh class selection is a genuinely new character -- starts at
     // level 1 with 0 XP, same as anyone picking up the game for the
     // first time, regardless of what level a previous run (via this
@@ -1698,7 +1728,7 @@ void Application::regenerateLevel(unsigned int seed) {
 
     map_ = dungeon.map;
     actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN; vfx_.clear(); hitFlash_.clear();
-    vfx_.clear(); hitFlash_.clear();
+    vfx_.clear(); hitFlash_.clear(); lightOrbs_.clear();
     setProps(dungeon.props);
 
     player_.setPosition(dungeon.playerStart);
@@ -1805,6 +1835,7 @@ SaveGameState Application::captureState(bool includeFloors) {
         if (s!=SurfaceType::None) state.surfaces.push_back({x,y,static_cast<int>(s),surfaces_[static_cast<std::size_t>(y*map_.width()+x)].turns});
     }
     for (const auto& t:torchToggles_) state.torchToggles.push_back({t.first,t.second});
+    for (const auto& orb:lightOrbs_) state.lightOrbs.push_back({orb.at.x,orb.at.y,orb.turns});
     state.map = map_;
     state.exploredMap = exploredMap_;
     state.playerPosition = player_.position();
@@ -1899,8 +1930,8 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     TalentSet restoredTalents;
     for (const auto& saved:state.playerTalents) {
         const auto* d=findTalentDefinition(saved.id);
-        if (!d && saved.id!="basic.attack" && saved.id!="basic.cleanse") { log("Unknown saved ability."); return false; }
-        restoredTalents.learnTalent(d ? d->ranks[0] : saved.id=="basic.cleanse" ? basicCleanse() : basicAttack());
+        if (!d && saved.id!="basic.attack" && saved.id!="basic.cleanse" && saved.id!="basic.light") { log("Unknown saved ability."); return false; }
+        restoredTalents.learnTalent(d ? d->ranks[0] : saved.id=="basic.cleanse" ? basicCleanse() : saved.id=="basic.light" ? basicLight() : basicAttack());
         const auto index=restoredTalents.knownTalents().size()-1;
         restoredTalents.setRank(index,saved.rank);
         restoredTalents.setCooldownRemaining(index,saved.cooldown);
@@ -1972,6 +2003,8 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
         surfaces_[static_cast<std::size_t>(y*state.map.width()+x)]={static_cast<SurfaceType>(type),turns};
     torchToggles_.clear();
     for (const auto& t:state.torchToggles) torchToggles_.insert({t.x,t.y});
+    lightOrbs_.clear();
+    for (const auto& [x,y,turns]:state.lightOrbs) lightOrbs_.push_back({{x,y},turns});
     ascendancyMenu_=false; trialMenu_=false;
     player_.level() = state.playerLevel;
     player_.bloodRelic=state.bloodRelic; player_.animationRelic=state.animationRelic; player_.deathlessSpentFloors=state.deathlessSpentFloors;

@@ -355,6 +355,13 @@ inline Talent basicAttack() {
     Talent t; t.id="basic.attack"; t.name="Basic Attack"; t.description="A free adjacent strike. Also available by bumping an enemy.";
     t.power=4; t.cooldownTurns=1; t.scalingCooldown=1; return t;
 }
+// The Mage's starting light: a wisp that hangs where it was cast.
+inline Talent basicLight() {
+    Talent t; t.id="basic.light"; t.name="Conjure Light";
+    t.description="Leave a wisp of light hovering where you stand, lighting five tiles around it for 40 turns. Only one wisp at a time; a new one replaces the old.";
+    t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+    t.manaCost=3; t.cooldownTurns=10; t.scalingCooldown=10; t.conjureLight=true; return t;
+}
 inline Talent basicCleanse() {
     Talent t; t.id="basic.cleanse"; t.name="Cleanse";
     t.description="Remove Poison, Burn, Chill, Marked and curses (Mana Drain / Doom). Free of mana; costs one turn. Cooldown 8. C always activates it. Does not remove Stun or stun recovery.";

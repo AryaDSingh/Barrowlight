@@ -438,6 +438,50 @@ struct ApplicationRewardsTestAccess {
             check(app.surfaceAt({5,15})==SurfaceType::Water && app.surfaceAt({8,15})!=SurfaceType::None,"Save/load keeps the surfaces");
         }
 
+        // Light and blood: wisps, the lantern, bleeding foes, and monsters that use the ground.
+        setup(PlayerClass::Mage); app.darknessEnabled_=true; app.clearSurfaces();
+        {
+            app.player_.talents().learnTalent(basicLight());
+            std::size_t wisp=0;
+            for (std::size_t i=0;i<app.player_.talents().knownTalents().size();++i) if (app.player_.talents().knownTalents()[i].id=="basic.light") wisp=i;
+            app.player_.lightLit=false; app.updateFieldOfView();
+            check(!app.tileLit({13,10}),"Without light the room is dark");
+            check(app.tryUseTalent(wisp,app.player_.position()) && app.tileLit({14,10}) && app.lightOrbs_.size()==1,"Conjure Light leaves a wisp lighting five tiles");
+            app.player_.setPosition({4,4}); app.updateFieldOfView();
+            check(app.tileLit({12,10}),"The wisp stays where it was cast");
+            snapshot("ui-wisp.png");
+            for (int i=0;i<40;++i) app.tickSurfaces();
+            check(app.lightOrbs_.empty(),"The wisp fades after 40 turns");
+            app.player_.lightLit=true;
+
+            app.landmark_=LandmarkKind::LamplighterRest; app.landmarkAltar_={11,10};
+            app.map_.setTile(11,10,Tile{TileType::Wall,false,true}); app.player_.setPosition({10,10}); app.updateFieldOfView();
+            app.pickupItem(); snapshot("ui-lamplighter.png"); app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Enter});
+            check(app.player_.lightSource==2 && app.playerLightRadius()==6,"The Lamplighter's Rest gives a lantern that lights six tiles");
+
+            auto* victim=enemy({14,14}); victim->stats().hp=0; app.checkAndHandleDeath(*victim); app.removeDeadMonsters();
+            check(app.surfaceAt({14,14})==SurfaceType::Blood,"The living leave blood where they fall");
+            app.setSurface({15,14},SurfaceType::Blood,0);
+            auto* standing=enemy({15,14}); const int before=standing->stats().hp;
+            app.applyElement(Element::Lightning,{{14,14}});
+            check(standing->stats().hp<before,"Lightning runs through blood too");
+            {
+                auto bones=createMonster(MonsterType::Skeleton,{20,15}); auto* skeleton=bones.get(); app.monsters_.push_back(std::move(bones));
+                skeleton->stats().hp=0; app.checkAndHandleDeath(*skeleton); app.removeDeadMonsters();
+                check(app.surfaceAt({20,15})==SurfaceType::None,"Skeletons don't bleed");
+            }
+
+            app.player_.setPosition({10,10}); app.clearSurfaces();
+            auto slinger=createMonster(MonsterType::GoblinSlinger,{14,10}); auto* sling=slinger.get(); app.monsters_.push_back(std::move(slinger));
+            AIDecision lob; lob.type=AIActionType::Attack; lob.target=&app.player_; lob.attackPower=1;
+            app.executeAIDecision(*sling,lob,0);
+            check(app.surfaceAt({10,10})==SurfaceType::Oil,"Goblin Slingers splash oil where their pots land");
+            app.setSurface({11,11},SurfaceType::Water,0);
+            auto acolyte=createMonster(MonsterType::FrostAcolyte,{13,11}); auto* frost=acolyte.get(); app.monsters_.push_back(std::move(acolyte));
+            lob.attackPower=1; app.executeAIDecision(*frost,lob,0);
+            check(app.surfaceAt({11,11})==SurfaceType::Ice,"Frost Acolytes freeze the ground around their target");
+        }
+
         // Auto-explore still sweeps a dark room by torchlight.
         setup(PlayerClass::Mage); app.darknessEnabled_=true;
         app.player_.setPosition({2,2}); app.updateFieldOfView();

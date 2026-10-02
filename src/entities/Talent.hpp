@@ -180,6 +180,7 @@ struct Talent {
     int drainPercent=0, stayHiddenPercent=0;
     bool huntersMark=false, returnConcealed=false;
     int committedRhythm=-1;
+    bool conjureLight=false; // leaves a wisp of light where it is cast
 
 };
 

@@ -99,7 +99,8 @@ struct SaveGameState {
     int lightSource=1; bool lightLit=true; // format 28
     // Format 29: ground surfaces (x, y, type, turns) and wall torches lit or put out.
     std::vector<std::tuple<int,int,int,int>> surfaces;
-    std::vector<Position> torchToggles; // inside a trial arena: which, and the dungeon floor to return to
+    std::vector<Position> torchToggles;
+    std::vector<std::tuple<int,int,int>> lightOrbs; // format 30: Conjure Light's wisps (x, y, turns) // inside a trial arena: which, and the dungeon floor to return to
     struct TalentSaveData {
         std::string id;
         int cooldown = 0;

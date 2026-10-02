@@ -44,7 +44,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 29;
+constexpr int kSaveFormatVersion = 30;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -143,7 +143,7 @@ bool validProgression(const SaveGameState& s) {
     // one keep it.
     for (const auto& t:s.playerTalents) {
         if (!known.insert(t.id).second || t.rank<1 || t.rank>kMaxTalentRank || t.cooldown<0 || t.cooldown>10000) return false;
-        if (t.id=="basic.attack" || t.id=="basic.cleanse") { if (t.rank!=1) return false; continue; }
+        if (t.id=="basic.attack" || t.id=="basic.cleanse" || t.id=="basic.light") { if (t.rank!=1) return false; continue; }
         const auto* d=findTalentDefinition(t.id);
         if (d && isAscendancyTree(d->treeId)) {
             if (d->treeId!=s.ascendancy || t.rank!=1 || (d->ranks[0].passive && t.cooldown)) return false;
@@ -388,6 +388,11 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
         for (const auto& t : state.torchToggles) out << ' ' << t.x << ' ' << t.y;
         out << '\n';
     }
+    if (version>=30) {
+        out << state.lightOrbs.size();
+        for (const auto& [x,y,turns] : state.lightOrbs) out << ' ' << x << ' ' << y << ' ' << turns;
+        out << '\n';
+    }
     return static_cast<bool>(out);
 }
 
@@ -395,7 +400,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
+    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 29 && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
         return std::nullopt;
     }
 
@@ -689,7 +694,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         for (std::size_t i=0;i<count;++i) {
             int x=0,y=0,type=0,turns=0;
             if (!(in>>x>>y>>type>>turns) || !state.map.inBounds(x,y) || !state.map.isWalkable(x,y) ||
-                type<1 || type>kSurfaceTypeMax || turns<0 || turns>50) return std::nullopt;
+                type<1 || type>(version>=30 ? kSurfaceTypeMax : 5) || turns<0 || turns>50) return std::nullopt;
             state.surfaces.push_back({x,y,type,turns});
         }
         if (!(in>>count) || count>1000) return std::nullopt;
@@ -697,6 +702,15 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
             Position p;
             if (!(in>>p.x>>p.y) || !state.map.inBounds(p.x,p.y)) return std::nullopt;
             state.torchToggles.push_back(p);
+        }
+    }
+    if (version>=30) {
+        std::size_t count=0;
+        if (!(in>>count) || count>4) return std::nullopt;
+        for (std::size_t i=0;i<count;++i) {
+            int x=0,y=0,turns=0;
+            if (!(in>>x>>y>>turns) || !state.map.inBounds(x,y) || turns<1 || turns>100) return std::nullopt;
+            state.lightOrbs.push_back({x,y,turns});
         }
     }
     if (state.landmark && (!state.map.inBounds(state.landmarkAltar.x,state.landmarkAltar.y) ||

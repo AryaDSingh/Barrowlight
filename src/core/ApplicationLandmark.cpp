@@ -53,6 +53,7 @@ const char* verb(LandmarkKind kind) {
         case LandmarkKind::SealedTomb: return "break the seal";
         case LandmarkKind::PalePeddler: return "speak with him";
         case LandmarkKind::ChainedDemon: return "face it";
+        case LandmarkKind::LamplighterRest: return "look around";
         default: return "kneel";
     }
 }
@@ -120,6 +121,10 @@ std::vector<Application::LandmarkChoice> Application::landmarkChoices() const {
                      "Costs " + std::to_string(peddlerGold(currentFloor_)) + " gold", gold_ >= peddlerGold(currentFloor_)},
                     {"Pay in blood", "bleeding-heart", "He sells you one unique item, sight unseen.",
                      "Costs " + std::to_string(kPeddlerLife) + " maximum life, forever", player_.baseStats().maxHp > 3 * kPeddlerLife}};
+        case LandmarkKind::LamplighterRest:
+            if (player_.lightSource < 2)
+                return {{"Take the lantern", "campfire", "A lantern lights six tiles around you instead of a torch's four. L still shutters it.", "Free", true}};
+            return {{"Trim the wick", "healing", "Rest a while in the lamplight: restore all life and mana.", "Free", true}};
         case LandmarkKind::ChainedDemon: {
             const int doom = std::max(1, stats.maxHp * kDemonDoomPercent / 100);
             return {{"Accept its bargain", "skull-crossed-bones", "It hands you a unique item from its hoard.",
@@ -300,6 +305,15 @@ void Application::chooseBlessing(int choice) {
             log(answered == 1 ? "A champion steps into the pit!" : "Champions step into the pit!");
             break;
         }
+        case LandmarkKind::LamplighterRest:
+            if (player_.lightSource < 2) {
+                player_.lightSource = 2; player_.lightLit = true;
+                log("You take the lamplighter's lantern. The dark draws back.");
+                updateFieldOfView();
+            } else {
+                stats.hp = stats.maxHp; stats.mana = stats.maxMana;
+            }
+            break;
         case LandmarkKind::SealedTomb:
             raiseChampion(MonsterType::CryptSentinel, kChampionRevenant);
             spawnLandmarkFoes(2, MonsterTier::Base, MonsterTier::Base, MonsterType::Skeleton);
@@ -438,6 +452,14 @@ void Application::renderLandmark() {
             }
             break;
         }
+        case LandmarkKind::LamplighterRest: {
+            // A table with a burning lamp on it.
+            sprites_.draw(window_, {kTileset, sf::IntRect({288, 240}, {32, 32})}, {at.x - tile * 0.25f, at.y - tile * 0.35f}, tile * 1.5f, tint);
+            const int flame = static_cast<int>(now * 6.f) % 3;
+            sprites_.draw(window_, {kTileset, sf::IntRect({176 + flame * 16, 304}, {16, 16})}, {at.x + tile * 0.15f, at.y - tile * 0.55f},
+                          tile * 0.7f, tint);
+            break;
+        }
         case LandmarkKind::SealedTomb: {
             // A stone tomb between two candles; violet light seeps from the seal.
             if (lit && !landmarkUsed_) {
@@ -507,6 +529,7 @@ sf::Color Application::landmarkLightColor() const {
         case LandmarkKind::TreasureHoard: return sf::Color(255, 210, 90);
         case LandmarkKind::ChampionPit: return sf::Color(255, 130, 60);
         case LandmarkKind::SealedTomb: return sf::Color(170, 120, 255);
+        case LandmarkKind::LamplighterRest: return sf::Color(255, 205, 140);
         case LandmarkKind::PalePeddler: return sf::Color(190, 220, 255);
         case LandmarkKind::ChainedDemon: return sf::Color(255, 70, 50);
         default: return sf::Color(255, 205, 120);
@@ -530,6 +553,7 @@ void Application::renderShrine() {
     if (landmark_ == LandmarkKind::TreasureHoard) subtitle = "Gold, heaped and unguarded. Surely unguarded.";
     if (landmark_ == LandmarkKind::PrisonerCage) subtitle = "\"Get me out of here! I'll make it worth your while.\"";
     if (landmark_ == LandmarkKind::ChampionPit) subtitle = "Light the brazier and the pit's champions will answer.";
+    if (landmark_ == LandmarkKind::LamplighterRest) subtitle = "An old lamplighter's post. Someone left a lantern burning.";
     if (landmark_ == LandmarkKind::SealedTomb) subtitle = "A king was buried here with his treasure. He is not resting.";
     if (landmark_ == LandmarkKind::PalePeddler) subtitle = "\"Rare things, for rare prices. One sale, then I'm gone.\"";
     if (landmark_ == LandmarkKind::ChainedDemon) subtitle = "\"Free me, or bargain with me. Either way, you leave richer.\"";

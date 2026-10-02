@@ -10,8 +10,10 @@ namespace engine {
 enum class LandmarkKind { None = 0, Shrine = 1, HealingFountain = 2, BloodFont = 3, RitualCircle = 4,
                           TreasureHoard = 5, PrisonerCage = 6, ChampionPit = 7,
                           // Very rare, deep floors only; each leads to a unique item.
-                          SealedTomb = 8, PalePeddler = 9, ChainedDemon = 10 };
-inline constexpr int kLandmarkKindCount = 11;
+                          SealedTomb = 8, PalePeddler = 9, ChainedDemon = 10,
+                          // An uncommon find on any floor: where the lantern comes from.
+                          LamplighterRest = 11 };
+inline constexpr int kLandmarkKindCount = 12;
 inline bool rareLandmark(LandmarkKind kind) {
     return kind == LandmarkKind::SealedTomb || kind == LandmarkKind::PalePeddler || kind == LandmarkKind::ChainedDemon;
 }
@@ -53,6 +55,7 @@ inline const char* landmarkName(LandmarkKind kind, FloorRegion region) {
         case LandmarkKind::SealedTomb: return barracks ? "Tomb of the Last Captain" : sanctum ? "Tomb of the Fallen Saint" : "Tomb of the First King";
         case LandmarkKind::PalePeddler: return "The Pale Peddler";
         case LandmarkKind::ChainedDemon: return "The Chained Demon";
+        case LandmarkKind::LamplighterRest: return "Lamplighter's Rest";
         case LandmarkKind::None: break;
     }
     return "";

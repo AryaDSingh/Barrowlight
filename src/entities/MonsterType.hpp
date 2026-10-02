@@ -38,6 +38,15 @@ inline bool seesInDark(MonsterType type) {
     }
 }
 
+// Who leaves blood behind: the living do, bones and spirits don't.
+inline bool bleeds(MonsterType type) {
+    switch (type) {
+        case MonsterType::Skeleton: case MonsterType::SkeletonArcher: case MonsterType::SkeletonGuard:
+        case MonsterType::CryptShade: case MonsterType::CryptSentinel: case MonsterType::Lich: return false;
+        default: return true;
+    }
+}
+
 inline bool isUniqueMonster(MonsterType type) {
     return type==MonsterType::GoblinCaptain || type==MonsterType::OssuaryWarden;
 }

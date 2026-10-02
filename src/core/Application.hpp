@@ -552,6 +552,8 @@ private:
 
     // Surfaces and fixtures (ApplicationSurfaces.cpp, world/Surfaces.hpp).
     std::vector<SurfaceTile> surfaces_;
+    struct LightOrb { Position at; int turns; };
+    std::vector<LightOrb> lightOrbs_; // Conjure Light's wisps
     std::set<std::pair<int, int>> torchToggles_; // wall torches whose lit state differs from the floor's default
     bool torchLit(int x, int y) const;
     void setTorchLit(int x, int y, bool lit);

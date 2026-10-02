@@ -91,6 +91,7 @@ bool Application::enterTrial(int trial) {
         arena.setTile(p.x, p.y, Tile{TileType::Wall, false, false});
     map_ = arena;
     clearSurfaces();
+    lightOrbs_.clear();
     actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN; vfx_.clear(); hitFlash_.clear();
     setProps({});
 
