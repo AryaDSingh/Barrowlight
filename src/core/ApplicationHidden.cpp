@@ -187,6 +187,7 @@ Actor* Application::nearestOpponent(Actor& actor,bool playerHidden) {
         if (target.stats().hp<=0) return;
         const auto p=target.position();
         if (std::none_of(visible.begin(),visible.end(),[&](Position q){return p.x==q.x && p.y==q.y;})) return;
+        if (!canSee(actor,p)) return; // humans need light to see past arm's reach
         const int distance=std::abs(p.x-actor.position().x)+std::abs(p.y-actor.position().y);
         if (distance<best) { best=distance; nearest=&target; }
     };

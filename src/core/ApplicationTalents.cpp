@@ -356,6 +356,11 @@ float Application::enemyStealthDetectionChance(const Actor& enemy) const {
     const auto visible=computeFieldOfView(map_,enemy.position(),kStealthDetectionRadius);
     if (std::none_of(visible.begin(),visible.end(),[&](Position p){return p.x==target.x && p.y==target.y;})) return 0.f;
     if (enemy.statusEffects().has(StatusEffectType::HuntersMark)) chance=std::max(.05f,chance*.5f);
+    // Hiding in the dark: invisible to those who need light, and harder to spot for the rest.
+    if (!tileLit(target)) {
+        if (!canSee(enemy,target)) return 0.f;
+        chance*=.6f;
+    }
     return chance;
 }
 

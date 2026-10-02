@@ -532,6 +532,19 @@ private:
     void renderStatusVfx();
     void drawHitFlash(const Actor& actor, const SpriteFrame& frame, sf::Vector2f topLeft, float size, bool flip);
     void renderTelegraphs(int viewStartX, int viewStartY, int viewEndX, int viewEndY);
+
+    // Darkness (Application.cpp, computeLight): which tiles are lit, by
+    // wall torches, the stairs, landmarks, burning creatures and the
+    // player's own light. The player sees lit tiles in sight and anything
+    // adjacent; monsters without darkvision see the same way.
+    bool darknessEnabled_ = true; // tests of other systems switch it off
+    std::vector<std::uint8_t> litTiles_;
+    std::vector<Position> wallTorches_; // floor tiles lit by a wall torch on the wall above them
+    void computeLight();
+    bool tileLit(Position p) const;
+    int playerLightRadius() const;
+    bool canSee(const Actor& viewer, Position target) const; // light-wise only; line of sight is checked separately
+    void toggleLight();
     GameMode mode_ = GameMode::ClassSelection;
     PlayerClass playerClass_ = PlayerClass::Spellblade; // meaningless until selectClass() runs
     bool wonGame_ = false; // meaningless unless mode_ == GameOver -- see checkAndHandleDeath

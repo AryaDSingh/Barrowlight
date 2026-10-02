@@ -23,7 +23,8 @@ constexpr DungeonAction kDungeonActions[]{
     {"Inventory","B","knapsack"},{"Talent trees","T","tree-branch"},
     {"Use / pick up","G","locked-chest"},{"Wait a turn","Space","hourglass"},{"Rest","R","campfire"},
     {"Auto-explore","Z","compass"},{"Return to town","H","village"},{"Cleanse","C","aura"},
-    {"Save game","F5","scroll-unfurled"},{"Load game","F9","spell-book"},{"Inspect enemies","I","third-eye"}};
+    {"Save game","F5","scroll-unfurled"},{"Load game","F9","spell-book"},{"Inspect enemies","I","third-eye"},
+    {"Torch","L","burning-embers"}};
 constexpr std::size_t kDungeonActionCount = std::size(kDungeonActions);
 sf::FloatRect dungeonActionRect(std::size_t index) {
     using namespace playLayout;
@@ -273,7 +274,8 @@ void Application::renderBattleHud() {
         const auto r=dungeonActionRect(i);
         ui_.inset(window_,r,hovered(r)&&!busy?ui::kBronze:sf::Color::Transparent);
         ui_.icon(window_,kDungeonActions[i].icon,{{r.position.x+6,r.position.y+4},{r.size.x-12,r.size.y-20}},
-            busy?ui::kMuted:hovered(r)?ui::kGold:ui::kText);
+            busy?ui::kMuted:hovered(r)?ui::kGold:std::string_view(kDungeonActions[i].name)=="Torch"?
+            (player_.lightLit?sf::Color(255,190,110):sf::Color(110,105,100)):ui::kText);
         const auto key=std::string(kDungeonActions[i].key);
         ui_.text(window_,key,{r.position.x+(r.size.x-ui_.textWidth(key,11,ui::Font::Bold))/2,r.position.y+r.size.y-16},11,ui::kMuted,ui::Font::Bold);
     }
@@ -501,6 +503,7 @@ void Application::handleTargetingMouse(const sf::Event& event) {
             else if(action=="Wait a turn") { player_.statusEffects().apply({StatusEffectType::Opening,2,0}); finishInventoryTurn(); }
             else if(action=="Rest") startRest();
             else if(action=="Auto-explore") startAutoExplore();
+            else if(action=="Torch") toggleLight();
             else if(action=="Return to town") returnToTown();
             else if(action=="Cleanse") {
                 for(std::size_t index=0;index<player_.talents().knownTalents().size();++index)

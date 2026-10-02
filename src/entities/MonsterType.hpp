@@ -27,6 +27,17 @@ enum class MonsterType {
     CryptSentinel, GraveMender, CryptShade, FrostAcolyte,
 };
 
+// Darkvision: goblinkind, orcs, beasts and the undead see without light.
+// The humans among the enemies (archers, monks, clerics, the warden) need
+// light to spot anyone further than arm's reach.
+inline bool seesInDark(MonsterType type) {
+    switch (type) {
+        case MonsterType::Archer: case MonsterType::Bonecaller: case MonsterType::GraveMender:
+        case MonsterType::FrostAcolyte: case MonsterType::OssuaryWarden: return false;
+        default: return true;
+    }
+}
+
 inline bool isUniqueMonster(MonsterType type) {
     return type==MonsterType::GoblinCaptain || type==MonsterType::OssuaryWarden;
 }

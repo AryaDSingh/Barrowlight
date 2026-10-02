@@ -37,6 +37,7 @@ struct ApplicationTargetingTestAccess {
             app.currentFloor_=1; app.boss_=nullptr; app.pendingFinalVictory_=false;
             app.player_.level()=1; app.player_.xp()=0;
             app.player_.unspentAttributePoints()=0; app.progressionReviewPending_=false;
+            app.darknessEnabled_=false; // darkness is checked in the rewards tests
             app.player_.setPosition({20,12});
             app.player_.stats()=statsForClass(PlayerClass::Mage);
             app.player_.stats().hp=app.player_.stats().maxHp=100;

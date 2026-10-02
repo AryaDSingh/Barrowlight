@@ -93,7 +93,8 @@ struct SaveGameState {
     // Ascendancy and trials (format 26): see entities/Ascendancy.hpp.
     std::string ascendancy;
     int ascendancyPoints=0, trialKeys=0, trialsCleared=0;
-    int trial=0, trialReturnFloor=0; // inside a trial arena: which, and the dungeon floor to return to
+    int trial=0, trialReturnFloor=0;
+    int lightSource=1; bool lightLit=true; // format 28 // inside a trial arena: which, and the dungeon floor to return to
     struct TalentSaveData {
         std::string id;
         int cooldown = 0;

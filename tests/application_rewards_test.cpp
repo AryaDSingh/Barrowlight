@@ -53,6 +53,7 @@ struct ApplicationRewardsTestAccess {
             app.inventoryDragSource_.reset();
             app.dungeonMenu_=false;
             app.mode_ = GameMode::Playing; app.playerClass_ = cls;
+            app.darknessEnabled_ = false; app.player_.lightSource = 1; app.player_.lightLit = true; // darkness has its own checks
             app.autoExploring_=false; app.restTurns_=0; app.quietTurns_=0; app.combatThisTurn_=false;
             app.vaultExists_=app.vaultOpened_=app.vaultClaimed_=false; app.vaultMenu_=0; app.exitMenu_=false;
             app.landmark_=LandmarkKind::None; app.landmarkUsed_=false; app.shrineMenu_=false;
@@ -328,6 +329,46 @@ struct ApplicationRewardsTestAccess {
         for(int y=1;y<21;++y) for(int x=1;x<31;++x)
             fullyExplored &= app.exploredMap_.at(x,y)!=Visibility::Hidden;
         check(fullyExplored && exploreMoves<350,"Auto-explore traverses an entire open floor and terminates without looping");
+
+        // Darkness: you see lit tiles and your neighbours; your torch is a light.
+        setup(PlayerClass::Warrior); app.darknessEnabled_=true;
+        {
+            auto* far=enemy({16,10}); auto* near=enemy({13,10});
+            app.updateFieldOfView();
+            check(app.exploredMap_.at(13,10)==Visibility::Visible && app.exploredMap_.at(16,10)!=Visibility::Visible,
+                  "A torch shows four tiles; beyond it the dark hides enemies");
+            snapshot("ui-darkness-torch.png");
+            app.toggleLight();
+            check(!app.player_.lightLit && app.exploredMap_.at(13,10)!=Visibility::Visible && app.exploredMap_.at(11,10)==Visibility::Visible,
+                  "Doused, you only see what is beside you");
+            snapshot("ui-darkness-doused.png");
+            app.monsters_.clear();
+            auto archer=createMonster(MonsterType::Archer,{13,10}); auto* human=archer.get(); app.monsters_.push_back(std::move(archer));
+            auto goblin=createMonster(MonsterType::Goblin,{10,13}); auto* goblinPtr=goblin.get(); app.monsters_.push_back(std::move(goblin));
+            app.updateFieldOfView();
+            check(app.nearestOpponent(*human,false)==nullptr,"Humans can't see a player hiding in the dark");
+            check(app.nearestOpponent(*goblinPtr,false)==&app.player_,"Goblins see in the dark");
+            app.toggleLight();
+            check(app.nearestOpponent(*human,false)==&app.player_,"A lit torch gives you away");
+            app.toggleLight(); roundTrip();
+            check(!app.player_.lightLit && app.player_.lightSource==1,"Save/load keeps the doused torch");
+            app.player_.lightLit=true;
+            app.currentFloor_=2; app.regenerateLevel(77); app.updateFieldOfView(); app.updateCamera();
+            snapshot("ui-darkness-floor.png");
+            app.toggleLight(); snapshot("ui-darkness-floor-doused.png"); app.toggleLight();
+        }
+        // Auto-explore still sweeps a dark room by torchlight.
+        setup(PlayerClass::Mage); app.darknessEnabled_=true;
+        app.player_.setPosition({2,2}); app.updateFieldOfView();
+        exploreMoves=0;
+        app.startAutoExplore();
+        while(exploreMoves<900) {
+            if(!app.autoExploring_) { app.startAutoExplore(); if(!app.autoExploring_) break; }
+            stepExplore(); ++exploreMoves;
+        }
+        fullyExplored=true;
+        for(int y=1;y<21;++y) for(int x=1;x<31;++x) fullyExplored &= app.exploredMap_.at(x,y)!=Visibility::Hidden;
+        check(fullyExplored && exploreMoves<900,"Auto-explore finishes a dark room by torchlight");
         std::cout<<"Explore simulation: "<<exploreMoves<<" moves, "<<restarts<<" restarts.\n";
 
         setup(PlayerClass::Mage);

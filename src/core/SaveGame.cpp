@@ -43,7 +43,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 27;
+constexpr int kSaveFormatVersion = 28;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -379,6 +379,7 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
     if (version>=26)
         out << (state.ascendancy.empty() ? std::string("-") : state.ascendancy) << ' ' << state.ascendancyPoints << ' '
             << state.trialKeys << ' ' << state.trialsCleared << '\n';
+    if (version>=28) out << state.lightSource << ' ' << state.lightLit << '\n';
     return static_cast<bool>(out);
 }
 
@@ -386,7 +387,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
+    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
         return std::nullopt;
     }
 
@@ -673,6 +674,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         if (!(in>>state.ascendancy>>state.ascendancyPoints>>state.trialKeys>>state.trialsCleared)) return std::nullopt;
         if (state.ascendancy=="-") state.ascendancy.clear();
     }
+    if (version>=28 && (!(in>>state.lightSource>>state.lightLit) || state.lightSource<0 || state.lightSource>2)) return std::nullopt;
     if (state.landmark && (!state.map.inBounds(state.landmarkAltar.x,state.landmarkAltar.y) ||
         state.map.isWalkable(state.landmarkAltar.x,state.landmarkAltar.y))) return std::nullopt;
     if (version>=15 && !state.trial && state.currentFloor<kRunFinalFloor && !state.map.isWalkable(state.floorExit.x,state.floorExit.y)) return std::nullopt;

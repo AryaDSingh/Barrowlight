@@ -69,6 +69,10 @@ public:
     // (empty until the first trial), unspent ascendancy points, and the
     // trials' sigils held and trials cleared (bit n-1 = trial n).
     std::string ascendancy;
+    // What the player carries for light (0 none, 1 torch, 2 lantern) and
+    // whether it is lit. A doused light hides you in the dark.
+    int lightSource=1;
+    bool lightLit=true;
     int ascendancyPoints=0, trialKeys=0, trialsCleared=0;
     std::vector<int> deathlessSpentFloors;
     int& level() { return level_; }

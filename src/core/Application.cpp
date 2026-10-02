@@ -466,7 +466,8 @@ void Application::renderLighting(const std::vector<std::pair<sf::Vector2f, sf::C
     if (!ensureLightBlob()) return;
     if (!lightMap_) lightMap_.emplace(sf::Vector2u{static_cast<unsigned>(kMapWidth), static_cast<unsigned>(kMapHeight)});
     auto& target = *lightMap_;
-    const sf::Color ambient(170, 160, 182);
+    // Darkness proper: unlit areas fall to a deep gloom; light comes from sources.
+    const sf::Color ambient = darknessEnabled_ ? sf::Color(92, 88, 112) : sf::Color(170, 160, 182);
     target.clear(ambient);
     const float now = animationClock_.getElapsedTime().asSeconds();
     const auto addLight = [&](sf::Vector2f center, sf::Color color, float radiusTiles) {
@@ -479,7 +480,9 @@ void Application::renderLighting(const std::vector<std::pair<sf::Vector2f, sf::C
         target.draw(light, sf::BlendAdd);
     };
     const auto player = worldToScreen(player_.position().x, player_.position().y);
-    addLight({player.x + kTileSize / 2, player.y + kTileSize / 2}, sf::Color(255, 236, 205), 8.5f);
+    const int carried = darknessEnabled_ ? playerLightRadius() : 8;
+    addLight({player.x + kTileSize / 2, player.y + kTileSize / 2}, carried ? sf::Color(255, 214, 160) : sf::Color(120, 120, 150),
+             carried ? carried + 1.2f : 1.6f);
     for (const auto& [center, color] : lights) {
         // Fire flickers; other lights hold steady.
         const bool fire = color.g < 200 && color.r > 200;
@@ -698,6 +701,7 @@ void Application::handleEvent(const sf::Event& input) {
         if (keyPressed->code == sf::Keyboard::Key::T) { openTalentTrees(); return; }
         if (keyPressed->code == sf::Keyboard::Key::P) { openLevelUp(); return; }
         if (keyPressed->code == sf::Keyboard::Key::Y) { openAscendancy(); return; }
+        if (keyPressed->code == sf::Keyboard::Key::L) { toggleLight(); return; }
         if (keyPressed->code == sf::Keyboard::Key::C) {
             for (std::size_t i=0;i<player_.talents().knownTalents().size();++i)
                 if (player_.talents().knownTalents()[i].id=="basic.cleanse") { requestTalent(i); break; }
@@ -1506,8 +1510,76 @@ void Application::removeDeadMonsters() {
 }
 
 void Application::updateFieldOfView() {
+    computeLight();
     std::vector<Position> visible = computeFieldOfView(map_, player_.position(), kSightRadius);
+    // In the dark only what's lit, or right beside you, can be seen.
+    const auto here = player_.position();
+    visible.erase(std::remove_if(visible.begin(), visible.end(), [&](Position p) {
+        return !tileLit(p) && std::max(std::abs(p.x - here.x), std::abs(p.y - here.y)) > 1;
+    }), visible.end());
     exploredMap_.update(visible);
+}
+
+int Application::playerLightRadius() const {
+    if (!player_.lightLit) return 0;
+    return player_.lightSource == 2 ? 6 : player_.lightSource == 1 ? 4 : 0;
+}
+
+bool Application::tileLit(Position p) const {
+    if (!darknessEnabled_) return true;
+    if (!map_.inBounds(p.x, p.y) || litTiles_.size() != static_cast<std::size_t>(map_.width() * map_.height())) return false;
+    return litTiles_[static_cast<std::size_t>(p.y * map_.width() + p.x)] != 0;
+}
+
+bool Application::canSee(const Actor& viewer, Position target) const {
+    if (!darknessEnabled_) return true;
+    const auto* monster = dynamic_cast<const Monster*>(&viewer);
+    if (monster && (monster->allied || seesInDark(monster->type()))) return true;
+    const auto p = viewer.position();
+    return tileLit(target) || std::max(std::abs(p.x - target.x), std::abs(p.y - target.y)) <= 1;
+}
+
+// Light sources, each lighting the tiles it can reach within its radius.
+void Application::computeLight() {
+    litTiles_.assign(static_cast<std::size_t>(std::max(0, map_.width() * map_.height())), 0);
+    wallTorches_.clear();
+    const auto light = [&](Position source, int radius) {
+        if (radius <= 0 || !map_.inBounds(source.x, source.y)) return;
+        for (const auto& p : computeFieldOfView(map_, source, radius))
+            if (map_.inBounds(p.x, p.y)) litTiles_[static_cast<std::size_t>(p.y * map_.width() + p.x)] = 1;
+    };
+    light(player_.position(), playerLightRadius());
+    const auto theme = floorTheme(currentFloor_);
+    for (int y = 0; y + 1 < map_.height(); ++y)
+        for (int x = 0; x < map_.width(); ++x) {
+            const bool altar = landmark_ != LandmarkKind::None && x == landmarkAltar_.x && y == landmarkAltar_.y;
+            if (!altar && propIndexAt(x, y) < 0 && decorAt(map_, x, y, currentFloor_, theme.region) == Decor::Torch &&
+                map_.isWalkable(x, y + 1))
+            { light({x, y + 1}, 3); wallTorches_.push_back({x, y + 1}); } // a wall torch lights the floor in front of it
+        }
+    if (map_.inBounds(floorEntrance_.x, floorEntrance_.y)) light(floorEntrance_, 2);
+    if (map_.inBounds(floorExit_.x, floorExit_.y)) light(floorExit_, 2);
+    if (landmark_ != LandmarkKind::None) {
+        for (const Position d : {Position{0, 1}, Position{0, -1}, Position{1, 0}, Position{-1, 0}})
+            if (map_.isWalkable(landmarkAltar_.x + d.x, landmarkAltar_.y + d.y)) light({landmarkAltar_.x + d.x, landmarkAltar_.y + d.y}, 2);
+        if (landmark_ == LandmarkKind::Shrine)
+            for (const Position o : {Position{-3, -1}, Position{3, -1}, Position{-3, 1}, Position{3, 1}})
+                for (const Position d : {Position{0, 1}, Position{0, -1}, Position{1, 0}, Position{-1, 0}})
+                    if (map_.isWalkable(landmarkAltar_.x + o.x + d.x, landmarkAltar_.y + o.y + d.y))
+                        light({landmarkAltar_.x + o.x + d.x, landmarkAltar_.y + o.y + d.y}, 2);
+    }
+    if (vaultExists_ && map_.inBounds(vaultCenter_.x, vaultCenter_.y)) light(vaultCenter_, 1);
+    // Burning creatures are torches too.
+    if (player_.statusEffects().has(StatusEffectType::Burn)) light(player_.position(), 2);
+    for (const auto& m : monsters_)
+        if (m->stats().hp > 0 && m->statusEffects().has(StatusEffectType::Burn)) light(m->position(), 2);
+}
+
+void Application::toggleLight() {
+    if (!player_.lightSource) { log("You carry no light."); return; }
+    player_.lightLit = !player_.lightLit;
+    log(player_.lightLit ? "You light your torch." : "You douse your torch. In the dark, many foes can't see you.");
+    updateFieldOfView();
 }
 
 void Application::selectClass(PlayerClass cls) {
@@ -1524,6 +1596,7 @@ void Application::selectClass(PlayerClass cls) {
     player_.bloodRelic=false; player_.animationRelic=false; player_.deathlessSpentFloors.clear();
     player_.treePoints()=1; player_.abilityPoints()=earnedAbilityPoints(1);
     player_.ascendancy.clear(); player_.ascendancyPoints=0; player_.trialKeys=0; player_.trialsCleared=0;
+    player_.lightSource=1; player_.lightLit=true; // everyone starts with a torch
     trial_=0; trialReturnFloor_=0; ascendancyMenu_=false; trialMenu_=false;
     pendingFinalVictory_ = false;
 
@@ -1679,6 +1752,7 @@ SaveGameState Application::captureState(bool includeFloors) {
     state.ascendancy=player_.ascendancy; state.ascendancyPoints=player_.ascendancyPoints;
     state.trialKeys=player_.trialKeys; state.trialsCleared=player_.trialsCleared;
     state.trial=trial_; state.trialReturnFloor=trialReturnFloor_;
+    state.lightSource=player_.lightSource; state.lightLit=player_.lightLit;
     state.map = map_;
     state.exploredMap = exploredMap_;
     state.playerPosition = player_.position();
@@ -1840,6 +1914,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     player_.ascendancy=state.ascendancy; player_.ascendancyPoints=state.ascendancyPoints;
     player_.trialKeys=state.trialKeys; player_.trialsCleared=state.trialsCleared;
     trial_=state.trial; trialReturnFloor_=state.trialReturnFloor;
+    player_.lightSource=state.lightSource; player_.lightLit=state.lightLit;
     ascendancyMenu_=false; trialMenu_=false;
     player_.level() = state.playerLevel;
     player_.bloodRelic=state.bloodRelic; player_.animationRelic=state.animationRelic; player_.deathlessSpentFloors=state.deathlessSpentFloors;
@@ -2230,7 +2305,6 @@ void Application::render() {
             switch (altarTile || propIndexAt(x, y) >= 0 ? Decor::None : decorAt(map_, x, y, currentFloor_, theme.region)) {
                 case Decor::Torch:
                     SpriteAtlas::append(details, torchFrame(x, y, now), {at.x, at.y - kTileSize * 0.45f}, kTileSize, shade(sf::Color::White));
-                    if (vis == Visibility::Visible) lights.push_back({{at.x + kTileSize / 2, at.y}, sf::Color(255, 160, 80)});
                     break;
                 case Decor::Banner:
                     SpriteAtlas::append(details, bannerFrame(theme.region, x), {at.x, at.y - kTileSize * 0.9f}, kTileSize * 1.8f,
@@ -2267,6 +2341,12 @@ void Application::render() {
             const auto at = worldToScreen(p.x, p.y);
             sprites_.draw(window_, torchFrame(p.x, p.y, now), {at.x - 2, at.y - kTileSize * 0.75f}, kTileSize + 4);
             lights.push_back({{at.x + kTileSize / 2, at.y - kTileSize * 0.2f}, sf::Color(255, 160, 80)});
+        }
+    // Wall torches glow whenever they, or the floor they light, are in view.
+    for (const auto& lit : wallTorches_)
+        if (exploredMap_.at(lit.x, lit.y) == Visibility::Visible || exploredMap_.at(lit.x, lit.y - 1) == Visibility::Visible) {
+            const auto at = worldToScreen(lit.x, lit.y - 1);
+            lights.push_back({{at.x + kTileSize / 2, at.y}, sf::Color(255, 160, 80)});
         }
     renderGroundItems();
     renderCorpses();
