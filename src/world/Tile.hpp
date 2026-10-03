@@ -8,6 +8,7 @@ enum class TileType {
     Door, // a floor-transition door -- walkable/transparent exactly like Floor (see Tile's own
           // comment); Application is the only thing that treats it specially, by checking
           // tileAt(...).type after a move rather than needing a new field here
+    Chasm, // a drop into darkness: not walkable, but you can see (and push things) across it
 };
 
 // A single grid cell. `walkable` and `transparent` are stored explicitly

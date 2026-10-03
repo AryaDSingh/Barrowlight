@@ -13,6 +13,7 @@
 #include "entities/RunProgression.hpp"
 #include "world/EncounterPlan.hpp"
 #include "world/LineOfFire.hpp"
+#include "world/Pathfinder.hpp"
 #include "core/Application.hpp"
 #include "core/ScreenLayout.hpp"
 #include "entities/MonsterFactory.hpp"
@@ -56,7 +57,7 @@ struct ApplicationRewardsTestAccess {
             app.mode_ = GameMode::Playing; app.playerClass_ = cls;
             app.darknessEnabled_ = false; app.player_.lightSource = 1; app.player_.lightLit = true; // darkness has its own checks
             app.autoExploring_=false; app.restTurns_=0; app.quietTurns_=0; app.combatThisTurn_=false;
-            app.vaultExists_=app.vaultOpened_=app.vaultClaimed_=false; app.vaultMenu_=0; app.exitMenu_=false;
+            app.vaultExists_=app.vaultOpened_=app.vaultClaimed_=false; app.vaultMenu_=0; app.exitMenu_=false; app.vaultRewards_.clear();
             app.landmark_=LandmarkKind::None; app.landmarkUsed_=false; app.shrineMenu_=false;
             app.player_.ascendancy.clear(); app.player_.ascendancyPoints=app.player_.trialKeys=app.player_.trialsCleared=0;
             app.lightOrbs_.clear();
@@ -618,6 +619,57 @@ struct ApplicationRewardsTestAccess {
             app.executeAIDecision(*l,bolt,0);
             check(app.surfaceAt(app.player_.position())==SurfaceType::Ice,"The Lich's bolts freeze the water you stand in");
             app.player_.lightLit=true; app.monsters_.clear(); app.boss_=nullptr; app.clearSurfaces();
+        }
+
+        // Pushing into hazards: Shove, walls, foes, braziers and chasms.
+        setup(PlayerClass::Warrior);
+        {
+            app.player_.talents().learnTalent(basicShove());
+            std::size_t shove=0;
+            for (std::size_t i=0;i<app.player_.talents().knownTalents().size();++i) if (app.player_.talents().knownTalents()[i].id=="basic.shove") shove=i;
+            const auto shoveAt=[&](Position p){ app.player_.talents().resetCooldowns(); return app.tryUseTalent(shove,p); };
+            auto* goblin=enemy({11,10}); goblin->stats().dexterity=0;
+            app.setSurface({12,10},SurfaceType::Fire,4);
+            const int hp=goblin->stats().hp;
+            check(shoveAt({11,10}) && goblin->position().x==12 && goblin->statusEffects().has(StatusEffectType::Burn) && goblin->stats().hp==hp,
+                  "Shove pushes a foe into fire without hurting it itself");
+            app.clearSurfaces();
+            app.player_.setPosition({29,10}); goblin->setPosition({30,10}); goblin->statusEffects().active().clear(); app.updateFieldOfView();
+            const int beforeWall=goblin->stats().hp; shoveAt({30,10});
+            check(goblin->stats().hp==beforeWall-3,"A foe shoved into a wall takes 3");
+            auto* other=enemy({28,12});
+            app.player_.setPosition({28,10}); goblin->setPosition({28,11}); app.updateFieldOfView();
+            const int a=goblin->stats().hp,b=other->stats().hp; shoveAt({28,11});
+            check(goblin->stats().hp==a-2 && other->stats().hp==b-2,"Two foes shoved together both take 2");
+            other->stats().hp=0; app.checkAndHandleDeath(*other); app.removeDeadMonsters();
+            auto props=app.props_; props.push_back({PropKind::Brazier,{20,5}}); app.map_.setTile(20,5,Tile{TileType::Wall,false,true}); app.setProps(props);
+            app.player_.setPosition({20,7}); goblin->setPosition({20,6}); app.updateFieldOfView(); shoveAt({20,6});
+            check(app.propIndexAt(20,5)<0 && app.surfaceAt({20,4})==SurfaceType::Fire,"A foe shoved into a lit brazier tips it over");
+            app.clearSurfaces();
+            for (int x=5;x<=7;++x) app.map_.setTile(x,15,Tile{TileType::Chasm,false,true});
+            app.player_.setPosition({6,13}); goblin->setPosition({6,14}); goblin->stats().hp=goblin->stats().maxHp; app.updateFieldOfView();
+            goblin->setXpReward(30);
+            const int xpBefore=app.player_.xp(), dropsBefore=static_cast<int>(app.groundItems_.size());
+            shoveAt({6,14}); app.removeDeadMonsters();
+            check(app.monsters_.empty() && app.player_.xp()>xpBefore && static_cast<int>(app.groundItems_.size())==dropsBefore,
+                  "A foe shoved into a chasm is gone: XP, no loot");
+            auto warlord=createMonster(MonsterType::GoblinWarlord,{6,14}); auto* w=warlord.get(); app.monsters_.push_back(std::move(warlord)); app.boss_=w;
+            w->stats().dexterity=0; const int bossHp=w->stats().hp; shoveAt({6,14});
+            check(w->stats().hp>0 && w->position().y==14 && w->stats().hp<bossHp,"Bosses teeter on the edge instead of falling");
+            snapshot("ui-chasm.png");
+            app.monsters_.clear(); app.boss_=nullptr;
+        }
+        // Chasms never cut a floor in two.
+        {
+            int floorsWithChasms=0; bool connected=true;
+            for (unsigned seed=900;seed<930;++seed) {
+                app.currentFloor_=1+static_cast<int>(seed%9); app.regenerateLevel(seed);
+                bool any=false;
+                for (int y=0;y<app.map_.height() && !any;++y) for (int x=0;x<app.map_.width();++x) if (app.map_.tileAt(x,y).type==TileType::Chasm) { any=true; break; }
+                floorsWithChasms+=any;
+                if (app.floorExit_.x>=0) connected=connected && findPath(app.map_,app.floorEntrance_,app.floorExit_).has_value();
+            }
+            check(floorsWithChasms>5 && connected,"Chasms appear on many floors and never cut off the stairs");
         }
 
         // Auto-explore still sweeps a dark room by torchlight.

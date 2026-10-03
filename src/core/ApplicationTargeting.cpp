@@ -168,7 +168,8 @@ void Application::renderMinimap(sf::FloatRect area) {
         const auto vis=exploredMap_.at(x,y);
         if (vis==Visibility::Hidden) continue;
         const auto type=map_.tileAt(x,y).type;
-        sf::Color c=type==TileType::Wall?sf::Color(92,78,60):type==TileType::Door?sf::Color(110,190,255):sf::Color(52,48,46);
+        sf::Color c=type==TileType::Wall?sf::Color(92,78,60):type==TileType::Door?sf::Color(110,190,255):
+            type==TileType::Chasm?sf::Color(8,8,12):sf::Color(52,48,46);
         if (vis!=Visibility::Visible) c=sf::Color(c.r*2/3,c.g*2/3,c.b*2/3);
         cell(x,y,c);
     }
@@ -822,6 +823,10 @@ void Application::renderHudTooltips() {
     // No creature there: describe the ground or fixture instead.
     if (exploredMap_.at(inspectTile->x,inspectTile->y)==Visibility::Hidden) return;
     std::vector<Line> lines;
+    if (map_.inBounds(inspectTile->x,inspectTile->y) && map_.tileAt(inspectTile->x,inspectTile->y).type==TileType::Chasm) {
+        lines.push_back({"Chasm",ui::kGold,16,ui::Font::Bold});
+        lines.push_back({"A drop into darkness. Push a foe in and it's gone for good (no loot). Bosses only teeter.",ui::kText,14});
+    }
     if (const auto s=surfaceAt(*inspectTile); s!=SurfaceType::None) {
         lines.push_back({surfaceName(s),ui::kGold,16,ui::Font::Bold});
         lines.push_back({surfaceHint(s),ui::kText,14});

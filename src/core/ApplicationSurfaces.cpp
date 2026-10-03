@@ -369,6 +369,120 @@ bool Application::hazardousSurface(Position p) const {
     return s == SurfaceType::Fire || s == SurfaceType::Electrified;
 }
 
+// A push, step by step. Whatever stops it hurts: walls (3), another
+// creature (2 each), a brazier or oil barrel (tipped over onto the far
+// side). Ground it lands on acts at once, and a chasm takes it for good.
+void Application::pushActor(Actor& target, Position direction, int distance, const Actor& pusher) {
+    auto* monster = dynamic_cast<Monster*>(&target);
+    const bool anchored = monster && (monster == boss_ || isUniqueMonster(monster->type()) || monster->eventChampion);
+    for (int step = 0; step < distance && target.stats().hp > 0; ++step) {
+        const auto pos = target.position();
+        const Position dest{pos.x + direction.x, pos.y + direction.y};
+        const bool diagonalBlocked = dest.x != pos.x && dest.y != pos.y &&
+            (!map_.isWalkable(dest.x, pos.y) || !map_.isWalkable(pos.x, dest.y));
+        if (map_.inBounds(dest.x, dest.y) && map_.tileAt(dest.x, dest.y).type == TileType::Chasm && !diagonalBlocked) {
+            if (anchored || !monster) {
+                target.stats().hp -= 5; flashActor(target);
+                log(target.name(), " teeters on the edge of the chasm!");
+                break;
+            }
+            // Gone: the XP is yours, the loot falls with it.
+            const int xp = monster->xpReward();
+            monster->setRewardsEligible(false);
+            target.setPosition(dest);
+            log(target.name(), " is pushed into the chasm and falls into darkness!");
+            if (visibleTile(dest)) spawnVfx({Vfx::Kind::Puff, {dest.x + .5f, dest.y + .5f}, {dest.x + .5f, dest.y + .5f}, sf::Color(90, 90, 110), 0, .5f, .6f});
+            if (xp > 0) grantXpAndAnnounce(xp);
+            target.stats().hp = 0;
+            checkAndHandleDeath(target);
+            return;
+        }
+        if (const int index = propIndexAt(dest.x, dest.y); index >= 0) {
+            const auto kind = props_[static_cast<std::size_t>(index)].kind;
+            if (kind == PropKind::Brazier || kind == PropKind::ColdBrazier || kind == PropKind::OilBarrel) {
+                log(target.name(), " crashes into the ", propName(kind), "!");
+                knockOver(dest, direction, kind == PropKind::Brazier ? &target : nullptr);
+                target.stats().hp -= 2; flashActor(target);
+                break;
+            }
+        }
+        if (!map_.isWalkable(dest.x, dest.y) || diagonalBlocked) {
+            target.stats().hp -= 3; flashActor(target);
+            log(target.name(), " slams into the wall for 3!");
+            break;
+        }
+        if (Actor* other = actorAt(dest, &target)) {
+            target.stats().hp -= 2; other->stats().hp -= 2; flashActor(target); flashActor(*other);
+            log(target.name(), " crashes into ", other->name(), "! Both take 2.");
+            checkAndHandleDeath(*other);
+            break;
+        }
+        target.setPosition(dest);
+        // The ground acts at once.
+        switch (surfaceAt(dest)) {
+            case SurfaceType::Fire:
+                target.statusEffects().apply({StatusEffectType::Burn, 3, 2}); log(target.name(), " is shoved into the flames!"); break;
+            case SurfaceType::Electrified: shockStanding({dest}); break;
+            case SurfaceType::Ice: target.statusEffects().apply({StatusEffectType::Chill, 2, 20}); break;
+            default: break;
+        }
+    }
+    (void)pusher;
+    checkAndHandleDeath(target);
+}
+
+// One chasm on about half the floors: grown in open floor, and undone if it
+// would cut any part of the floor off from the stairs.
+void Application::carveChasms(std::mt19937& rng) {
+    if (std::uniform_int_distribution<int>(0, 1)(rng) == 0) return;
+    const auto reachable = [&] {
+        std::vector<std::uint8_t> seen(static_cast<std::size_t>(map_.width() * map_.height()), 0);
+        std::queue<Position> open; open.push(floorEntrance_);
+        seen[static_cast<std::size_t>(floorEntrance_.y * map_.width() + floorEntrance_.x)] = 1;
+        int count = 0;
+        while (!open.empty()) {
+            const auto p = open.front(); open.pop(); ++count;
+            for (const Position d : {Position{1, 0}, Position{-1, 0}, Position{0, 1}, Position{0, -1}}) {
+                const Position n{p.x + d.x, p.y + d.y};
+                const auto i = static_cast<std::size_t>(n.y * map_.width() + n.x);
+                if (!map_.inBounds(n.x, n.y) || seen[i] || !map_.isWalkable(n.x, n.y)) continue;
+                seen[i] = 1; open.push(n);
+            }
+        }
+        return count;
+    };
+    const auto actorOn = [&](Position p) {
+        return (p.x == player_.position().x && p.y == player_.position().y) ||
+               std::any_of(monsters_.begin(), monsters_.end(), [&](const auto& m) { return m->position().x == p.x && m->position().y == p.y; });
+    };
+    const auto open8 = [&](Position p) {
+        for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx)
+            if (!map_.isWalkable(p.x + dx, p.y + dy) && map_.tileAt(p.x + dx, p.y + dy).type != TileType::Chasm) return false;
+        return true;
+    };
+    const int before = reachable();
+    for (int attempt = 0; attempt < 60; ++attempt) {
+        const Position seed{std::uniform_int_distribution<int>(2, map_.width() - 3)(rng), std::uniform_int_distribution<int>(2, map_.height() - 3)(rng)};
+        const auto far = [&](Position p, Position q) { return std::abs(p.x - q.x) + std::abs(p.y - q.y) > 5; };
+        if (!map_.isWalkable(seed.x, seed.y) || !open8(seed) || actorOn(seed) || !far(seed, floorEntrance_) ||
+            (map_.inBounds(floorExit_.x, floorExit_.y) && !far(seed, floorExit_)) ||
+            (landmark_ != LandmarkKind::None && !far(seed, landmarkAltar_)) || (vaultExists_ && !far(seed, vaultCenter_))) continue;
+        std::vector<Position> pit{seed};
+        const int size = std::uniform_int_distribution<int>(3, 7)(rng);
+        for (int tries = 0; tries < 40 && static_cast<int>(pit.size()) < size; ++tries) {
+            const Position from = pit[std::uniform_int_distribution<std::size_t>(0, pit.size() - 1)(rng)];
+            const Position d = std::array<Position, 4>{Position{1, 0}, Position{-1, 0}, Position{0, 1}, Position{0, -1}}[std::uniform_int_distribution<int>(0, 3)(rng)];
+            const Position n{from.x + d.x, from.y + d.y};
+            if (std::any_of(pit.begin(), pit.end(), [&](Position q) { return q.x == n.x && q.y == n.y; })) continue;
+            if (!map_.isWalkable(n.x, n.y) || !open8(n) || actorOn(n) || propIndexAt(n.x, n.y) >= 0) continue;
+            pit.push_back(n);
+        }
+        for (const auto& p : pit) { map_.setTile(p.x, p.y, Tile{TileType::Chasm, false, true}); setSurface(p, SurfaceType::None, 0); }
+        if (reachable() == before - static_cast<int>(pit.size())) return; // nothing cut off
+        for (const auto& p : pit) map_.setTile(p.x, p.y, Tile{TileType::Floor, true, true});
+    }
+}
+
 // Scatter puddles, oil slicks, braziers and oil barrels over a new floor.
 void Application::seedSurfaces(unsigned seed) {
     clearSurfaces();
@@ -429,6 +543,7 @@ void Application::seedSurfaces(unsigned seed) {
         setProps(props);
         --braziers;
     }
+    carveChasms(rng);
     // About half the barrels hold oil.
     for (auto& prop : props) if (prop.kind == PropKind::Barrel && std::uniform_int_distribution<int>(0, 1)(rng)) prop.kind = PropKind::OilBarrel;
     setProps(props);

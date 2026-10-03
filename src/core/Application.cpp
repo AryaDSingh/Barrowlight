@@ -1065,13 +1065,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 if (target->stats().hp>0 && talent.pushDistance>0) {
                     const auto from=player_.position(), origin=target->position();
                     const Position direction{(origin.x>from.x)-(origin.x<from.x),(origin.y>from.y)-(origin.y<from.y)};
-                    for (int step=0;step<talent.pushDistance;++step) {
-                        const auto pos=target->position();
-                        const Position dest{pos.x+direction.x,pos.y+direction.y};
-                        if (!map_.isWalkable(dest.x,dest.y) || isOccupied(dest,target) ||
-                            (dest.x!=pos.x && dest.y!=pos.y && (!map_.isWalkable(dest.x,pos.y) || !map_.isWalkable(pos.x,dest.y)))) break;
-                        target->setPosition(dest);
-                    }
+                    if (direction.x || direction.y) pushActor(*target,direction,talent.pushDistance,player_);
                 }
                 checkAndHandleDeath(*target);
             } else {
@@ -1708,7 +1702,9 @@ void Application::removeDeadMonsters() {
             if (exploredMap_.at(m->position().x, m->position().y) == Visibility::Visible && !m->tactics.concealed)
                 spawnVfx({Vfx::Kind::Puff, {m->position().x + .5f, m->position().y + .5f}, {m->position().x + .5f, m->position().y + .5f},
                           m->allied ? sf::Color(120, 200, 220) : sf::Color(200, 50, 40), 0, .5f, .7f});
-            recordCorpse(*m, look.frame, m->allied ? sf::Color(120, 235, 235) : look.tint, look.rows[4], look.frames[4], look.scale);
+            // Whatever fell into a chasm leaves no body behind.
+            if (map_.tileAt(m->position().x, m->position().y).type != TileType::Chasm)
+                recordCorpse(*m, look.frame, m->allied ? sf::Color(120, 235, 235) : look.tint, look.rows[4], look.frames[4], look.scale);
             forgetActor(*m);
         }
     monsters_.erase(std::remove_if(monsters_.begin(), monsters_.end(),
@@ -1853,6 +1849,7 @@ void Application::selectClass(PlayerClass cls) {
     progressionReviewPending_=true;
     loot_.restore(std::random_device{}());
     player_.talents() = TalentSet({basicAttack(),basicCleanse()});
+    player_.talents().learnTalent(basicShove()); // anyone can push a foe into trouble
     if (cls == PlayerClass::Mage) player_.talents().learnTalent(basicLight()); // mages make their own light
     // A fresh class selection is a genuinely new character -- starts at
     // level 1 with 0 XP, same as anyone picking up the game for the
@@ -2112,8 +2109,9 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     TalentSet restoredTalents;
     for (const auto& saved:state.playerTalents) {
         const auto* d=findTalentDefinition(saved.id);
-        if (!d && saved.id!="basic.attack" && saved.id!="basic.cleanse" && saved.id!="basic.light") { log("Unknown saved ability."); return false; }
-        restoredTalents.learnTalent(d ? d->ranks[0] : saved.id=="basic.cleanse" ? basicCleanse() : saved.id=="basic.light" ? basicLight() : basicAttack());
+        if (!d && saved.id!="basic.attack" && saved.id!="basic.cleanse" && saved.id!="basic.light" && saved.id!="basic.shove") { log("Unknown saved ability."); return false; }
+        restoredTalents.learnTalent(d ? d->ranks[0] : saved.id=="basic.cleanse" ? basicCleanse() : saved.id=="basic.light" ? basicLight() :
+            saved.id=="basic.shove" ? basicShove() : basicAttack());
         const auto index=restoredTalents.knownTalents().size()-1;
         restoredTalents.setRank(index,saved.rank);
         restoredTalents.setCooldownRemaining(index,saved.cooldown);
@@ -2513,6 +2511,14 @@ void Application::render() {
                 if (!isWallAt(x - 1, y)) quad(tops, at, {2, kTileSize}, rim, rim, true);
                 if (!isWallAt(x + 1, y)) quad(tops, {at.x + kTileSize - 2, at.y}, {2, kTileSize}, rim, rim, true);
                 if (!isWallAt(x, y - 1)) quad(tops, at, {kTileSize, 2}, rim, rim, true);
+                continue;
+            }
+            if (map_.tileAt(x, y).type == TileType::Chasm) {
+                // A drop into darkness: near-black, with a lit lip where solid floor ends.
+                quad(tops, at, {kTileSize, kTileSize}, sf::Color(6, 6, 10), sf::Color(2, 2, 4), true);
+                const sf::Color lip = shadeFor(vis, sf::Color(70, 62, 58));
+                if (y > 0 && map_.tileAt(x, y - 1).type != TileType::Chasm && !isWallAt(x, y - 1))
+                    quad(tops, at, {kTileSize, 6}, lip, sf::Color(6, 6, 10), true);
                 continue;
             }
             if (floorTexture) SpriteAtlas::append(floors, floorFrame(x, y, theme.region), at, kTileSize, shadeFor(vis, floorTint));

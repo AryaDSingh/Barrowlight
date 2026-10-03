@@ -53,7 +53,7 @@ nemesis)** for longer-term stories.
   - **Spelunky twist:** linger too long on a deep floor and a Lich-wraith
     starts hunting you.
 
-### 4. Telegraph puzzles and pushing into hazards
+### 4. Telegraph puzzles and pushing into hazards *(built 2026-10-02: Shove, collisions, chasms; movement attacks not yet)*
 - **Source:** [Into the Breach](https://www.gamedeveloper.com/game-platforms/road-to-the-igf-subset-games-i-into-the-breach-i-)
   (telegraphs turn fights into puzzles) and
   [Hoplite](https://en.wikipedia.org/wiki/Hoplite_(video_game)) (movement is

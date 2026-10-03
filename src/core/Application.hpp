@@ -3,6 +3,7 @@
 #include <climits>
 #include <deque>
 #include <set>
+#include <random>
 #include <unordered_map>
 #include <memory>
 #include <map>
@@ -590,7 +591,11 @@ private:
     void tickSurfaces();
     bool hazardousSurface(Position p) const;
     void seedSurfaces(unsigned seed);
-    bool bossSurfaceAction(Monster& boss);         // a boss's light/surface trick, if it takes one this turn
+    bool bossSurfaceAction(Monster& boss);
+    // Pushes (ApplicationSurfaces.cpp): into hazards, fixtures, walls, other
+    // creatures and chasms. `direction` is a unit step.
+    void pushActor(Actor& target, Position direction, int distance, const Actor& pusher);
+    void carveChasms(std::mt19937& rng);         // a boss's light/surface trick, if it takes one this turn
     void placeBraziers(Position centre, const std::vector<Position>& offsets);
     void renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>& lights, int x0, int y0, int x1, int y1);
     void renderSurfaceGlow(int x0, int y0, int x1, int y1);

@@ -390,6 +390,12 @@ inline Talent basicAttack() {
     Talent t; t.id="basic.attack"; t.name="Basic Attack"; t.description="A free adjacent strike. Also available by bumping an enemy.";
     t.power=4; t.cooldownTurns=1; t.scalingCooldown=1; return t;
 }
+// Everyone's shove: no damage, just a push, so any class can use the ground.
+inline Talent basicShove() {
+    Talent t; t.id="basic.shove"; t.name="Shove";
+    t.description="Push an adjacent enemy one tile: into fire, live water, a brazier, a wall, another foe, or a chasm. No damage of its own.";
+    t.power=0; t.damagePercent=0; t.pushDistance=1; t.cooldownTurns=3; t.scalingCooldown=3; return t;
+}
 // The Mage's starting light: a wisp that hangs where it was cast.
 inline Talent basicLight() {
     Talent t; t.id="basic.light"; t.name="Conjure Light";

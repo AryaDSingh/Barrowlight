@@ -44,7 +44,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 31;
+constexpr int kSaveFormatVersion = 32;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -143,7 +143,7 @@ bool validProgression(const SaveGameState& s) {
     // one keep it.
     for (const auto& t:s.playerTalents) {
         if (!known.insert(t.id).second || t.rank<1 || t.rank>kMaxTalentRank || t.cooldown<0 || t.cooldown>10000) return false;
-        if (t.id=="basic.attack" || t.id=="basic.cleanse" || t.id=="basic.light") { if (t.rank!=1) return false; continue; }
+        if (t.id=="basic.attack" || t.id=="basic.cleanse" || t.id=="basic.light" || t.id=="basic.shove") { if (t.rank!=1) return false; continue; }
         const auto* d=findTalentDefinition(t.id);
         if (d && isAscendancyTree(d->treeId)) {
             if (d->treeId!=s.ascendancy || t.rank!=1 || (d->ranks[0].passive && t.cooldown)) return false;
@@ -198,6 +198,9 @@ char tileChar(const Tile& t) {
     if (t.type == TileType::Wall) {
         return '#';
     }
+    if (t.type == TileType::Chasm) {
+        return 'C';
+    }
     if (t.type == TileType::Door) {
         return 'D';
     }
@@ -210,6 +213,9 @@ Tile charToTile(char c) {
     }
     if (c == 'D') {
         return Tile{TileType::Door, true, true}; // walkable/transparent exactly like Floor
+    }
+    if (c == 'C') {
+        return Tile{TileType::Chasm, false, true};
     }
     return Tile{TileType::Floor, true, true};
 }
@@ -400,7 +406,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 30 && version != 29 && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
+    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 31 && version != 30 && version != 29 && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
         return std::nullopt;
     }
 
