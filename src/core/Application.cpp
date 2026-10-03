@@ -1264,7 +1264,16 @@ void Application::processMonsterTurns() {
                             hit.type=AIActionType::Attack; hit.target=&player_; hit.attackPower=intent.attackPower;
                             if (intent.kind==IntentKind::MagicStrike) hit.scalingStat=ScalingStat::Intelligence;
                             else if (intent.kind==IntentKind::StunStrike) hit.effectToApply=StatusEffectInstance{StatusEffectType::Stun,1,0};
+                            lastHitDodged_=true;
                             executeAIDecision(*actor,hit,chillMagnitude);
+                            // Slams and heavy blows knock you back: into whatever is behind you.
+                            const int knockback=intent.kind==IntentKind::StunStrike ? 1 : intent.kind==IntentKind::HeavyStrike ?
+                                (monster->type()==MonsterType::GoblinWarlord ? 2 : 1) : 0;
+                            if (knockback && !lastHitDodged_ && player_.stats().hp>0 && mode_!=GameMode::GameOver) {
+                                const auto from=actor->position(), at=player_.position();
+                                const Position away{(at.x>from.x)-(at.x<from.x),(at.y>from.y)-(at.y<from.y)};
+                                if (away.x || away.y) { log(actor->name()," knocks you back!"); pushActor(player_,away,knockback,*actor); }
+                            }
                         } else log("You escaped the marked area.");
                         std::vector<Actor*> victims;
                         for (auto& m:monsters_) if (m.get()!=actor && m->stats().hp>0 && intent.contains(m->position()) && hasLineOfFire(map_,intent.target,m->position())) victims.push_back(m.get());
@@ -1343,6 +1352,7 @@ void Application::advanceTurnsUntilPlayerCanAct() {
     constexpr int kMaxStunSkips = 50;
 
     for (int i = 0; i < kMaxStunSkips && window_.isOpen(); ++i) {
+        if (pendingFall_) fallToNextFloor();
         const int manaRegen=combatThisTurn_ || dangerNearby() ? kManaRegenInCombat : kManaRegenOutsideCombat;
         player_.stats().mana =
             std::min(player_.stats().mana + manaRegen, player_.stats().maxMana);
@@ -1423,6 +1433,7 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     log(actor.name()," heals ",decision.target->name()," for ",healed," HP.");
             }
             bool dodged = false;
+            lastHitDodged_ = false;
             if (decision.attackPower > 0 && !suppressAttackVfx_) {
                 // Slingers lob oil pots; frost acolytes freeze the ground around their target.
                 if (const auto* attacker = dynamic_cast<const Monster*>(&actor); attacker && !attacker->allied) {
@@ -1452,7 +1463,7 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                 }
             }
             if (decision.attackPower > 0) {
-                dodged = rollChance(std::min(.60f,dodgeChance(decision.target->stats().dexterity)+(decision.target->statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(*decision.target)+ascendancyDodgeBonus(*decision.target))/100.f));
+                lastHitDodged_ = dodged = rollChance(std::min(.60f,dodgeChance(decision.target->stats().dexterity)+(decision.target->statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(*decision.target)+ascendancyDodgeBonus(*decision.target))/100.f));
                 spawnAttackVfx(actor, *decision.target, decision.scalingStat==ScalingStat::Intelligence, dodged);
                 if (dodged) {
                     if (decision.target->talents().passiveValue(PassiveKind::Slippery)) decision.target->statusEffects().apply({StatusEffectType::Opening,2,0});

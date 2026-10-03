@@ -410,6 +410,11 @@ void Application::pushActor(Actor& target, Position direction, int distance, con
         const bool diagonalBlocked = dest.x != pos.x && dest.y != pos.y &&
             (!map_.isWalkable(dest.x, pos.y) || !map_.isWalkable(pos.x, dest.y));
         if (map_.inBounds(dest.x, dest.y) && map_.tileAt(dest.x, dest.y).type == TileType::Chasm && !diagonalBlocked) {
+            if (!monster && &target == &player_ && canFall()) {
+                log("You are knocked over the edge and fall into the chasm!");
+                pendingFall_ = true;
+                break;
+            }
             if (anchored || !monster) {
                 target.stats().hp -= 5; flashActor(target);
                 log(target.name(), " teeters on the edge of the chasm!");

@@ -362,7 +362,7 @@ private:
     void recordQuietTurn();
     void startRest();
     void returnToTown();
-    void travelFloor(int destination,bool fromTown=false);
+    void travelFloor(int destination,bool fromTown=false,bool falling=false);
     bool interactStairs();
     void handleTownKey(sf::Keyboard::Key key);
     void handleTownMouse(const sf::Event& event);
@@ -615,6 +615,12 @@ private:
     void relightLights(Position centre, int radius);
     int situationalBonus(const Talent& talent, const Actor& target) const; // Flay, Brews, Inner Light, Umbral
     bool dominoPush_ = false;
+    // Enemy knockbacks. lastHitDodged_: whether the latest monster attack was
+    // dodged (a dodged blow pushes nothing). pendingFall_: the player was
+    // knocked into a chasm and drops to the next floor once the round ends.
+    bool lastHitDodged_ = false, pendingFall_ = false;
+    bool canFall() const;
+    void fallToNextFloor();
     void carveChasms(std::mt19937& rng);
     void placeBraziers(Position centre, const std::vector<Position>& offsets);
     void renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>& lights, int x0, int y0, int x1, int y1);

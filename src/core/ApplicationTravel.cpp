@@ -161,18 +161,18 @@ bool Application::interactStairs() {
     return false;
 }
 
-void Application::travelFloor(int destination,bool fromTown) {
+void Application::travelFloor(int destination,bool fromTown,bool falling) {
     if(fromTown && mode_!=GameMode::Town) return;
     if(destination<1 || destination>kRunFinalFloor) return;
     if(destination==currentFloor_) {
         if(fromTown) { dungeonMenu_=false; handleTownKey(sf::Keyboard::Key::D); }
         return;
     }
-    if (!fromTown && (dangerNearby() || combatThisTurn_)) { log("Stairs are unsafe while enemies, warnings or harmful effects are present."); return; }
+    if (!fromTown && !falling && (dangerNearby() || combatThisTurn_)) { log("Stairs are unsafe while enemies, warnings or harmful effects are present."); return; }
     const bool down=destination>currentFloor_;
     auto found=floorCache_.find(destination);
     if (!fromTown && !down && found==floorCache_.end()) { log("That depth has no saved floor. Choose it from town to explore it."); return; }
-    if (!fromTown && down && !sameTile(player_.position(),floorExit_)) return;
+    if (!fromTown && !falling && down && !sameTile(player_.position(),floorExit_)) return;
     dissolveMinions();
     auto current=captureState(false);
     floorCache_[currentFloor_]=current;
@@ -205,6 +205,41 @@ void Application::travelFloor(int destination,bool fromTown) {
     }
     if (!landed) { log("No free arrival tile on that floor."); return; }
     if (restoreState(next,false)) log("Returned to preserved floor ",destination,".");
+}
+
+// Chasms drop you a floor, except in a trial arena or from the very bottom.
+bool Application::canFall() const {
+    return !trial_ && mode_ == GameMode::Playing && currentFloor_ < kRunFinalFloor;
+}
+
+// Knocked into a chasm: you land hard somewhere on the floor below. The fall
+// hurts but never kills.
+void Application::fallToNextFloor() {
+    pendingFall_ = false;
+    if (!canFall() || player_.stats().hp <= 0) return;
+    const int hurt = std::max(1, player_.stats().maxHp * 15 / 100);
+    const int destination = currentFloor_ + 1;
+    combatThisTurn_ = false;
+    travelFloor(destination, false, true);
+    if (currentFloor_ != destination) return;
+    player_.stats().hp = std::max(1, player_.stats().hp - hurt);
+    // Somewhere unfamiliar: any open tile clear of foes, the vault and the stairs.
+    std::vector<Position> landing;
+    for (int y = 0; y < map_.height(); ++y)
+        for (int x = 0; x < map_.width(); ++x) {
+            const Position p{x, y};
+            if (!map_.isWalkable(x, y) || isOccupied(p, &player_) || sameTile(p, floorExit_)) continue;
+            if (vaultExists_ && std::max(std::abs(x - vaultCenter_.x), std::abs(y - vaultCenter_.y)) <= 4) continue;
+            if (std::any_of(monsters_.begin(), monsters_.end(), [&](const auto& m) {
+                    return std::max(std::abs(m->position().x - x), std::abs(m->position().y - y)) <= 4; })) continue;
+            landing.push_back(p);
+        }
+    if (!landing.empty()) {
+        std::mt19937 rng(std::random_device{}());
+        player_.setPosition(landing[std::uniform_int_distribution<std::size_t>(0, landing.size() - 1)(rng)]);
+    }
+    updateFieldOfView();
+    log("You land hard on the floor below, losing ", hurt, " life. You don't know where you are.");
 }
 
 // Import the floor only. Character, money, inventory, item IDs and loot RNG

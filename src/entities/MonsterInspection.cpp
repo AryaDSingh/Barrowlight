@@ -55,7 +55,7 @@ std::vector<std::string> inspectMonster(const Monster& monster,
         case MonsterType::Spider:
             lines.push_back("Chases you. Venomous bite applies Poison."); break;
         case MonsterType::Ogre:
-            lines.push_back("Melee; 35% of attacks wind up a Stun Slam. Red tile, 1 action to escape."); break;
+            lines.push_back("Melee; 35% of attacks wind up a Stun Slam. Red tile, 1 action to escape. The slam knocks you back a tile."); break;
         case MonsterType::Archer:
             lines.push_back("Keeps distance. Ranged arrow attack."); break;
         case MonsterType::Shaman:
@@ -77,7 +77,7 @@ std::vector<std::string> inspectMonster(const Monster& monster,
         case MonsterType::SkeletonArcher:
             lines.push_back("Keeps distance. Arrows Chill for 2 turns (20%); avoid being pinned beside guards."); break;
         case MonsterType::SkeletonGuard:
-            lines.push_back("Heavy cleave: radius-1 diamond, 2 actions to escape; then 1 action recovery."); break;
+            lines.push_back("Heavy cleave: radius-1 diamond, 2 actions to escape; then 1 action recovery. It knocks you back a tile."); break;
         case MonsterType::Bonecaller:
             lines.push_back("Grave Rally empowers nearby allies. Does not attack or summon replacements."); break;
         case MonsterType::OssuaryWarden:

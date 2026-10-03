@@ -828,6 +828,51 @@ struct ApplicationRewardsTestAccess {
             app.monsters_.clear(); app.clearSurfaces();
         }
 
+        // Enemies push back: slams and heavy blows knock you into whatever is behind you.
+        setup(PlayerClass::Warrior);
+        {
+            const auto strike=[&](MonsterType type,Position from,IntentKind kind) {
+                auto made=createMonster(type,from); auto* m=made.get();
+                app.scheduler_.add(*m); app.monsters_.push_back(std::move(made));
+                bool pushed=false;
+                const Position start=app.player_.position();
+                for (int attempt=0;attempt<12 && !pushed;++attempt) {
+                    app.player_.setPosition(start); app.player_.stats().hp=app.player_.stats().maxHp;
+                    app.player_.statusEffects().active().clear();
+                    m->intent()=EnemyIntent{from,start,kind==IntentKind::HeavyStrike?1:0,0,2,kind};
+                    m->recoveryActions=0;
+                    app.currentActor_=m; app.processMonsterTurns();
+                    pushed=app.player_.position().x!=start.x || app.player_.position().y!=start.y || app.pendingFall_;
+                }
+                return m;
+            };
+            app.player_.stats().dexterity=0;
+            app.player_.setPosition({11,10}); app.updateFieldOfView();
+            app.setSurface({10,10},SurfaceType::Fire,6);
+            strike(MonsterType::Ogre,{12,10},IntentKind::StunStrike);
+            check(app.player_.position().x==10 && app.player_.statusEffects().has(StatusEffectType::Burn),"An Ogre's slam knocks you back into the fire");
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.clearSurfaces();
+
+            app.player_.setPosition({20,10}); app.updateFieldOfView();
+            auto* w=strike(MonsterType::GoblinWarlord,{21,10},IntentKind::HeavyStrike);
+            check(app.player_.position().x==18,"The Warlord's heavy blow knocks you back two tiles");
+            (void)w; for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.boss_=nullptr;
+
+            // Knocked into a chasm: you drop to the floor below, hurt but alive.
+            for (int x=5;x<=7;++x) app.map_.setTile(x,12,Tile{TileType::Chasm,false,true});
+            app.player_.setPosition({6,13}); app.updateFieldOfView();
+            const int floor=app.currentFloor_;
+            strike(MonsterType::Ogre,{6,14},IntentKind::StunStrike);
+            check(app.pendingFall_,"Knocked over the edge, you start to fall");
+            app.player_.stats().hp=3;
+            app.advanceTurnsUntilPlayerCanAct();
+            check(app.currentFloor_==floor+1 && app.player_.stats().hp>=1 && !app.pendingFall_ && app.map_.isWalkable(app.player_.position().x,app.player_.position().y),
+                  "...and land on the floor below, hurt but never killed by the fall");
+            app.trial_=0; app.pendingFall_=false;
+        }
+
         // Hybrid trees open with five ranks in each parent tree.
         setup(PlayerClass::Warrior);
         {
