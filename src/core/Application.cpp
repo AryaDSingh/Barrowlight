@@ -115,6 +115,10 @@ sf::Color monsterColor(MonsterType type) {
         case MonsterType::GoblinSlinger: return sf::Color(225,155,95);
         case MonsterType::FrostAcolyte: return sf::Color(120,220,250);
         case MonsterType::Skeleton: return sf::Color(220, 220, 200); // bone white
+        case MonsterType::Torchbearer: return sf::Color(255, 180, 90);
+        case MonsterType::Gloomstalker: return sf::Color(90, 70, 130);
+        case MonsterType::OrcFirebrand: return sf::Color(230, 90, 40);
+        case MonsterType::DrownedOne: return sf::Color(90, 170, 180);
     }
     return sf::Color(190, 190, 190); // unreachable -- all enum values handled above
 }
@@ -334,6 +338,10 @@ MonsterLook monsterLook(MonsterType type) {
         case MonsterType::GraveMender: return {idleFrame("calciumtrice/heroes/FutureCleric.png")};
         case MonsterType::CryptShade: return {idleFrame("calciumtrice/monsters/Ghost.png"), sf::Color(255, 255, 255, 190)};
         case MonsterType::FrostAcolyte: return {idleFrame("calciumtrice/heroes/BlueCleric.png")};
+        case MonsterType::Torchbearer: return {idleFrame("calciumtrice/heroes/MysteryMonk.png"), sf::Color(255, 215, 180)};
+        case MonsterType::Gloomstalker: return {idleFrame("calciumtrice/heroes/Assassin.png"), sf::Color(120, 95, 170, 215)};
+        case MonsterType::OrcFirebrand: return {idleFrame("calciumtrice/monsters/RedOrc.png")};
+        case MonsterType::DrownedOne: return {idleFrame(skeleton), sf::Color(120, 200, 205)};
         case MonsterType::GoblinWarlord: return {idleFrame("calciumtrice/monsters/GreyMinotaur.png", 0, 48, 52)};
         case MonsterType::Lich: return {idleFrame("calciumtrice/monsters/Death.png")};
         case MonsterType::GoblinCaptain: return {idleFrame("calciumtrice/monsters/ArmourPsionicGoblin.png")};
@@ -1306,6 +1314,13 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                                 if (d.x || d.y) break;
                             }
                         if (splashed && visibleTile(at)) log(actor.name(), "'s pot shatters, splashing oil!");
+                    } else if (attacker->type() == MonsterType::OrcFirebrand) {
+                        std::vector<Position> splash{at};
+                        for (const Position d : {Position{1, 0}, Position{0, 1}})
+                            if (map_.isWalkable(at.x + d.x, at.y + d.y)) { splash.push_back({at.x + d.x, at.y + d.y}); break; }
+                        for (const auto& p : splash) if (surfaceAt(p) == SurfaceType::None) setSurface(p, SurfaceType::Oil, 0);
+                        if (visibleTile(at)) log(actor.name(), "'s flask bursts into flame!");
+                        applyElement(Element::Fire, splash);
                     } else if (attacker->type() == MonsterType::FrostAcolyte) {
                         std::vector<Position> chill;
                         for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) chill.push_back({at.x + dx, at.y + dy});
@@ -1329,6 +1344,8 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     soundManager_.play(SoundEffect::Dodge);
                 } else {
                     int damage = decision.attackPower;
+                    if (const auto* gloom = dynamic_cast<const Monster*>(&actor); gloom && gloom->type() == MonsterType::Gloomstalker)
+                        damage = tileLit(actor.position()) ? damage / 2 : damage * 3 / 2;
                     const int statValue = statValueForScalingStat(
                         decision.scalingStat, actor.stats().strength, actor.stats().dexterity,
                         actor.stats().intelligence);
@@ -1729,6 +1746,9 @@ void Application::computeLight() {
             for (int x = 0; x < map_.width(); ++x)
                 if (surfaces_[static_cast<std::size_t>(y * map_.width() + x)].type == SurfaceType::Fire)
                     light({x, y}, 1, sf::Color(255, 130, 60), 1.8f, true);
+    // Torchbearers carry their own light.
+    for (const auto& m : monsters_)
+        if (m->stats().hp > 0 && m->type() == MonsterType::Torchbearer) light(m->position(), 3, fire, 3.4f, true);
     // Burning creatures are torches too.
     if (player_.statusEffects().has(StatusEffectType::Burn)) light(player_.position(), 2, sf::Color(255, 130, 60), 2.2f, true);
     for (const auto& m : monsters_)

@@ -25,6 +25,11 @@ enum class MonsterType {
     OssuaryWarden, // named encounter: Veyra the Ashkeeper
     GoblinBulwark, GoblinMedic, GoblinStalker, GoblinSlinger,
     CryptSentinel, GraveMender, CryptShade, FrostAcolyte,
+    // Creatures of light, dark, fire and water (save format 31).
+    Torchbearer,   // cultist with a torch: lights the dark, rekindles fires, burns on hit
+    Gloomstalker,  // shadow beast: deadly in the dark, weak and hurt in light
+    OrcFirebrand,  // throws flasks of burning oil
+    DrownedOne,    // crypt undead that leaves water behind and heals in it
 };
 
 // Darkvision: goblinkind, orcs, beasts and the undead see without light.
@@ -33,7 +38,7 @@ enum class MonsterType {
 inline bool seesInDark(MonsterType type) {
     switch (type) {
         case MonsterType::Archer: case MonsterType::Bonecaller: case MonsterType::GraveMender:
-        case MonsterType::FrostAcolyte: case MonsterType::OssuaryWarden: return false;
+        case MonsterType::FrostAcolyte: case MonsterType::OssuaryWarden: case MonsterType::Torchbearer: return false;
         default: return true;
     }
 }
@@ -42,7 +47,8 @@ inline bool seesInDark(MonsterType type) {
 inline bool bleeds(MonsterType type) {
     switch (type) {
         case MonsterType::Skeleton: case MonsterType::SkeletonArcher: case MonsterType::SkeletonGuard:
-        case MonsterType::CryptShade: case MonsterType::CryptSentinel: case MonsterType::Lich: return false;
+        case MonsterType::CryptShade: case MonsterType::CryptSentinel: case MonsterType::Lich:
+        case MonsterType::Gloomstalker: case MonsterType::DrownedOne: return false;
         default: return true;
     }
 }

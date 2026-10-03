@@ -9,7 +9,7 @@ inline bool enemyHealer(MonsterType t) { return t==MonsterType::GoblinMedic || t
 inline bool enemyAmbusher(MonsterType t) { return t==MonsterType::GoblinStalker || t==MonsterType::CryptShade; }
 inline bool enemyBackline(MonsterType t) {
     return enemyHealer(t) || t==MonsterType::Archer || t==MonsterType::SkeletonArcher || t==MonsterType::Shaman ||
-        t==MonsterType::Bonecaller || t==MonsterType::GoblinSlinger || t==MonsterType::FrostAcolyte;
+        t==MonsterType::Bonecaller || t==MonsterType::GoblinSlinger || t==MonsterType::FrostAcolyte || t==MonsterType::OrcFirebrand;
 }
 struct EnemyTactics {
     Position home{}, lastKnown{};

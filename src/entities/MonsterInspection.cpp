@@ -84,6 +84,14 @@ std::vector<std::string> inspectMonster(const Monster& monster,
             lines.push_back("Kites at range. Frost bolts Chill for 2 turns (20%)."); break;
         case MonsterType::Skeleton:
             lines.push_back("Undead fighter. Chases and strikes."); break;
+        case MonsterType::Torchbearer:
+            lines.push_back("Carries a torch that lights the ground around it. Rekindles torches and braziers, ignites oil, and its blows may set you burning."); break;
+        case MonsterType::Gloomstalker:
+            lines.push_back("Strikes far harder from darkness. In light it is weakened and seared each turn: bring a torch."); break;
+        case MonsterType::OrcFirebrand:
+            lines.push_back("Kites at range, hurling flasks that burst into burning oil where they land."); break;
+        case MonsterType::DrownedOne:
+            lines.push_back("Leaves water where it walks and heals while standing in it. Lightning runs through the puddles it leaves."); break;
     }
     const auto& abilities = monster.talents().knownTalents();
     for (std::size_t i = 0; i < abilities.size(); ++i) {

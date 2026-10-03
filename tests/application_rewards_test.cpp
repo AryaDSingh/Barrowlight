@@ -522,6 +522,49 @@ struct ApplicationRewardsTestAccess {
             app.groundItems_.clear();
         }
 
+        // New monsters: light, dark, fire and water.
+        setup(PlayerClass::Warrior); app.darknessEnabled_=true;
+        {
+            const auto spawn=[&](MonsterType type,Position p) {
+                auto m=createMonster(type,p); auto* raw=m.get(); app.monsters_.push_back(std::move(m)); app.scheduler_.add(*raw); return raw;
+            };
+            auto* torch=spawn(MonsterType::Torchbearer,{20,15});
+            app.updateFieldOfView();
+            check(app.tileLit({22,15}) && !app.tileLit({26,15}),"A Torchbearer lights the ground around it");
+            app.setSurface({21,15},SurfaceType::Oil,0);
+            app.tickSurfaces();
+            check(app.surfaceAt({21,15})==SurfaceType::Fire,"A Torchbearer's torch ignites oil beside it");
+            torch->stats().hp=0; app.checkAndHandleDeath(*torch); app.removeDeadMonsters(); app.clearSurfaces();
+
+            auto* gloom=spawn(MonsterType::Gloomstalker,{11,10});
+            app.player_.lightLit=false; app.updateFieldOfView();
+            app.player_.stats().dexterity=0; app.player_.baseStats().dexterity=0;
+            AIDecision claw; claw.type=AIActionType::Attack; claw.target=&app.player_; claw.attackPower=10;
+            int dark=0, lit=0;
+            for (int i=0;i<3;++i) { const int before=app.player_.stats().hp; app.executeAIDecision(*gloom,claw,0); dark=std::max(dark,before-app.player_.stats().hp); app.player_.stats().hp=app.player_.stats().maxHp; }
+            app.player_.lightLit=true; app.updateFieldOfView();
+            for (int i=0;i<3;++i) { const int before=app.player_.stats().hp; app.executeAIDecision(*gloom,claw,0); lit=std::max(lit,before-app.player_.stats().hp); app.player_.stats().hp=app.player_.stats().maxHp; }
+            check(dark>lit && lit>0,"Gloomstalkers hit far harder from the dark");
+            const int gloomHp=gloom->stats().hp; app.tickSurfaces();
+            check(gloom->stats().hp<gloomHp,"Light sears a Gloomstalker");
+            gloom->stats().hp=0; app.checkAndHandleDeath(*gloom); app.removeDeadMonsters();
+
+            auto* firebrand=spawn(MonsterType::OrcFirebrand,{15,10});
+            AIDecision flask; flask.type=AIActionType::Attack; flask.target=&app.player_; flask.attackPower=1;
+            app.executeAIDecision(*firebrand,flask,0);
+            check(app.surfaceAt(app.player_.position())==SurfaceType::Fire,"An Orc Firebrand's flask bursts into burning oil");
+            firebrand->stats().hp=0; app.checkAndHandleDeath(*firebrand); app.removeDeadMonsters(); app.clearSurfaces();
+
+            auto* drowned=spawn(MonsterType::DrownedOne,{14,14});
+            drowned->stats().hp=drowned->stats().maxHp-6;
+            app.tickSurfaces();
+            check(app.surfaceAt({14,14})==SurfaceType::Water && drowned->stats().hp==drowned->stats().maxHp-4,
+                  "A Drowned One leaves water and heals while standing in it");
+            spawn(MonsterType::Torchbearer,{16,12}); spawn(MonsterType::Gloomstalker,{8,13});
+            app.updateFieldOfView(); snapshot("ui-new-monsters.png");
+            app.player_.stats().hp=app.player_.stats().maxHp;
+        }
+
         // Auto-explore still sweeps a dark room by torchlight.
         setup(PlayerClass::Mage); app.darknessEnabled_=true;
         app.player_.setPosition({2,2}); app.updateFieldOfView();

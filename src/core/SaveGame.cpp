@@ -44,7 +44,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 30;
+constexpr int kSaveFormatVersion = 31;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -400,7 +400,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 29 && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
+    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 30 && version != 29 && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
         return std::nullopt;
     }
 
@@ -483,7 +483,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         int isBoss = 0;
         int tier = 0;
         if (!(in >> type >> m.position.x >> m.position.y >> m.hp >> m.maxHp >> isBoss >> tier >> m.rewardsEligible) ||
-            tier < 0 || tier > 2 || type < 0 || type > static_cast<int>(version>=22?MonsterType::FrostAcolyte:version>=16?MonsterType::OssuaryWarden:MonsterType::Skeleton) ||
+            tier < 0 || tier > 2 || type < 0 || type > static_cast<int>(version>=31?MonsterType::DrownedOne:version>=22?MonsterType::FrostAcolyte:version>=16?MonsterType::OssuaryWarden:MonsterType::Skeleton) ||
             !state.map.isWalkable(m.position.x, m.position.y) || m.maxHp <= 0 || m.hp <= 0 || m.hp > m.maxHp) {
             return std::nullopt;
         }

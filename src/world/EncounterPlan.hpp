@@ -32,7 +32,8 @@ inline std::vector<EncounterSpawn> planEncounters(const GeneratedDungeon& dungeo
         int cost=0;
         bool dangerous=false;
         if (crypt) {
-            switch(i%5) {
+            switch(i%6) {
+                case 5: pack={MonsterType::DrownedOne,MonsterType::Gloomstalker,MonsterType::DrownedOne}; cost=12; break;
                 case 0: pack={MonsterType::CryptSentinel,MonsterType::SkeletonArcher,MonsterType::GraveMender}; cost=12; break;
                 case 1: pack={MonsterType::SkeletonGuard,MonsterType::CryptShade,MonsterType::Bonecaller}; cost=11; break;
                 case 2: pack={MonsterType::Skeleton,MonsterType::FrostAcolyte,MonsterType::SkeletonArcher}; cost=10; break;
@@ -47,6 +48,9 @@ inline std::vector<EncounterSpawn> planEncounters(const GeneratedDungeon& dungeo
             pack={MonsterType::GoblinBulwark,MonsterType::GoblinRaider,MonsterType::Bomber}; cost=11; dangerous=true;
         } else if(i%5==3 && floor>=3) {
             pack={MonsterType::Ogre,MonsterType::Goblin,MonsterType::GoblinMedic}; cost=11; dangerous=true;
+        } else if(i%5==4 && floor>=3) {
+            // Fire-bringers: a torch to light the way, a firebrand to throw it, and (deeper) a beast of the dark.
+            pack={MonsterType::Torchbearer,MonsterType::OrcFirebrand,floor>=5?MonsterType::Gloomstalker:MonsterType::Goblin}; cost=11; dangerous=true;
         } else {
             pack={MonsterType::Goblin,floor>=2?MonsterType::GoblinSlinger:MonsterType::Goblin,i%2?MonsterType::Archer:MonsterType::Spider}; cost=7;
         }

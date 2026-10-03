@@ -351,6 +351,27 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
                 std::move(ai),TalentSet(talents));
             break;
         }
+        case MonsterType::Torchbearer: case MonsterType::Gloomstalker: case MonsterType::OrcFirebrand: case MonsterType::DrownedOne: {
+            // The creatures that use light, dark, fire and water: their tricks
+            // live in Application (light sources, surfaces), their bodies here.
+            MonsterAttackProfile profile;
+            const char* name = "Cultist Torchbearer";
+            int hp = 26, strength = 8, dexterity = 8, power = 5;
+            if (type == MonsterType::Torchbearer) { profile.onHitEffect = StatusEffectInstance{StatusEffectType::Burn, 3, 2}; profile.onHitChance = .5f; }
+            if (type == MonsterType::Gloomstalker) { name = "Gloomstalker"; hp = 24; strength = 10; dexterity = 22; power = 6; }
+            if (type == MonsterType::OrcFirebrand) { name = "Orc Firebrand"; hp = 26; strength = 6; power = 4; }
+            if (type == MonsterType::DrownedOne) {
+                name = "Drowned One"; hp = 38; strength = 10; dexterity = 2; power = 5;
+                profile.onHitEffect = StatusEffectInstance{StatusEffectType::Chill, 2, 20}; profile.onHitChance = .4f;
+            }
+            profile.power = scaledPower(power, strength / 5, tier);
+            std::unique_ptr<AIBehavior> ai;
+            if (type == MonsterType::OrcFirebrand) ai = std::make_unique<Kiter>(profile, 5, 2);
+            else ai = std::make_unique<Chaser>(profile);
+            monster = std::make_unique<Monster>(type, tieredName(name, tier), 'c', position,
+                makeStats(scaledHp(hp, tier), strength, dexterity, 4), std::move(ai));
+            break;
+        }
         case MonsterType::Skeleton: {
             // Lich minion, also placed naturally in Crypt opening groups.
             // Summons lose rewards in Application; natural spawns retain them.
@@ -434,6 +455,9 @@ int xpRewardForType(MonsterType type, MonsterTier tier) {
         case MonsterType::GoblinStalker: case MonsterType::CryptShade: baseReward=19; break;
         case MonsterType::GoblinSlinger: case MonsterType::FrostAcolyte: baseReward=18; break;
         case MonsterType::GoblinRaider: baseReward=14; break;
+        case MonsterType::Torchbearer: baseReward=16; break;
+        case MonsterType::Gloomstalker: case MonsterType::DrownedOne: baseReward=20; break;
+        case MonsterType::OrcFirebrand: baseReward=18; break;
         case MonsterType::SkeletonArcher: baseReward=16; break;
         case MonsterType::SkeletonGuard: baseReward=22; break;
         case MonsterType::Bonecaller: baseReward=18; break;

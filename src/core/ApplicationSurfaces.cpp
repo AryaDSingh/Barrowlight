@@ -267,6 +267,34 @@ void Application::tickSurfaces() {
         player_.stats().hp = std::min(player_.stats().maxHp, player_.stats().hp + regen);
     suffer(player_);
     for (auto& m : monsters_) if (m->stats().hp > 0) suffer(*m);
+
+    // The creatures that live by light, dark, fire and water.
+    for (auto& m : monsters_) {
+        if (m->stats().hp <= 0 || m->allied) continue;
+        const auto at = m->position();
+        if (m->type() == MonsterType::DrownedOne) {
+            if (surfaceAt(at) == SurfaceType::None) setSurface(at, SurfaceType::Water, 0);
+            if (conducts(surfaceAt(at))) m->stats().hp = std::min(m->stats().maxHp, m->stats().hp + 2);
+        } else if (m->type() == MonsterType::Gloomstalker && tileLit(at)) {
+            m->stats().hp -= 2;
+            if (visibleTile(at)) log(m->name(), " shrinks from the light!");
+            checkAndHandleDeath(*m);
+        } else if (m->type() == MonsterType::Torchbearer) {
+            // Its torch rekindles fixtures and catches oil beside it.
+            std::vector<Position> near;
+            bool kindling = false;
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx) {
+                    const Position p{at.x + dx, at.y + dy};
+                    near.push_back(p);
+                    kindling = kindling || surfaceAt(p) == SurfaceType::Oil;
+                    if (const int index = propIndexAt(p.x, p.y); index >= 0 && props_[static_cast<std::size_t>(index)].kind == PropKind::ColdBrazier) kindling = true;
+                }
+            for (const auto& front : wallTorches_)
+                if (!torchLit(front.x, front.y - 1) && std::max(std::abs(front.x - at.x), std::abs(front.y - at.y)) <= 1) kindling = true;
+            if (kindling) applyElement(Element::Fire, near);
+        }
+    }
     if (!shocked.empty()) shockStanding(shocked);
 }
 

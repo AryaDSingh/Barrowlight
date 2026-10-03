@@ -451,6 +451,15 @@ void Application::renderStatusVfx() {
         }
     };
     const auto pose = [&](const Actor& a) { return actorPose(a).screen; };
+    // Torchbearers' torches burn in their hands.
+    for (const auto& m : monsters_) {
+        const auto p = m->position();
+        if (m->type() != MonsterType::Torchbearer || m->stats().hp <= 0 || exploredMap_.at(p.x, p.y) != Visibility::Visible) continue;
+        const auto at = pose(*m);
+        const int frame = (static_cast<int>(now * 8.f) + p.x) % 3;
+        sprites_.draw(window_, {"calciumtrice/tiles/dungeon_tileset_calciumtrice.png", sf::IntRect({176 + frame * 16, 304}, {16, 16})},
+                      {at.x + kTile * .45f, at.y - kTile * .15f}, kTile * .6f);
+    }
     draw(player_, pose(player_), 1);
     for (const auto& m : monsters_) {
         const auto p = m->position();
