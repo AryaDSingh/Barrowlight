@@ -1025,7 +1025,9 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         if (talent.restoreMana) log("Mana: ",player_.stats().mana,"/",player_.stats().maxMana);
         if (talent.restoreHpPercent) log("HP: ",player_.stats().hp,"/",player_.stats().maxHp);
         if (talent.cleanse) log("Poison, Burn, Chill, Marked and curses removed. Other effects remain.");
-        if (talent.conjureLight) {
+        if (talent.conjureLight && player_.statusEffects().has(StatusEffectType::Smothered)) {
+            log("Your wisp gutters and dies in the smothering dark.");
+        } else if (talent.conjureLight) {
             lightOrbs_.clear();
             lightOrbs_.push_back({player_.position(), 40});
             log("A wisp of light hangs in the air.");
@@ -1728,7 +1730,7 @@ void Application::updateFieldOfView() {
 }
 
 int Application::playerLightRadius() const {
-    if (!player_.lightLit) return 0;
+    if (!player_.lightLit || player_.statusEffects().has(StatusEffectType::Smothered)) return 0;
     const int base = player_.lightSource == 2 ? 6 : player_.lightSource == 1 ? 4 : 0;
     return base ? base + player_.inventory().affixTotal(BonusStat::LightRadius) : 0;
 }
@@ -1819,6 +1821,11 @@ void Application::setTorchLit(int x, int y, bool lit) {
 
 void Application::toggleLight() {
     if (!player_.lightSource) { log("You carry no light."); return; }
+    for (const auto& e : player_.statusEffects().active())
+        if (e.type == StatusEffectType::Smothered) {
+            log("The darkness smothers your light. It won't catch for another ", e.turnsRemaining, " turns.");
+            return;
+        }
     player_.lightLit = !player_.lightLit;
     const std::string light = player_.lightSource == 2 ? "lantern" : "torch";
     log(player_.lightLit ? "You light your " + light + "." : "You shutter your " + light + ". In the dark, many foes can't see you.");

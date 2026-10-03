@@ -70,6 +70,7 @@ std::string statusTooltip(const StatusEffectInstance& e) {
     const auto n=std::to_string(e.magnitude);
     switch(e.type) {
     case StatusEffectType::Poison: case StatusEffectType::Burn: return "Lose "+n+" HP each status tick. Bypasses Guard and reveals concealment.";
+    case StatusEffectType::Smothered: return "Pitch black: your torch or lantern can't burn and Conjure Light fails. Your light returns when this ends. Fire spells can still light braziers and oil.";
     case StatusEffectType::Doom: return "Lose "+n+" HP when the countdown expires. Guard and dodge do not prevent this. Cleanse before the last tick, or heal to prepare for it.";
     case StatusEffectType::ManaDrain: return "Lose "+n+" mana each status tick, down to zero. Combat mana recovery remains 1 per turn.";
     case StatusEffectType::Stun: return "Lose actions until this expires, then gain brief stun immunity. Cleanse does not remove Stun.";

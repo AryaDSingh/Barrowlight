@@ -283,8 +283,9 @@ bool Application::bossSurfaceAction(Monster& boss) {
                 if (close(front) && torchLit(front.x, front.y - 1)) setTorchLit(front.x, front.y - 1, false);
             for (auto& prop : props_) if (prop.kind == PropKind::Brazier && close(prop.pos)) prop.kind = PropKind::ColdBrazier;
             lightOrbs_.erase(std::remove_if(lightOrbs_.begin(), lightOrbs_.end(), [&](const LightOrb& o) { return close(o.at); }), lightOrbs_.end());
-            if (player_.lightLit && player_.lightSource) { player_.lightLit = false; }
-            log(boss.name(), " breathes out the light. Darkness swallows the room! (L relights your ", player_.lightSource == 2 ? "lantern" : "torch", ".)");
+            // Pitch black: your own light can't burn for a few turns, then returns by itself.
+            player_.statusEffects().apply({StatusEffectType::Smothered, 4, 0});
+            log(boss.name(), " breathes out the light. Pitch darkness swallows you for 4 turns!");
             spawnVfx({Vfx::Kind::Ring, {at.x + .5f, at.y + .5f}, {at.x + .5f, at.y + .5f}, sf::Color(150, 80, 220), 0, .8f, 8.f});
             updateFieldOfView();
             return true;

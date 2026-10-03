@@ -10,6 +10,7 @@ enum class StatusEffectType {
     Empowered, // bonus flat damage added to the actor's own attacks
     Burn, Chill, Shock, Guard, Evasion, Concealed, Opening, Marked, StunRecovery, FlameBlade, FrostBlade, StormBlade, ArcaneBlade, BattleRhythm, BloodPact, Wither, HuntersMark, UnseenReady,
     ManaDrain, Doom, // curses: drain mana each tick; delayed HP damage on expiry
+    Smothered,       // the Lich's darkness: your light can't burn until it ends (not cleansable)
 };
 
 struct StatusEffectInstance {
@@ -80,6 +81,7 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::HuntersMark: return "Hunter's Mark";
     case StatusEffectType::ManaDrain: return "Mana Drain";
     case StatusEffectType::Doom: return "Doom";
+    case StatusEffectType::Smothered: return "Smothered";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

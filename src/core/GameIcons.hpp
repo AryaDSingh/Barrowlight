@@ -144,6 +144,7 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::UnseenReady: return "hood";
         case StatusEffectType::ManaDrain: return "psychic-waves";
         case StatusEffectType::Doom: return "skull-crossed-bones";
+        case StatusEffectType::Smothered: return "shadow-follower";
     }
     return "aura";
 }

@@ -605,7 +605,12 @@ struct ApplicationRewardsTestAccess {
             app.updateFieldOfView();
             bool unlit=false;
             for (int i=0;i<7 && !unlit;++i) unlit=app.bossSurfaceAction(*l);
-            check(unlit && !app.player_.lightLit && app.lightOrbs_.empty(),"The Lich breathes out the light: wisps die and your torch gutters");
+            check(unlit && app.player_.statusEffects().has(StatusEffectType::Smothered) && app.playerLightRadius()==0 && app.lightOrbs_.empty(),
+                  "The Lich breathes out the light: wisps die and you are Smothered");
+            app.toggleLight(); app.toggleLight();
+            check(app.playerLightRadius()==0,"Smothered, your light can't be relit");
+            app.player_.statusEffects().remove(StatusEffectType::Smothered);
+            check(app.playerLightRadius()==4,"When Smothered ends, your light returns by itself");
             l->stats().hp=l->stats().maxHp/2; app.bossSurfaceAction(*l);
             check(l->flooded && app.surfaceAt({14,12})==SurfaceType::Water,"Badly hurt, the Lich floods its sanctum");
             app.setSurface(app.player_.position(),SurfaceType::Water,0);

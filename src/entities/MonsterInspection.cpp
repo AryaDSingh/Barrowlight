@@ -27,7 +27,7 @@ std::vector<std::string> inspectMonster(const Monster& monster,
     if (monster.recoveryActions>0) lines.push_back("Recovering: cannot act until you complete one action.");
     if (monster.type()==MonsterType::Lich) {
         lines.push_back("Summon attempts left: "+std::to_string(3-monster.summonsCommitted)+" (no replacements).");
-        lines.push_back("Every few turns it breathes out the light: nearby torches, braziers and wisps die, and your torch gutters (L relights it).");
+        lines.push_back("Every few turns it breathes out the light: nearby torches, braziers and wisps die, and you are Smothered: pitch black, your light can't burn for 4 turns. Fire spells can still light braziers and oil.");
         lines.push_back(monster.flooded ? "It has flooded its sanctum; its bolts freeze the water you stand in." :
             "Below 60% life it floods its sanctum, and its bolts freeze water.");
     }
