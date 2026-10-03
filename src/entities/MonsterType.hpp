@@ -30,6 +30,10 @@ enum class MonsterType {
     Gloomstalker,  // shadow beast: deadly in the dark, weak and hurt in light
     OrcFirebrand,  // throws flasks of burning oil
     DrownedOne,    // crypt undead that leaves water behind and heals in it
+    // The Drowned Cathedral (save format 35).
+    DeepLurker,       // hides in water, and drags you in after it
+    DrownedChorister, // a singing spirit whose bolts charge the water you stand in
+    TheSleeper,       // the Cathedral's boss: floods, charges the water, heals in it
 };
 
 // Darkvision: goblinkind, orcs, beasts and the undead see without light.
@@ -48,7 +52,7 @@ inline bool bleeds(MonsterType type) {
     switch (type) {
         case MonsterType::Skeleton: case MonsterType::SkeletonArcher: case MonsterType::SkeletonGuard:
         case MonsterType::CryptShade: case MonsterType::CryptSentinel: case MonsterType::Lich:
-        case MonsterType::Gloomstalker: case MonsterType::DrownedOne: return false;
+        case MonsterType::Gloomstalker: case MonsterType::DrownedOne: case MonsterType::DrownedChorister: case MonsterType::TheSleeper: return false;
         default: return true;
     }
 }

@@ -100,6 +100,13 @@ std::vector<std::string> inspectMonster(const Monster& monster,
             lines.push_back("Strikes far harder from darkness. In light it is weakened and seared each turn: bring a torch."); break;
         case MonsterType::OrcFirebrand:
             lines.push_back("Kites at range, hurling flasks that burst into burning oil where they land."); break;
+        case MonsterType::DeepLurker:
+            lines.push_back("Hides in water until it is close. Its bite drags you into the water after it."); break;
+        case MonsterType::DrownedChorister:
+            lines.push_back("Kites at range. Its bolts charge the water you stand in: lightning runs through the whole pool."); break;
+        case MonsterType::TheSleeper:
+            lines.push_back("Bolts from range. Floods the room around you, then warns before charging every pool with lightning: get out of the water.");
+            lines.push_back("Heals while it lies in water (not for its own faithful). Badly hurt, it calls the Drowned."); break;
         case MonsterType::DrownedOne:
             lines.push_back("Leaves water where it walks and heals while standing in it. Lightning runs through the puddles it leaves."); break;
     }

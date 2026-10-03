@@ -233,8 +233,8 @@ void Application::renderBattleHud() {
         ui_.text(window_,trialName(trial_),{14,176},16,ui::kUnique,ui::Font::Bold);
         ui_.text(window_,std::string(trialGuardian(trial_))+(boss_?" awaits":" is fallen"),{14,196},14,ui::kText);
     } else {
-        ui_.text(window_,std::string(dungeonName(dungeonIndex(currentFloor_)))+"  "+std::to_string((currentFloor_-1)%10+1)+"/10",{14,176},16,ui::kGold,ui::Font::Bold);
-        ui_.text(window_,std::string(theme.name)+", depth "+std::to_string(currentFloor_),{14,196},14,ui::kText);
+        ui_.text(window_,std::string(dungeonName(dungeonIndex(currentFloor_)))+"  "+std::to_string(floorInDungeon(currentFloor_))+"/"+std::to_string(dungeonLength(dungeonIndex(currentFloor_))),{14,176},16,ui::kGold,ui::Font::Bold);
+        ui_.text(window_,std::string(theme.name)+", depth "+std::to_string(floorDepth(currentFloor_)),{14,196},14,ui::kText);
     }
     const auto stat=[&](const char* name,int value,float x,float y) {
         ui_.text(window_,name,{x,y},14,ui::kMuted);

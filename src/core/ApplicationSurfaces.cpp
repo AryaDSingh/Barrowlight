@@ -1,4 +1,5 @@
 #include "core/Application.hpp"
+#include "entities/MonsterFactory.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -243,6 +244,7 @@ void Application::placeBraziers(Position centre, const std::vector<Position>& of
             for (int dx = -1; dx <= 1 && open; ++dx) open = map_.isWalkable(p.x + dx, p.y + dy) && propIndexAt(p.x + dx, p.y + dy) < 0;
         if (!open) continue;
         props.push_back({PropKind::Brazier, p});
+        setSurface(p, SurfaceType::None, 0); // a puddle under it would be left on a solid tile
         map_.setTile(p.x, p.y, Tile{TileType::Wall, false, true});
         setProps(props);
     }
@@ -254,6 +256,53 @@ void Application::placeBraziers(Position centre, const std::vector<Position>& of
 bool Application::bossSurfaceAction(Monster& boss) {
     const auto at = boss.position(), you = player_.position();
     const int distance = std::max(std::abs(at.x - you.x), std::abs(at.y - you.y));
+    if (boss.type() == MonsterType::TheSleeper && boss.tactics.alert > 0 && distance <= 9) {
+        // Badly hurt, once: it calls the Drowned.
+        if (!boss.flooded && boss.stats().hp * 2 <= boss.stats().maxHp) {
+            boss.flooded = true;
+            int called = 0;
+            for (int dy = -2; dy <= 2 && called < 2; ++dy)
+                for (int dx = -2; dx <= 2 && called < 2; ++dx) {
+                    const Position p{at.x + dx, at.y + dy};
+                    if ((!dx && !dy) || !map_.isWalkable(p.x, p.y) || isOccupied(p, nullptr)) continue;
+                    auto drowned = createMonster(MonsterType::DrownedOne, p);
+                    scaleDungeonMonster(*drowned, floorDepth(currentFloor_));
+                    drowned->setRewardsEligible(false);
+                    drowned->tactics.alert = 8; drowned->tactics.lastKnown = you;
+                    scheduler_.add(*drowned);
+                    monsters_.push_back(std::move(drowned));
+                    ++called;
+                }
+            log(boss.name(), " calls the Drowned from the deep!");
+            return true;
+        }
+        // A cycle: flood the room around you, then a warning, then the lightning.
+        const int phase = ++boss.bossTimer % 7;
+        if (phase == 3) {
+            for (const Position centre : {at, you})
+                for (int dy = -2; dy <= 2; ++dy)
+                    for (int dx = -2; dx <= 2; ++dx) {
+                        const Position p{centre.x + dx, centre.y + dy};
+                        if (dx * dx + dy * dy <= 5 && map_.isWalkable(p.x, p.y) && surfaceAt(p) == SurfaceType::None) setSurface(p, SurfaceType::Water, 0);
+                    }
+            log(boss.name(), " stirs: black water wells up around you!");
+            return true;
+        }
+        if (phase == 5) {
+            log(boss.name(), "'s eye kindles with lightning. The water will be charged next turn: get out of it!");
+            spawnVfx({Vfx::Kind::Ring, {at.x + .5f, at.y + .5f}, {at.x + .5f, at.y + .5f}, sf::Color(170, 230, 255), 0, .8f, 6.f});
+            return true;
+        }
+        if (phase == 6) {
+            std::vector<Position> pools;
+            for (int dy = -9; dy <= 9; ++dy)
+                for (int dx = -9; dx <= 9; ++dx)
+                    if (surfaceAt({at.x + dx, at.y + dy}) == SurfaceType::Water) pools.push_back({at.x + dx, at.y + dy});
+            log("Lightning races through the water!");
+            if (!pools.empty()) applyElement(Element::Lightning, pools);
+            return true;
+        }
+    }
     if (boss.type() == MonsterType::GoblinWarlord && boss.tactics.alert > 0 && distance <= 5) {
         for (int dy = -1; dy <= 1; ++dy)
             for (int dx = -1; dx <= 1; ++dx) {
@@ -353,6 +402,13 @@ void Application::tickSurfaces() {
             m->stats().hp = std::min(m->stats().maxHp, m->stats().hp + 3);
             if (visibleTile(at)) log(m->name(), " drinks from the blood at its feet.");
         }
+        if (m->type() == MonsterType::DeepLurker) {
+            const auto me = player_.position();
+            const bool close = std::max(std::abs(at.x - me.x), std::abs(at.y - me.y)) <= 2;
+            m->tactics.concealed = conducts(surfaceAt(at)) && !close;
+        }
+        if (m->type() == MonsterType::TheSleeper && conducts(surfaceAt(at)) && m->stats().hp < m->stats().maxHp && !patronBoon(Patron::Sleeper))
+            m->stats().hp = std::min(m->stats().maxHp, m->stats().hp + 4);
         if (m->type() == MonsterType::DrownedOne) {
             if (surfaceAt(at) == SurfaceType::None) setSurface(at, SurfaceType::Water, 0);
             if (conducts(surfaceAt(at))) m->stats().hp = std::min(m->stats().maxHp, m->stats().hp + 2);
@@ -612,9 +668,10 @@ void Application::seedSurfaces(unsigned seed) {
             return;
         }
     };
-    const int puddles = region == FloorRegion::Crypts ? 4 : region == FloorRegion::Sanctum ? 3 : 2;
-    for (int i = 0; i < puddles; ++i) pool(SurfaceType::Water, std::uniform_int_distribution<int>(4, 10)(rng));
-    const int slicks = region == FloorRegion::Barracks ? 2 : 1;
+    const bool cathedral = cathedralFloor(currentFloor_);
+    const int puddles = cathedral ? (currentFloor_ % 2 ? 10 : 7) : region == FloorRegion::Crypts ? 4 : region == FloorRegion::Sanctum ? 3 : 2;
+    for (int i = 0; i < puddles; ++i) pool(SurfaceType::Water, cathedral ? std::uniform_int_distribution<int>(8, 18)(rng) : std::uniform_int_distribution<int>(4, 10)(rng));
+    const int slicks = cathedral ? 0 : region == FloorRegion::Barracks ? 2 : 1;
     for (int i = 0; i < slicks; ++i) pool(SurfaceType::Oil, std::uniform_int_distribution<int>(3, 7)(rng));
 
     // Braziers stand in open floor (all eight neighbours open), so they never block a route.

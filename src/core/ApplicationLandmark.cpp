@@ -104,8 +104,8 @@ std::vector<Application::LandmarkChoice> Application::landmarkChoices() const {
                          " turns unless you cleanse it", true}};
         }
         case LandmarkKind::TreasureHoard:
-            return {{"Take a handful", "knapsack", "+" + std::to_string(handfulGold(currentFloor_)) + " gold. Nothing stirs.", "Free", true},
-                    {"Seize it all", "locked-chest", "+" + std::to_string(hoardGold(currentFloor_)) +
+            return {{"Take a handful", "knapsack", "+" + std::to_string(handfulGold(floorDepth(currentFloor_))) + " gold. Nothing stirs.", "Free", true},
+                    {"Seize it all", "locked-chest", "+" + std::to_string(hoardGold(floorDepth(currentFloor_))) +
                      " gold and a rare item. Its guardians wake: three foes, one elite, come for you.", "Guardians attack", true}};
         case LandmarkKind::PrisonerCage:
             return {{"Break the lock", "hammer-drop", "The prisoner repays you with a rare item. The clang wakes every enemy within " +
@@ -122,7 +122,7 @@ std::vector<Application::LandmarkChoice> Application::landmarkChoices() const {
                      "A nightmare champion", true}};
         case LandmarkKind::PalePeddler:
             return {{"Pay in gold", "locked-chest", "He sells you one unique item, sight unseen.",
-                     "Costs " + std::to_string(peddlerGold(currentFloor_)) + " gold", gold_ >= peddlerGold(currentFloor_)},
+                     "Costs " + std::to_string(peddlerGold(floorDepth(currentFloor_))) + " gold", gold_ >= peddlerGold(floorDepth(currentFloor_))},
                     {"Pay in blood", "bleeding-heart", "He sells you one unique item, sight unseen.",
                      "Costs " + std::to_string(kPeddlerLife) + " maximum life, forever", player_.baseStats().maxHp > 3 * kPeddlerLife}};
         case LandmarkKind::LamplighterRest:
@@ -188,7 +188,7 @@ int Application::spawnLandmarkFoes(int count, MonsterTier firstTier, MonsterTier
         if (std::any_of(chosen.begin(), chosen.end(), [&](Position q) { return std::abs(p.x - q.x) + std::abs(p.y - q.y) < 2; })) continue;
         const MonsterType type = spawned == 0 && firstType ? *firstType : roster[loot_.roll(static_cast<unsigned>(roster.size()))];
         auto monster = createMonster(type, p, spawned == 0 ? firstTier : restTier);
-        scaleDungeonMonster(*monster, currentFloor_);
+        scaleDungeonMonster(*monster, floorDepth(currentFloor_));
         monster->tactics.concealed = false;
         monster->tactics.alert = 8;
         monster->tactics.lastKnown = player_.position();
@@ -265,7 +265,7 @@ void Application::placeVampireLord() {
 void Application::landmarkReward(ItemRarity rarity) {
     if (nextItemId_ == std::numeric_limits<std::uint64_t>::max()) return;
     const auto theme = currentFloor_ <= 3 ? LootTheme::Barracks : currentFloor_ <= 6 ? LootTheme::Sanctum : LootTheme::Crypts;
-    auto item = loot_.generate(currentFloor_, rarity == ItemRarity::Rare ? 2 : 1, nextItemId_++, player_.position(), rarity, theme);
+    auto item = loot_.generate(floorDepth(currentFloor_), rarity == ItemRarity::Rare ? 2 : 1, nextItemId_++, player_.position(), rarity, theme);
     log("You receive ", item->name(), " (in your bag).");
     player_.inventory().add(std::move(item)); // kept in overflow rather than lost
 }
@@ -310,7 +310,7 @@ void Application::chooseBlessing(int choice) {
             attributePoint = true;
             break;
         case LandmarkKind::TreasureHoard:
-            gold_ += choice == 0 ? handfulGold(currentFloor_) : hoardGold(currentFloor_);
+            gold_ += choice == 0 ? handfulGold(floorDepth(currentFloor_)) : hoardGold(floorDepth(currentFloor_));
             if (choice == 1) {
                 landmarkReward(ItemRarity::Rare);
                 const int woke = spawnLandmarkFoes(3, MonsterTier::Elite, MonsterTier::Base);
@@ -352,7 +352,7 @@ void Application::chooseBlessing(int choice) {
             spawnLandmarkFoes(2, MonsterTier::Base, MonsterTier::Base, MonsterType::Skeleton);
             break;
         case LandmarkKind::PalePeddler:
-            if (choice == 0) gold_ -= peddlerGold(currentFloor_);
+            if (choice == 0) gold_ -= peddlerGold(floorDepth(currentFloor_));
             else {
                 player_.baseStats().maxHp -= kPeddlerLife;
                 const int hp = std::min(stats.hp, player_.baseStats().maxHp);

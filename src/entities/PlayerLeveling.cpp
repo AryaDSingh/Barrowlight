@@ -10,8 +10,11 @@ constexpr int kMaxHpGrowthPerLevel = 1;
 constexpr int kAttributePointsPerLevel = 2;
 } // namespace
 
+// Each level costs a little more than the last, and the step itself grows:
+// 20 per level plus 1.5 x level squared. About 7,500 XP to reach level 20,
+// which a full run reaches around its last few floors.
 int xpForNextLevel(int currentLevel) {
-    return kXpPerLevelStep * currentLevel;
+    return kXpPerLevelStep * currentLevel + 3 * currentLevel * currentLevel / 2;
 }
 
 void grantXp(Player& player, int amount) {

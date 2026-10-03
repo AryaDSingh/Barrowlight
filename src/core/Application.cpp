@@ -119,6 +119,9 @@ sf::Color monsterColor(MonsterType type) {
         case MonsterType::Gloomstalker: return sf::Color(90, 70, 130);
         case MonsterType::OrcFirebrand: return sf::Color(230, 90, 40);
         case MonsterType::DrownedOne: return sf::Color(90, 170, 180);
+        case MonsterType::DeepLurker: return sf::Color(70, 140, 120);
+        case MonsterType::DrownedChorister: return sf::Color(150, 210, 230);
+        case MonsterType::TheSleeper: return sf::Color(120, 230, 200);
     }
     return sf::Color(190, 190, 190); // unreachable -- all enum values handled above
 }
@@ -219,7 +222,7 @@ std::pair<SpriteFrame, const char*> propFrame(PropKind kind) {
 // draw time, so they never block anything, need no save data, and work on
 // any layout (old saves included). Wall decor only goes on a wall face --
 // a wall with floor directly below it, which is the side the camera sees.
-enum class Decor { None, Torch, Banner, Bones, Rubble, Cobweb, Niche, SkullNiche, Chains };
+enum class Decor { None, Torch, Banner, Bones, Rubble, Cobweb, Niche, SkullNiche, Chains, StainedGlass, Font };
 
 unsigned decorHash(int x, int y, int floor) {
     unsigned h = static_cast<unsigned>(x) * 374761393u + static_cast<unsigned>(y) * 668265263u +
@@ -237,6 +240,8 @@ Decor decorAt(const Map& map, int x, int y, int floor, FloorRegion region) {
         const auto wantsTorch = [&](int tx) { return decorHash(tx, y, floor) % 100 < 9; };
         if (h < 9 && !wantsTorch(x - 1)) return Decor::Torch;
         if (h >= 90 && h < 95) return Decor::Banner;
+        // The Drowned Cathedral's windows.
+        if (cathedralFloor(floor) && h >= 40 && h < 52) return Decor::StainedGlass;
         // Crypt niches and hanging chains, more of them the deeper you go.
         const bool crypt = region == FloorRegion::Crypts;
         if (h >= 60 && h < (crypt ? 66u : 62u)) return h % 2 ? Decor::SkullNiche : Decor::Niche;
@@ -250,6 +255,7 @@ Decor decorAt(const Map& map, int x, int y, int floor, FloorRegion region) {
     const unsigned fine = decorHash(y, x, floor) % 1000; // independent of h for finer odds
     if (fine < (region == FloorRegion::Crypts ? 15u : 5u)) return Decor::Bones;
     if (h == 50) return Decor::Rubble;
+    if (cathedralFloor(floor) && fine >= 700 && fine < 704 && !nearWall) return Decor::Font; // a font of black water
     if (nearWall && fine >= 500 && fine < 510) return Decor::Cobweb;
     return Decor::None;
 }
@@ -344,6 +350,10 @@ MonsterLook monsterLook(MonsterType type) {
         case MonsterType::Gloomstalker: return {idleFrame("calciumtrice/heroes/Assassin.png"), sf::Color(120, 95, 170, 215)};
         case MonsterType::OrcFirebrand: return {idleFrame("calciumtrice/monsters/RedOrc.png")};
         case MonsterType::DrownedOne: return {idleFrame(skeleton), sf::Color(120, 200, 205)};
+        // Stone Soup tiles (assets/sprites/dcss): single still frames.
+        case MonsterType::DeepLurker: return {{"dcss/electric_eel.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color(200, 225, 220), 1.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
+        case MonsterType::DrownedChorister: return {{"dcss/phantom.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color(220, 245, 255, 225), 1.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
+        case MonsterType::TheSleeper: return {{"dcss/kraken_head.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color(170, 205, 200), 2.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
         case MonsterType::GoblinWarlord: return {idleFrame("calciumtrice/monsters/GreyMinotaur.png", 0, 48, 52)};
         case MonsterType::Lich: return {idleFrame("calciumtrice/monsters/Death.png")};
         case MonsterType::GoblinCaptain: return {idleFrame("calciumtrice/monsters/ArmourPsionicGoblin.png")};
@@ -416,6 +426,7 @@ void Application::updateMusic() {
 void Application::logImpl(const std::string& message) {
     std::cout << message << std::endl;
     logMessages_.push_back(message);
+    ++logTotal_;
     while (logMessages_.size() > kMaxLogMessages) {
         logMessages_.pop_front();
     }
@@ -1460,6 +1471,27 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                         for (const auto& p : splash) if (surfaceAt(p) == SurfaceType::None) setSurface(p, SurfaceType::Oil, 0);
                         if (visibleTile(at)) log(actor.name(), "'s flask bursts into flame!");
                         applyElement(Element::Fire, splash);
+                    } else if (attacker->type() == MonsterType::DrownedChorister && conducts(surfaceAt(at))) {
+                        log(actor.name(), "'s hymn charges the water!");
+                        applyElement(Element::Lightning, {at});
+                    } else if (attacker->type() == MonsterType::DeepLurker && decision.target == &player_) {
+                        // It sinks back into the water, dragging you after it.
+                        const Position from = actor.position();
+                        if (std::max(std::abs(from.x - at.x), std::abs(from.y - at.y)) <= 1)
+                            for (int dy = -1; dy <= 1; ++dy) {
+                                bool dragged = false;
+                                for (int dx = -1; dx <= 1 && !dragged; ++dx) {
+                                    const Position w{from.x + dx, from.y + dy};
+                                    if ((!dx && !dy) || !conducts(surfaceAt(w)) || !map_.isWalkable(w.x, w.y) || isOccupied(w, nullptr) ||
+                                        std::abs(w.x - at.x) + std::abs(w.y - at.y) <= std::abs(from.x - at.x) + std::abs(from.y - at.y)) continue;
+                                    actor.setPosition(w); player_.setPosition(from);
+                                    log(actor.name(), " drags you into the water!");
+                                    enterSurface(player_, from);
+                                    updateFieldOfView();
+                                    dragged = true;
+                                }
+                                if (dragged) break;
+                            }
                     } else if (attacker->type() == MonsterType::Lich && conducts(surfaceAt(at))) {
                         applyElement(Element::Ice, {at});
                     } else if (attacker->type() == MonsterType::FrostAcolyte) {
@@ -1593,7 +1625,7 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                 !isOccupied(decision.movePosition, &actor)) {
                 std::unique_ptr<Monster> summoned =
                     createMonster(decision.summonType, decision.movePosition, decision.summonTier);
-                scaleDungeonMonster(*summoned,currentFloor_);
+                scaleDungeonMonster(*summoned,floorDepth(currentFloor_));
                 summoned->setRewardsEligible(false);
                 summoned->recoveryActions=1; // no immediate attack before a player response
                 scheduler_.add(*summoned);
@@ -1996,7 +2028,7 @@ void Application::regenerateLevel(unsigned int seed) {
     // kFirstBossFloor (5) for now -- the actual Lich (see ROADMAP.md)
     // is a separate, later piece of work; this gets the full 10-floor
     // structure and victory gating correct end to end first.
-    params.includeBossRoom = (currentFloor_ == kFirstBossFloor || currentFloor_ == 10 || currentFloor_ == kFinalFloor);
+    params.includeBossRoom = (currentFloor_ == kFirstBossFloor || currentFloor_ == 10 || currentFloor_ == kFinalFloor || currentFloor_ == kCathedralLast);
     params.includeVault=currentFloor_>=3 && !params.includeBossRoom && nextItemId_<=std::numeric_limits<std::uint64_t>::max()-3;
     const GeneratedDungeon dungeon = generateDungeon(params, seed);
     vaultExists_=dungeon.hasVault; vaultOpened_=false; vaultClaimed_=false;
@@ -2023,10 +2055,10 @@ void Application::regenerateLevel(unsigned int seed) {
         guard->vaultGuard=true; monsters_.push_back(std::move(guard));
         const auto lootTheme=currentFloor_<=3?LootTheme::Barracks:currentFloor_<=6?LootTheme::Sanctum:LootTheme::Crypts;
         for (int i=0;i<3;++i) {
-            auto reward=loot_.generate(currentFloor_,1,nextItemId_++,vaultCenter_,ItemRarity::Rare,lootTheme);
+            auto reward=loot_.generate(floorDepth(currentFloor_),1,nextItemId_++,vaultCenter_,ItemRarity::Rare,lootTheme);
             // Prefer different bases without an unbounded generation loop.
             for (int retry=0;retry<16 && std::any_of(vaultRewards_.begin(),vaultRewards_.end(),[&](const auto& item){return item->definition()==reward->definition();});++retry)
-                reward=loot_.generate(currentFloor_,1,reward->instanceId(),vaultCenter_,ItemRarity::Rare,lootTheme);
+                reward=loot_.generate(floorDepth(currentFloor_),1,reward->instanceId(),vaultCenter_,ItemRarity::Rare,lootTheme);
             vaultRewards_.push_back(std::move(reward));
         }
     }
@@ -2037,7 +2069,7 @@ void Application::regenerateLevel(unsigned int seed) {
         // the true final fight, not a placeholder like it was before
         // this was actually built.
         const MonsterType bossType =
-            (currentFloor_ >= 10) ? MonsterType::Lich : MonsterType::GoblinWarlord;
+            currentFloor_ == kCathedralLast ? MonsterType::TheSleeper : (currentFloor_ >= 10) ? MonsterType::Lich : MonsterType::GoblinWarlord;
         Position bossPosition=dungeon.bossRoomCenter;
         auto startDistance=[&](Position p) {
             const int dx=p.x-dungeon.playerStart.x,dy=p.y-dungeon.playerStart.y;
@@ -2071,7 +2103,7 @@ void Application::regenerateLevel(unsigned int seed) {
         map_.setTile(doorPosition.x, doorPosition.y, Tile{TileType::Door, true, true});
     }
 
-    for (auto& m:monsters_) scaleDungeonMonster(*m,currentFloor_);
+    for (auto& m:monsters_) scaleDungeonMonster(*m,floorDepth(currentFloor_));
     seedSurfaces(seed);
     if (landmark_==LandmarkKind::BloodAltar) placeVampireLord();
     if (dungeon.hasBossRoom && boss_) {
@@ -2080,6 +2112,10 @@ void Application::regenerateLevel(unsigned int seed) {
         if (boss_->type()==MonsterType::GoblinWarlord)
             for (const Position o:{Position{-2,0},Position{2,0},Position{0,2}})
                 if (map_.isWalkable(centre.x+o.x,centre.y+o.y)) setSurface({centre.x+o.x,centre.y+o.y},SurfaceType::Oil,0);
+        // The Sleeper lies in a pool of black water.
+        if (boss_->type()==MonsterType::TheSleeper)
+            for (int dy=-3;dy<=3;++dy) for (int dx=-3;dx<=3;++dx)
+                if (dx*dx+dy*dy<=10 && map_.isWalkable(centre.x+dx,centre.y+dy)) setSurface({centre.x+dx,centre.y+dy},SurfaceType::Water,0);
     }
     spawnFixedItems();
     spawnFloorChest();
@@ -2119,7 +2155,9 @@ SaveGameState Application::captureState(bool includeFloors) {
     state.patron=player_.patron; state.favor=player_.favor;
     for (int y=0;y<map_.height();++y) for (int x=0;x<map_.width();++x) {
         const auto s=surfaceAt({x,y});
-        if (s!=SurfaceType::None) state.surfaces.push_back({x,y,static_cast<int>(s),surfaces_[static_cast<std::size_t>(y*map_.width()+x)].turns});
+        // Only open ground holds a surface; anything else (a fixture placed on a
+        // puddle) would make the save invalid.
+        if (s!=SurfaceType::None && map_.isWalkable(x,y)) state.surfaces.push_back({x,y,static_cast<int>(s),surfaces_[static_cast<std::size_t>(y*map_.width()+x)].turns});
     }
     for (const auto& t:torchToggles_) state.torchToggles.push_back({t.first,t.second});
     for (const auto& orb:lightOrbs_) state.lightOrbs.push_back({orb.at.x,orb.at.y,orb.turns});
@@ -2656,6 +2694,8 @@ void Application::render() {
     // --- Pass 2, top to bottom: wall faces, stairs and decorations -------------
     std::vector<std::pair<sf::Vector2f, sf::Color>> lights;
     const float now = animationClock_.getElapsedTime().asSeconds();
+    struct LateDecor { SpriteFrame frame; sf::Vector2f at; float size; sf::Color tint; };
+    std::vector<LateDecor> lateDecor;
     for (int y = viewStartY; y < drawEndY; ++y) {
         for (int x = viewStartX; x < viewEndX; ++x) {
             const Visibility vis = exploredMap_.at(x, y);
@@ -2708,12 +2748,26 @@ void Application::render() {
                 case Decor::Niche: SpriteAtlas::append(faces, {kEvilDungeon, sf::IntRect({0, 224}, {32, 32})}, at, kTileSize, shade(sf::Color(225, 215, 205))); break;
                 case Decor::SkullNiche: SpriteAtlas::append(faces, {kEvilDungeon, sf::IntRect({32, 224}, {32, 32})}, at, kTileSize, shade(sf::Color(225, 215, 205))); break;
                 case Decor::Chains: SpriteAtlas::append(faces, {kEvilDungeon, sf::IntRect({64, 224}, {32, 64})}, {at.x, at.y - kTileSize}, kTileSize * 2, shade(sf::Color(200, 195, 190))); break;
+                case Decor::StainedGlass: {
+                    static constexpr const char* kWindows[]{"stainedglass/cross.png", "stainedglass/moon.png", "stainedglass/candle.png",
+                        "stainedglass/star.png", "stainedglass/tree.png", "stainedglass/crown.png", "stainedglass/sun_and_moon.png"};
+                    lateDecor.push_back({{kWindows[decorHash(x, y, 9) % 7], sf::IntRect({0, 0}, {32, 32})}, {at.x, at.y - kTileSize * 0.55f}, kTileSize,
+                                         shade(sf::Color(150, 155, 180))}); // dimmed: old glass in a drowned church
+                    if (vis == Visibility::Visible) lights.push_back({{at.x + kTileSize / 2, at.y}, sf::Color(70, 95, 140)});
+                    break;
+                }
+                case Decor::Font:
+                    lateDecor.push_back({{static_cast<int>(now * 3.f) % 2 ? "dcss/dngn_blue_fountain2.png" : "dcss/dngn_blue_fountain.png",
+                                          sf::IntRect({0, 0}, {32, 32})}, at, kTileSize, shade(sf::Color(190, 210, 215))});
+                    break;
                 case Decor::None: break;
             }
         }
     }
     if (wallTexture) window_.draw(faces, sf::RenderStates(wallTexture));
     if (tileset) window_.draw(details, sf::RenderStates(tileset));
+    // Decor from its own images, drawn over the walls they hang on.
+    for (const auto& d : lateDecor) sprites_.draw(window_, d.frame, d.at, d.size, d.tint);
     window_.draw(feet);
 
     renderLandmark();
@@ -2770,6 +2824,19 @@ void Application::render() {
             window_.draw(border);
         }
 
+        if (m->type() == MonsterType::TheSleeper && !sensed) {
+            static constexpr Position kReach[]{{-1, -1}, {1, -1}, {-1, 1}, {1, 1}, {-2, 0}, {2, 0}};
+            for (int i = 0; i < 6; ++i) {
+                const Position t{m->position().x + kReach[i].x, m->position().y + kReach[i].y};
+                if (!map_.inBounds(t.x, t.y) || !map_.isWalkable(t.x, t.y) || exploredMap_.at(t.x, t.y) != Visibility::Visible || actorAt(t, m.get())) continue;
+                const auto tile = worldToScreen(t.x, t.y);
+                const float sway = std::sin(now * 2.f + i * 1.7f) * kTileSize * 0.06f;
+                static constexpr const char* kTentacles[]{"dcss/kraken_tentacle1.png", "dcss/kraken_tentacle2.png", "dcss/kraken_tentacle3.png",
+                    "dcss/kraken_tentacle4.png", "dcss/kraken_tentacle5.png", "dcss/kraken_tentacle6.png"};
+                sprites_.draw(window_, {kTentacles[i], sf::IntRect({0, 0}, {32, 32})}, {tile.x + sway, tile.y}, kTileSize,
+                              sf::Color(150, 185, 180), kReach[i].x > 0);
+            }
+        }
         drawActorShadow(screenPos);
         const MonsterLook look = monsterLook(*m);
         // Sized relative to a 32px character frame, so the 48px minotaur

@@ -138,10 +138,11 @@ void Application::reviveInTown() {
     log("Revived in town. Extra lives left: ",extraLives_,". Return leads to the floor entrance.");
 }
 
-void Application::returnToTown() {
+void Application::returnToTown(bool byStairs) {
     if (mode_!=GameMode::Playing) return;
     if (trial_) { exitTrial(); return; }
-    if (dangerNearby() || quietTurns_<10 || combatThisTurn_) {
+    if (byStairs && (dangerNearby() || combatThisTurn_)) { log("Stairs are unsafe while enemies, warnings or harmful effects are present."); return; }
+    if (!byStairs && (dangerNearby() || quietTurns_<10 || combatThisTurn_)) {
         log("Waystone needs 10 quiet turns. Progress: ",quietTurns_,"/10. R: wait safely."); return;
     }
     cancelTargeting(); inventoryOpen_=false; vaultMenu_=0; shrineMenu_=false; exitMenu_=false; restTurns_=0;
@@ -153,7 +154,7 @@ void Application::returnToTown() {
 bool Application::interactStairs() {
     if (trial_ && sameTile(player_.position(),floorEntrance_)) { exitTrial(); return true; }
     if (sameTile(player_.position(),floorEntrance_)) {
-        if (currentFloor_==1) returnToTown();
+        if (currentFloor_==1 || currentFloor_==kCathedralFirst) returnToTown(currentFloor_==kCathedralFirst);
         else travelFloor(currentFloor_-1);
         return true;
     }
@@ -163,7 +164,10 @@ bool Application::interactStairs() {
 
 void Application::travelFloor(int destination,bool fromTown,bool falling) {
     if(fromTown && mode_!=GameMode::Town) return;
-    if(destination<1 || destination>kRunFinalFloor) return;
+    // The Cathedral's last stairs, and its first, lead back to town.
+    if(!fromTown && currentFloor_==kCathedralLast && destination==kCathedralLast+1) { returnToTown(true); if (mode_==GameMode::Town) log("You climb out of the Drowned Cathedral."); return; }
+    if(destination<1 || destination>kMaxFloorId) return;
+    if(cathedralFloor(destination) && !cathedralOpen()) { log("The Drowned Cathedral is sealed. Slay the Goblin Warlord to open it."); return; }
     if(destination==currentFloor_) {
         if(fromTown) { dungeonMenu_=false; handleTownKey(sf::Keyboard::Key::D); }
         return;
@@ -180,7 +184,7 @@ void Application::travelFloor(int destination,bool fromTown,bool falling) {
     if (found==floorCache_.end()) {
         currentFloor_=destination; mode_=GameMode::Playing; dungeonMenu_=false;
         regenerateLevel(std::random_device{}());
-        log("Entered ",dungeonName(dungeonIndex(currentFloor_))," depth ",(currentFloor_-1)%10+1,". G: stairs; H: Waystone after 10 quiet turns.");
+        log("Entered ",dungeonName(dungeonIndex(currentFloor_))," depth ",floorInDungeon(currentFloor_),". G: stairs; H: Waystone after 10 quiet turns.");
         return;
     }
     const auto& floor=found->second;
@@ -209,7 +213,7 @@ void Application::travelFloor(int destination,bool fromTown,bool falling) {
 
 // Chasms drop you a floor, except in a trial arena or from the very bottom.
 bool Application::canFall() const {
-    return !trial_ && mode_ == GameMode::Playing && currentFloor_ < kRunFinalFloor;
+    return !trial_ && mode_ == GameMode::Playing && (currentFloor_ < kRunFinalFloor || (cathedralFloor(currentFloor_) && currentFloor_ < kCathedralLast));
 }
 
 // Knocked into a chasm: you land hard somewhere on the floor below. The fall
@@ -270,7 +274,7 @@ void Application::handleTownKey(sf::Keyboard::Key key) {
     if(trialMenu_) { handleTrialMenuKey(key); return; }
     if(key==sf::Keyboard::Key::Y) { openAscendancy(); return; }
     if(key==sf::Keyboard::Key::M) {
-        dungeonMenu_=true; dungeonSelection_=dungeonIndex(currentFloor_); dungeonDepth_=(currentFloor_-1)%10+1; return;
+        dungeonMenu_=true; dungeonSelection_=dungeonIndex(currentFloor_); dungeonDepth_=floorInDungeon(currentFloor_); return;
     }
     if (key==sf::Keyboard::Key::Escape) {
         if (merchantOpen_) merchantOpen_=false; else window_.close();
@@ -426,10 +430,14 @@ void Application::renderMerchant() {
 
 void Application::handleDungeonKey(sf::Keyboard::Key key) {
     if(key==sf::Keyboard::Key::Escape || key==sf::Keyboard::Key::M) { dungeonMenu_=false; return; }
-    if(key==sf::Keyboard::Key::Up || key==sf::Keyboard::Key::Down) dungeonSelection_=1-dungeonSelection_;
+    if(key==sf::Keyboard::Key::Up || key==sf::Keyboard::Key::Down) {
+        const int count=3;
+        dungeonSelection_=(dungeonSelection_+(key==sf::Keyboard::Key::Down?1:count-1))%count;
+    }
+    dungeonDepth_=std::clamp(dungeonDepth_,1,dungeonLength(dungeonSelection_));
     if(key==sf::Keyboard::Key::Left) dungeonDepth_=std::max(1,dungeonDepth_-1);
-    if(key==sf::Keyboard::Key::Right) dungeonDepth_=std::min(10,dungeonDepth_+1);
-    if(key==sf::Keyboard::Key::Enter) travelFloor(dungeonSelection_*10+dungeonDepth_,true);
+    if(key==sf::Keyboard::Key::Right) dungeonDepth_=std::min(dungeonLength(dungeonSelection_),dungeonDepth_+1);
+    if(key==sf::Keyboard::Key::Enter) travelFloor(dungeonFirstFloor(dungeonSelection_)+dungeonDepth_-1,true);
 }
 
 void Application::handleDungeonMouse(const sf::Event& event) {
@@ -438,8 +446,8 @@ void Application::handleDungeonMouse(const sf::Event& event) {
     const auto point=sf::Vector2f(click->position);
     if(kDungeonBack.contains(point)) { handleDungeonKey(sf::Keyboard::Key::Escape); return; }
     if(kDungeonEnter.contains(point)) { handleDungeonKey(sf::Keyboard::Key::Enter); return; }
-    for(int i=0;i<2;++i) if(dungeonCard(i).contains(point)) { dungeonSelection_=i; return; }
-    for(int depth=1;depth<=10;++depth) if(depthCard(depth).contains(point)) { dungeonDepth_=depth; return; }
+    for(int i=0;i<3;++i) if(dungeonCard(i).contains(point)) { dungeonSelection_=i; dungeonDepth_=std::clamp(dungeonDepth_,1,dungeonLength(i)); return; }
+    for(int depth=1;depth<=dungeonLength(dungeonSelection_);++depth) if(depthCard(depth).contains(point)) { dungeonDepth_=depth; return; }
 }
 
 void Application::renderDungeonSelection() {
@@ -448,40 +456,43 @@ void Application::renderDungeonSelection() {
     ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(140,135,130));
     ui_.heading(window_,"Choose your descent",{40,16},32);
     ui_.text(window_,"Pick a dungeon and a depth. Arrows also work; Enter descends, Esc returns to town.",{40,70},15,ui::kMuted);
-    const char* descriptions[]{"Barracks, a ruined sanctum and the crypts. The Goblin Warlord waits at depth 5, the Lich at depth 10.",
-                               "Undead legions beyond the broken seal. The final Lich waits at depth 10."};
-    const char* icons[]{"relic-blade","skull-crossed-bones"};
-    for(int i=0;i<2;++i) {
+    const char* descriptions[]{"Barracks, a ruined sanctum and the crypts. The Warlord at depth 5, the Lich at 10.",
+                               "Undead legions beyond the broken seal. The final Lich waits at depth 10.",
+                               cathedralOpen()?"A sunken church, as deadly as Ruins 7-12. The Sleeper Below waits at depth 6.":
+                                               "Sealed. Slay the Goblin Warlord to open it."};
+    const char* icons[]{"relic-blade","skull-crossed-bones","eclipse"};
+    for(int i=0;i<3;++i) {
         const auto r=dungeonCard(i);
         const bool active=i==dungeonSelection_;
         ui_.inset(window_,r,active?ui::kGold:hovered(r)?ui::kBronze:sf::Color::Transparent);
         const sf::FloatRect art{{r.position.x+16,r.position.y+16},{118,118}};
         ui_.inset(window_,art);
         ui_.icon(window_,icons[i],{{art.position.x+16,art.position.y+16},{86,86}},active?ui::kGold:ui::kMuted);
-        ui_.text(window_,dungeonName(i),{r.position.x+152,r.position.y+16},26,active?ui::kGold:ui::kText,ui::Font::Title);
-        ui_.text(window_,"Levels "+std::to_string(i*10+1)+" to "+std::to_string(dungeonMaximum(i)),{r.position.x+152,r.position.y+52},16,ui::kText,ui::Font::Bold);
+        ui_.text(window_,dungeonName(i),{r.position.x+152,r.position.y+19},19,active?ui::kGold:ui::kText,ui::Font::Title);
+        ui_.text(window_,std::to_string(dungeonLength(i))+" floors",{r.position.x+152,r.position.y+52},16,
+            i==2 && !cathedralOpen()?ui::kBad:ui::kText,ui::Font::Bold);
         float y=r.position.y+80;
         ui_.paragraph(window_,descriptions[i],r.position.x+152,y,r.size.x-170,15,ui::kMuted);
     }
     ui_.text(window_,"Depth",{40,272},20,ui::kGold,ui::Font::Title);
-    for(int depth=1;depth<=10;++depth) {
+    for(int depth=1;depth<=dungeonLength(dungeonSelection_);++depth) {
         const auto r=depthCard(depth);
-        const int floor=dungeonSelection_*10+depth;
+        const int floor=dungeonFirstFloor(dungeonSelection_)+depth-1;
         const bool visited=floor==currentFloor_ || floorCache_.count(floor);
         ui_.inset(window_,r,depth==dungeonDepth_?ui::kGold:hovered(r)?ui::kBronze:sf::Color::Transparent);
         ui_.textCentered(window_,std::to_string(depth),{{r.position.x,r.position.y+6},{r.size.x,44}},32,
             depth==dungeonDepth_?ui::kGold:ui::kText,ui::Font::Title);
-        if(depth==5 || depth==10)
+        if(floor==5 || floor==10 || floor==kRunFinalFloor || floor==kCathedralLast)
             ui_.icon(window_,"skull-crossed-bones",{{r.position.x+r.size.x-24,r.position.y+6},{18,18}},sf::Color(200,70,60));
         if(visited) ui_.textCentered(window_,floor==currentFloor_?"you are here":"visited",{{r.position.x,r.position.y+52},{r.size.x,20}},13,ui::kGood);
     }
-    const int destination=dungeonSelection_*10+dungeonDepth_;
+    const int destination=dungeonFirstFloor(dungeonSelection_)+std::clamp(dungeonDepth_,1,dungeonLength(dungeonSelection_))-1;
     const bool visited=destination==currentFloor_ || floorCache_.count(destination);
     float y=410;
     ui_.text(window_,std::string(dungeonName(dungeonSelection_))+", depth "+std::to_string(dungeonDepth_),{40,y},22,ui::kGold,ui::Font::Title);
     y+=36;
-    ui_.text(window_,"Your level "+std::to_string(player_.level())+", depth level "+std::to_string(destination),{40,y},17,
-        player_.level()<destination?ui::kBad:ui::kText,ui::Font::Bold);
+    ui_.text(window_,"Your level "+std::to_string(player_.level())+", depth level "+std::to_string(floorDepth(destination)),{40,y},17,
+        player_.level()<floorDepth(destination)?ui::kBad:ui::kText,ui::Font::Bold);
     y+=28;
     ui_.paragraph(window_,visited?"Visited: enemies and loot stay exactly as you left them. Nothing respawns.":
         "A new floor, generated once. Entering doesn't heal you or take a turn.",40,y,1180,16,ui::kText);

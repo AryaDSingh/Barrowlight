@@ -128,3 +128,18 @@ assets/sprites/siegmund/
   commissioned by OpenGameArt; wall tiles modified from Redshrike's 16x16 indoor tileset.
   CC-BY 3.0 (https://creativecommons.org/licenses/by/3.0/)
   https://opengameart.org/content/16x16-pixel-art-dungeon-wall-and-cobblestone-floor-tiles
+
+assets/sprites/dcss/
+  Tiles from Dungeon Crawl Stone Soup ("Dungeon Crawl 32x32 tiles", crawl-tiles
+  Oct-5-2010, maintained by Chris Hamons; many artists, see the original pack's
+  FilteredList.txt). CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)
+  https://opengameart.org/content/dungeon-crawl-32x32-tiles
+  (kraken head and tentacles, electric eel, phantom, blue fountain; unmodified)
+  Downloaded 2026-10-03 for the Drowned Cathedral.
+
+assets/sprites/stainedglass/
+  "10 pixel art stained glass windows" by darkagegames -- CC-BY 3.0
+  (https://creativecommons.org/licenses/by/3.0/)
+  https://opengameart.org/content/10-pixel-art-stained-glass-windows
+  (seven of the ten windows, renamed to lower case; art unmodified)
+  Downloaded 2026-10-03 for the Drowned Cathedral.

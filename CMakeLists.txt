@@ -703,6 +703,14 @@ target_include_directories(application_rewards_test PRIVATE src)
 target_compile_features(application_rewards_test PRIVATE cxx_std_17)
 target_link_libraries(application_rewards_test PRIVATE SFML::Graphics SFML::Audio)
 
+# The playtest bot: whole runs played by a simple bot, with a report. Not a
+# test (it takes minutes); run it on demand: build/bin/Debug/playtest_bot.
+add_executable(playtest_bot tests/playtest_bot.cpp ${APPLICATION_TEST_SOURCES})
+target_include_directories(playtest_bot PRIVATE src)
+target_compile_features(playtest_bot PRIVATE cxx_std_17)
+target_link_libraries(playtest_bot PRIVATE SFML::Graphics SFML::Audio)
+target_compile_definitions(playtest_bot PRIVATE ROGUELIKE_SILENT)
+
 # Tests run silently: no sound effects or music while they play the game.
 get_property(ALL_TARGETS DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
 foreach(target ${ALL_TARGETS})

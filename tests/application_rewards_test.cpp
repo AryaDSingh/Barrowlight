@@ -595,6 +595,11 @@ struct ApplicationRewardsTestAccess {
             w->tactics.alert=8;
             app.placeBraziers({14,10},{{1,0}});
             check(app.propIndexAt(15,10)>=0,"Boss rooms get braziers");
+            app.setSurface({14,13},SurfaceType::Water,0);
+            app.placeBraziers({14,10},{{0,3}});
+            check(app.surfaceAt({14,13})==SurfaceType::None && saveGame(app.captureState(),(output/"brazier-puddle.txt").string()) &&
+                  loadGame((output/"brazier-puddle.txt").string()).has_value(),
+                  "A brazier placed on a puddle clears it, so the save stays valid (found by the playtest bot)");
             app.player_.setPosition({18,10}); app.updateFieldOfView();
             check(app.bossSurfaceAction(*w) && app.propIndexAt(15,10)<0 && app.surfaceAt({16,10})==SurfaceType::Fire && app.surfaceAt({17,10})==SurfaceType::Fire,
                   "The Warlord kicks a lit brazier at you, scattering coals in a line");
@@ -872,6 +877,105 @@ struct ApplicationRewardsTestAccess {
             check(app.currentFloor_==floor+1 && app.player_.stats().hp>=1 && !app.pendingFall_ && app.map_.isWalkable(app.player_.position().x,app.player_.position().y),
                   "...and land on the floor below, hurt but never killed by the fall");
             app.trial_=0; app.pendingFall_=false;
+        }
+
+        // The Drowned Cathedral: a sealed side dungeon of six floors.
+        setup(PlayerClass::Warrior);
+        {
+            app.player_.stats().hp=app.player_.stats().maxHp=400;
+            app.mode_=GameMode::Town; app.player_.trialKeys=0;
+            app.travelFloor(kCathedralFirst,true);
+            check(app.mode_==GameMode::Town,"The Cathedral stays sealed until the Warlord falls");
+            app.player_.trialKeys=1;
+            app.travelFloor(kCathedralFirst,true);
+            check(app.mode_==GameMode::Playing && app.currentFloor_==kCathedralFirst && std::string(floorTheme(app.currentFloor_).name)=="Drowned Cathedral",
+                  "The Warlord's sigil opens the Drowned Cathedral");
+            check(floorDepth(kCathedralFirst)==7 && floorDepth(kCathedralLast)==12 && floorInDungeon(kCathedralLast)==6,
+                  "Its six floors are as deep as Ruins 7 to 12");
+            int water=0;
+            for (int y=0;y<app.map_.height();++y) for (int x=0;x<app.map_.width();++x) water+=app.surfaceAt({x,y})==SurfaceType::Water;
+            check(water>=40,"The Cathedral's floors stand in water");
+            bool natives=false;
+            for (const auto& m:app.monsters_) natives=natives || m->type()==MonsterType::DeepLurker || m->type()==MonsterType::DrownedChorister;
+            check(natives,"Deep Lurkers and Drowned Choristers live there");
+            {
+                // Stage the Cathedral's creatures in view for the screenshot.
+                const auto me=app.player_.position();
+                std::vector<Position> open;
+                for (int dy=-3;dy<=3;++dy) for (int dx=-3;dx<=3;++dx) {
+                    const Position p{me.x+dx,me.y+dy};
+                    if ((dx||dy) && app.map_.isWalkable(p.x,p.y) && !app.isOccupied(p,nullptr)) open.push_back(p);
+                }
+                std::sort(open.begin(),open.end(),[&](Position a,Position b){ return std::abs(a.x-me.x)+std::abs(a.y-me.y)<std::abs(b.x-me.x)+std::abs(b.y-me.y); });
+                for (std::size_t i=0;i<open.size() && i<2;++i) {
+                    auto m=createMonster(i?MonsterType::DrownedChorister:MonsterType::DeepLurker,open[i*2]);
+                    app.monsters_.push_back(std::move(m));
+                }
+                app.updateFieldOfView();
+            }
+            snapshot("ui-cathedral.png");
+            app.mode_=GameMode::Town; app.dungeonMenu_=true; app.dungeonSelection_=2; app.dungeonDepth_=1; snapshot("ui-dungeon-cathedral.png");
+            app.dungeonMenu_=false; app.mode_=GameMode::Playing;
+            app.player_.statusEffects().active().clear(); app.updateFieldOfView();
+            app.combatThisTurn_=false;
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.clearSurfaces();
+
+            // A Deep Lurker drags you into the water.
+            for (int y=9;y<=11;++y) for (int x=10;x<=17;++x) { app.map_.setTile(x,y,Tile{TileType::Floor,true,true}); }
+            app.setProps({});
+            for (int x=12;x<=13;++x) app.setSurface({x,10},SurfaceType::Water,0);
+            app.player_.setPosition({11,10}); app.updateFieldOfView();
+            auto lurker=createMonster(MonsterType::DeepLurker,{12,10}); auto* l=lurker.get();
+            app.scheduler_.add(*l); app.monsters_.push_back(std::move(lurker));
+            AIDecision bite; bite.type=AIActionType::Attack; bite.target=&app.player_; bite.attackPower=1;
+            app.executeAIDecision(*l,bite,0);
+            check(l->position().x==13 && app.player_.position().x==12,"A Deep Lurker sinks back into the water and drags you in after it");
+            // A Chorister's hymn charges the pool you stand in.
+            auto singer=createMonster(MonsterType::DrownedChorister,{16,10}); auto* c=singer.get();
+            app.scheduler_.add(*c); app.monsters_.push_back(std::move(singer));
+            AIDecision hymn; hymn.type=AIActionType::Attack; hymn.target=&app.player_; hymn.attackPower=1; hymn.scalingStat=ScalingStat::Intelligence;
+            app.executeAIDecision(*c,hymn,0);
+            check(app.surfaceAt({12,10})==SurfaceType::Electrified,"A Drowned Chorister's hymn charges the water you stand in");
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.clearSurfaces(); app.player_.statusEffects().active().clear();
+
+            // The Sleeper Below, on the last floor.
+            app.floorCache_.clear(); app.currentFloor_=kCathedralLast; app.regenerateLevel(77);
+            check(app.boss_ && app.boss_->type()==MonsterType::TheSleeper && app.surfaceAt(app.boss_->position())==SurfaceType::Water,
+                  "The Sleeper Below waits on the sixth floor, in a pool of black water");
+            auto* sleeper=dynamic_cast<Monster*>(app.boss_);
+            sleeper->tactics.alert=8;
+            const Position near{sleeper->position().x-3,sleeper->position().y};
+            if (app.map_.isWalkable(near.x,near.y)) app.player_.setPosition(near);
+            app.updateFieldOfView();
+            snapshot("ui-sleeper.png");
+            bool flooded=false, warned=false, charged=false;
+            for (int turn=0;turn<7;++turn) {
+                const auto before=app.logTotal_;
+                app.bossSurfaceAction(*sleeper);
+                for (std::size_t i=app.logMessages_.size()-std::min(app.logMessages_.size(),app.logTotal_-before);i<app.logMessages_.size();++i) {
+                    flooded=flooded || app.logMessages_[i].find("wells up")!=std::string::npos;
+                    warned=warned || app.logMessages_[i].find("will be charged")!=std::string::npos;
+                    charged=charged || app.logMessages_[i].find("races through the water")!=std::string::npos;
+                }
+            }
+            check(flooded && warned && charged,"It floods the room, warns you, then charges the water");
+            sleeper->stats().hp=sleeper->stats().maxHp/2;
+            const auto before=app.monsters_.size();
+            app.bossSurfaceAction(*sleeper);
+            check(app.monsters_.size()==before+2,"Badly hurt, it calls the Drowned");
+            app.player_.patron=static_cast<int>(Patron::Sleeper); app.player_.favor=40;
+            const auto drops=app.groundItems_.size();
+            sleeper->stats().hp=0; app.checkAndHandleDeath(*sleeper); app.removeDeadMonsters();
+            for (auto& m:app.monsters_) { m->stats().hp=0; app.scheduler_.remove(*m); }
+            app.removeDeadMonsters(); app.player_.statusEffects().active().clear(); app.combatThisTurn_=false; app.updateFieldOfView();
+            check(app.groundItems_.size()>drops && app.player_.patron==0,"Slain, it drops a unique, and its faithful lose their god");
+            app.player_.position(); app.travelFloor(kCathedralLast+1);
+            check(app.mode_==GameMode::Town,"The Cathedral's last stairs lead back to town");
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.boss_=nullptr; app.mode_=GameMode::Playing; app.floorCache_.clear();
+            app.currentFloor_=1; app.regenerateLevel(1); app.player_.trialKeys=0;
         }
 
         // Hybrid trees open with five ranks in each parent tree.

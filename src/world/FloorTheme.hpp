@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include "entities/RunProgression.hpp"
 
 namespace engine {
 enum class FloorRegion { Barracks, Sanctum, Crypts };
@@ -14,6 +15,9 @@ struct FloorTheme {
 
 // Derived from the already-saved floor number; no extra save state or RNG.
 inline FloorTheme floorTheme(int floor) {
+    if (cathedralFloor(floor)) return {FloorRegion::Crypts,"Drowned Cathedral",
+        "A sunken church. Black water fills its naves, and something below still sings.",
+        {30,52,60},{50,82,90},{90,200,190}};
     if (floor<=3) return {FloorRegion::Barracks,"Barracks",
         "Warm stone halls. Patrols guard the route below.",
         {62,48,42},{111,91,72},{190,65,45}};

@@ -45,7 +45,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 34;
+constexpr int kSaveFormatVersion = 35;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -101,7 +101,7 @@ bool validItems(const SaveGameState& state) {
     }
     const int guardCount=static_cast<int>(std::count_if(state.monsters.begin(),state.monsters.end(),[](const auto& m){return m.vaultGuard;}));
     if (state.vaultExists) {
-        if (state.currentFloor<3 || state.currentFloor==5 || state.currentFloor==10 || state.currentFloor==kRunFinalFloor ||
+        if (state.currentFloor<3 || state.currentFloor==5 || state.currentFloor==10 || state.currentFloor==kRunFinalFloor || state.currentFloor==kCathedralLast ||
             !state.map.isWalkable(state.vaultCenter.x,state.vaultCenter.y) ||
             !state.map.inBounds(state.vaultEntrance.x,state.vaultEntrance.y) ||
             state.map.isWalkable(state.vaultEntrance.x,state.vaultEntrance.y)!=state.vaultOpened ||
@@ -189,7 +189,7 @@ bool validProgression(const SaveGameState& s) {
         if (!known.count(id) || !bound.insert(id).second || (d && d->ranks[0].passive)) return false;
     }
     std::unordered_set<int> spent;
-    for (int floor:s.deathlessSpentFloors) if (floor<1 || floor>kRunFinalFloor || !spent.insert(floor).second) return false;
+    for (int floor:s.deathlessSpentFloors) if (floor<1 || floor>kMaxFloorId || !spent.insert(floor).second) return false;
     if (s.unspentAttributePoints<0 || s.unspentAttributePoints>2*(s.playerLevel-1)) return false;
     if (s.pendingFinalVictory && (s.currentFloor!=kRunFinalFloor || s.defeatedBossName.empty())) return false;
     return true;
@@ -279,7 +279,7 @@ bool readStatusEffects(std::istream& in, std::vector<StatusEffectInstance>& effe
 // kSaveFormatVersion.
 static bool writeSaveState(std::ostream& out, const SaveGameState& state, int depth=0, int version=kSaveFormatVersion) {
     if (state.extraLives<0 || state.extraLives>2 || (!state.adventureMode && state.extraLives!=0)) return false;
-    if (!validDungeonLevels(state.dungeonLevels) || !validItems(state) || !validProgression(state) || state.savedFloors.size()>=kRunFinalFloor ||
+    if (!validDungeonLevels(state.dungeonLevels) || !validItems(state) || !validProgression(state) || state.savedFloors.size()>=kMaxFloorId ||
         (depth>0 && !state.savedFloors.empty())) return false;
 
     out << "ROGUELIKE_SAVE " << version << '\n';
@@ -409,7 +409,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 33 && version != 32 && version != 31 && version != 30 && version != 29 && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
+    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 34 && version != 33 && version != 32 && version != 31 && version != 30 && version != 29 && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
         return std::nullopt;
     }
 
@@ -457,12 +457,12 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
     if (!(in >> state.playerLevel >> state.playerXp) || state.playerLevel < 1 || state.playerLevel > kRunMaxLevel || state.playerXp < 0) {
         return std::nullopt;
     }
-    if (!(in >> state.currentFloor) || state.currentFloor < 1 || state.currentFloor > kRunFinalFloor ||
+    if (!(in >> state.currentFloor) || state.currentFloor < 1 || state.currentFloor > kMaxFloorId ||
         !state.map.isWalkable(state.playerPosition.x, state.playerPosition.y)) {
         return std::nullopt;
     }
     if (version>=26 && (!(in>>state.trial>>state.trialReturnFloor) || state.trial<0 || state.trial>kTrialCount ||
-        (state.trial && (state.trialReturnFloor<1 || state.trialReturnFloor>kRunFinalFloor)) || (!state.trial && state.trialReturnFloor)))
+        (state.trial && (state.trialReturnFloor<1 || state.trialReturnFloor>kMaxFloorId)) || (!state.trial && state.trialReturnFloor)))
         return std::nullopt;
     if (!(in >> state.playerStats.hp >> state.playerStats.maxHp >> state.playerStats.mana >>
           state.playerStats.maxMana >> state.playerStats.strength >>
@@ -492,7 +492,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         int isBoss = 0;
         int tier = 0;
         if (!(in >> type >> m.position.x >> m.position.y >> m.hp >> m.maxHp >> isBoss >> tier >> m.rewardsEligible) ||
-            tier < 0 || tier > 2 || type < 0 || type > static_cast<int>(version>=31?MonsterType::DrownedOne:version>=22?MonsterType::FrostAcolyte:version>=16?MonsterType::OssuaryWarden:MonsterType::Skeleton) ||
+            tier < 0 || tier > 2 || type < 0 || type > static_cast<int>(version>=35?MonsterType::TheSleeper:version>=31?MonsterType::DrownedOne:version>=22?MonsterType::FrostAcolyte:version>=16?MonsterType::OssuaryWarden:MonsterType::Skeleton) ||
             !state.map.isWalkable(m.position.x, m.position.y) || m.maxHp <= 0 || m.hp <= 0 || m.hp > m.maxHp) {
             return std::nullopt;
         }
@@ -613,7 +613,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
     if (version>=14) {
         std::size_t count=0;
         if (!(in>>state.floorEntrance.x>>state.floorEntrance.y>>state.floorExit.x>>state.floorExit.y
-            >>state.inTown>>state.gold>>state.quietTurns>>count) || count>=kRunFinalFloor || (depth>0 && count) ||
+            >>state.inTown>>state.gold>>state.quietTurns>>count) || count>=kMaxFloorId || (depth>0 && count) ||
             state.gold<0 || state.gold>100000000 || state.quietTurns<0 || state.quietTurns>10 ||
             !state.map.isWalkable(state.floorEntrance.x,state.floorEntrance.y) ||
             (!state.trial && state.currentFloor<10 && !state.map.isWalkable(state.floorExit.x,state.floorExit.y))) return std::nullopt;
@@ -637,7 +637,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
     }
     if (version>=15) {
         std::size_t spent=0;
-        if (!(in>>state.bloodRelic>>state.animationRelic>>spent) || spent>kRunFinalFloor) return std::nullopt;
+        if (!(in>>state.bloodRelic>>state.animationRelic>>spent) || spent>kMaxFloorId) return std::nullopt;
         for (std::size_t i=0;i<spent;++i) { int floor; if (!(in>>floor)) return std::nullopt; state.deathlessSpentFloors.push_back(floor); }
     } else {
         state.bloodRelic=state.currentFloor>5 || (state.currentFloor==5 && std::none_of(state.monsters.begin(),state.monsters.end(),[](const auto& m){return m.type==MonsterType::GoblinWarlord && m.isBoss;}));
@@ -662,7 +662,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
     if(version<20) {
         // Undo the old integer HP multiplier, then apply depth scaling once.
         // Nested floor snapshots pass through this reader independently.
-        const int index=dungeonIndex(state.currentFloor);
+        const int index=std::min(1,dungeonIndex(state.currentFloor));
         const int oldBonus=version==19?std::max(0,state.dungeonLevels[index]-dungeonMinimum(index)):0;
         const int oldFactor=100+8*oldBonus;
         const int newFactor=100+8*dungeonDepthBonus(state.currentFloor);
@@ -705,9 +705,10 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         if (!(in>>count) || count>static_cast<std::size_t>(state.map.width()*state.map.height())) return std::nullopt;
         for (std::size_t i=0;i<count;++i) {
             int x=0,y=0,type=0,turns=0;
-            if (!(in>>x>>y>>type>>turns) || !state.map.inBounds(x,y) || !state.map.isWalkable(x,y) ||
+            if (!(in>>x>>y>>type>>turns) || !state.map.inBounds(x,y) ||
                 type<1 || type>(version>=30 ? kSurfaceTypeMax : 5) || turns<0 || turns>50) return std::nullopt;
-            state.surfaces.push_back({x,y,type,turns});
+            // Older saves could hold a puddle under a boss-room brazier; drop it.
+            if (state.map.isWalkable(x,y)) state.surfaces.push_back({x,y,type,turns});
         }
         if (!(in>>count) || count>1000) return std::nullopt;
         for (std::size_t i=0;i<count;++i) {

@@ -29,6 +29,14 @@ void Application::onBossDefeated(const Monster& boss) {
     if (boss.type() == MonsterType::GoblinWarlord && !(player_.trialKeys & 1)) {
         player_.trialKeys |= 1;
         log("The Warlord drops the ", trialSigil(1), "! It opens the ", trialName(1), " at the obelisk in town.");
+    } else if (boss.type() == MonsterType::TheSleeper) {
+        log("The Sleeper Below sinks into the dark water, and the Cathedral falls silent.");
+        grantUnique(boss.position());
+        if (patron() == Patron::Sleeper) {
+            log("You have slain the god you swore yourself to. Its favor is gone with it.");
+            player_.patron = 0; player_.favor = 0;
+        }
+        log("Its stairs lead back to town.");
     } else if (boss.type() == MonsterType::Lich && !(player_.trialKeys & 2)) {
         player_.trialKeys |= 2;
         log("The Lich drops the ", trialSigil(2), "! It opens the ", trialName(2), " at the obelisk in town.");

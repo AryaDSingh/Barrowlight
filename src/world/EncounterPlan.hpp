@@ -18,20 +18,30 @@ struct EncounterSpawn {
 
 // Layout-derived choices never consume combat or loot RNG. Packs are placed
 // atomically, away from the entrance; rare/unique upgrades share the floor budget.
-inline std::vector<EncounterSpawn> planEncounters(const GeneratedDungeon& dungeon, int floor) {
+inline std::vector<EncounterSpawn> planEncounters(const GeneratedDungeon& dungeon, int floorId) {
     std::vector<EncounterSpawn> result;
+    const bool cathedral=cathedralFloor(floorId);
+    const int floor=floorDepth(floorId); // difficulty follows depth
     int budget=23+4*(std::clamp(floor,1,20)-1);
     int elitesLeft=floor>=7?2:floor>=3?1:0;
     bool rarePlaced=false, uniquePlaced=false;
     if (dungeon.hasVault) { budget-=7; elitesLeft=std::max(0,elitesLeft-1); }
-    const auto region=floorTheme(floor).region;
+    const auto region=floorTheme(floorId).region;
     for (std::size_t i=0;i<dungeon.otherRoomCenters.size();++i) {
         const Position center=dungeon.otherRoomCenters[i];
         const bool crypt=region==FloorRegion::Crypts;
         std::vector<MonsterType> pack;
         int cost=0;
         bool dangerous=false;
-        if (crypt) {
+        if (cathedral) {
+            switch(i%5) {
+                case 0: pack={MonsterType::DrownedOne,MonsterType::DeepLurker,MonsterType::DrownedChorister}; cost=12; break;
+                case 1: pack={MonsterType::DeepLurker,MonsterType::DeepLurker,MonsterType::FrostAcolyte}; cost=11; break;
+                case 2: pack={MonsterType::DrownedChorister,MonsterType::DrownedOne,MonsterType::Gloomstalker}; cost=12; break;
+                case 3: pack={MonsterType::DrownedOne,MonsterType::DrownedOne,MonsterType::DrownedChorister}; cost=12; break;
+                default: pack={MonsterType::CryptShade,MonsterType::DeepLurker,MonsterType::GraveMender}; cost=11; break;
+            }
+        } else if (crypt) {
             switch(i%6) {
                 case 5: pack={MonsterType::DrownedOne,MonsterType::Gloomstalker,MonsterType::DrownedOne}; cost=12; break;
                 case 0: pack={MonsterType::CryptSentinel,MonsterType::SkeletonArcher,MonsterType::GraveMender}; cost=12; break;

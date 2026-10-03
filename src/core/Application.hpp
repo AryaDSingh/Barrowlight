@@ -139,6 +139,7 @@ private:
 
     friend struct ApplicationTargetingTestAccess;
     friend struct ApplicationRewardsTestAccess;
+    friend struct PlaytestBot;
 
     void scaleDeepMonster(Monster& monster,int floor);
     void configureMinion(Monster& monster,int rank,int intelligence);
@@ -373,8 +374,9 @@ private:
     bool dangerNearby() const;
     void recordQuietTurn();
     void startRest();
-    void returnToTown();
+    void returnToTown(bool byStairs=false); // the stairs need no quiet turns, only no danger
     void travelFloor(int destination,bool fromTown=false,bool falling=false);
+    bool cathedralOpen() const { return (player_.trialKeys & 1) != 0; } // the Warlord's sigil opens it
     bool interactStairs();
     void handleTownKey(sf::Keyboard::Key key);
     void handleTownMouse(const sf::Event& event);
@@ -685,6 +687,7 @@ private:
     // as new ones are appended. Deque specifically for cheap pop_front();
     // this is never indexed randomly, only iterated front-to-back.
     std::deque<std::string> logMessages_;
+    std::size_t logTotal_ = 0; // every message ever logged (the deque keeps only the latest)
     static constexpr std::size_t kMaxLogMessages = 60; // scrollback for the log panel
 
     // Direction of the player's last successful move -- Blink teleports

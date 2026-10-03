@@ -27,16 +27,21 @@ Player makePlayer() {
 } // namespace
 
 int main() {
-    // --- xpForNextLevel: 20 * currentLevel.
-    check(xpForNextLevel(1) == 20, "xpForNextLevel(1) == 20");
-    check(xpForNextLevel(2) == 40, "xpForNextLevel(2) == 40");
-    check(xpForNextLevel(9) == 180, "xpForNextLevel(9) == 180 (the step from 9 to 10)");
+    // --- xpForNextLevel: 20 * level + 1.5 * level squared (rounded down).
+    check(xpForNextLevel(1) == 21, "xpForNextLevel(1) == 21");
+    check(xpForNextLevel(2) == 46, "xpForNextLevel(2) == 46");
+    check(xpForNextLevel(9) == 301, "xpForNextLevel(9) == 301 (the step from 9 to 10)");
+    {
+        int total = 0;
+        for (int level = 1; level < 20; ++level) total += xpForNextLevel(level);
+        check(total > 7000 && total < 8000, "about 7,500 XP from level 1 to 20 (was 3,800)");
+    }
 
     // --- grantXp: a small grant that doesn't cross a threshold.
     {
         Player player = makePlayer();
         grantXp(player, 5);
-        check(player.level() == 1, "5 XP (below the 20 needed) doesn't level up");
+        check(player.level() == 1, "5 XP (below the 21 needed) doesn't level up");
         check(player.xp() == 5, "5 XP is tracked as progress toward level 2");
         check(player.stats().maxHp == 30, "maxHp unchanged without a level-up");
         check(player.unspentAttributePoints() == 0, "no attribute points without a level-up");
@@ -51,8 +56,8 @@ int main() {
     // does.
     {
         Player player = makePlayer();
-        grantXp(player, 20);
-        check(player.level() == 2, "exactly 20 XP triggers the level 1 -> 2 level-up");
+        grantXp(player, 21);
+        check(player.level() == 2, "exactly 21 XP triggers the level 1 -> 2 level-up");
         check(player.xp() == 0, "no leftover XP after an exact-threshold grant");
         check(player.stats().maxHp == 31, "maxHp grew by 1 on level-up (30 -> 31)");
         check(player.stats().maxMana == 20,
@@ -66,21 +71,21 @@ int main() {
     // --- grantXp: a grant with leftover XP carrying into the new level.
     {
         Player player = makePlayer();
-        grantXp(player, 25);
-        check(player.level() == 2, "25 XP still only reaches level 2 (needs 20, not 40 more)");
-        check(player.xp() == 5, "the leftover 5 XP (25 - 20) carries into progress toward level 3");
+        grantXp(player, 26);
+        check(player.level() == 2, "26 XP still only reaches level 2 (needs 21, then 46 more)");
+        check(player.xp() == 5, "the leftover 5 XP (26 - 21) carries into progress toward level 3");
     }
 
     // --- grantXp: a single large grant crossing multiple levels at once
     // (the exact scenario the boss's 200 XP reward triggers against a
     // fresh level-1 character -- see MonsterFactory::xpRewardForType).
-    // Cumulative cost 1->2->3->4->5 == 20+40+60+80 == 200 exactly.
+    // Cumulative cost 1->2->3->4->5 == 21+46+73+104 == 244 exactly.
     {
         Player player = makePlayer();
-        grantXp(player, 200);
+        grantXp(player, 244);
         check(player.level() == 5,
-              "200 XP from level 1 crosses 4 thresholds at once, landing exactly on level 5 "
-              "(20+40+60+80 == 200) -- confirms grantXp() loops rather than checking once");
+              "244 XP from level 1 crosses 4 thresholds at once, landing exactly on level 5 "
+              "(21+46+73+104 == 244) -- confirms grantXp() loops rather than checking once");
         check(player.xp() == 0, "no leftover XP after landing exactly on a threshold");
         check(player.stats().maxHp == 30 + 4 * 1, "maxHp grew by 1 for each of the 4 level-ups");
         check(player.stats().maxMana == 20, "maxMana is still untouched -- no allocation happened");

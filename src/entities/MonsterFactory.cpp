@@ -372,6 +372,29 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
                 makeStats(scaledHp(hp, tier), strength, dexterity, 4), std::move(ai));
             break;
         }
+        case MonsterType::DeepLurker: case MonsterType::DrownedChorister: {
+            // The Drowned Cathedral's own: their water tricks live in Application.
+            const bool lurker = type == MonsterType::DeepLurker;
+            MonsterAttackProfile profile;
+            if (!lurker) profile.scalingStat = ScalingStat::Intelligence;
+            profile.power = scaledPower(lurker ? 6 : 5, lurker ? 2 : 1, tier);
+            std::unique_ptr<AIBehavior> ai;
+            if (lurker) ai = std::make_unique<Chaser>(profile);
+            else ai = std::make_unique<Kiter>(profile, 6, 2);
+            monster = std::make_unique<Monster>(type, tieredName(lurker ? "Deep Lurker" : "Drowned Chorister", tier), lurker ? 'e' : 'w', position,
+                makeStats(scaledHp(lurker ? 30 : 22, tier), lurker ? 12 : 4, lurker ? 16 : 10, lurker ? 2 : 14), std::move(ai));
+            break;
+        }
+        case MonsterType::TheSleeper: {
+            // A drowned god's eye: bolts from range, never backs away. Its
+            // flood, its charged water and its call live in Application.
+            MonsterAttackProfile bolt;
+            bolt.power = 8;
+            bolt.scalingStat = ScalingStat::Intelligence;
+            monster = std::make_unique<Monster>(type, "The Sleeper Below", 'S', position, makeStats(240, 6, 12, 18),
+                std::make_unique<Kiter>(bolt, 7, 0));
+            break;
+        }
         case MonsterType::Skeleton: {
             // Lich minion, also placed naturally in Crypt opening groups.
             // Summons lose rewards in Application; natural spawns retain them.
@@ -458,6 +481,9 @@ int xpRewardForType(MonsterType type, MonsterTier tier) {
         case MonsterType::Torchbearer: baseReward=16; break;
         case MonsterType::Gloomstalker: case MonsterType::DrownedOne: baseReward=20; break;
         case MonsterType::OrcFirebrand: baseReward=18; break;
+        case MonsterType::DeepLurker: baseReward=20; break;
+        case MonsterType::DrownedChorister: baseReward=18; break;
+        case MonsterType::TheSleeper: return 250;
         case MonsterType::SkeletonArcher: baseReward=16; break;
         case MonsterType::SkeletonGuard: baseReward=22; break;
         case MonsterType::Bonecaller: baseReward=18; break;

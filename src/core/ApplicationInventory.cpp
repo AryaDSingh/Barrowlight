@@ -51,7 +51,7 @@ void Application::pickupItem() {
         const auto region=floorTheme(currentFloor_).region;
         const auto theme=region==FloorRegion::Barracks ? LootTheme::Barracks :
             region==FloorRegion::Sanctum ? LootTheme::Sanctum : LootTheme::Crypts;
-        auto reward = loot_.generate(currentFloor_, 0, nextItemId_++, position, ItemRarity::Magic,theme);
+        auto reward = loot_.generate(floorDepth(currentFloor_), 0, nextItemId_++, position, ItemRarity::Magic,theme);
         log(floorTheme(currentFloor_).name, " chest: ", reward->name(), " (in your bag).");
         player_.inventory().add(std::move(reward));
         finishInventoryTurn();
