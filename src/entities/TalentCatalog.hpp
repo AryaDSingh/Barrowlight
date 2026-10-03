@@ -14,7 +14,7 @@ struct TreeDefinition {
     const char* description;
     const char* starterItem;
 };
-inline constexpr std::array<TreeDefinition, 17> kTalentTrees{{
+inline constexpr std::array<TreeDefinition, 18> kTalentTrees{{
     {"one_handed", "One-Handed", TalentTree::OneHanded, "Efficient strikes, defensive openings and finishing blows.", "iron_sword"},
     {"two_handed", "Two-Handed", TalentTree::TwoHanded, "Heavy swings, surrounding enemies and blood-fuelled attacks.", "greatsword"},
     {"shield", "Shield", TalentTree::Shield, "Block damage, interrupt attacks and control space.", "wooden_shield"},
@@ -32,13 +32,14 @@ inline constexpr std::array<TreeDefinition, 17> kTalentTrees{{
     {"animation", "Animation", TalentTree::Animation, "Raise undead allies and command the battlefield.", ""},
     {"blood_magic", "Blood Magic", TalentTree::BloodMagic, "Spend life to cast, drain enemies and defy death.", ""},
     {"shadow_archer", "Shadow Archer", TalentTree::ShadowArcher, "Bow and concealment: ambush, mark, and vanish.", ""},
+    {"brawling", "Brawling", TalentTree::Brawling, "Charge, grab and throw: put enemies into fire, walls, each other and chasms. Any weapon or none.", ""},
 }};
 inline const TreeDefinition* findTree(const std::string& id) {
     for (const auto& t : kTalentTrees) if (id == t.id) return &t;
     return nullptr;
 }
 inline bool startingTreeAllowed(PlayerClass cls, TalentTree tree) {
-    if (cls == PlayerClass::Warrior) return tree == TalentTree::OneHanded || tree == TalentTree::TwoHanded || tree == TalentTree::Shield;
+    if (cls == PlayerClass::Warrior) return tree == TalentTree::OneHanded || tree == TalentTree::TwoHanded || tree == TalentTree::Shield || tree == TalentTree::Brawling;
     if (cls == PlayerClass::Thief) return tree == TalentTree::Stealth || tree == TalentTree::Bow || tree == TalentTree::Acrobatics;
     return cls == PlayerClass::Mage && (tree == TalentTree::Fire || tree == TalentTree::Ice || tree == TalentTree::Lightning || tree == TalentTree::Arcane);
 }
@@ -95,6 +96,9 @@ inline void applyMastery(TalentDefinition& d) {
     else if (id == "light_armour.parting_strike") { m.retreatDistance = 3; d.mastery = "Retreat three tiles instead of two."; }
     else if (id == "heavy_armour.shoulder_check") { stun(1); d.mastery = "The check stuns for one enemy turn."; }
     else if (id == "heavy_armour.second_wind") { m.cleanse = true; d.mastery = "Also removes Poison, Burn, Chill, Marked and curses."; }
+    else if (id == "brawling.tackle") { m.pushDistance = 2; d.mastery = "Knocks the target two tiles."; }
+    else if (id == "brawling.grapple") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Guard, 2, 2}; d.mastery = "Bracing against your catch grants Guard 2 for two enemy responses."; }
+    else if (id == "brawling.hurl") { m.domino = true; d.mastery = "Domino: a hurled enemy knocks whatever it hits one tile further."; }
 }
 
 // Explicit rank profiles share existing targeting/effect data. No runtime content loader.
@@ -124,6 +128,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             Talent t; t.name=name; t.description=desc; t.passive=true; t.passiveKind=kind; t.passiveMagnitude=amount; return t;
         };
         auto add = [&](int tree, const char* id, int tier, Talent t) {
+            const bool hybrid = tree >= 13 && tree <= 16;
             t.id=id; t.tree=kTalentTrees[tree].tree; t.scalingCooldown=t.cooldownTurns;
             t.scalingStat = (tree >= 6 && tree <= 10) ? ScalingStat::Intelligence : ((tree >= 3 && tree <= 5) || tree == 11) ? ScalingStat::Dexterity : ScalingStat::Strength;
             if (tree == 0) t.weaponRequirement=WeaponRequirement::OneHanded;
@@ -135,7 +140,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             if (tree == 12) t.armourRequirement=ArmourRequirement::Heavy;
             if (tree==13) t.weaponRequirement=WeaponRequirement::Melee;
             if (tree==16) t.weaponRequirement=WeaponRequirement::Bow;
-            if (tree>=13) t.scalingStat=tree==16?ScalingStat::Dexterity:ScalingStat::Intelligence;
+            if (hybrid) t.scalingStat=tree==16?ScalingStat::Dexterity:ScalingStat::Intelligence;
             TalentDefinition d{id,kTalentTrees[tree].id,tier,{t,t,t,t,t}};
             // The rank curve, by rank index 1-4 (ranks 2-5).
             for (int rank=1; rank<kMaxTalentRank; ++rank) {
@@ -158,6 +163,9 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 } else {
                     constexpr int percent[]{100,120,145,170,200};
                     r.damagePercent=percent[rank];
+                    // Charges run further and throws fly further at ranks 3 and 5.
+                    if (r.chargeDistance) r.chargeDistance=t.chargeDistance+(rank>=2)+(rank>=4);
+                    if (r.hurlDistance) r.hurlDistance=t.hurlDistance+(rank>=2)+(rank>=4);
                 }
                 r.tags=talentTags(r);
             }
@@ -189,7 +197,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 if (t.restoreMana) r.restoreMana=mana[rank];
                 if (t.restoreHpPercent) r.restoreHpPercent=life[rank];
             }
-            if (tree>=13) for (int rank=0;rank<kMaxTalentRank;++rank) {
+            if (hybrid) for (int rank=0;rank<kMaxTalentRank;++rank) {
                 auto& r=d.ranks[rank]; r.manaCost=t.manaCost; r.cooldownTurns=t.cooldownTurns;
                 r.summonRank=std::min(rank+1,3);
                 if (d.id=="spellblade.imbue" && rank>0) r.manaCost=3;
@@ -204,7 +212,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             // to the nearest point (so the cheapest abilities barely move).
             for (int rank=1; rank<kMaxTalentRank; ++rank) if (!d.ranks[rank].passive && d.ranks[0].manaCost>0)
                 d.ranks[rank].manaCost=(d.ranks[0].manaCost*(100+10*rank)+50)/100;
-            if (tree<13) applyMastery(d);
+            if (!hybrid) applyMastery(d);
             for (auto& r:d.ranks) r.tags=talentTags(r);
             out.push_back(std::move(d));
         };
@@ -297,6 +305,14 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         add(16,"shadow_archer.unseen",2,passive("Unseen","A direct kill begun while Concealed refreshes concealment to 2/3/4/5/6 responses. At most once per Conceal cast; a qualifying kill can preserve your concealment.",PassiveKind::Unseen,2));
         t=attack("Death from Shadows","A heavy bow shot with +50% damage while Concealed. After firing, gain Concealment for two responses. Long cooldown; does not reset Unseen.",12,8,12,true); t.returnConcealed=true; t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Concealed,2,1};
         add(16,"shadow_archer.death",3,t);
+        // Brawling (STR, any weapon or none): putting enemies where they hurt.
+        t=attack("Tackle","Charge up to 3/3/4/4/5 tiles in a straight line at an enemy, strike it and knock it back a tile. Counts as movement.",5,3,5);
+        t.chargeDistance=3; t.pushDistance=1; add(17,"brawling.tackle",0,t);
+        t=attack("Grapple","Seize an adjacent enemy for three enemy turns: it can't walk away, and when you step, you drag it into the tile you left (through fire, water, anything). Bosses and champions are too massive to hold.",3,2,6);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Grappled,3,0}; add(17,"brawling.grapple",1,t);
+        add(17,"brawling.hard_landing",2,passive("Hard Landing","Creatures you push, drag or throw take +2/3/4/5/6 more damage when they crash into a wall, a fixture or another creature.",PassiveKind::HardLanding,2));
+        t=attack("Hurl","Heave an adjacent enemy over your shoulder: it lands up to 2/2/3/3/4 tiles behind you, crashing into whatever is there. A grappled enemy flies one tile further. Bosses and champions are too heavy to lift.",8,5,7);
+        t.hurlDistance=2; add(17,"brawling.hurl",3,t);
 
         // Ascendancy nodes (Ascendancy.hpp): one rank, bought with ascendancy points.
         auto node=[&](const char* treeId,const char* id,ScalingStat stat,Talent t) {

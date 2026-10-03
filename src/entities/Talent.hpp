@@ -12,6 +12,7 @@ enum class TalentTree {
     Blade,
     Flame, // legacy enemy/reserved definitions
     OneHanded, TwoHanded, Shield, Bow, Stealth, Acrobatics, Fire, Ice, Lightning, Arcane, Cloth, LightArmour, HeavyArmour, Spellblade, Animation, BloodMagic, ShadowArcher,
+    Brawling,
 };
 
 // Abilities and talents have five ranks; rank 5 often adds a mastery effect
@@ -62,7 +63,9 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     Opportunist, Slippery, QuickHands, KillerInstinct,
     // Hybrid ascendancies.
     Zeal, Retribution, Devotion, Righteous, HiddenCasting, LingeringShadow, ShadeStep, SpellThief,
-    Momentum, Finisher, Counter, EnGarde, Balance, Versatility, Resilience, Wellspring };
+    Momentum, Finisher, Counter, EnGarde, Balance, Versatility, Resilience, Wellspring,
+    // Brawling.
+    HardLanding };
 
 struct Talent {
     std::string name;
@@ -184,6 +187,13 @@ struct Talent {
     bool huntersMark=false, returnConcealed=false;
     int committedRhythm=-1;
     bool conjureLight=false; // leaves a wisp of light where it is cast
+    // Brawling. Charge: an AdjacentEnemy attack that may instead target an
+    // enemy up to this many tiles further along a straight, clear line, running
+    // up beside it first. Hurl: throw the target over your shoulder, landing up
+    // to this many tiles behind you. Domino: a hurled creature knocks whatever
+    // it hits one tile further.
+    int chargeDistance=0, hurlDistance=0;
+    bool domino=false;
 
 };
 
@@ -202,7 +212,7 @@ inline unsigned int talentTags(const Talent& talent) {
     if (talent.projectile) tags |= ProjectileTag;
     if (talent.shape == EffectShape::AreaAroundSelf || talent.shape == EffectShape::AreaAroundTarget) tags |= AreaTag;
     if (talent.shape == EffectShape::Movement) tags |= MovementTag | PureMovementTag;
-    if (talent.retreatDistance > 0) tags |= MovementTag;
+    if (talent.retreatDistance > 0 || talent.chargeDistance > 0) tags |= MovementTag;
     if (talent.effectKind == TalentEffectKind::Damage && talent.shape != EffectShape::Movement) tags |= DamagingTag;
     return tags;
 }

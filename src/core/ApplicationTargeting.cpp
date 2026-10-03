@@ -70,6 +70,7 @@ std::string statusTooltip(const StatusEffectInstance& e) {
     const auto n=std::to_string(e.magnitude);
     switch(e.type) {
     case StatusEffectType::Poison: case StatusEffectType::Burn: return "Lose "+n+" HP each status tick. Bypasses Guard and reveals concealment.";
+    case StatusEffectType::Grappled: return "Held fast: it can't walk away, and is dragged along when its captor steps. Breaks when they part.";
     case StatusEffectType::Smothered: return "Pitch black: your torch or lantern can't burn and Conjure Light fails. Your light returns when this ends. Fire spells can still light braziers and oil.";
     case StatusEffectType::Doom: return "Lose "+n+" HP when the countdown expires. Guard and dodge do not prevent this. Cleanse before the last tick, or heal to prepare for it.";
     case StatusEffectType::ManaDrain: return "Lose "+n+" mana each status tick, down to zero. Combat mana recovery remains 1 per turn.";
@@ -354,7 +355,7 @@ TalentTarget Application::targetPreview(std::size_t index, Position cursor, bool
         const auto* m=dynamic_cast<const Monster*>(a); return m && m->tactics.concealed;
     }),enemies.end());
     auto result=resolveTalentTarget(map_, exploredMap_, player_, enemies,talent,cursor);
-    if (talent.shape==EffectShape::Movement || talent.retreatDistance) {
+    if (talent.shape==EffectShape::Movement || talent.retreatDistance || talent.chargeDistance) {
         for (const auto& m:monsters_) if (m->allied && m->stats().hp>0) {
             const auto p=m->position();
             const auto& path=talent.shape==EffectShape::Movement?result.path:result.movementPath;

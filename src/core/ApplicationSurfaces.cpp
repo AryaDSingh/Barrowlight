@@ -372,9 +372,26 @@ bool Application::hazardousSurface(Position p) const {
 // A push, step by step. Whatever stops it hurts: walls (3), another
 // creature (2 each), a brazier or oil barrel (tipped over onto the far
 // side). Ground it lands on acts at once, and a chasm takes it for good.
+bool Application::immovable(const Actor& actor) const {
+    const auto* monster = dynamic_cast<const Monster*>(&actor);
+    return monster && (monster == boss_ || isUniqueMonster(monster->type()) || monster->eventChampion);
+}
+
+void Application::enterSurface(Actor& actor, Position tile) {
+    switch (surfaceAt(tile)) {
+        case SurfaceType::Fire:
+            actor.statusEffects().apply({StatusEffectType::Burn, 3, 2}); log(actor.name(), " lands in the flames!"); break;
+        case SurfaceType::Electrified: shockStanding({tile}); break;
+        case SurfaceType::Ice: actor.statusEffects().apply({StatusEffectType::Chill, 2, 20}); break;
+        default: break;
+    }
+}
+
 void Application::pushActor(Actor& target, Position direction, int distance, const Actor& pusher) {
     auto* monster = dynamic_cast<Monster*>(&target);
-    const bool anchored = monster && (monster == boss_ || isUniqueMonster(monster->type()) || monster->eventChampion);
+    const bool anchored = immovable(target);
+    // Hard Landing (Brawling): your collisions hit harder.
+    const int hard = &pusher == &player_ ? player_.talents().passiveValue(PassiveKind::HardLanding) : 0;
     for (int step = 0; step < distance && target.stats().hp > 0; ++step) {
         const auto pos = target.position();
         const Position dest{pos.x + direction.x, pos.y + direction.y};
@@ -402,33 +419,68 @@ void Application::pushActor(Actor& target, Position direction, int distance, con
             if (kind == PropKind::Brazier || kind == PropKind::ColdBrazier || kind == PropKind::OilBarrel) {
                 log(target.name(), " crashes into the ", propName(kind), "!");
                 knockOver(dest, direction, kind == PropKind::Brazier ? &target : nullptr);
-                target.stats().hp -= 2; flashActor(target);
+                target.stats().hp -= 2 + hard; flashActor(target);
                 break;
             }
         }
         if (!map_.isWalkable(dest.x, dest.y) || diagonalBlocked) {
-            target.stats().hp -= 3; flashActor(target);
-            log(target.name(), " slams into the wall for 3!");
+            target.stats().hp -= 3 + hard; flashActor(target);
+            log(target.name(), " slams into the wall for ", 3 + hard, "!");
             break;
         }
         if (Actor* other = actorAt(dest, &target)) {
-            target.stats().hp -= 2; other->stats().hp -= 2; flashActor(target); flashActor(*other);
-            log(target.name(), " crashes into ", other->name(), "! Both take 2.");
+            target.stats().hp -= 2 + hard; other->stats().hp -= 2 + hard; flashActor(target); flashActor(*other);
+            log(target.name(), " crashes into ", other->name(), "! Both take ", 2 + hard, ".");
+            // Domino (Hurl mastery): the one it hits goes flying too.
+            if (dominoPush_ && other->stats().hp > 0 && other != &player_ && !immovable(*other)) {
+                dominoPush_ = false;
+                pushActor(*other, direction, 1, pusher);
+                dominoPush_ = true;
+            }
             checkAndHandleDeath(*other);
             break;
         }
         target.setPosition(dest);
-        // The ground acts at once.
-        switch (surfaceAt(dest)) {
-            case SurfaceType::Fire:
-                target.statusEffects().apply({StatusEffectType::Burn, 3, 2}); log(target.name(), " is shoved into the flames!"); break;
-            case SurfaceType::Electrified: shockStanding({dest}); break;
-            case SurfaceType::Ice: target.statusEffects().apply({StatusEffectType::Chill, 2, 20}); break;
-            default: break;
-        }
+        enterSurface(target, dest); // the ground acts at once
     }
-    (void)pusher;
     checkAndHandleDeath(target);
+}
+
+// Hurl: lift the enemy over your head and let the throw carry it on from
+// your own tile. If the very first tile behind you is blocked, it crashes
+// into that and comes down where it stood.
+void Application::hurlActor(Actor& target, int distance, bool domino) {
+    const Position me = player_.position(), from = target.position();
+    const Position direction{me.x - from.x, me.y - from.y};
+    target.statusEffects().remove(StatusEffectType::Grappled);
+    log("You heave ", target.name(), " over your shoulder!");
+    target.setPosition(me);
+    dominoPush_ = domino;
+    pushActor(target, direction, distance, player_);
+    dominoPush_ = false;
+    const Position at = target.position();
+    if (at.x == me.x && at.y == me.y) target.setPosition(from);
+    else if (visibleTile(at)) spawnVfx({Vfx::Kind::Puff, {at.x + .5f, at.y + .5f}, {at.x + .5f, at.y + .5f}, sf::Color(150, 130, 110), 0, .45f, .7f});
+}
+
+// A grappled enemy follows you into the tile you just left; one that is no
+// longer beside you has slipped free.
+void Application::dragGrappled(Position vacated) {
+    const Position me = player_.position();
+    for (auto& m : monsters_) {
+        if (m->stats().hp <= 0 || !m->statusEffects().has(StatusEffectType::Grappled)) continue;
+        const Position p = m->position();
+        if (std::max(std::abs(p.x - vacated.x), std::abs(p.y - vacated.y)) > 1 || (p.x == me.x && p.y == me.y)) {
+            m->statusEffects().remove(StatusEffectType::Grappled);
+            log(m->name(), " slips free of your grip.");
+            continue;
+        }
+        m->setPosition(vacated);
+        log("You drag ", m->name(), " along.");
+        enterSurface(*m, vacated);
+        checkAndHandleDeath(*m);
+        break; // you only ever hold one
+    }
 }
 
 // One chasm on about half the floors: grown in open floor, and undone if it

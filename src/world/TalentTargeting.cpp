@@ -121,9 +121,24 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
     } else if (talent.shape != EffectShape::AreaAroundSelf) {
         if (!hasLineOfFire(map,start,cursor)) { result.message="Line of fire blocked by terrain."; return result; }
         anchor = enemyAt(cursor);
-        if (talent.targeting == TargetingMode::AdjacentEnemy &&
-            std::abs(cursor.x - start.x) + std::abs(cursor.y - start.y) != 1) {
-            result.message = "Target must be orthogonally adjacent.";
+        const int dx = cursor.x - start.x, dy = cursor.y - start.y, reach = std::abs(dx) + std::abs(dy);
+        if (talent.targeting == TargetingMode::AdjacentEnemy && talent.chargeDistance > 0 &&
+            (dx == 0) != (dy == 0) && reach > 1 && reach <= talent.chargeDistance + 1) {
+            // A charge: run straight at the enemy and stop beside it.
+            if (!anchor) { result.message = "Charge at a visible enemy in a straight line."; return result; }
+            const Position step{(dx > 0) - (dx < 0), (dy > 0) - (dy < 0)};
+            result.movementPath.push_back(start);
+            for (Position p{start.x + step.x, start.y + step.y}; !same(p, cursor); p = {p.x + step.x, p.y + step.y}) {
+                if (!visible(p) || !map.isWalkable(p.x, p.y) || enemyAt(p)) {
+                    result.blockedAt = p; result.message = "The charge needs a clear, straight run.";
+                    return result;
+                }
+                result.movementPath.push_back(p);
+                result.destination = p;
+            }
+        } else if (talent.targeting == TargetingMode::AdjacentEnemy && reach != 1) {
+            result.message = talent.chargeDistance > 0 ? "Target must be adjacent, or in a straight line within " +
+                std::to_string(talent.chargeDistance + 1) + " tiles." : "Target must be orthogonally adjacent.";
             return result;
         }
     }

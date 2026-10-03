@@ -659,6 +659,73 @@ struct ApplicationRewardsTestAccess {
             snapshot("ui-chasm.png");
             app.monsters_.clear(); app.boss_=nullptr;
         }
+
+        // Brawling: charge, grab, drag and throw.
+        setup(PlayerClass::Warrior);
+        {
+            check(findTree("brawling") && startingTreeAllowed(PlayerClass::Warrior,TalentTree::Brawling) &&
+                  !startingTreeAllowed(PlayerClass::Mage,TalentTree::Brawling),"Brawling is a Warrior starting tree");
+            const auto learn=[&](const char* id) {
+                app.player_.talents().learnTalent(findTalentDefinition(id)->ranks[0]);
+                return app.player_.talents().knownTalents().size()-1;
+            };
+            const auto use=[&](std::size_t index,Position p){ app.player_.talents().resetCooldowns(); app.player_.stats().mana=app.player_.stats().maxMana; return app.tryUseTalent(index,p); };
+            const auto tackle=learn("brawling.tackle"), grapple=learn("brawling.grapple"), hurl=learn("brawling.hurl");
+            auto* goblin=enemy({14,10}); goblin->stats().dexterity=0; goblin->stats().hp=goblin->stats().maxHp=60;
+            app.setSurface({15,10},SurfaceType::Fire,4);
+            check(!app.targetPreview(tackle,{13,13}).valid,"Tackle only charges along a straight line");
+            check(use(tackle,{14,10}) && app.player_.position().x==13 && goblin->position().x==15 &&
+                  goblin->statusEffects().has(StatusEffectType::Burn) && app.player_.statusEffects().has(StatusEffectType::Opening),
+                  "Tackle charges in, strikes and knocks the foe into the fire");
+            app.clearSurfaces(); goblin->statusEffects().active().clear();
+
+            app.player_.setPosition({10,10}); goblin->setPosition({11,10}); app.updateFieldOfView();
+            app.setSurface({10,10},SurfaceType::Fire,6);
+            check(use(grapple,{11,10}) && goblin->statusEffects().has(StatusEffectType::Grappled),"Grapple seizes an adjacent foe");
+            app.player_.setPosition({10,10});
+            app.tryMovePlayer(-1,0);
+            check(app.player_.position().x==9 && goblin->position().x==10 && goblin->statusEffects().has(StatusEffectType::Burn),
+                  "A grappled foe is dragged into the tile you left, fire and all");
+            app.clearSurfaces();
+            AIDecision walk; walk.type=AIActionType::Move; walk.movePosition={11,10};
+            goblin->statusEffects().apply({StatusEffectType::Grappled,3,0});
+            app.executeAIDecision(*goblin,walk,0);
+            check(goblin->position().x==10,"A grappled foe can't walk away");
+
+            // Hurl over the shoulder, then Domino at rank 5.
+            goblin->statusEffects().active().clear();
+            app.player_.setPosition({10,10}); goblin->setPosition({11,10}); app.updateFieldOfView();
+            check(use(hurl,{11,10}) && goblin->position().x==8 && goblin->position().y==10,"Hurl throws a foe over your shoulder, two tiles behind you");
+            auto* other=enemy({7,10}); other->stats().hp=other->stats().maxHp=60;
+            goblin->setPosition({11,10});
+            app.player_.talents().setRank(hurl,5);
+            check(use(hurl,{11,10}) && goblin->position().x==8 && other->position().x==6,
+                  "Domino: a hurled foe knocks the one it hits a tile further");
+            other->stats().hp=0; app.checkAndHandleDeath(*other); app.removeDeadMonsters(); app.player_.talents().setRank(hurl,1);
+
+            // A wall right behind you: it comes down where it stood.
+            goblin->stats().hp=60; app.player_.setPosition({1,10}); goblin->setPosition({2,10}); app.updateFieldOfView();
+            const int beforeSlam=goblin->stats().hp; use(hurl,{2,10});
+            check(goblin->position().x==2 && goblin->stats().hp<beforeSlam-3,"With a wall at your back, the throw slams the foe down where it stood");
+
+            // Hard Landing adds to every collision you cause.
+            learn("brawling.hard_landing");
+            app.player_.talents().learnTalent(basicShove());
+            const auto shove=app.player_.talents().knownTalents().size()-1;
+            goblin->stats().hp=60; app.player_.setPosition({29,10}); goblin->setPosition({30,10}); app.updateFieldOfView();
+            const int beforeWall=goblin->stats().hp; use(shove,{30,10});
+            check(goblin->stats().hp==beforeWall-5,"Hard Landing: a wall slam deals 3 + 2");
+
+            // Bosses can't be held or lifted.
+            auto warlord=createMonster(MonsterType::GoblinWarlord,{28,11}); auto* w=warlord.get();
+            app.monsters_.push_back(std::move(warlord)); app.boss_=w; w->stats().dexterity=0;
+            app.player_.setPosition({28,10}); app.updateFieldOfView();
+            use(grapple,{28,11});
+            check(!w->statusEffects().has(StatusEffectType::Grappled),"Bosses are too massive to grapple");
+            use(hurl,{28,11});
+            check(w->position().y==11,"Bosses are too heavy to hurl");
+            app.monsters_.clear(); app.boss_=nullptr;
+        }
         // Chasms never cut a floor in two.
         {
             int floorsWithChasms=0; bool connected=true;
@@ -745,6 +812,25 @@ struct ApplicationRewardsTestAccess {
         check(app.player_.treePoints()==0 && treeAccess(app.player_,"fire"),"Unlock button spends exactly one tree point");
         click(1140,584);
         check(app.player_.abilityPoints()==earnedAbilityPoints(1)-1 && app.player_.talents().rankOf(talentCatalog()[fire*4].id)==1,"Learn button spends exactly one ability point");
+        // More trees than fit: the columns scroll with the wheel and follow the keyboard.
+        {
+            check(app.treeScrollMax()==0,"Today's trees all fit without scrolling");
+            app.treeViewBottom_=480;
+            std::size_t acrobatics=0; while(std::string(kTalentTrees[acrobatics].id)!="acrobatics") ++acrobatics;
+            const float before=app.talentTreeAbilityRect(acrobatics,0).position.y;
+            app.handleEvent(sf::Event::MouseWheelScrolled{sf::Mouse::Wheel::Vertical,-6.f,{100,300}});
+            const auto icon=app.talentTreeAbilityRect(acrobatics,0);
+            check(app.treeScroll_>0 && app.treeScroll_<=app.treeScrollMax() && icon.position.y<before,"The mouse wheel scrolls the tree columns");
+            click(static_cast<int>(icon.position.x)+10,static_cast<int>(icon.position.y)+10);
+            check(app.treeSelection_==acrobatics,"Clicks land on the scrolled rows");
+            snapshot("ui-talent-scroll.png");
+            app.handleEvent(sf::Event::MouseWheelScrolled{sf::Mouse::Wheel::Vertical,20.f,{100,300}});
+            check(app.treeScroll_==0,"Scrolling stops at the top");
+            app.treeSelection_=fire; app.handleTreeKey(sf::Keyboard::Key::Up,false);
+            check(app.treeSelection_==acrobatics && app.talentTreeAbilityRect(acrobatics,0).position.y+50<=app.treeViewBottom_,
+                  "Browsing with the keyboard scrolls the selected tree into view");
+            app.treeViewBottom_=712; app.treeScroll_=0; app.treeSelection_=fire;
+        }
         {
             // Five ranks: rank ups continue past 3 and rank 5 adds the mastery.
             const auto& fireball=*findTalentDefinition("fire.fireball");

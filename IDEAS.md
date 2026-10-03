@@ -132,3 +132,64 @@ nemesis)** for longer-term stories.
 - [DoomRL / DRL](https://www.roguebasin.com/index.php/DoomRL): ranged combat
   that feels like a shooter while staying turn-based; clean auto-targeting.
 - Brogue: no experience points; power comes from items and allies.
+
+---
+
+# New talent trees (brainstorm, 2026-10-02)
+
+Already built: Acrobatics (a Thief starting tree). Spellblade, Animation,
+Blood Magic and Shadow Archer exist but are locked until an unlock is designed.
+
+Proposed unlocks: weapon trees open when you wield the weapon; magic schools
+come from tomes (rare drops, landmark rewards); hybrid trees open at ~5 ranks
+in both parent trees (which could also reopen the four locked trees).
+
+First batch chosen: **Brawling** (building now), Whip, Shadow + Radiance,
+Alchemy, then the hybrid unlock rule.
+
+## Weapons (each a new WeaponKind + tree)
+- **Spear / Polearm** (two-handed, reach 2): Reach Strike past an ally; Brace
+  (strike whatever steps adjacent, counters charges); Pole Vault over an enemy
+  or chasm; Sweep pushes an arc back. Mastery: Impale pins, and a pinned
+  target pushed into a wall stays stuck.
+- **Daggers** (dual wield, off-hand dagger): Bleed status that leaves blood
+  trails; Backstab from Conceal or behind; Flurry hits twice (affixes proc
+  twice); Throw Dagger, picked up again from the floor.
+- **Mace / Flail**: Stagger delays an enemy telegraph a turn; Sunder lowers
+  armour; Shatter bonus vs Chilled and breaks ice; Toll stuns undead.
+- **Whip / Chain** (the inverse of a shove): Lash pulls an enemy 2 tiles,
+  through fire or into a chasm; Trip; Disarm; Crack snuffs a torch or brazier
+  at range.
+- **Crossbow**: reload action; bolts pierce a line; Heavy Bolt pushes 1;
+  Pin to a wall.
+
+## Physical
+- **Brawling** (gauntlets or bare fists): Tackle (charge then shove), Grapple
+  (the held enemy moves with you), Throw (toss it 3 tiles into others),
+  Headbutt. Mastery: Domino, pushed enemies push what they hit.
+- **Acrobatics expansion** (Hoplite movement attacks): Lunge (stepping toward
+  an enemy strikes it), Vault, Wall-kick.
+- **Alchemy** (DEX + INT, not magic): thrown flasks of oil, water, frost and
+  fire; Acid surface eats armour; Smoke cloud blocks light and sight and
+  Conceals.
+- **Traps / Sabotage**: snares, bear traps, shoving tripwires, rigged barrels.
+
+## Magic
+- **Shadow**: Snuff lights in a radius; Gloom Step between unlit tiles;
+  Smother blinds an enemy; strong in the dark, weak in light.
+- **Radiance**: home of Conjure Light. Flare blinds and reveals Concealed;
+  Sear hurts undead and darkvision monsters; Dawn relights torches in view.
+- **Earth**: Raise Pillar (temporary wall to shove into), Quake pushes
+  outward, Fissure opens a temporary chasm.
+- **Tide**: makes water; Wave line push; Undertow pull. Sets up Lightning/Ice.
+- **Hexes**: Linked Pain copies damage; Misfortune; Puppet turns an enemy on
+  its allies. Mastery: hexes spread on death.
+- **Venom**: Poison status; drifting poison gas that explodes in fire.
+
+## Hybrids (~5 ranks in both parents)
+- **Lamplighter** (Radiance + Fire): fight with the torch itself, throw it,
+  a lantern as focus.
+- **Stormlance** (Spear + Lightning): a thrown spear becomes a lightning rod.
+- **Hexblade** (One-Handed + Hexes): strikes lay curses.
+- **Saboteur** (Stealth + Alchemy): hidden traps and bombs.
+- **Stonefist** (Brawling + Earth): shoves knock up rubble; slam into pillars.

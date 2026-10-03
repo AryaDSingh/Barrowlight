@@ -192,6 +192,13 @@ private:
     void renderTalentTrees();
     // Screen rect of one ability icon on the talent screen (tests click it).
     sf::FloatRect talentTreeAbilityRect(std::size_t tree, std::size_t ability) const;
+    // The tree columns scroll (mouse wheel, or by following the keyboard
+    // selection) once there are more trees than fit. treeViewBottom_ is where
+    // the scrolling area ends; tests shrink it to force an overflow.
+    float treeScroll_ = 0.f, treeViewBottom_ = 712.f;
+    float treeScrollMax() const;
+    void scrollTrees(float pixels);
+    void revealSelectedTree();
     void closeTalentTrees();
     void requestHotbar(std::size_t slot);
     void applyMovementTalents(Position previous);
@@ -595,7 +602,14 @@ private:
     // Pushes (ApplicationSurfaces.cpp): into hazards, fixtures, walls, other
     // creatures and chasms. `direction` is a unit step.
     void pushActor(Actor& target, Position direction, int distance, const Actor& pusher);
-    void carveChasms(std::mt19937& rng);         // a boss's light/surface trick, if it takes one this turn
+    bool immovable(const Actor& actor) const;    // bosses, uniques and champions: can't be thrown, held or dropped
+    void enterSurface(Actor& actor, Position tile); // the ground acts at once on a creature moved onto it
+    // Brawling: throw an adjacent enemy over the player's shoulder; drag a
+    // grappled enemy into the tile the player just left.
+    void hurlActor(Actor& target, int distance, bool domino);
+    void dragGrappled(Position vacated);
+    bool dominoPush_ = false;
+    void carveChasms(std::mt19937& rng);
     void placeBraziers(Position centre, const std::vector<Position>& offsets);
     void renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>& lights, int x0, int y0, int x1, int y1);
     void renderSurfaceGlow(int x0, int y0, int x1, int y1);

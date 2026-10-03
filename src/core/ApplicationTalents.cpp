@@ -35,7 +35,7 @@ CategoryInfo categoryInfo(TreeCategory c) {
     return {"",ui::kText};
 }
 TreeCategory treeCategory(const std::string& id) {
-    if (id=="one_handed" || id=="two_handed" || id=="bow") return TreeCategory::Martial;
+    if (id=="one_handed" || id=="two_handed" || id=="bow" || id=="brawling") return TreeCategory::Martial;
     if (id=="fire" || id=="ice" || id=="lightning" || id=="arcane") return TreeCategory::Magic;
     if (id=="stealth" || id=="acrobatics") return TreeCategory::Utility;
     if (id=="shield" || id=="cloth" || id=="light_armour" || id=="heavy_armour") return TreeCategory::Defence;
@@ -53,10 +53,12 @@ struct TreeLayout {
     std::vector<std::size_t> trees;
     std::vector<sf::Vector2f> origins;
     std::vector<std::pair<TreeCategory,sf::Vector2f>> headings;
+    float bottom=kTreeTop; // where the tallest column ends, before scrolling
 };
-TreeLayout layoutTrees(const Player& player) {
+// `scroll` moves everything up by that many pixels.
+TreeLayout layoutTrees(const Player& player,float scroll=0.f) {
     TreeLayout layout;
-    float columnY[3]{kTreeTop,kTreeTop,kTreeTop};
+    float columnY[3]{kTreeTop-scroll,kTreeTop-scroll,kTreeTop-scroll};
     const auto place=[&](int column,TreeCategory category,const std::vector<std::size_t>& trees) {
         if (trees.empty()) return;
         layout.headings.push_back({category,{kTreeColumnX[column],columnY[column]}});
@@ -82,8 +84,10 @@ TreeLayout layoutTrees(const Player& player) {
     const auto hybrid=treesIn(TreeCategory::Hybrid);
     place(1,TreeCategory::Hybrid,std::vector<std::size_t>(hybrid.begin(),hybrid.begin()+std::min<std::size_t>(2,hybrid.size())));
     if (hybrid.size()>2) place(2,TreeCategory::Hybrid,std::vector<std::size_t>(hybrid.begin()+2,hybrid.end()));
+    layout.bottom=std::max({columnY[0],columnY[1],columnY[2]})+scroll;
     return layout;
 }
+constexpr float kTreeViewTop=kTreeTop-6, kTreeViewWidth=836;
 sf::FloatRect treeHeaderRect(sf::Vector2f origin) { return {origin,{kColumnWidth,22}}; }
 sf::FloatRect abilityRect(sf::Vector2f origin,std::size_t ability) {
     return {{origin.x+4+kIconStride*ability,origin.y+24},{kIcon,kIcon}};
@@ -93,8 +97,25 @@ sf::FloatRect bindingRect(std::size_t slot) {
 }
 }
 
-sf::FloatRect Application::talentTreeAbilityRect(std::size_t tree, std::size_t ability) const {
+float Application::treeScrollMax() const {
+    return std::max(0.f,layoutTrees(player_).bottom-treeViewBottom_);
+}
+void Application::scrollTrees(float pixels) {
+    treeScroll_=std::clamp(treeScroll_+pixels,0.f,treeScrollMax());
+}
+// Keep the selected tree's row on screen.
+void Application::revealSelectedTree() {
     const auto layout=layoutTrees(player_);
+    for (std::size_t row=0;row<layout.trees.size();++row) if (layout.trees[row]==treeSelection_) {
+        const float top=layout.origins[row].y, bottom=top+kTreeRowHeight;
+        if (top-kCategoryHeight<treeScroll_+kTreeViewTop) treeScroll_=top-kCategoryHeight-kTreeViewTop;
+        if (bottom>treeScroll_+treeViewBottom_) treeScroll_=bottom-treeViewBottom_;
+    }
+    scrollTrees(0);
+}
+
+sf::FloatRect Application::talentTreeAbilityRect(std::size_t tree, std::size_t ability) const {
+    const auto layout=layoutTrees(player_,treeScroll_);
     for (std::size_t row=0;row<layout.trees.size();++row)
         if (layout.trees[row]==tree) return abilityRect(layout.origins[row],ability);
     return {};
@@ -102,6 +123,9 @@ sf::FloatRect Application::talentTreeAbilityRect(std::size_t tree, std::size_t a
 
 void Application::handleTreeMouse(const sf::Event& event) {
     if(const auto* move=event.getIf<sf::Event::MouseMoved>()) mousePixel_=move->position;
+    if(const auto* wheel=event.getIf<sf::Event::MouseWheelScrolled>(); wheel && !bindingTalent_ && wheel->position.x<kTreeViewWidth) {
+        scrollTrees(-wheel->delta*kTreeRowHeight/2); return;
+    }
     const auto* click=event.getIf<sf::Event::MouseButtonPressed>();
     if(!click || click->button!=sf::Mouse::Button::Left) return;
     const auto p=sf::Vector2f(click->position);
@@ -118,7 +142,8 @@ void Application::handleTreeMouse(const sf::Event& event) {
     if(abilityButton.contains(p)) { handleTreeKey(sf::Keyboard::Key::A,false); return; }
     if(bindButton.contains(p)) { handleTreeKey(sf::Keyboard::Key::B,false); return; }
     if(variantButton.contains(p)) { handleTreeKey(sf::Keyboard::Key::V,false); return; }
-    const auto layout=layoutTrees(player_);
+    if(p.y<kTreeViewTop || p.y>treeViewBottom_) return; // scrolled out of view
+    const auto layout=layoutTrees(player_,treeScroll_);
     for(std::size_t row=0;row<layout.trees.size();++row) {
         if(treeHeaderRect(layout.origins[row]).contains(p)) {
             treeSelection_=layout.trees[row]; abilitySelection_=0; imbueSelection_=0; treeFeedback_.clear(); return;
@@ -135,6 +160,7 @@ void Application::requestHotbar(std::size_t slot) {
 void Application::openTalentTrees() {
     cancelTargeting(); mousePixel_.reset(); inventoryOpen_=false;
     if (!treeVisible(player_,treeSelection_)) treeSelection_=0;
+    revealSelectedTree();
     bindingTalent_=false; treeFeedback_.clear(); mode_=GameMode::AbilityChoice;
 }
 void Application::closeTalentTrees() {
@@ -157,6 +183,7 @@ void Application::handleTreeKey(sf::Keyboard::Key key, bool shift) {
             treeSelection_=order[(current+(key==sf::Keyboard::Key::Up?order.size()-1:1))%order.size()];
         }
         abilitySelection_=0;
+        revealSelectedTree();
     }
     if (key==sf::Keyboard::Key::Left) abilitySelection_=(abilitySelection_+3)%4;
     if (key==sf::Keyboard::Key::Right) abilitySelection_=(abilitySelection_+1)%4;
@@ -220,8 +247,15 @@ void Application::renderTalentTrees() {
     ui_.button(window_,playButton,"Continue (T)",hovered(playButton));
 
     // --- Trees by category, three columns of icon rows ------------------------
-    const auto layout=layoutTrees(player_);
+    scrollTrees(0); // the tree list may have changed size
+    const auto layout=layoutTrees(player_,treeScroll_);
     for(float dx:{kTreeColumnX[1]-14,kTreeColumnX[2]-14,836.f}) ui_.divider(window_,dx,72,700);
+    const float viewHeight=treeViewBottom_-kTreeViewTop;
+    sf::View clip(sf::FloatRect({0,kTreeViewTop},{kTreeViewWidth,viewHeight}));
+    const auto box=letterbox();
+    clip.setViewport(sf::FloatRect({box.position.x,box.position.y+box.size.y*kTreeViewTop/720.f},
+        {box.size.x*kTreeViewWidth/1280.f,box.size.y*viewHeight/720.f}));
+    window_.setView(clip);
     for(const auto& [category,at]:layout.headings) {
         const auto info=categoryInfo(category);
         const float w=ui_.text(window_,info.name,{at.x,at.y},19,info.color,ui::Font::Title);
@@ -250,6 +284,14 @@ void Application::renderTalentTrees() {
             ui_.text(window_,label,{r.position.x+(r.size.x-ui_.textWidth(label,13,ui::Font::Bold))/2,r.position.y+r.size.y+1},13,
                 rank==kMaxTalentRank?ui::kRare:rank>=3?ui::kGood:rank?ui::kText:access?ui::kMuted:sf::Color(170,70,60),ui::Font::Bold);
         }
+    }
+    window_.setView(uiView_);
+    // A slim scrollbar beside the last column once the trees overflow.
+    if (const float range=treeScrollMax(); range>0) {
+        const float trackTop=kTreeViewTop+4, track=viewHeight-8, thumb=std::max(40.f,track*viewHeight/(viewHeight+range));
+        sf::RectangleShape rail({4,track}); rail.setPosition({829,trackTop}); rail.setFillColor(sf::Color(60,52,44)); window_.draw(rail);
+        sf::RectangleShape bar({4,thumb}); bar.setPosition({829,trackTop+(track-thumb)*treeScroll_/range});
+        bar.setFillColor(ui::kBronze); window_.draw(bar);
     }
 
     // --- Details of the selected ability -------------------------------------
@@ -317,7 +359,7 @@ void Application::renderTalentTrees() {
         left,y,width,14,treeFeedback_.empty()?ui::kMuted:sf::Color(255,226,150),ui::Font::Body,704);
 
     // Hover tooltip for an ability icon you're not already inspecting.
-    if(!bindingTalent_ && mouse) for(std::size_t row=0;row<layout.trees.size();++row) for(std::size_t i=0;i<4;++i) {
+    if(!bindingTalent_ && mouse && mouse->y>=kTreeViewTop && mouse->y<=treeViewBottom_) for(std::size_t row=0;row<layout.trees.size();++row) for(std::size_t i=0;i<4;++i) {
         if(!abilityRect(layout.origins[row],i).contains(*mouse)) continue;
         const auto& hd=talentCatalog()[layout.trees[row]*4+i];
         ui_.tooltip(window_,{{hd.ranks[0].name,ui::kGold,17,ui::Font::Title},

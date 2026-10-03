@@ -933,6 +933,7 @@ bool Application::tryMovePlayer(int dx, int dy) {
     }
 
     player_.setPosition(target);
+    dragGrappled(current);
     for (const auto& item : groundItems_) {
         if (item->position().x == target.x && item->position().y == target.y)
             log("You see ", item->name(), ". G: pick up (1 turn).");
@@ -1035,6 +1036,12 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         }
     } else {
         if (affected.empty()) log(player_.name(), " uses ", talent.name, " on empty ground.");
+        if (talent.chargeDistance>0 && (blinkDestination.x!=beforeMovement.x || blinkDestination.y!=beforeMovement.y)) {
+            player_.setPosition(blinkDestination);
+            log("You charge!");
+        }
+        const bool grapple=talent.onHitEffect && talent.onHitEffect->type==StatusEffectType::Grappled;
+        if (grapple) for (auto& m:monsters_) m->statusEffects().remove(StatusEffectType::Grappled); // one at a time
         for (Actor* target : affected) {
             Talent hitTalent = talent;
             if (target == chainedTarget) hitTalent.damagePercent /= 2;
@@ -1067,6 +1074,14 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     const Position direction{(origin.x>from.x)-(origin.x<from.x),(origin.y>from.y)-(origin.y<from.y)};
                     if (direction.x || direction.y) pushActor(*target,direction,talent.pushDistance,player_);
                 }
+                if (grapple && target->statusEffects().has(StatusEffectType::Grappled)) {
+                    if (immovable(*target)) { target->statusEffects().remove(StatusEffectType::Grappled); log(target->name(), " is too massive to hold."); }
+                    else log("You grab ", target->name(), ". Step to drag it along.");
+                }
+                if (target->stats().hp>0 && talent.hurlDistance>0) {
+                    if (immovable(*target)) log(target->name(), " is too heavy to lift.");
+                    else hurlActor(*target,talent.hurlDistance+(target->statusEffects().has(StatusEffectType::Grappled)?1:0),talent.domino);
+                }
                 checkAndHandleDeath(*target);
             } else {
                 log(target->name(), " dodges ", player_.name(), "'s ", talent.name, "!");
@@ -1094,7 +1109,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         applyElement(element,touched);
     }
     if (talent.selfBuffEffect && !talent.returnConcealed && talent.effectKind!=TalentEffectKind::SelfBuff) player_.statusEffects().apply(*talent.selfBuffEffect);
-    if (talent.shape==EffectShape::Movement || talent.retreatDistance>0) { applyMovementTalents(beforeMovement); }
+    if (talent.shape==EffectShape::Movement || talent.retreatDistance>0 || talent.chargeDistance>0) { applyMovementTalents(beforeMovement); }
     player_.talents().startCooldown(talentIndex);
     advanceEnemyIntents();
     player_.talents().tickCooldowns();
@@ -1316,6 +1331,11 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
 
     switch (decision.type) {
         case AIActionType::Move: {
+            if (actor.statusEffects().has(StatusEffectType::Grappled)) {
+                const auto p = actor.position(), me = player_.position();
+                if (std::max(std::abs(p.x - me.x), std::abs(p.y - me.y)) <= 1) { log(actor.name(), " struggles in your grip."); break; }
+                actor.statusEffects().remove(StatusEffectType::Grappled);
+            }
             Position step = decision.movePosition;
             if (hazardousSurface(step) && !hazardousSurface(actor.position())) {
                 // Sidestep around the hazard if a safe tile also leads that way, else wait.
@@ -2290,7 +2310,7 @@ void Application::renderClassSelection() {
     struct ClassInfo { const char* name; PlayerClass cls; sf::Color color; const char* stats; const char* pools; const char* blurb; std::vector<std::size_t> trees; };
     const ClassInfo classes[]{
         {"Warrior",PlayerClass::Warrior,sf::Color(232,150,108),"Str 6   Dex 2   Int 2","Life 30   Mana 10",
-            "Steel and endurance: heavy blows, a raised shield and a refusal to fall.",{0,1,2}},
+            "Steel and endurance: heavy blows, a raised shield and a refusal to fall.",{0,1,2,17}},
         {"Mage",PlayerClass::Mage,sf::Color(142,172,240),"Str 2   Dex 2   Int 6","Life 20   Mana 20",
             "Fire, ice, lightning and raw arcane force, from a safe distance.",{6,7,8,9}},
         {"Thief",PlayerClass::Thief,sf::Color(132,218,160),"Str 2   Dex 6   Int 2","Life 25   Mana 15",
@@ -2319,7 +2339,7 @@ void Application::renderClassSelection() {
             ui_.textCentered(window_,kTalentTrees[tree].name,{{x+26+slot*t,y+392},{slot,20}},13,ui::kMuted);
         }
     }
-    ui_.textCentered(window_,"You start with 1 tree point and 3 ability points. The other core trees open at level 5.",
+    ui_.textCentered(window_,"You start with 1 tree point and 4 ability points. The other core trees open at level 5.",
         {{0,556},{1280,24}},16,ui::kText);
     ui_.button(window_,kStartLoad,"Load game (F9)",hovered(kStartLoad));
     ui_.button(window_,kModeToggle,adventureMode_?"Mode: Adventure, 2 extra lives (M)":"Mode: Roguelike, one life (M)",hovered(kModeToggle));

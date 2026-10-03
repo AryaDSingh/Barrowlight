@@ -701,3 +701,11 @@ add_executable(application_rewards_test tests/application_rewards_test.cpp ${APP
 target_include_directories(application_rewards_test PRIVATE src)
 target_compile_features(application_rewards_test PRIVATE cxx_std_17)
 target_link_libraries(application_rewards_test PRIVATE SFML::Graphics SFML::Audio)
+
+# Tests run silently: no sound effects or music while they play the game.
+get_property(ALL_TARGETS DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(target ${ALL_TARGETS})
+    if(target MATCHES "_test$")
+        target_compile_definitions(${target} PRIVATE ROGUELIKE_SILENT)
+    endif()
+endforeach()

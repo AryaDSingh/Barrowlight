@@ -15,6 +15,13 @@ constexpr const char* kLevelUpPath = "assets/sounds/levelup.wav";
 constexpr const char* kDodgePath = "assets/sounds/dodge.wav";
 constexpr const char* kSelectPath = "assets/sounds/select.wav";
 
+// Test builds (ROGUELIKE_SILENT, set in CMakeLists.txt) never make a sound.
+#ifdef ROGUELIKE_SILENT
+constexpr bool kSilent = true;
+#else
+constexpr bool kSilent = false;
+#endif
+
 constexpr float kMusicVolume = 32.f;   // of 100: under the sound effects
 constexpr float kFadeSeconds = 1.4f;
 
@@ -61,7 +68,7 @@ SoundManager::SoundManager()
 }
 
 void SoundManager::setMusic(MusicTrack track) {
-    if (track == target_) return;
+    if (kSilent || track == target_) return;
     target_ = track;
     // The current deck fades out; the other one loads the new track and fades in.
     const int next = 1 - front_;
@@ -98,6 +105,7 @@ void SoundManager::toggleMusic() {
 }
 
 void SoundManager::play(SoundEffect effect) {
+    if (kSilent) return;
     switch (effect) {
         case SoundEffect::Hit:
             hitSound_.play();

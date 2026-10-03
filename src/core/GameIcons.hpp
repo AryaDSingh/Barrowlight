@@ -15,7 +15,7 @@ namespace engine {
 // the talent does, so a new talent always gets something sensible.
 inline std::string talentIcon(const Talent& talent) {
     static const std::map<std::string, std::string> byId{
-        {"basic.attack", "broadsword"}, {"basic.cleanse", "aura"}, {"basic.light", "crystal-ball"}, {"basic.shove", "boot-kick"},
+        {"basic.attack", "broadsword"}, {"basic.cleanse", "aura"}, {"basic.light", "crystal-ball"}, {"basic.shove", "push"},
         {"warrior.cleave", "axe-swing"}, {"warrior.slam", "hammer-drop"}, {"warrior.whirlwind", "spinning-sword"},
         {"warrior.rallying_cry", "shouting"}, {"warrior.berserkers_fury", "wolverine-claws"},
         {"warrior.undying_rage", "life-support"},
@@ -64,6 +64,8 @@ inline std::string talentIcon(const Talent& talent) {
         {"shadow_archer.shot", "shadow-follower"}, {"shadow_archer.mark", "arrow-scope"},
         {"shadow_archer.unseen", "hood"}, {"shadow_archer.death", "skull-crossed-bones"},
         {"spellblade.release", "shattered-glass"},
+        {"brawling.tackle", "charging-bull"}, {"brawling.grapple", "grab"}, {"brawling.hard_landing", "impact-point"},
+        {"brawling.hurl", "human-cannonball"},
     };
     if (const auto it = byId.find(talent.id); it != byId.end()) return it->second;
     if (talent.name == "Second Wind") return "heart-inside";
@@ -145,6 +147,7 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::ManaDrain: return "psychic-waves";
         case StatusEffectType::Doom: return "skull-crossed-bones";
         case StatusEffectType::Smothered: return "shadow-follower";
+        case StatusEffectType::Grappled: return "manacles";
     }
     return "aura";
 }

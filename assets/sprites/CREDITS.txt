@@ -98,7 +98,9 @@ https://game-icons.net/1x1/<author>/<file name without .png>.html
 
   Lorc -- every icon not listed below.
   Delapouite -- jump-across, leather-armor, cape,
-      gloves, ring, hamburger-menu, village, spell-book, healing.
+      gloves, ring, hamburger-menu, village, spell-book, healing,
+      charging-bull, human-cannonball, push (added 2026-10-02).
+  Lorc additions on 2026-10-02: grab, impact-point, manacles.
   sbed -- shield.
   (Artist pages: https://game-icons.net/about.html)
 
