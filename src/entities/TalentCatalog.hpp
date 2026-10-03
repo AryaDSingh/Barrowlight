@@ -14,7 +14,7 @@ struct TreeDefinition {
     const char* description;
     const char* starterItem;
 };
-inline constexpr std::array<TreeDefinition, 18> kTalentTrees{{
+inline constexpr std::array<TreeDefinition, 22> kTalentTrees{{
     {"one_handed", "One-Handed", TalentTree::OneHanded, "Efficient strikes, defensive openings and finishing blows.", "iron_sword"},
     {"two_handed", "Two-Handed", TalentTree::TwoHanded, "Heavy swings, surrounding enemies and blood-fuelled attacks.", "greatsword"},
     {"shield", "Shield", TalentTree::Shield, "Block damage, interrupt attacks and control space.", "wooden_shield"},
@@ -33,6 +33,10 @@ inline constexpr std::array<TreeDefinition, 18> kTalentTrees{{
     {"blood_magic", "Blood Magic", TalentTree::BloodMagic, "Spend life to cast, drain enemies and defy death.", ""},
     {"shadow_archer", "Shadow Archer", TalentTree::ShadowArcher, "Bow and concealment: ambush, mark, and vanish.", ""},
     {"brawling", "Brawling", TalentTree::Brawling, "Charge, grab and throw: put enemies into fire, walls, each other and chasms. Any weapon or none.", ""},
+    {"whip", "Whip", TalentTree::Whip, "Strike from two tiles away and drag enemies to you, through whatever lies between.", "leather_whip"},
+    {"shadow", "Shadow", TalentTree::Shadow, "Darkness magic: snuff out the lights, blind your foes and strike from the dark.", ""},
+    {"radiance", "Radiance", TalentTree::Radiance, "Light magic: sear the undead, blind with flares and bring back the dawn.", ""},
+    {"alchemy", "Alchemy", TalentTree::Alchemy, "Thrown flasks of oil, fire and acid: make the ground fight for you.", ""},
 }};
 inline const TreeDefinition* findTree(const std::string& id) {
     for (const auto& t : kTalentTrees) if (id == t.id) return &t;
@@ -40,7 +44,7 @@ inline const TreeDefinition* findTree(const std::string& id) {
 }
 inline bool startingTreeAllowed(PlayerClass cls, TalentTree tree) {
     if (cls == PlayerClass::Warrior) return tree == TalentTree::OneHanded || tree == TalentTree::TwoHanded || tree == TalentTree::Shield || tree == TalentTree::Brawling;
-    if (cls == PlayerClass::Thief) return tree == TalentTree::Stealth || tree == TalentTree::Bow || tree == TalentTree::Acrobatics;
+    if (cls == PlayerClass::Thief) return tree == TalentTree::Stealth || tree == TalentTree::Bow || tree == TalentTree::Acrobatics || tree == TalentTree::Whip;
     return cls == PlayerClass::Mage && (tree == TalentTree::Fire || tree == TalentTree::Ice || tree == TalentTree::Lightning || tree == TalentTree::Arcane);
 }
 struct TalentDefinition {
@@ -99,6 +103,18 @@ inline void applyMastery(TalentDefinition& d) {
     else if (id == "brawling.tackle") { m.pushDistance = 2; d.mastery = "Knocks the target two tiles."; }
     else if (id == "brawling.grapple") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Guard, 2, 2}; d.mastery = "Bracing against your catch grants Guard 2 for two enemy responses."; }
     else if (id == "brawling.hurl") { m.domino = true; d.mastery = "Domino: a hurled enemy knocks whatever it hits one tile further."; }
+    else if (id == "whip.lash") { m.pullDistance = 2; d.mastery = "Pulls two tiles."; }
+    else if (id == "whip.trip") { stun(2); d.mastery = "The fall stuns for two enemy turns (bosses still resist repeats)."; }
+    else if (id == "whip.snare") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 4; d.mastery = "Holds the snared enemy for four turns."; }
+    else if (id == "shadow.bolt") { m.darkBonusPercent = 100; d.mastery = "+100% against a target in darkness."; }
+    else if (id == "shadow.snuff") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Concealed, 2, 2}; d.mastery = "You vanish into the new dark: Concealed for two responses."; }
+    else if (id == "shadow.veil") { m.areaRadius = 2; d.mastery = "Blinds everything within two tiles."; }
+    else if (id == "radiance.sear") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Burn, 3, 2}; m.onHitChance = 1.f; d.mastery = "Sets the target burning (2 per turn)."; }
+    else if (id == "radiance.flare") { m.areaRadius = 2; d.mastery = "The flare covers two tiles."; }
+    else if (id == "radiance.dawn") { m.areaRadius = 4; d.mastery = "Reaches enemies up to four tiles away."; }
+    else if (id == "alchemy.oil") { m.areaRadius = 2; d.mastery = "The flask splashes two tiles."; }
+    else if (id == "alchemy.firebomb") { if (m.onHitEffect) m.onHitEffect->magnitude = 2; d.mastery = "Burn deals 2 damage per turn."; }
+    else if (id == "alchemy.acid") { m.areaRadius = 2; d.mastery = "The flask splashes two tiles."; }
 }
 
 // Explicit rank profiles share existing targeting/effect data. No runtime content loader.
@@ -135,6 +151,9 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             if (tree == 1) t.weaponRequirement=WeaponRequirement::TwoHanded;
             if (tree == 2) t.weaponRequirement=WeaponRequirement::Shield;
             if (tree == 3) t.weaponRequirement=WeaponRequirement::Bow;
+            if (tree == 18) t.weaponRequirement=WeaponRequirement::Whip;
+            if (tree == 18 || tree == 21) t.scalingStat=ScalingStat::Dexterity;
+            if (tree == 19 || tree == 20) t.scalingStat=ScalingStat::Intelligence;
             if (tree == 10) t.armourRequirement=ArmourRequirement::Cloth;
             if (tree == 11) t.armourRequirement=ArmourRequirement::Light;
             if (tree == 12) t.armourRequirement=ArmourRequirement::Heavy;
@@ -166,6 +185,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                     // Charges run further and throws fly further at ranks 3 and 5.
                     if (r.chargeDistance) r.chargeDistance=t.chargeDistance+(rank>=2)+(rank>=4);
                     if (r.hurlDistance) r.hurlDistance=t.hurlDistance+(rank>=2)+(rank>=4);
+                    if (t.reach>=3) { r.reach=t.reach+(rank>=2)+(rank>=4); r.pullDistance=r.reach; }
                 }
                 r.tags=talentTags(r);
             }
@@ -185,7 +205,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             }
             // Spell costs double at every rank, before Arcane Efficiency.
             // Keep rank discounts proportional and catalogue/preview costs aligned.
-            if (tree>=6 && tree<=9) for (auto& r:d.ranks) if (!r.passive) r.manaCost*=2;
+            if ((tree>=6 && tree<=9) || tree==19 || tree==20) for (auto& r:d.ranks) if (!r.passive) r.manaCost*=2;
             if (tree>=10 && tree<=12) for (int rank=0; rank<kMaxTalentRank; ++rank) {
                 auto& r=d.ranks[rank];
                 // Explicit modest armour profiles: no hidden mana or cooldown discounts.
@@ -313,6 +333,40 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         add(17,"brawling.hard_landing",2,passive("Hard Landing","Creatures you push, drag or throw take +2/3/4/5/6 more damage when they crash into a wall, a fixture or another creature.",PassiveKind::HardLanding,2));
         t=attack("Hurl","Heave an adjacent enemy over your shoulder: it lands up to 2/2/3/3/4 tiles behind you, crashing into whatever is there. A grappled enemy flies one tile further. Bosses and champions are too heavy to lift.",8,5,7);
         t.hurlDistance=2; add(17,"brawling.hurl",3,t);
+        // Whip (DEX, needs a whip): reach and pull.
+        t=attack("Lash","Strike an enemy up to two tiles away in a straight line and pull it one tile toward you, through fire, water or whatever lies between.",4,1,2);
+        t.reach=2; t.pullDistance=1; add(18,"whip.lash",0,t);
+        t=attack("Trip","Crack the whip at the legs of an enemy up to two tiles away: it falls, stunned for one enemy turn. Bosses resist repeated stuns.",4,3,6);
+        t.reach=2; t.onHitEffect=StatusEffectInstance{StatusEffectType::Stun,1,0}; add(18,"whip.trip",1,t);
+        add(18,"whip.flay",2,passive("Flay","Whip attacks deal +2/3/4/5/6 damage to enemies that are stunned, held, blinded, burning, chilled or shocked.",PassiveKind::Flay,2));
+        t=attack("Snare","Lasso an enemy up to 3/3/4/4/5 tiles away, drag it right up to you and hold it fast for two turns (as Grapple). Bosses and champions won't budge.",6,4,7);
+        t.reach=3; t.pullDistance=3; t.onHitEffect=StatusEffectInstance{StatusEffectType::Grappled,2,0}; add(18,"whip.snare",3,t);
+        // Shadow (INT spells): darkness as a weapon.
+        t=attack("Shadow Bolt","A bolt of darkness: +50% damage against a target standing in darkness.",5,2,1,true);
+        t.darkBonusPercent=50; add(19,"shadow.bolt",0,t);
+        t=Talent{}; t.name="Snuff"; t.description="Every torch, brazier, wisp and burning tile within four tiles goes out, your own light too (L relights it). Creatures that need light lose sight of you.";
+        t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.snuffRadius=4; t.manaCost=2; t.cooldownTurns=6;
+        add(19,"shadow.snuff",1,t);
+        add(19,"shadow.umbral",2,passive("Umbral Shroud","While your own light is out, you see three tiles into the dark, your spells deal +2/3/4/5/6 damage and you gain three times that much dodge (%).",PassiveKind::Umbral,2));
+        t=attack("Veil of Night","Darkness swallows an enemy and those beside it: blinded for three enemy turns, they see only what is next to them.",4,5,8,true,1);
+        t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Blinded,3,0}; add(19,"shadow.veil",3,t);
+        // Radiance (INT spells): light as a weapon.
+        t=attack("Sear","A ray of light: +50% damage against undead and creatures that see in the dark.",5,2,1,true);
+        t.searing=true; add(20,"radiance.sear",0,t);
+        t=attack("Flare","A blinding burst: enemies within a tile are blinded for two enemy turns, hidden ones are revealed, and the spot stays lit for a while.",3,4,6,true,1);
+        t.projectile=false; t.flare=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Blinded,2,0}; add(20,"radiance.flare",1,t);
+        add(20,"radiance.inner_light",2,passive("Inner Light","Your light reaches one tile further, and your spells deal +2/3/4/5/6 damage to enemies standing in light.",PassiveKind::InnerLight,2));
+        t=attack("Dawn","Light floods out three tiles, searing enemies (+50% against undead and darkvision), relighting every torch and brazier within six tiles and breaking any smothering darkness on you.",7,8,12,false,3);
+        t.searing=true; t.dawn=true; add(20,"radiance.dawn",3,t);
+        // Alchemy (DEX): flasks that leave something on the ground.
+        t=attack("Oil Flask","Lob a flask that splashes oil over a tile and its neighbours. Oil burns long once lit.",2,2,4,false,1);
+        t.targeting=TargetingMode::RangedEnemyInSight; t.shape=EffectShape::AreaAroundTarget; t.splashSurface=1; add(21,"alchemy.oil",0,t);
+        t=attack("Firebomb","A flask of fire: burns everything within a tile for 1 per turn and sets the ground alight.",5,4,6,false,1);
+        t.targeting=TargetingMode::RangedEnemyInSight; t.shape=EffectShape::AreaAroundTarget; t.splashSurface=3; t.splashTurns=3;
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,1}; add(21,"alchemy.firebomb",1,t);
+        add(21,"alchemy.brews",2,passive("Potent Brews","Your flasks deal +2/3/4/5/6 damage.",PassiveKind::PotentBrews,2));
+        t=attack("Acid Flask","Splash acid within a tile for eight turns: anything standing in it takes 2 a turn and is Marked (its next direct hit taken deals +25%).",4,5,8,false,1);
+        t.targeting=TargetingMode::RangedEnemyInSight; t.shape=EffectShape::AreaAroundTarget; t.splashSurface=7; t.splashTurns=8; add(21,"alchemy.acid",3,t);
 
         // Ascendancy nodes (Ascendancy.hpp): one rank, bought with ascendancy points.
         auto node=[&](const char* treeId,const char* id,ScalingStat stat,Talent t) {

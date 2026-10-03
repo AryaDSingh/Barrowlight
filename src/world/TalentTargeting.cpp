@@ -37,6 +37,7 @@ std::string talentUnavailableReason(const Actor& caster, std::size_t index) {
     case WeaponRequirement::OneHanded: if (kind!=WeaponKind::OneHanded) return "Equip a one-handed weapon."; break;
     case WeaponRequirement::TwoHanded: if (kind!=WeaponKind::TwoHanded) return "Equip a two-handed weapon."; break;
     case WeaponRequirement::Bow: if (kind!=WeaponKind::Bow) return "Equip a bow."; break;
+    case WeaponRequirement::Whip: if (kind!=WeaponKind::Whip) return "Equip a whip."; break;
     case WeaponRequirement::Shield: if (!shield) return "Equip a shield."; break;
     default: break;
     }
@@ -122,23 +123,24 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
         if (!hasLineOfFire(map,start,cursor)) { result.message="Line of fire blocked by terrain."; return result; }
         anchor = enemyAt(cursor);
         const int dx = cursor.x - start.x, dy = cursor.y - start.y, reach = std::abs(dx) + std::abs(dy);
-        if (talent.targeting == TargetingMode::AdjacentEnemy && talent.chargeDistance > 0 &&
-            (dx == 0) != (dy == 0) && reach > 1 && reach <= talent.chargeDistance + 1) {
-            // A charge: run straight at the enemy and stop beside it.
-            if (!anchor) { result.message = "Charge at a visible enemy in a straight line."; return result; }
+        // Charges and whips reach along a straight, clear line.
+        const int span = talent.chargeDistance > 0 ? talent.chargeDistance + 1 : talent.reach;
+        if (talent.targeting == TargetingMode::AdjacentEnemy && span > 1 &&
+            (dx == 0) != (dy == 0) && reach > 1 && reach <= span) {
+            const bool charge = talent.chargeDistance > 0;
+            if (!anchor) { result.message = charge ? "Charge at a visible enemy in a straight line." : "Lash at a visible enemy in a straight line."; return result; }
             const Position step{(dx > 0) - (dx < 0), (dy > 0) - (dy < 0)};
-            result.movementPath.push_back(start);
+            if (charge) result.movementPath.push_back(start);
             for (Position p{start.x + step.x, start.y + step.y}; !same(p, cursor); p = {p.x + step.x, p.y + step.y}) {
                 if (!visible(p) || !map.isWalkable(p.x, p.y) || enemyAt(p)) {
-                    result.blockedAt = p; result.message = "The charge needs a clear, straight run.";
+                    result.blockedAt = p; result.message = charge ? "The charge needs a clear, straight run." : "Something is in the way.";
                     return result;
                 }
-                result.movementPath.push_back(p);
-                result.destination = p;
+                if (charge) { result.movementPath.push_back(p); result.destination = p; }
             }
         } else if (talent.targeting == TargetingMode::AdjacentEnemy && reach != 1) {
-            result.message = talent.chargeDistance > 0 ? "Target must be adjacent, or in a straight line within " +
-                std::to_string(talent.chargeDistance + 1) + " tiles." : "Target must be orthogonally adjacent.";
+            result.message = span > 1 ? "Target must be adjacent, or in a straight line within " +
+                std::to_string(span) + " tiles." : "Target must be orthogonally adjacent.";
             return result;
         }
     }

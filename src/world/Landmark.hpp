@@ -12,8 +12,13 @@ enum class LandmarkKind { None = 0, Shrine = 1, HealingFountain = 2, BloodFont =
                           // Very rare, deep floors only; each leads to a unique item.
                           SealedTomb = 8, PalePeddler = 9, ChainedDemon = 10,
                           // An uncommon find on any floor: where the lantern comes from.
-                          LamplighterRest = 11 };
-inline constexpr int kLandmarkKindCount = 12;
+                          LamplighterRest = 11,
+                          // From floor 4: a Vampire Lord sleeps beside it; slay him and
+                          // offer your blood to learn Blood Magic.
+                          BloodAltar = 12 };
+inline constexpr int kLandmarkKindCount = 13;
+// Global floor from which the Blood Altar can appear.
+inline constexpr int kBloodAltarFloor = 4;
 inline bool rareLandmark(LandmarkKind kind) {
     return kind == LandmarkKind::SealedTomb || kind == LandmarkKind::PalePeddler || kind == LandmarkKind::ChainedDemon;
 }
@@ -24,7 +29,7 @@ inline constexpr float kRareEventChance = 0.08f;
 // The rare events' champions (Monster::eventChampion); saved, append only.
 // The trial guardians (entities/Ascendancy.hpp) use the same marker.
 inline constexpr int kChampionRevenant = 1, kChampionDemon = 2, kChampionStoneWarden = 3, kChampionFallenSaint = 4,
-                     kEventChampionKinds = 4;
+                     kChampionVampire = 5, kEventChampionKinds = 5;
 inline bool trialGuardianChampion(int champion) { return champion == kChampionStoneWarden || champion == kChampionFallenSaint; }
 inline const char* championName(int champion) {
     switch (champion) {
@@ -32,6 +37,7 @@ inline const char* championName(int champion) {
         case kChampionDemon: return "The Unchained Demon";
         case kChampionStoneWarden: return "The Stone Warden";
         case kChampionFallenSaint: return "The Fallen Saint";
+        case kChampionVampire: return "The Vampire Lord";
         default: return "";
     }
 }
@@ -56,6 +62,7 @@ inline const char* landmarkName(LandmarkKind kind, FloorRegion region) {
         case LandmarkKind::PalePeddler: return "The Pale Peddler";
         case LandmarkKind::ChainedDemon: return "The Chained Demon";
         case LandmarkKind::LamplighterRest: return "Lamplighter's Rest";
+        case LandmarkKind::BloodAltar: return "The Blood Altar";
         case LandmarkKind::None: break;
     }
     return "";

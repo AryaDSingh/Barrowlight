@@ -25,7 +25,7 @@ inline const char* armourName(ArmourKind kind) {
     }
 }
 
-enum class WeaponKind { None, OneHanded, TwoHanded, Bow, Staff, Shield };
+enum class WeaponKind { None, OneHanded, TwoHanded, Bow, Staff, Shield, Whip };
 inline const char* slotName(EquipmentSlot slot) {
     switch (slot) {
         case EquipmentSlot::Weapon: return "Main hand";
@@ -149,7 +149,7 @@ inline std::string equipmentTypeName(const ItemDefinition& item) {
 }
 
 // IDs are persistent identities. Display names can change independently.
-inline constexpr std::array<ItemDefinition, 42> kItemDefinitions{{
+inline constexpr std::array<ItemDefinition, 44> kItemDefinitions{{
     {"iron_sword", "Iron Sword", EquipmentSlot::Weapon, {5, 0, 0, 0, 0}, WeaponKind::OneHanded},
     {"ash_staff", "Ash Staff", EquipmentSlot::Weapon, {0, 0, 5, 0, 3}, WeaponKind::Staff},
     {"hunting_bow", "Hunting Bow", EquipmentSlot::Weapon, {0, 5, 0, 0, 0}, WeaponKind::Bow},
@@ -165,6 +165,8 @@ inline constexpr std::array<ItemDefinition, 42> kItemDefinitions{{
     {"training_greatsword", "Training Greatsword", EquipmentSlot::Weapon, {}, WeaponKind::TwoHanded},
     {"training_bow", "Training Bow", EquipmentSlot::Weapon, {}, WeaponKind::Bow},
     {"training_shield", "Training Shield", EquipmentSlot::OffHand, {}, WeaponKind::Shield},
+    {"leather_whip", "Leather Whip", EquipmentSlot::Weapon, {0,5,0,0,0}, WeaponKind::Whip},
+    {"training_whip", "Training Whip", EquipmentSlot::Weapon, {}, WeaponKind::Whip},
     {"cloth_hood", "Cloth Hood", EquipmentSlot::Head, {0,0,0,0,1}, WeaponKind::None, ArmourKind::Cloth},
     {"leather_cap", "Leather Cap", EquipmentSlot::Head, {0,0,0,1,0}, WeaponKind::None, ArmourKind::Light},
     {"iron_helm", "Iron Helm", EquipmentSlot::Head, {0,0,0,2,0}, WeaponKind::None, ArmourKind::Heavy},

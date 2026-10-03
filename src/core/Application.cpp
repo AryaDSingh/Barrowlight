@@ -312,6 +312,8 @@ MonsterLook monsterLook(const Monster& monster) {
                 {0, 0, 1, 2, 3}, {4, 4, 8, 5, 6}};
     if (monster.eventChampion == kChampionFallenSaint)
         return {idleFrame("calciumtrice/heroes/EvilCleric.png"), sf::Color(205, 175, 255), 1.6f};
+    if (monster.eventChampion == kChampionVampire)
+        return {idleFrame("calciumtrice/heroes/Psychopath.png"), sf::Color(235, 215, 225), 1.5f};
     return monsterLook(monster.type());
 }
 
@@ -1026,6 +1028,12 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         if (talent.restoreMana) log("Mana: ",player_.stats().mana,"/",player_.stats().maxMana);
         if (talent.restoreHpPercent) log("HP: ",player_.stats().hp,"/",player_.stats().maxHp);
         if (talent.cleanse) log("Poison, Burn, Chill, Marked and curses removed. Other effects remain.");
+        if (talent.snuffRadius) {
+            snuffLights(player_.position(),talent.snuffRadius);
+            player_.lightLit=false;
+            updateFieldOfView();
+            log("Every light around you gutters out. Darkness falls.");
+        }
         if (talent.conjureLight && player_.statusEffects().has(StatusEffectType::Smothered)) {
             log("Your wisp gutters and dies in the smothering dark.");
         } else if (talent.conjureLight) {
@@ -1051,6 +1059,11 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 hitTalent.power+=momentum*momentumStreak_;
             }
             std::string combo;
+            hitTalent.power+=situationalBonus(talent,*target);
+            if (talent.darkBonusPercent && !tileLit(target->position())) { hitTalent.damagePercent+=talent.darkBonusPercent; combo+="In darkness: +"+std::to_string(talent.darkBonusPercent)+"%. "; }
+            if (const auto* m=dynamic_cast<const Monster*>(target); talent.searing && m && (seesInDark(m->type()) || !bleeds(m->type()))) {
+                hitTalent.damagePercent+=50; combo+="Searing: +50%. ";
+            }
             if (target->statusEffects().has(StatusEffectType::Marked)) combo+="Marked +25%; charge consumed. ";
             if (talent.consumeBurn && target->statusEffects().has(StatusEffectType::Burn)) combo+="Burn consumed: +50%. ";
             if (talent.consumeShock && target->statusEffects().has(StatusEffectType::Shock)) combo+="Shock consumed: +50%. ";
@@ -1078,6 +1091,13 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     if (immovable(*target)) { target->statusEffects().remove(StatusEffectType::Grappled); log(target->name(), " is too massive to hold."); }
                     else log("You grab ", target->name(), ". Step to drag it along.");
                 }
+                if (target->stats().hp>0 && talent.pullDistance>0) {
+                    const auto me=player_.position(), at=target->position();
+                    const int gap=std::max(std::abs(at.x-me.x),std::abs(at.y-me.y));
+                    const Position toward{(me.x>at.x)-(me.x<at.x),(me.y>at.y)-(me.y<at.y)};
+                    if (gap>1 && immovable(*target)) log(target->name(), " won't budge.");
+                    else if (gap>1) pushActor(*target,toward,std::min(talent.pullDistance,gap-1),player_);
+                }
                 if (target->stats().hp>0 && talent.hurlDistance>0) {
                     if (immovable(*target)) log(target->name(), " is too heavy to lift.");
                     else hurlActor(*target,talent.hurlDistance+(target->statusEffects().has(StatusEffectType::Grappled)?1:0),talent.domino);
@@ -1102,6 +1122,23 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         }
     }
 
+    if (talent.splashSurface) {
+        for (const auto& p:target.area) setSurface(p,static_cast<SurfaceType>(talent.splashSurface),talent.splashTurns);
+    }
+    if (talent.flare && !target.area.empty()) {
+        const Position centre=target.area.front();
+        for (auto& m:monsters_) for (const auto& p:target.area)
+            if (m->tactics.concealed && m->position().x==p.x && m->position().y==p.y) { m->tactics.concealed=false; log(m->name(), " is caught in the light!"); }
+        lightOrbs_.push_back({centre,8});
+        updateFieldOfView();
+    }
+    if (talent.dawn) {
+        relightLights(player_.position(),6);
+        player_.statusEffects().remove(StatusEffectType::Smothered);
+        if (player_.lightSource) player_.lightLit=true;
+        updateFieldOfView();
+        log("Dawn breaks: torches and braziers flare back to life.");
+    }
     afterHiddenCast(talent,landedAny,killedAny,wasConcealed);
     if (const Element element=talentElement(talent); element!=Element::None) {
         std::vector<Position> touched=target.area;
@@ -1121,7 +1158,25 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     return true;
 }
 
+int Application::situationalBonus(const Talent& talent, const Actor& target) const {
+    const auto& kit=player_.talents();
+    int bonus=0;
+    const auto& effects=target.statusEffects();
+    if (talent.tree==TalentTree::Whip && (effects.has(StatusEffectType::Stun) || effects.has(StatusEffectType::Grappled) ||
+        effects.has(StatusEffectType::Blinded) || effects.has(StatusEffectType::Burn) || effects.has(StatusEffectType::Chill) ||
+        effects.has(StatusEffectType::Shock))) bonus+=kit.passiveValue(PassiveKind::Flay);
+    if (talent.tree==TalentTree::Alchemy) bonus+=kit.passiveValue(PassiveKind::PotentBrews);
+    if (isSpell(talent)) {
+        if (tileLit(target.position())) bonus+=kit.passiveValue(PassiveKind::InnerLight);
+        if (playerLightRadius()==0) bonus+=kit.passiveValue(PassiveKind::Umbral);
+    }
+    return bonus;
+}
+
 void Application::advanceEnemyIntents() {
+    if (const int umbral=player_.talents().passiveValue(PassiveKind::Umbral); umbral && playerLightRadius()==0 &&
+        player_.statusEffects().magnitudeOf(StatusEffectType::Evasion)<umbral*3)
+        player_.statusEffects().apply({StatusEffectType::Evasion,1,umbral*3});
     tickSurfaces();
     for (auto& m:monsters_) {
         if (m->allied && m->remainingLife>0 && --m->remainingLife==0) { m->stats().hp=0; scheduler_.remove(*m); log("A temporary skeleton dissolves."); }
@@ -1442,6 +1497,10 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     damage=std::max(0,damage-guard);
                     decision.target->stats().hp -= damage;
                     if (damage>0) flashActor(*decision.target);
+                    if (const auto* lord=dynamic_cast<const Monster*>(&actor); lord && lord->eventChampion==kChampionVampire && damage>0) {
+                        actor.stats().hp=std::min(actor.stats().maxHp,actor.stats().hp+damage);
+                        log(actor.name()," drinks your blood and heals ",damage,".");
+                    }
                     if (const int retribution=decision.target->talents().passiveValue(PassiveKind::Retribution);
                         retribution && guard && actor.stats().hp>0 && std::max(std::abs(actor.position().x-decision.target->position().x),
                                                                                std::abs(actor.position().y-decision.target->position().y))<=1) {
@@ -1737,10 +1796,12 @@ void Application::removeDeadMonsters() {
 void Application::updateFieldOfView() {
     computeLight();
     std::vector<Position> visible = computeFieldOfView(map_, player_.position(), kSightRadius);
-    // In the dark only what's lit, or right beside you, can be seen.
+    // In the dark only what's lit, or right beside you, can be seen. Umbral
+    // Shroud (Shadow) sees three tiles into the dark while your light is out.
     const auto here = player_.position();
+    const int darkSight = player_.talents().passiveValue(PassiveKind::Umbral) && playerLightRadius() == 0 ? 3 : 1;
     visible.erase(std::remove_if(visible.begin(), visible.end(), [&](Position p) {
-        return !tileLit(p) && std::max(std::abs(p.x - here.x), std::abs(p.y - here.y)) > 1;
+        return !tileLit(p) && std::max(std::abs(p.x - here.x), std::abs(p.y - here.y)) > darkSight;
     }), visible.end());
     exploredMap_.update(visible);
 }
@@ -1748,7 +1809,7 @@ void Application::updateFieldOfView() {
 int Application::playerLightRadius() const {
     if (!player_.lightLit || player_.statusEffects().has(StatusEffectType::Smothered)) return 0;
     const int base = player_.lightSource == 2 ? 6 : player_.lightSource == 1 ? 4 : 0;
-    return base ? base + player_.inventory().affixTotal(BonusStat::LightRadius) : 0;
+    return base ? base + player_.inventory().affixTotal(BonusStat::LightRadius) + (player_.talents().passiveValue(PassiveKind::InnerLight) ? 1 : 0) : 0;
 }
 
 bool Application::tileLit(Position p) const {
@@ -1758,6 +1819,8 @@ bool Application::tileLit(Position p) const {
 }
 
 bool Application::canSee(const Actor& viewer, Position target) const {
+    if (viewer.statusEffects().has(StatusEffectType::Blinded))
+        return std::max(std::abs(viewer.position().x - target.x), std::abs(viewer.position().y - target.y)) <= 1;
     if (!darknessEnabled_) return true;
     const auto* monster = dynamic_cast<const Monster*>(&viewer);
     if (monster && (monster->allied || seesInDark(monster->type()))) return true;
@@ -1904,6 +1967,8 @@ void Application::regenerateLevel(unsigned int seed) {
     params.region=theme.region;
     // Very rare events only stir on deep floors.
     params.rareEventChance=currentFloor_>=kRareEventFloor ? kRareEventChance : 0.f;
+    // The Blood Altar waits from floor 4 until you have made your offering.
+    params.bloodAltarChance=currentFloor_>=kBloodAltarFloor && !player_.bloodMagicUnlocked ? 0.3f : 0.f;
     // Only specific floors generate with a boss room at all -- every
     // other floor is a pure "clear it, find the door" dungeon. kFinalFloor
     // (10) is a placeholder using the same GoblinWarlord as
@@ -1987,6 +2052,7 @@ void Application::regenerateLevel(unsigned int seed) {
 
     for (auto& m:monsters_) scaleDungeonMonster(*m,currentFloor_);
     seedSurfaces(seed);
+    if (landmark_==LandmarkKind::BloodAltar) placeVampireLord();
     if (dungeon.hasBossRoom && boss_) {
         const Position centre=boss_->position();
         placeBraziers(centre,{{-3,-2},{3,-2},{-3,2},{3,2}});
@@ -2028,7 +2094,7 @@ SaveGameState Application::captureState(bool includeFloors) {
     state.ascendancy=player_.ascendancy; state.ascendancyPoints=player_.ascendancyPoints;
     state.trialKeys=player_.trialKeys; state.trialsCleared=player_.trialsCleared;
     state.trial=trial_; state.trialReturnFloor=trialReturnFloor_;
-    state.lightSource=player_.lightSource; state.lightLit=player_.lightLit;
+    state.lightSource=player_.lightSource; state.lightLit=player_.lightLit; state.bloodMagicUnlocked=player_.bloodMagicUnlocked;
     for (int y=0;y<map_.height();++y) for (int x=0;x<map_.width();++x) {
         const auto s=surfaceAt({x,y});
         if (s!=SurfaceType::None) state.surfaces.push_back({x,y,static_cast<int>(s),surfaces_[static_cast<std::size_t>(y*map_.width()+x)].turns});
@@ -2197,7 +2263,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     player_.ascendancy=state.ascendancy; player_.ascendancyPoints=state.ascendancyPoints;
     player_.trialKeys=state.trialKeys; player_.trialsCleared=state.trialsCleared;
     trial_=state.trial; trialReturnFloor_=state.trialReturnFloor;
-    player_.lightSource=state.lightSource; player_.lightLit=state.lightLit;
+    player_.lightSource=state.lightSource; player_.lightLit=state.lightLit; player_.bloodMagicUnlocked=state.bloodMagicUnlocked;
     surfaces_.assign(static_cast<std::size_t>(state.map.width()*state.map.height()),{});
     for (const auto& [x,y,type,turns]:state.surfaces)
         surfaces_[static_cast<std::size_t>(y*state.map.width()+x)]={static_cast<SurfaceType>(type),turns};
@@ -2314,7 +2380,7 @@ void Application::renderClassSelection() {
         {"Mage",PlayerClass::Mage,sf::Color(142,172,240),"Str 2   Dex 2   Int 6","Life 20   Mana 20",
             "Fire, ice, lightning and raw arcane force, from a safe distance.",{6,7,8,9}},
         {"Thief",PlayerClass::Thief,sf::Color(132,218,160),"Str 2   Dex 6   Int 2","Life 25   Mana 15",
-            "Shadows, the bow and quick feet: strike first, then vanish.",{4,3,5}}};
+            "Shadows, the bow and quick feet: strike first, then vanish.",{4,3,5,18}}};
     for (int i=0;i<3;++i) {
         const auto& info=classes[i];
         const auto card=classCard(i);

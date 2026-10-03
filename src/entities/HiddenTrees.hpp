@@ -7,10 +7,11 @@ inline bool specialized(const Player& p,const char* id) {
 }
 inline constexpr const char* kHiddenIds[]{"spellblade","animation","shadow_archer","blood_magic"};
 inline constexpr const char* kHiddenNames[]{"Spellblade","Animation","Shadow Archer","Blood Magic"};
-// Hidden trees can't be unlocked for now: their old discovery path (the
-// Codex, relics and specialization combinations) was removed and a new
-// unlock is still being designed. Every other tree is always available.
-inline bool hiddenTreeAvailable(const Player&,const std::string& id) {
+// Hidden trees open by special means. Blood Magic: an offering at the Blood
+// Altar. The others' unlock is still being designed. Every other tree is
+// always available.
+inline bool hiddenTreeAvailable(const Player& p,const std::string& id) {
+    if (id=="blood_magic") return p.bloodMagicUnlocked;
     for (const auto* hidden:kHiddenIds) if (id==hidden) return false;
     return true;
 }

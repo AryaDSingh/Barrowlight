@@ -77,6 +77,7 @@ public:
     // whether it is lit. A doused light hides you in the dark.
     int lightSource=1;
     bool lightLit=true;
+    bool bloodMagicUnlocked=false; // offered blood at the Blood Altar
     int ascendancyPoints=0, trialKeys=0, trialsCleared=0;
     std::vector<int> deathlessSpentFloors;
     int& level() { return level_; }

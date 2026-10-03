@@ -12,6 +12,7 @@ enum class StatusEffectType {
     ManaDrain, Doom, // curses: drain mana each tick; delayed HP damage on expiry
     Smothered,       // the Lich's darkness: your light can't burn until it ends (not cleansable)
     Grappled,        // held by the player (Brawling): can't walk away, and is dragged along
+    Blinded,         // sees only what is beside it (Shadow, Radiance)
 };
 
 struct StatusEffectInstance {
@@ -84,6 +85,7 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::Doom: return "Doom";
     case StatusEffectType::Smothered: return "Smothered";
     case StatusEffectType::Grappled: return "Grappled";
+    case StatusEffectType::Blinded: return "Blinded";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

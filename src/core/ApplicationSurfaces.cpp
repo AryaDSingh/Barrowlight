@@ -312,6 +312,7 @@ void Application::tickSurfaces() {
     for (auto& s : surfaces_) {
         if (s.type == SurfaceType::Fire && --s.turns <= 0) s = {};
         else if (s.type == SurfaceType::Electrified && --s.turns <= 0) s = {SurfaceType::Water, 0};
+        else if (s.type == SurfaceType::Acid && --s.turns <= 0) s = {};
     }
     for (const auto& p : spreadTo) setSurface(p, SurfaceType::Fire, kOilFireTurns);
 
@@ -324,6 +325,13 @@ void Application::tickSurfaces() {
                 break;
             case SurfaceType::Ice: a.statusEffects().apply({StatusEffectType::Chill, 2, 20}); break;
             case SurfaceType::Electrified: shocked.push_back(a.position()); break;
+            case SurfaceType::Acid:
+                // Acid eats at whatever stands in it, and leaves it exposed.
+                a.stats().hp -= 2; flashActor(a);
+                a.statusEffects().apply({StatusEffectType::Marked, 3, 1});
+                if (&a == &player_) log("Acid eats at you!");
+                checkAndHandleDeath(a);
+                break;
             default: break;
         }
     };
@@ -337,6 +345,10 @@ void Application::tickSurfaces() {
     for (auto& m : monsters_) {
         if (m->stats().hp <= 0 || m->allied) continue;
         const auto at = m->position();
+        if (m->eventChampion == kChampionVampire && surfaceAt(at) == SurfaceType::Blood && m->stats().hp < m->stats().maxHp) {
+            m->stats().hp = std::min(m->stats().maxHp, m->stats().hp + 3);
+            if (visibleTile(at)) log(m->name(), " drinks from the blood at its feet.");
+        }
         if (m->type() == MonsterType::DrownedOne) {
             if (surfaceAt(at) == SurfaceType::None) setSurface(at, SurfaceType::Water, 0);
             if (conducts(surfaceAt(at))) m->stats().hp = std::min(m->stats().maxHp, m->stats().hp + 2);
@@ -366,7 +378,7 @@ void Application::tickSurfaces() {
 // Dangerous ground monsters won't walk into on purpose.
 bool Application::hazardousSurface(Position p) const {
     const auto s = surfaceAt(p);
-    return s == SurfaceType::Fire || s == SurfaceType::Electrified;
+    return s == SurfaceType::Fire || s == SurfaceType::Electrified || s == SurfaceType::Acid;
 }
 
 // A push, step by step. Whatever stops it hurts: walls (3), another
@@ -461,6 +473,26 @@ void Application::hurlActor(Actor& target, int distance, bool domino) {
     const Position at = target.position();
     if (at.x == me.x && at.y == me.y) target.setPosition(from);
     else if (visibleTile(at)) spawnVfx({Vfx::Kind::Puff, {at.x + .5f, at.y + .5f}, {at.x + .5f, at.y + .5f}, sf::Color(150, 130, 110), 0, .45f, .7f});
+}
+
+void Application::snuffLights(Position centre, int radius) {
+    const auto close = [&](Position p) { return std::max(std::abs(p.x - centre.x), std::abs(p.y - centre.y)) <= radius; };
+    for (const auto& front : wallTorches_)
+        if (close(front) && torchLit(front.x, front.y - 1)) setTorchLit(front.x, front.y - 1, false);
+    for (auto& prop : props_) if (prop.kind == PropKind::Brazier && close(prop.pos)) prop.kind = PropKind::ColdBrazier;
+    lightOrbs_.erase(std::remove_if(lightOrbs_.begin(), lightOrbs_.end(), [&](const LightOrb& o) { return close(o.at); }), lightOrbs_.end());
+    for (int y = centre.y - radius; y <= centre.y + radius; ++y)
+        for (int x = centre.x - radius; x <= centre.x + radius; ++x)
+            if (surfaceAt({x, y}) == SurfaceType::Fire) setSurface({x, y}, SurfaceType::None, 0);
+    updateFieldOfView();
+}
+
+void Application::relightLights(Position centre, int radius) {
+    const auto close = [&](Position p) { return std::max(std::abs(p.x - centre.x), std::abs(p.y - centre.y)) <= radius; };
+    for (const auto& front : wallTorches_)
+        if (close(front)) setTorchLit(front.x, front.y - 1, true);
+    for (auto& prop : props_) if (prop.kind == PropKind::ColdBrazier && close(prop.pos)) prop.kind = PropKind::Brazier;
+    updateFieldOfView();
 }
 
 // A grappled enemy follows you into the tile you just left; one that is no
@@ -625,6 +657,7 @@ void Application::renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>
                 case SurfaceType::Ice: body = sf::Color(185, 225, 250, 165); break;
                 case SurfaceType::Fire: body = sf::Color(60, 25, 10, 170); break; // scorched ground under the flames
                 case SurfaceType::Blood: body = sf::Color(105, 10, 14, 175); break;
+                case SurfaceType::Acid: body = sf::Color(110, 170, 30, 165); break;
                 default: break;
             }
             // Three overlapping blobs per tile merge with the neighbours into a puddle.

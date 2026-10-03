@@ -12,7 +12,7 @@ enum class TalentTree {
     Blade,
     Flame, // legacy enemy/reserved definitions
     OneHanded, TwoHanded, Shield, Bow, Stealth, Acrobatics, Fire, Ice, Lightning, Arcane, Cloth, LightArmour, HeavyArmour, Spellblade, Animation, BloodMagic, ShadowArcher,
-    Brawling,
+    Brawling, Whip, Shadow, Radiance, Alchemy,
 };
 
 // Abilities and talents have five ranks; rank 5 often adds a mastery effect
@@ -53,9 +53,11 @@ enum class TalentEffectKind {
 // "data-driven" even without an external file: logic and data are
 // cleanly separated, the data table is trivially swappable for a file
 // loader later, but no such loader exists yet.
-enum class WeaponRequirement { None, OneHanded, TwoHanded, Shield, Bow, Melee };
+enum class WeaponRequirement { None, OneHanded, TwoHanded, Shield, Bow, Melee, Whip };
 enum class ArmourRequirement { None, Cloth, Light, Heavy };
-inline bool isMagicTree(TalentTree tree) { return tree >= TalentTree::Fire && tree <= TalentTree::Arcane; }
+inline bool isMagicTree(TalentTree tree) {
+    return (tree >= TalentTree::Fire && tree <= TalentTree::Arcane) || tree == TalentTree::Shadow || tree == TalentTree::Radiance;
+}
 
 enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship, Ambush, Footwork, Kindle, StaticCharge, Frostbite, ArcaneEfficiency, ClothWard, Spellweave, LightEvasion, LightPrecision, HeavyBrace, HeavyResolve, BattleRhythm, GravePact, Deathless, Unseen,
     // Ascendancy passives (entities/Ascendancy.hpp).
@@ -64,8 +66,8 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // Hybrid ascendancies.
     Zeal, Retribution, Devotion, Righteous, HiddenCasting, LingeringShadow, ShadeStep, SpellThief,
     Momentum, Finisher, Counter, EnGarde, Balance, Versatility, Resilience, Wellspring,
-    // Brawling.
-    HardLanding };
+    // Brawling, Whip, Shadow, Radiance, Alchemy.
+    HardLanding, Flay, Umbral, InnerLight, PotentBrews };
 
 struct Talent {
     std::string name;
@@ -194,6 +196,19 @@ struct Talent {
     // it hits one tile further.
     int chargeDistance=0, hurlDistance=0;
     bool domino=false;
+    // Whip: reach lets an AdjacentEnemy attack strike along a clear straight
+    // line up to this many tiles; pullDistance then drags the target toward
+    // you (stopping beside you), through whatever lies between.
+    int reach=0, pullDistance=0;
+    // Shadow and Radiance. darkBonusPercent: extra damage against a target on
+    // an unlit tile. searing: +50% against undead and creatures that see in
+    // the dark. snuffRadius: put out every light around you. flare: reveal
+    // hidden enemies and light the blast. dawn: relight the lights around you.
+    int darkBonusPercent=0, snuffRadius=0;
+    bool searing=false, flare=false, dawn=false;
+    // Alchemy: the surface (a SurfaceType value) a flask leaves on the
+    // tiles it splashes, and for how many turns (0: until disturbed).
+    int splashSurface=0, splashTurns=0;
 
 };
 

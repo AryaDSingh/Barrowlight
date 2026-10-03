@@ -2,6 +2,7 @@
 
 #include "entities/Monster.hpp"
 #include "world/ExploredMap.hpp"
+#include "world/Landmark.hpp"
 
 namespace engine {
 std::vector<std::string> inspectMonster(const Monster& monster,
@@ -31,6 +32,8 @@ std::vector<std::string> inspectMonster(const Monster& monster,
         lines.push_back(monster.flooded ? "It has flooded its sanctum; its bolts freeze the water you stand in." :
             "Below 60% life it floods its sanctum, and its bolts freeze water.");
     }
+    if (monster.eventChampion==kChampionVampire)
+        lines.push_back("The Vampire Lord: drinks the life of every blow he lands and heals standing in blood. Light weakens and burns him; darkness makes him deadly.");
     if (monster.type()==MonsterType::GoblinWarlord)
         lines.push_back("Kicks lit braziers at you when one is beside it; its Fury scorches the ground it strikes.");
     if (monster.intent()) {

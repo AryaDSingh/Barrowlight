@@ -9,7 +9,7 @@ inline bool favoredByTheme(const ItemDefinition& item, LootTheme theme) {
     switch (theme) {
         case LootTheme::Barracks:
             return item.weaponKind==WeaponKind::OneHanded || item.weaponKind==WeaponKind::TwoHanded ||
-                item.weaponKind==WeaponKind::Bow || item.weaponKind==WeaponKind::Shield ||
+                item.weaponKind==WeaponKind::Bow || item.weaponKind==WeaponKind::Shield || item.weaponKind==WeaponKind::Whip ||
                 std::string_view(item.id)=="chain_coat" || std::string_view(item.id)=="scout_leathers";
         case LootTheme::Sanctum:
             return item.weaponKind==WeaponKind::Staff || std::string_view(item.id)=="woven_robes" ||

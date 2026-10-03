@@ -144,8 +144,8 @@ Proposed unlocks: weapon trees open when you wield the weapon; magic schools
 come from tomes (rare drops, landmark rewards); hybrid trees open at ~5 ranks
 in both parent trees (which could also reopen the four locked trees).
 
-First batch chosen: **Brawling** (building now), Whip, Shadow + Radiance,
-Alchemy, then the hybrid unlock rule.
+First batch chosen: Brawling, Whip, Shadow + Radiance, Alchemy (all built
+2026-10-02), then the hybrid unlock rule (not yet).
 
 ## Weapons (each a new WeaponKind + tree)
 - **Spear / Polearm** (two-handed, reach 2): Reach Strike past an ally; Brace

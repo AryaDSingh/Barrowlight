@@ -314,6 +314,8 @@ private:
     void grantUnique(std::optional<Position> ground);
     // A rare event's champion: Nightmare tier, half again its life.
     void raiseChampion(MonsterType type, int champion);
+    void placeVampireLord();            // the Blood Altar's sleeping guardian, and its blood pool
+    bool vampireLordAlive() const;
     void scaleDungeonMonster(Monster& monster,int floor);
     Position floorEntrance_{}, floorExit_{};
     int gold_=0, quietTurns_=0, restTurns_=0;
@@ -608,6 +610,10 @@ private:
     // grappled enemy into the tile the player just left.
     void hurlActor(Actor& target, int distance, bool domino);
     void dragGrappled(Position vacated);
+    // Shadow and Radiance: put out / relight every light around a spot.
+    void snuffLights(Position centre, int radius);
+    void relightLights(Position centre, int radius);
+    int situationalBonus(const Talent& talent, const Actor& target) const; // Flay, Brews, Inner Light, Umbral
     bool dominoPush_ = false;
     void carveChasms(std::mt19937& rng);
     void placeBraziers(Position centre, const std::vector<Position>& offsets);

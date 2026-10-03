@@ -66,6 +66,10 @@ inline std::string talentIcon(const Talent& talent) {
         {"spellblade.release", "shattered-glass"},
         {"brawling.tackle", "charging-bull"}, {"brawling.grapple", "grab"}, {"brawling.hard_landing", "impact-point"},
         {"brawling.hurl", "human-cannonball"},
+        {"whip.lash", "whip"}, {"whip.trip", "tripwire"}, {"whip.flay", "barbed-coil"}, {"whip.snare", "lasso"},
+        {"shadow.bolt", "evil-moon"}, {"shadow.snuff", "smoking-orb"}, {"shadow.umbral", "night-sky"}, {"shadow.veil", "eclipse"},
+        {"radiance.sear", "sunbeams"}, {"radiance.flare", "sun-radiations"}, {"radiance.inner_light", "candlebright"}, {"radiance.dawn", "sunrise"},
+        {"alchemy.oil", "round-bottom-flask"}, {"alchemy.firebomb", "molotov"}, {"alchemy.brews", "bubbling-flask"}, {"alchemy.acid", "fizzing-flask"},
     };
     if (const auto it = byId.find(talent.id); it != byId.end()) return it->second;
     if (talent.name == "Second Wind") return "heart-inside";
@@ -86,6 +90,7 @@ inline std::string itemIcon(const ItemDefinition& item) {
                 case WeaponKind::TwoHanded: return "relic-blade";
                 case WeaponKind::Bow: return "pocket-bow";
                 case WeaponKind::Staff: return "wizard-staff";
+                case WeaponKind::Whip: return "whip";
                 default: return std::string(item.id).find("dagger") != std::string::npos ? "plain-dagger" : "broadsword";
             }
         case EquipmentSlot::Armour:
@@ -148,6 +153,7 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::Doom: return "skull-crossed-bones";
         case StatusEffectType::Smothered: return "shadow-follower";
         case StatusEffectType::Grappled: return "manacles";
+        case StatusEffectType::Blinded: return "blindfold";
     }
     return "aura";
 }

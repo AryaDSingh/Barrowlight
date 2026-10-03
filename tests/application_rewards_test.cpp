@@ -726,6 +726,164 @@ struct ApplicationRewardsTestAccess {
             check(w->position().y==11,"Bosses are too heavy to hurl");
             app.monsters_.clear(); app.boss_=nullptr;
         }
+
+        // The new trees: Whip, Shadow, Radiance and Alchemy.
+        const auto learnTalent=[&](const char* id) {
+            app.player_.talents().learnTalent(findTalentDefinition(id)->ranks[0]);
+            return app.player_.talents().knownTalents().size()-1;
+        };
+        const auto cast=[&](std::size_t index,Position p) {
+            app.player_.talents().resetCooldowns(); app.player_.stats().mana=app.player_.stats().maxMana;
+            app.player_.stats().hp=app.player_.stats().maxHp;
+            return app.tryUseTalent(index,p);
+        };
+        setup(PlayerClass::Thief);
+        {
+            check(startingTreeAllowed(PlayerClass::Thief,TalentTree::Whip),"Whip is a Thief starting tree");
+            const auto lash=learnTalent("whip.lash"), trip=learnTalent("whip.trip"), snare=learnTalent("whip.snare");
+            check(!talentUnavailableReason(app.player_,lash).empty(),"Whip abilities need a whip in hand");
+            app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition("leather_whip"),app.nextItemId_++));
+            app.player_.equip(app.player_.inventory().items().size()-1);
+            check(talentUnavailableReason(app.player_,lash).empty(),"With a whip equipped they work");
+            auto* goblin=enemy({12,10}); goblin->stats().dexterity=0; goblin->stats().hp=goblin->stats().maxHp=80;
+            app.player_.setPosition({10,10}); app.updateFieldOfView();
+            app.setSurface({11,10},SurfaceType::Fire,4);
+            check(!app.targetPreview(lash,{12,12}).valid,"Lash reaches only along a straight line");
+            check(cast(lash,{12,10}) && goblin->position().x==11 && goblin->statusEffects().has(StatusEffectType::Burn),
+                  "Lash strikes from two tiles away and pulls the foe through the fire");
+            app.clearSurfaces(); goblin->statusEffects().active().clear();
+            goblin->setPosition({12,10}); app.updateFieldOfView();
+            check(cast(trip,{12,10}) && (goblin->statusEffects().has(StatusEffectType::Stun) || goblin->statusEffects().has(StatusEffectType::StunRecovery)),
+                  "Trip knocks a foe down from two tiles away");
+            goblin->statusEffects().active().clear(); goblin->setPosition({13,10}); app.updateFieldOfView();
+            check(cast(snare,{13,10}) && goblin->position().x==11 && goblin->statusEffects().has(StatusEffectType::Grappled),
+                  "Snare drags a foe from three tiles away right up to you, and holds it");
+            app.monsters_.clear();
+        }
+        setup(PlayerClass::Mage); app.darknessEnabled_=true;
+        {
+            const auto& boltDef=findTalentDefinition("shadow.bolt")->ranks[0];
+            check(isSpell(boltDef) && boltDef.manaCost==4,"Shadow spells are spells, priced like the other schools");
+            const auto snuff=learnTalent("shadow.snuff"), veil=learnTalent("shadow.veil");
+            learnTalent("shadow.umbral");
+            app.player_.setPosition({10,10}); app.player_.lightLit=true; app.updateFieldOfView();
+            cast(snuff,{10,10});
+            check(!app.player_.lightLit && app.playerLightRadius()==0,"Snuff puts out your own light along with the rest");
+            check(app.exploredMap_.at(13,10)==Visibility::Visible,"Umbral Shroud: with your light out you see three tiles into the dark");
+            app.advanceEnemyIntents(); // as the enemies take their turn
+            check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Evasion)>=6,"Umbral Shroud: harder to hit in the dark");
+            auto* goblin=enemy({12,10}); goblin->stats().dexterity=0; goblin->stats().hp=goblin->stats().maxHp=80;
+            app.updateFieldOfView();
+            check(cast(veil,{12,10}) && goblin->statusEffects().has(StatusEffectType::Blinded),"Veil of Night blinds");
+            app.player_.setPosition({10,10});
+            check(!app.canSee(*goblin,{10,10}) && app.canSee(*goblin,{12,11}),"A blinded foe sees only what is beside it");
+            app.monsters_.clear();
+        }
+        setup(PlayerClass::Mage); app.darknessEnabled_=true;
+        {
+            const auto flare=learnTalent("radiance.flare"), dawn=learnTalent("radiance.dawn");
+            learnTalent("radiance.inner_light");
+            app.player_.lightLit=true;
+            check(app.playerLightRadius()==5,"Inner Light: your light reaches a tile further");
+            app.player_.setPosition({10,10}); app.updateFieldOfView();
+            auto* goblin=enemy({12,10}); goblin->stats().dexterity=0; goblin->stats().hp=goblin->stats().maxHp=80; goblin->tactics.concealed=true;
+            app.lightOrbs_.clear();
+            check(cast(flare,{12,10}) && !goblin->tactics.concealed && goblin->statusEffects().has(StatusEffectType::Blinded) && !app.lightOrbs_.empty(),
+                  "Flare blinds, reveals the hidden and leaves the spot lit");
+            app.monsters_.clear();
+            app.placeBraziers({10,10},{{3,-3}});
+            for (auto& prop:app.props_) if (prop.kind==PropKind::Brazier) prop.kind=PropKind::ColdBrazier;
+            app.player_.statusEffects().apply({StatusEffectType::Smothered,4,0}); app.player_.lightLit=false;
+            cast(dawn,{10,10});
+            const int brazier=app.propIndexAt(13,7);
+            check(brazier>=0 && app.props_[static_cast<std::size_t>(brazier)].kind==PropKind::Brazier && app.player_.lightLit &&
+                  !app.player_.statusEffects().has(StatusEffectType::Smothered),"Dawn relights braziers and breaks the smothering dark");
+        }
+        setup(PlayerClass::Thief);
+        {
+            const auto oil=learnTalent("alchemy.oil"), firebomb=learnTalent("alchemy.firebomb"), acid=learnTalent("alchemy.acid");
+            app.player_.setPosition({10,10}); app.updateFieldOfView();
+            cast(oil,{14,10});
+            check(app.surfaceAt({14,10})==SurfaceType::Oil && app.surfaceAt({15,10})==SurfaceType::Oil,"Oil Flask splashes oil over a tile and its neighbours");
+            cast(firebomb,{14,10});
+            check(app.surfaceAt({14,10})==SurfaceType::Fire && app.surfaceAt({15,10})==SurfaceType::Fire,"Firebomb sets the ground (and the oil) alight");
+            app.clearSurfaces();
+            auto* goblin=enemy({14,13}); goblin->stats().dexterity=0; goblin->stats().hp=goblin->stats().maxHp=80;
+            app.updateFieldOfView();
+            cast(acid,{14,13});
+            check(app.surfaceAt({14,13})==SurfaceType::Acid && goblin->statusEffects().has(StatusEffectType::Marked) && goblin->stats().hp<80,
+                  "Acid eats at whatever stands in it and leaves it Marked");
+            app.monsters_.clear(); app.clearSurfaces();
+        }
+        // Acid and blindness survive a save (a fresh Warrior: the fixture's
+        // One-Handed tree makes a level-1 Thief save invalid).
+        setup(PlayerClass::Warrior);
+        {
+            auto* goblin=enemy({14,13});
+            goblin->statusEffects().apply({StatusEffectType::Blinded,3,0});
+            app.setSurface({14,13},SurfaceType::Acid,8);
+            roundTrip();
+            check(app.surfaceAt({14,13})==SurfaceType::Acid && std::any_of(app.monsters_.begin(),app.monsters_.end(),[](const auto& m){ return m->statusEffects().has(StatusEffectType::Blinded); }),
+                  "Acid and blindness survive a save");
+            app.monsters_.clear(); app.clearSurfaces();
+        }
+
+        // The Blood Altar: its Vampire Lord, and the Blood Magic it teaches.
+        setup(PlayerClass::Warrior);
+        {
+            check(!hiddenTreeAvailable(app.player_,"blood_magic"),"Blood Magic starts locked");
+            bool found=false;
+            for (unsigned seed=1;seed<400 && !found;++seed) {
+                app.currentFloor_=4+static_cast<int>(seed%2)*2; app.regenerateLevel(seed);
+                found=app.landmark_==LandmarkKind::BloodAltar;
+            }
+            check(found,"The Blood Altar turns up on deeper floors");
+            if (found) {
+                Monster* lord=nullptr;
+                for (auto& m:app.monsters_) if (m->eventChampion==kChampionVampire) lord=m.get();
+                check(lord && lord->tactics.alert==0 && app.vampireLordAlive(),"A Vampire Lord sleeps beside the altar");
+                bool pool=false;
+                for (int dy=-1;dy<=2;++dy) for (int dx=-2;dx<=2;++dx) pool=pool || app.surfaceAt({app.landmarkAltar_.x+dx,app.landmarkAltar_.y+dy})==SurfaceType::Blood;
+                check(pool,"The altar stands in a pool of blood");
+                check(!app.landmarkChoices().front().affordable,"While he lives, the altar won't take your offering");
+                for (const Position d:{Position{0,2},Position{-1,2},Position{1,2},Position{0,3},Position{-2,1},Position{2,1}}) {
+                    const Position p{app.landmarkAltar_.x+d.x,app.landmarkAltar_.y+d.y};
+                    if (app.map_.isWalkable(p.x,p.y) && !app.isOccupied(p,nullptr)) { app.player_.setPosition(p); break; }
+                }
+                app.updateFieldOfView(); snapshot("ui-blood-altar.png");
+                if (lord) {
+                    // He drinks what he strikes.
+                    app.darknessEnabled_=false;
+                    lord->stats().hp=lord->stats().maxHp/2;
+                    app.player_.stats().dexterity=0; app.player_.stats().hp=app.player_.stats().maxHp=500;
+                    const int wounded=lord->stats().hp;
+                    for (int i=0;i<12 && lord->stats().hp==wounded;++i) {
+                        AIDecision bite; bite.type=AIActionType::Attack; bite.target=&app.player_; bite.attackPower=4;
+                        app.executeAIDecision(*lord,bite,0);
+                    }
+                    check(lord->stats().hp>wounded,"The Vampire Lord heals by the blood he draws");
+                    lord->stats().hp=lord->stats().maxHp/2;
+                    app.setSurface(lord->position(),SurfaceType::Blood,0);
+                    const int before=lord->stats().hp; app.tickSurfaces();
+                    check(lord->stats().hp>before,"...and by standing in blood");
+                    const auto drops=app.groundItems_.size();
+                    lord->stats().hp=0; app.checkAndHandleDeath(*lord); app.removeDeadMonsters();
+                    check(!app.vampireLordAlive() && app.groundItems_.size()>drops,"Slain, he drops a unique item");
+                }
+                app.player_.stats().maxHp=app.player_.baseStats().maxHp; app.player_.refreshEquipmentStats();
+                app.player_.stats().hp=app.player_.stats().maxHp;
+                const int hp=app.player_.stats().hp;
+                app.shrineMenu_=true; app.chooseBlessing(0);
+                check(app.player_.bloodMagicUnlocked && app.player_.stats().hp<hp && hiddenTreeAvailable(app.player_,"blood_magic"),
+                      "An offering of blood opens the Blood Magic tree");
+                app.landmark_=LandmarkKind::None; app.monsters_.clear(); app.boss_=nullptr; app.clearSurfaces();
+                app.player_.stats().dexterity=2;
+                app.currentFloor_=1; app.regenerateLevel(1); app.player_.bloodMagicUnlocked=true;
+                roundTrip();
+                check(app.player_.bloodMagicUnlocked,"The rite is remembered across saves");
+                app.player_.bloodMagicUnlocked=false;
+            }
+        }
         // Chasms never cut a floor in two.
         {
             int floorsWithChasms=0; bool connected=true;
@@ -814,20 +972,23 @@ struct ApplicationRewardsTestAccess {
         check(app.player_.abilityPoints()==earnedAbilityPoints(1)-1 && app.player_.talents().rankOf(talentCatalog()[fire*4].id)==1,"Learn button spends exactly one ability point");
         // More trees than fit: the columns scroll with the wheel and follow the keyboard.
         {
-            check(app.treeScrollMax()==0,"Today's trees all fit without scrolling");
-            app.treeViewBottom_=480;
+            check(app.treeScrollMax()>0,"With the new trees, the columns overflow and scroll");
             std::size_t acrobatics=0; while(std::string(kTalentTrees[acrobatics].id)!="acrobatics") ++acrobatics;
-            const float before=app.talentTreeAbilityRect(acrobatics,0).position.y;
+            std::size_t alchemy=0; while(std::string(kTalentTrees[alchemy].id)!="alchemy") ++alchemy;
+            std::size_t oneHanded=0; while(std::string(kTalentTrees[oneHanded].id)!="one_handed") ++oneHanded;
+            const float before=app.talentTreeAbilityRect(alchemy,0).position.y;
+            check(before+50>app.treeViewBottom_,"Some trees start below the fold");
             app.handleEvent(sf::Event::MouseWheelScrolled{sf::Mouse::Wheel::Vertical,-6.f,{100,300}});
-            const auto icon=app.talentTreeAbilityRect(acrobatics,0);
-            check(app.treeScroll_>0 && app.treeScroll_<=app.treeScrollMax() && icon.position.y<before,"The mouse wheel scrolls the tree columns");
+            const auto icon=app.talentTreeAbilityRect(alchemy,0);
+            check(app.treeScroll_>0 && app.treeScroll_<=app.treeScrollMax() && icon.position.y<before && icon.position.y+50<=app.treeViewBottom_,
+                  "The mouse wheel scrolls the tree columns");
             click(static_cast<int>(icon.position.x)+10,static_cast<int>(icon.position.y)+10);
-            check(app.treeSelection_==acrobatics,"Clicks land on the scrolled rows");
+            check(app.treeSelection_==alchemy,"Clicks land on the scrolled rows");
             snapshot("ui-talent-scroll.png");
             app.handleEvent(sf::Event::MouseWheelScrolled{sf::Mouse::Wheel::Vertical,20.f,{100,300}});
             check(app.treeScroll_==0,"Scrolling stops at the top");
-            app.treeSelection_=fire; app.handleTreeKey(sf::Keyboard::Key::Up,false);
-            check(app.treeSelection_==acrobatics && app.talentTreeAbilityRect(acrobatics,0).position.y+50<=app.treeViewBottom_,
+            app.treeSelection_=oneHanded; app.handleTreeKey(sf::Keyboard::Key::Up,false);
+            check(app.treeSelection_==alchemy && app.talentTreeAbilityRect(alchemy,0).position.y+50<=app.treeViewBottom_,
                   "Browsing with the keyboard scrolls the selected tree into view");
             app.treeViewBottom_=712; app.treeScroll_=0; app.treeSelection_=fire;
         }

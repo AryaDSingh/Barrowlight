@@ -35,9 +35,9 @@ CategoryInfo categoryInfo(TreeCategory c) {
     return {"",ui::kText};
 }
 TreeCategory treeCategory(const std::string& id) {
-    if (id=="one_handed" || id=="two_handed" || id=="bow" || id=="brawling") return TreeCategory::Martial;
-    if (id=="fire" || id=="ice" || id=="lightning" || id=="arcane") return TreeCategory::Magic;
-    if (id=="stealth" || id=="acrobatics") return TreeCategory::Utility;
+    if (id=="one_handed" || id=="two_handed" || id=="bow" || id=="brawling" || id=="whip") return TreeCategory::Martial;
+    if (id=="fire" || id=="ice" || id=="lightning" || id=="arcane" || id=="shadow" || id=="radiance") return TreeCategory::Magic;
+    if (id=="stealth" || id=="acrobatics" || id=="alchemy") return TreeCategory::Utility;
     if (id=="shield" || id=="cloth" || id=="light_armour" || id=="heavy_armour") return TreeCategory::Defence;
     return TreeCategory::Hybrid;
 }
@@ -76,9 +76,10 @@ TreeLayout layoutTrees(const Player& player,float scroll=0.f) {
         return result;
     };
     place(0,TreeCategory::Martial,treesIn(TreeCategory::Martial));
-    place(0,TreeCategory::Utility,treesIn(TreeCategory::Utility));
     place(1,TreeCategory::Magic,treesIn(TreeCategory::Magic));
     place(2,TreeCategory::Defence,treesIn(TreeCategory::Defence));
+    // Utility goes wherever there is most room.
+    place(static_cast<int>(std::min_element(columnY,columnY+3)-columnY),TreeCategory::Utility,treesIn(TreeCategory::Utility));
     // Hybrid trees only show for saves that already own one; split them
     // between the two shorter columns.
     const auto hybrid=treesIn(TreeCategory::Hybrid);
@@ -200,6 +201,7 @@ void Application::handleTreeKey(sf::Keyboard::Key key, bool shift) {
                 if (tree.tree==TalentTree::TwoHanded) id="training_greatsword";
                 if (tree.tree==TalentTree::Bow) id="training_bow";
                 if (tree.tree==TalentTree::Shield) id="training_shield";
+                if (tree.tree==TalentTree::Whip) id="training_whip";
                 player_.inventory().add(std::make_unique<Item>(*findItemDefinition(id),nextItemId_++));
                 player_.equip(player_.inventory().items().size()-1);
             }

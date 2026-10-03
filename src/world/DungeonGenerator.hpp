@@ -25,6 +25,8 @@ struct DungeonGenerationParams {
     // Chance that the floor instead holds one of the very rare events
     // (deep floors only; 0 elsewhere, which draws nothing extra).
     float rareEventChance = 0.f;
+    // Chance that an ordinary landmark is the Blood Altar instead (0 draws nothing).
+    float bloodAltarChance = 0.f;
     // Share of ordinary cells built procedurally; the rest are hand-made.
     float proceduralShare = 0.5f;
 };

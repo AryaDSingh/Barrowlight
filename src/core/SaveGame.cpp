@@ -44,7 +44,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 32;
+constexpr int kSaveFormatVersion = 33;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -263,7 +263,7 @@ bool readStatusEffects(std::istream& in, std::vector<StatusEffectInstance>& effe
         if (!(in >> type >> turnsRemaining >> magnitude)) {
             return false;
         }
-        if (type<0 || type>static_cast<int>(StatusEffectType::Grappled) || turnsRemaining<1 || turnsRemaining>10000 || magnitude<0 || magnitude>10000) return false;
+        if (type<0 || type>static_cast<int>(StatusEffectType::Blinded) || turnsRemaining<1 || turnsRemaining>10000 || magnitude<0 || magnitude>10000) return false;
         if (type==static_cast<int>(StatusEffectType::Marked) && magnitude!=1) return false;
         effects.push_back(
             StatusEffectInstance{static_cast<StatusEffectType>(type), turnsRemaining, magnitude});
@@ -387,6 +387,7 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
         out << (state.ascendancy.empty() ? std::string("-") : state.ascendancy) << ' ' << state.ascendancyPoints << ' '
             << state.trialKeys << ' ' << state.trialsCleared << '\n';
     if (version>=28) out << state.lightSource << ' ' << state.lightLit << '\n';
+    if (version>=33) out << state.bloodMagicUnlocked << '\n';
     if (version>=29) {
         out << state.surfaces.size();
         for (const auto& [x,y,type,turns] : state.surfaces) out << ' ' << x << ' ' << y << ' ' << type << ' ' << turns;
@@ -406,7 +407,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 31 && version != 30 && version != 29 && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
+    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 32 && version != 31 && version != 30 && version != 29 && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
         return std::nullopt;
     }
 
@@ -694,6 +695,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         if (state.ascendancy=="-") state.ascendancy.clear();
     }
     if (version>=28 && (!(in>>state.lightSource>>state.lightLit) || state.lightSource<0 || state.lightSource>2)) return std::nullopt;
+    if (version>=33 && !(in>>state.bloodMagicUnlocked)) return std::nullopt;
     if (version>=29) {
         std::size_t count=0;
         if (!(in>>count) || count>static_cast<std::size_t>(state.map.width()*state.map.height())) return std::nullopt;

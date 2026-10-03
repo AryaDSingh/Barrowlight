@@ -36,6 +36,7 @@ constexpr int kRitualDoomPercent = 30;
 constexpr int kRitualDoomTurns = 10;
 constexpr int kPickLockDexterity = 12;
 constexpr int kCageAlertRadius = 14;
+constexpr int kAltarCostPercent = 30;
 
 int handfulGold(int floor) { return 10 + 3 * floor; }
 int peddlerGold(int floor) { return 150 + 10 * floor; }
@@ -54,6 +55,7 @@ const char* verb(LandmarkKind kind) {
         case LandmarkKind::PalePeddler: return "speak with him";
         case LandmarkKind::ChainedDemon: return "face it";
         case LandmarkKind::LamplighterRest: return "look around";
+        case LandmarkKind::BloodAltar: return "offer your blood";
         default: return "kneel";
     }
 }
@@ -125,6 +127,15 @@ std::vector<Application::LandmarkChoice> Application::landmarkChoices() const {
             if (player_.lightSource < 2)
                 return {{"Take the lantern", "campfire", "A lantern lights six tiles around you instead of a torch's four. L still shutters it.", "Free", true}};
             return {{"Trim the wick", "healing", "Rest a while in the lamplight: restore all life and mana.", "Free", true}};
+        case LandmarkKind::BloodAltar: {
+            if (player_.bloodMagicUnlocked)
+                return {{"Drink", "bleeding-heart", "The altar knows you. Restore all life.", "Free", true}};
+            const int cost = std::max(1, stats.maxHp * kAltarCostPercent / 100);
+            const bool guarded = vampireLordAlive();
+            return {{"Offer your blood", "bleeding-heart", "Learn the old rite: the Blood Magic tree opens to you. Unlock it with a tree point.",
+                     guarded ? "The Vampire Lord still guards it. Slay him first." : "Costs " + std::to_string(cost) + " life now",
+                     !guarded && stats.hp > cost}};
+        }
         case LandmarkKind::ChainedDemon: {
             const int doom = std::max(1, stats.maxHp * kDemonDoomPercent / 100);
             return {{"Accept its bargain", "skull-crossed-bones", "It hands you a unique item from its hoard.",
@@ -224,6 +235,29 @@ void Application::raiseChampion(MonsterType type, int champion) {
     m.stats().hp = m.stats().maxHp;
     m.lastObservedHp = m.stats().hp;
     log(m.name(), " rises to face you!");
+}
+
+bool Application::vampireLordAlive() const {
+    return std::any_of(monsters_.begin(), monsters_.end(),
+        [](const auto& m) { return m->eventChampion == kChampionVampire && m->stats().hp > 0; });
+}
+
+// The altar's guardian sleeps a few steps away, in a pool of old blood.
+void Application::placeVampireLord() {
+    for (int dy = -1; dy <= 2; ++dy)
+        for (int dx = -2; dx <= 2; ++dx) {
+            const Position p{landmarkAltar_.x + dx, landmarkAltar_.y + dy};
+            if (std::abs(dx) + std::abs(dy) <= 2 && map_.inBounds(p.x, p.y) && map_.isWalkable(p.x, p.y)) setSurface(p, SurfaceType::Blood, 0);
+        }
+    if (!spawnLandmarkFoes(1, MonsterTier::Nightmare, MonsterTier::Nightmare, MonsterType::Gloomstalker)) return;
+    auto& lord = *monsters_.back();
+    lord.eventChampion = kChampionVampire;
+    lord.setName(championName(kChampionVampire));
+    lord.stats().maxHp = lord.stats().maxHp * 2;
+    lord.stats().hp = lord.stats().maxHp;
+    lord.lastObservedHp = lord.stats().hp;
+    lord.tactics.alert = 0; // asleep until he notices you
+    lord.recoveryActions = 0;
 }
 
 void Application::landmarkReward(ItemRarity rarity) {
@@ -338,6 +372,12 @@ void Application::chooseBlessing(int choice) {
             } else {
                 raiseChampion(MonsterType::Ogre, kChampionDemon);
             }
+            break;
+        case LandmarkKind::BloodAltar:
+            if (player_.bloodMagicUnlocked) { stats.hp = stats.maxHp; break; }
+            stats.hp -= std::max(1, stats.maxHp * kAltarCostPercent / 100);
+            player_.bloodMagicUnlocked = true;
+            log("Your blood runs into the altar's channels, and the old rite opens in your mind. Blood Magic can now be learned (T).");
             break;
         case LandmarkKind::None: return;
     }
@@ -514,6 +554,21 @@ void Application::renderLandmark() {
             sprites_.draw(window_, chain, {at.x + tile * 0.8f, at.y - tile * 0.6f}, tile * 1.1f, tint, true);
             break;
         }
+        case LandmarkKind::BloodAltar: {
+            // The beast altar, stained dark, pulsing red until the offering is made.
+            if (lit && !landmarkUsed_) {
+                const float pulse = 0.5f + 0.5f * std::sin(now * 1.6f);
+                sf::CircleShape glow(tile * 1.15f);
+                glow.setOrigin({tile * 1.15f, tile * 1.15f});
+                glow.setPosition({at.x + tile / 2, at.y + tile * 0.5f});
+                glow.setFillColor(sf::Color(200, 20, 30, static_cast<std::uint8_t>(40 + 55 * pulse)));
+                window_.draw(glow);
+            }
+            const float size = tile * 1.6f;
+            const sf::Color stained(tint.r, tint.g * 110 / 255, tint.b * 110 / 255);
+            sprites_.draw(window_, altarFrame(FloorRegion::Crypts), {at.x + (tile - size) / 2, at.y + tile - size}, size, stained);
+            break;
+        }
         case LandmarkKind::None: break;
     }
     if (nearAltar())
@@ -532,6 +587,7 @@ sf::Color Application::landmarkLightColor() const {
         case LandmarkKind::LamplighterRest: return sf::Color(255, 205, 140);
         case LandmarkKind::PalePeddler: return sf::Color(190, 220, 255);
         case LandmarkKind::ChainedDemon: return sf::Color(255, 70, 50);
+        case LandmarkKind::BloodAltar: return sf::Color(220, 40, 50);
         default: return sf::Color(255, 205, 120);
     }
 }
@@ -556,6 +612,8 @@ void Application::renderShrine() {
     if (landmark_ == LandmarkKind::LamplighterRest) subtitle = "An old lamplighter's post. Someone left a lantern burning.";
     if (landmark_ == LandmarkKind::SealedTomb) subtitle = "A king was buried here with his treasure. He is not resting.";
     if (landmark_ == LandmarkKind::PalePeddler) subtitle = "\"Rare things, for rare prices. One sale, then I'm gone.\"";
+    if (landmark_ == LandmarkKind::BloodAltar)
+        subtitle = vampireLordAlive() ? "An altar slick with old blood. Something sleeps beside it." : "The altar thirsts. Its keeper is dead.";
     if (landmark_ == LandmarkKind::ChainedDemon) subtitle = "\"Free me, or bargain with me. Either way, you leave richer.\"";
     if (rareLandmark(landmark_))
         ui_.textCentered(window_, "A very rare event", {{x, kShrineDialog.position.y + 4}, {w, 20}}, 13, ui::kUnique, ui::Font::Bold);

@@ -158,6 +158,7 @@ std::size_t landmarkModuleIndex(LandmarkKind kind) {
         case LandmarkKind::PalePeddler: return 7;
         case LandmarkKind::ChainedDemon: return 8;
         case LandmarkKind::LamplighterRest: return 0; // a quiet room like the shrine's
+        case LandmarkKind::BloodAltar: return 8;      // the demon's hall: room for a fight
         default: return 1; // both fountains
     }
 }
@@ -261,6 +262,8 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
         std::discrete_distribution<int>(landmarkWeights.begin(), landmarkWeights.end())(rng) + 1);
     // About one ordinary landmark in eight is a lamplighter's rest instead.
     if (!rareEvent && landmarkCell >= 0 && std::uniform_int_distribution<int>(0, 7)(rng) == 0) landmarkKind = LandmarkKind::LamplighterRest;
+    if (!rareEvent && landmarkCell >= 0 && params.bloodAltarChance > 0.f &&
+        std::uniform_real_distribution<float>(0.f, 1.f)(rng) < params.bloodAltarChance) landmarkKind = LandmarkKind::BloodAltar;
     if (rareEvent) landmarkKind = static_cast<LandmarkKind>(static_cast<int>(LandmarkKind::SealedTomb) + std::uniform_int_distribution<int>(0, 2)(rng));
 
     // --- Pick and stamp modules -------------------------------------------

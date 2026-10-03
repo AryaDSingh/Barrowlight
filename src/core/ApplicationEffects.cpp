@@ -102,6 +102,10 @@ sf::Color talentColor(const Talent& t) {
     if (t.tree == TalentTree::BloodMagic) return kBlood;
     if (t.tree == TalentTree::ShadowArcher || t.tree == TalentTree::Stealth || t.tree == TalentTree::Animation) return kShadow;
     if (t.tree == TalentTree::Bow) return kArrow;
+    if (t.tree == TalentTree::Shadow) return sf::Color(110, 70, 170);
+    if (t.tree == TalentTree::Radiance) return kHoly;
+    if (t.splashSurface == 7) return sf::Color(150, 220, 70);
+    if (t.splashSurface == 1) return sf::Color(90, 70, 40);
     if (t.effectKind == TalentEffectKind::Heal || t.restoreHpPercent) return kHeal;
     return kPhysical;
 }
@@ -175,7 +179,7 @@ void Application::spawnTalentVfx(const Talent& talent, Position from, Position c
         } else if (talent.tree == TalentTree::Bow || talent.tree == TalentTree::ShadowArcher) {
             spawnVfx({Vfx::Kind::Arrow, origin, end, color, 0, travel});
             delay = travel;
-        } else if (!talent.projectile) {
+        } else if (!talent.projectile && talent.tree != TalentTree::Alchemy) {
             // Direct spells (Mind Shatter, Drain Life) strike at once.
             spawnVfx({Vfx::Kind::Pillar, end, end, color, 0, .35f, .5f});
             if (talent.drainPercent) spawnVfx({Vfx::Kind::Bolt, end, origin, kBlood, 0, .25f}, .15f);
