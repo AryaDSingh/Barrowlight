@@ -15,7 +15,7 @@ namespace engine {
 // the talent does, so a new talent always gets something sensible.
 inline std::string talentIcon(const Talent& talent) {
     static const std::map<std::string, std::string> byId{
-        {"basic.attack", "broadsword"}, {"basic.cleanse", "aura"}, {"basic.light", "crystal-ball"}, {"basic.shove", "push"},
+        {"basic.attack", "broadsword"}, {"basic.cleanse", "aura"}, {"basic.light", "crystal-ball"}, {"basic.shove", "push"}, {"basic.pray", "aura"},
         {"warrior.cleave", "axe-swing"}, {"warrior.slam", "hammer-drop"}, {"warrior.whirlwind", "spinning-sword"},
         {"warrior.rallying_cry", "shouting"}, {"warrior.berserkers_fury", "wolverine-claws"},
         {"warrior.undying_rage", "life-support"},

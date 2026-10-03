@@ -98,6 +98,7 @@ struct SaveGameState {
     int trial=0, trialReturnFloor=0;
     int lightSource=1; bool lightLit=true; // format 28
     bool bloodMagicUnlocked=false;         // format 33
+    int patron=0, favor=0;                 // format 34
     // Format 29: ground surfaces (x, y, type, turns) and wall torches lit or put out.
     std::vector<std::tuple<int,int,int,int>> surfaces;
     std::vector<Position> torchToggles;

@@ -28,8 +28,6 @@ SpriteFrame altarFrame(FloorRegion region) {
     return {kTileset, sf::IntRect({384, 304}, {32, 32})};
 }
 
-constexpr int kMightLifePercent = 15;
-constexpr int kGraceGold = 25;
 constexpr int kBloodFontLife = 4;
 constexpr int kBloodFontCostPercent = 30;
 constexpr int kRitualDoomPercent = 30;
@@ -70,7 +68,7 @@ bool Application::nearAltar() const {
 
 void Application::openShrine() {
     if (landmark_ == LandmarkKind::None) return;
-    if (landmarkUsed_) { log("The ", landmarkName(landmark_, floorTheme(currentFloor_).region), " is spent."); return; }
+    if (landmarkUsed_) { log("The ", landmarkTitle(), " is spent."); return; }
     cancelTargeting();
     shrineMenu_ = true;
 }
@@ -81,12 +79,16 @@ std::vector<Application::LandmarkChoice> Application::landmarkChoices() const {
     const auto& stats = player_.stats();
     switch (landmark_) {
         case LandmarkKind::Shrine: {
-            const int might = std::max(1, stats.maxHp * kMightLifePercent / 100);
-            return {{"Restoration", "healing", "Restore all life and mana and reset every cooldown.", "Free", true},
-                    {"Might", "glowing-hands", "+3 damage on direct attacks for 80 turns.",
-                     "Costs " + std::to_string(might) + " life", stats.hp > might},
-                    {"Grace", "dodging", "+10% dodge for 80 turns.", "Costs " + std::to_string(kGraceGold) + " gold",
-                     gold_ >= kGraceGold}};
+            // Each shrine belongs to a god: swear to it, or just pray for rest.
+            const Patron god = shrineGod();
+            const auto& info = patronInfo(god);
+            if (patron() == god)
+                return {{"Commune", "aura", "Restore all life and mana and reset every cooldown. " + std::string(info.short_) + " is pleased: +" +
+                         std::to_string(kCommuneFavor) + " favor.", "Free", true}};
+            const std::string cost = patron() == Patron::None ? "Your oath. Favor starts at " + std::to_string(kSwornFavor) + "."
+                : "You forsake " + std::string(patronInfo(patron()).short_) + ", and its wrath falls on you.";
+            return {{"Swear yourself", "skull-crossed-bones", std::string("Likes: ") + info.likes + " Hates: " + info.hates, cost, true},
+                    {"Pray for rest", "healing", "Restore all life and mana and reset every cooldown. No oath is asked.", "Free", true}};
         }
         case LandmarkKind::HealingFountain:
             return {{"Drink", "healing", "Restore all life and mana, and wash away poison, burns, chills and curses.", "Free", true}};
@@ -279,15 +281,12 @@ void Application::chooseBlessing(int choice) {
     bool attributePoint = false;
     switch (landmark_) {
         case LandmarkKind::Shrine:
-            if (choice == 0) {
+            if (patron() == shrineGod() || choice == 1) {
                 stats.hp = stats.maxHp; stats.mana = stats.maxMana;
                 player_.talents().resetCooldowns();
-            } else if (choice == 1) {
-                stats.hp -= std::max(1, stats.maxHp * kMightLifePercent / 100);
-                player_.statusEffects().apply({StatusEffectType::Empowered, 80, 3});
+                if (patron() == shrineGod()) gainFavor(shrineGod(), kCommuneFavor, "you knelt at its shrine");
             } else {
-                gold_ -= kGraceGold;
-                player_.statusEffects().apply({StatusEffectType::Evasion, 80, 10});
+                swearTo(shrineGod());
             }
             break;
         case LandmarkKind::HealingFountain: {
@@ -384,7 +383,7 @@ void Application::chooseBlessing(int choice) {
     landmarkUsed_ = true;
     shrineMenu_ = false;
     soundManager_.play(SoundEffect::LevelUp);
-    const std::string name = landmarkName(landmark_, floorTheme(currentFloor_).region);
+    const std::string name = landmarkTitle();
     log(name.rfind("The ", 0) == 0 ? "" : "The ", name, " grants you ",
         choices[static_cast<std::size_t>(choice)].name, ".");
     finishInventoryTurn(); // using a landmark takes a turn
@@ -428,12 +427,14 @@ void Application::renderLandmark() {
     switch (landmark_) {
         case LandmarkKind::Shrine: {
             if (lit && !landmarkUsed_) {
-                // A slow pulse marks a shrine that still answers.
+                // A slow pulse, in its god's colour, marks a shrine that still answers.
                 const float pulse = 0.5f + 0.5f * std::sin(now * 2.2f);
+                const auto& god = patronInfo(shrineGod());
                 sf::CircleShape glow(tile * 0.95f);
                 glow.setOrigin({tile * 0.95f, tile * 0.95f});
                 glow.setPosition({at.x + tile / 2, at.y + tile / 2});
-                glow.setFillColor(sf::Color(255, 210, 120, static_cast<std::uint8_t>(40 + 50 * pulse)));
+                glow.setFillColor(sf::Color(static_cast<std::uint8_t>(god.r), static_cast<std::uint8_t>(god.g), static_cast<std::uint8_t>(god.b),
+                                            static_cast<std::uint8_t>(40 + 50 * pulse)));
                 window_.draw(glow);
             }
             const float size = tile * 1.6f;
@@ -572,7 +573,7 @@ void Application::renderLandmark() {
         case LandmarkKind::None: break;
     }
     if (nearAltar())
-        mapHints_.push_back({std::string(landmarkName(landmark_, floorTheme(currentFloor_).region)) +
+        mapHints_.push_back({landmarkTitle() +
             (landmarkUsed_ ? ". Its power is spent." : std::string(". G or click it to ") + verb(landmark_) + "."), ui::kRare});
 }
 
@@ -588,6 +589,10 @@ sf::Color Application::landmarkLightColor() const {
         case LandmarkKind::PalePeddler: return sf::Color(190, 220, 255);
         case LandmarkKind::ChainedDemon: return sf::Color(255, 70, 50);
         case LandmarkKind::BloodAltar: return sf::Color(220, 40, 50);
+        case LandmarkKind::Shrine: {
+            const auto& god = patronInfo(shrineGod());
+            return sf::Color(static_cast<std::uint8_t>(god.r), static_cast<std::uint8_t>(god.g), static_cast<std::uint8_t>(god.b));
+        }
         default: return sf::Color(255, 205, 120);
     }
 }
@@ -600,9 +605,11 @@ void Application::renderShrine() {
     sf::RectangleShape dim({1280, 720}); dim.setFillColor(sf::Color(0, 0, 0, 140)); window_.draw(dim);
     ui_.panel(window_, kShrineDialog, true, sf::Color(150, 140, 130));
     const float x = kShrineDialog.position.x, w = kShrineDialog.size.x;
-    ui_.textCentered(window_, landmarkName(landmark_, floorTheme(currentFloor_).region),
+    ui_.textCentered(window_, landmarkTitle(),
         {{x, kShrineDialog.position.y + 20}, {w, 44}}, 34, ui::kRare, ui::Font::Title);
-    const char* subtitle = landmark_ == LandmarkKind::Shrine ? "Kneel and choose one blessing. The shrine answers only once."
+    const std::string shrineLine = std::string(patronInfo(shrineGod()).kind) + ". " +
+        (patron() == shrineGod() ? "Your god's shrine. It answers once." : "Swear yourself to its god, or simply pray. It answers once.");
+    const char* subtitle = landmark_ == LandmarkKind::Shrine ? shrineLine.c_str()
         : landmark_ == LandmarkKind::RitualCircle ? "Power, for a price. The circle burns out once used."
         : "The water runs only once for each traveller.";
     if (landmark_ == LandmarkKind::BloodFont) subtitle = "It flows red, and only once.";
@@ -634,6 +641,21 @@ void Application::renderShrine() {
         ui_.paragraph(window_, c.effect, r.position.x + 18, y, r.size.x - 36, 15, ui::kText);
         float costY = r.position.y + r.size.y - 50;
         ui_.paragraph(window_, c.cost, r.position.x + 18, costY, r.size.x - 36, 14, c.affordable ? ui::kGood : ui::kBad, ui::Font::Bold);
+    }
+    // A shrine's god: what it gives its faithful, on the card between the two offers.
+    if (landmark_ == LandmarkKind::Shrine && count == 2) {
+        const auto& god = patronInfo(shrineGod());
+        const auto r = shrineChoice(1);
+        const sf::Color tint(static_cast<std::uint8_t>(god.r), static_cast<std::uint8_t>(god.g), static_cast<std::uint8_t>(god.b));
+        ui_.inset(window_, r, sf::Color(tint.r, tint.g, tint.b, 90));
+        ui_.textCentered(window_, "Its gifts", {{r.position.x, r.position.y + 12}, {r.size.x, 30}}, 20, tint, ui::Font::Title);
+        float y = r.position.y + 50;
+        ui_.text(window_, "At " + std::to_string(kFavorBoon) + " favor", {r.position.x + 18, y}, 14, ui::kGold, ui::Font::Bold); y += 20;
+        ui_.paragraph(window_, god.boon, r.position.x + 18, y, r.size.x - 36, 14, ui::kText); y += 8;
+        ui_.text(window_, "At " + std::to_string(kFavorPrayer) + " favor, pray", {r.position.x + 18, y}, 14, ui::kGold, ui::Font::Bold); y += 20;
+        ui_.paragraph(window_, god.prayer, r.position.x + 18, y, r.size.x - 36, 14, ui::kText); y += 8;
+        ui_.text(window_, "At " + std::to_string(kFavorWrath) + " favor: wrath", {r.position.x + 18, y}, 14, ui::kBad, ui::Font::Bold); y += 20;
+        ui_.paragraph(window_, god.wrath, r.position.x + 18, y, r.size.x - 36, 14, ui::kMuted);
     }
     ui_.button(window_, kShrineLeave, "Leave (Esc)", hovered(kShrineLeave), true, 16);
 }

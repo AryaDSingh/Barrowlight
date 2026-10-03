@@ -5,6 +5,8 @@
 #include "entities/Actor.hpp"
 #include "entities/ArmourTalents.hpp"
 #include "entities/HiddenCombat.hpp"
+#include "entities/Patrons.hpp"
+#include "entities/Player.hpp"
 #include "world/ExploredMap.hpp"
 #include "world/LineOfFire.hpp"
 
@@ -27,6 +29,11 @@ std::string talentUnavailableReason(const Actor& caster, std::size_t index) {
     if (effective.cleanse && std::none_of(caster.statusEffects().active().begin(),caster.statusEffects().active().end(),
         [](const auto& e){return isCleansable(e.type);})) return "No removable ailments. Cleanse was not spent.";
     if (effective.passive) return "Passive abilities do not need to be cast.";
+    if (effective.id=="basic.pray") {
+        const auto* player=dynamic_cast<const Player*>(&caster);
+        if (!player || !player->patron) return "You are sworn to no god.";
+        if (player->favor<kFavorPrayer) return "Your god will not answer below "+std::to_string(kFavorPrayer)+" favor (you have "+std::to_string(player->favor)+").";
+    }
     if (!armourMatches(caster,effective.armourRequirement)) return armourRequirementText(effective.armourRequirement);
     if (effective.requiresStealth && !caster.statusEffects().has(StatusEffectType::Concealed)) return "Requires Concealment.";
     const auto* weapon=caster.inventory().equipped(EquipmentSlot::Weapon);

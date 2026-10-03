@@ -59,6 +59,7 @@ struct ApplicationRewardsTestAccess {
             app.autoExploring_=false; app.restTurns_=0; app.quietTurns_=0; app.combatThisTurn_=false;
             app.vaultExists_=app.vaultOpened_=app.vaultClaimed_=false; app.vaultMenu_=0; app.exitMenu_=false; app.vaultRewards_.clear();
             app.landmark_=LandmarkKind::None; app.landmarkUsed_=false; app.shrineMenu_=false;
+            app.player_.patron=app.player_.favor=0; app.player_.bloodMagicUnlocked=false; app.pendingFall_=false;
             app.player_.ascendancy.clear(); app.player_.ascendancyPoints=app.player_.trialKeys=app.player_.trialsCleared=0;
             app.lightOrbs_.clear();
             app.trial_=app.trialReturnFloor_=0; app.ascendancyMenu_=app.trialMenu_=false;
@@ -1166,15 +1167,75 @@ struct ApplicationRewardsTestAccess {
         app.pickupItem();
         check(app.shrineMenu_,"G beside the altar opens the shrine");
         snapshot("ui-shrine.png");
+        check(app.landmarkTitle().rfind("Shrine of ",0)==0,"Every shrine belongs to a god");
+        for (const auto& [x,y]:std::vector<std::pair<int,int>>{{11,10},{12,10},{13,10},{14,10},{15,10},{16,10},{17,10},{18,10}}) {
+            app.landmarkAltar_={x,y};
+            if (app.shrineGod()==Patron::Whisperer) break;
+        }
+        snapshot("ui-shrine-whisperer.png"); app.landmarkAltar_={11,10};
         clickOn(screen::shrineChoice(2));
-        check(app.shrineMenu_ && !app.landmarkUsed_,"An unaffordable blessing is refused without spending the shrine");
-        clickOn(screen::shrineChoice(0));
-        check(!app.shrineMenu_ && app.landmarkUsed_ && app.player_.stats().hp==app.player_.stats().maxHp,
-            "Restoration heals fully and spends the shrine");
+        check(!app.shrineMenu_ && app.landmarkUsed_ && app.player_.stats().hp==app.player_.stats().maxHp && app.player_.patron==0,
+            "Praying for rest heals fully, asks no oath, and spends the shrine");
         app.pickupItem();
         check(!app.shrineMenu_,"A spent shrine stays closed");
         roundTrip();
         check(app.landmark_==LandmarkKind::Shrine && app.landmarkUsed_ && app.landmarkAltar_.x==11,"Save/load keeps the landmark and its state");
+
+        // Patron gods: oaths, favor, boons, prayers and wrath.
+        setup(PlayerClass::Warrior);
+        {
+            app.landmark_=LandmarkKind::Shrine; app.landmarkAltar_={11,10};
+            app.map_.setTile(11,10,Tile{TileType::Wall,false,false}); app.updateFieldOfView();
+            const Patron god=app.shrineGod();
+            app.shrineMenu_=true; app.chooseBlessing(0);
+            check(app.patron()==god && app.player_.favor==kSwornFavor && app.player_.talents().rankOf("basic.pray")==1,
+                  "Swearing at a shrine makes its god your patron and teaches you to pray");
+            std::size_t prayIndex=0;
+            for (std::size_t i=0;i<app.player_.talents().knownTalents().size();++i) if (app.player_.talents().knownTalents()[i].id=="basic.pray") prayIndex=i;
+            check(!talentUnavailableReason(app.player_,prayIndex).empty(),"A new oath is not yet enough to pray");
+
+            // The Seraph: likes the dark slain, hates forbidden magic.
+            app.player_.patron=static_cast<int>(Patron::Seraph); app.player_.favor=10;
+            auto skeleton=createMonster(MonsterType::Skeleton,{20,20});
+            app.judgeKill(*skeleton);
+            check(app.player_.favor==13,"The Seraph rewards slaying undead");
+            Talent forbidden=findTalentDefinition("shadow.bolt")->ranks[0];
+            app.judgeCast(forbidden);
+            check(app.player_.favor==8,"...and frowns on Shadow magic");
+            app.gainFavor(Patron::Seraph,30,"test");
+            check(app.playerLightRadius()==5,"At 30 favor its boon is yours: your light burns further");
+            app.gainFavor(Patron::Seraph,30,"test");
+            app.player_.stats().hp=10;
+            app.player_.talents().resetCooldowns();
+            check(talentUnavailableReason(app.player_,prayIndex).empty() && app.tryUseTalent(prayIndex,app.player_.position()) &&
+                  app.player_.stats().hp>10 && app.player_.statusEffects().has(StatusEffectType::Guard) && app.player_.favor==28,
+                  "At 60 favor you can pray: Wings of Mercy heals and guards, for 40 favor");
+            app.player_.favor=-15; app.player_.stats().hp=app.player_.stats().maxHp;
+            app.gainFavor(Patron::Seraph,-5,"test");
+            check(app.player_.statusEffects().has(StatusEffectType::Smothered) && app.player_.favor==0,"Fall to -20 and its wrath falls on you");
+            app.player_.statusEffects().active().clear();
+
+            // Forsaking a god brings its wrath; the Ash Saint walks through fire.
+            app.player_.favor=10; app.swearTo(Patron::AshSaint);
+            check(app.patron()==Patron::AshSaint && app.player_.statusEffects().has(StatusEffectType::Smothered),"Forsaking the Seraph brings its wrath");
+            app.player_.statusEffects().active().clear();
+            app.player_.favor=35;
+            app.setSurface(app.player_.position(),SurfaceType::Fire,4); app.tickSurfaces();
+            check(!app.player_.statusEffects().has(StatusEffectType::Burn),"The Ash Saint's faithful walk through fire unburnt");
+            app.clearSurfaces();
+
+            // The Whisperer's prayer blinds everything near.
+            app.player_.patron=static_cast<int>(Patron::Whisperer); app.player_.favor=70;
+            auto* goblin=enemy({14,10});
+            app.player_.talents().resetCooldowns(); app.tryUseTalent(prayIndex,app.player_.position());
+            check(app.player_.statusEffects().has(StatusEffectType::Concealed) && goblin->statusEffects().has(StatusEffectType::Blinded),
+                  "Unseeing: you vanish and everything near you is blinded");
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.landmark_=LandmarkKind::None; app.player_.statusEffects().active().clear();
+            app.player_.patron=static_cast<int>(Patron::Sleeper); app.player_.favor=42;
+            roundTrip();
+            check(app.patron()==Patron::Sleeper && app.player_.favor==42 && app.player_.talents().rankOf("basic.pray")==1,"Your patron and favor are saved");
+        }
 
         // The other landmarks: one offer each, all spent by using them.
         setup(PlayerClass::Mage);

@@ -1005,6 +1005,8 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     player_.stats().mana -= talent.manaCost;
     player_.stats().hp -= talent.hpCost;
     spawnTalentVfx(talent, beforeMovement, cursor, target);
+    judgeCast(talent);
+    if (talent.id=="basic.pray") pray();
 
     if (talent.boneSwap) {
         if (!affected.empty()) { affected.front()->setPosition(beforeMovement); player_.setPosition(blinkDestination); applyMovementTalents(beforeMovement); }
@@ -1166,6 +1168,8 @@ int Application::situationalBonus(const Talent& talent, const Actor& target) con
         effects.has(StatusEffectType::Blinded) || effects.has(StatusEffectType::Burn) || effects.has(StatusEffectType::Chill) ||
         effects.has(StatusEffectType::Shock))) bonus+=kit.passiveValue(PassiveKind::Flay);
     if (talent.tree==TalentTree::Alchemy) bonus+=kit.passiveValue(PassiveKind::PotentBrews);
+    if (const auto* m=dynamic_cast<const Monster*>(&target); m && patronBoon(Patron::Seraph) && (seesInDark(m->type()) || !bleeds(m->type()))) bonus+=3;
+    if (patronBoon(Patron::AshSaint) && effects.has(StatusEffectType::Burn)) bonus+=2;
     if (isSpell(talent)) {
         if (tileLit(target.position())) bonus+=kit.passiveValue(PassiveKind::InnerLight);
         if (playerLightRadius()==0) bonus+=kit.passiveValue(PassiveKind::Umbral);
@@ -1177,6 +1181,8 @@ void Application::advanceEnemyIntents() {
     if (const int umbral=player_.talents().passiveValue(PassiveKind::Umbral); umbral && playerLightRadius()==0 &&
         player_.statusEffects().magnitudeOf(StatusEffectType::Evasion)<umbral*3)
         player_.statusEffects().apply({StatusEffectType::Evasion,1,umbral*3});
+    if (patronBoon(Patron::Whisperer) && !tileLit(player_.position()) && player_.statusEffects().magnitudeOf(StatusEffectType::Evasion)<10)
+        player_.statusEffects().apply({StatusEffectType::Evasion,1,10});
     tickSurfaces();
     for (auto& m:monsters_) {
         if (m->allied && m->remainingLife>0 && --m->remainingLife==0) { m->stats().hp=0; scheduler_.remove(*m); log("A temporary skeleton dissolves."); }
@@ -1302,6 +1308,7 @@ void Application::processMonsterTurns() {
                         player_.statusEffects().remove(StatusEffectType::Concealed);
                         hidden=false;
                         log(actor->name(), " spots you! Concealment breaks.");
+                        gainFavor(Patron::Whisperer, -3, "you were seen");
                     }
                 }
                 if (monster) {
@@ -1662,6 +1669,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
         return;
     }
     if (defeated) rewardMonster(*defeated, &actor == boss_);
+    if (defeated) judgeKill(*defeated);
     if (defeated) {
         if (const int thief=player_.talents().passiveValue(PassiveKind::SpellThief); thief && !defeated->allied) {
             const auto& fx=defeated->statusEffects();
@@ -1810,7 +1818,7 @@ void Application::updateFieldOfView() {
     // In the dark only what's lit, or right beside you, can be seen. Umbral
     // Shroud (Shadow) sees three tiles into the dark while your light is out.
     const auto here = player_.position();
-    const int darkSight = player_.talents().passiveValue(PassiveKind::Umbral) && playerLightRadius() == 0 ? 3 : 1;
+    const int darkSight = (player_.talents().passiveValue(PassiveKind::Umbral) && playerLightRadius() == 0) || patronBoon(Patron::Whisperer) ? 3 : 1;
     visible.erase(std::remove_if(visible.begin(), visible.end(), [&](Position p) {
         return !tileLit(p) && std::max(std::abs(p.x - here.x), std::abs(p.y - here.y)) > darkSight;
     }), visible.end());
@@ -1820,7 +1828,8 @@ void Application::updateFieldOfView() {
 int Application::playerLightRadius() const {
     if (!player_.lightLit || player_.statusEffects().has(StatusEffectType::Smothered)) return 0;
     const int base = player_.lightSource == 2 ? 6 : player_.lightSource == 1 ? 4 : 0;
-    return base ? base + player_.inventory().affixTotal(BonusStat::LightRadius) + (player_.talents().passiveValue(PassiveKind::InnerLight) ? 1 : 0) : 0;
+    return base ? base + player_.inventory().affixTotal(BonusStat::LightRadius) + (player_.talents().passiveValue(PassiveKind::InnerLight) ? 1 : 0) +
+        (patronBoon(Patron::Seraph) ? 1 : 0) : 0;
 }
 
 bool Application::tileLit(Position p) const {
@@ -1917,6 +1926,7 @@ void Application::toggleLight() {
             return;
         }
     player_.lightLit = !player_.lightLit;
+    if (!player_.lightLit) gainFavor(Patron::Seraph, -3, "you hid your light");
     const std::string light = player_.lightSource == 2 ? "lantern" : "torch";
     log(player_.lightLit ? "You light your " + light + "." : "You shutter your " + light + ". In the dark, many foes can't see you.");
     updateFieldOfView();
@@ -2106,6 +2116,7 @@ SaveGameState Application::captureState(bool includeFloors) {
     state.trialKeys=player_.trialKeys; state.trialsCleared=player_.trialsCleared;
     state.trial=trial_; state.trialReturnFloor=trialReturnFloor_;
     state.lightSource=player_.lightSource; state.lightLit=player_.lightLit; state.bloodMagicUnlocked=player_.bloodMagicUnlocked;
+    state.patron=player_.patron; state.favor=player_.favor;
     for (int y=0;y<map_.height();++y) for (int x=0;x<map_.width();++x) {
         const auto s=surfaceAt({x,y});
         if (s!=SurfaceType::None) state.surfaces.push_back({x,y,static_cast<int>(s),surfaces_[static_cast<std::size_t>(y*map_.width()+x)].turns});
@@ -2206,9 +2217,9 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     TalentSet restoredTalents;
     for (const auto& saved:state.playerTalents) {
         const auto* d=findTalentDefinition(saved.id);
-        if (!d && saved.id!="basic.attack" && saved.id!="basic.cleanse" && saved.id!="basic.light" && saved.id!="basic.shove") { log("Unknown saved ability."); return false; }
+        if (!d && saved.id!="basic.attack" && saved.id!="basic.cleanse" && saved.id!="basic.light" && saved.id!="basic.shove" && saved.id!="basic.pray") { log("Unknown saved ability."); return false; }
         restoredTalents.learnTalent(d ? d->ranks[0] : saved.id=="basic.cleanse" ? basicCleanse() : saved.id=="basic.light" ? basicLight() :
-            saved.id=="basic.shove" ? basicShove() : basicAttack());
+            saved.id=="basic.shove" ? basicShove() : saved.id=="basic.pray" ? basicPray() : basicAttack());
         const auto index=restoredTalents.knownTalents().size()-1;
         restoredTalents.setRank(index,saved.rank);
         restoredTalents.setCooldownRemaining(index,saved.cooldown);
@@ -2275,6 +2286,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     player_.trialKeys=state.trialKeys; player_.trialsCleared=state.trialsCleared;
     trial_=state.trial; trialReturnFloor_=state.trialReturnFloor;
     player_.lightSource=state.lightSource; player_.lightLit=state.lightLit; player_.bloodMagicUnlocked=state.bloodMagicUnlocked;
+    player_.patron=state.patron; player_.favor=state.favor;
     surfaces_.assign(static_cast<std::size_t>(state.map.width()*state.map.height()),{});
     for (const auto& [x,y,type,turns]:state.surfaces)
         surfaces_[static_cast<std::size_t>(y*state.map.width()+x)]={static_cast<SurfaceType>(type),turns};

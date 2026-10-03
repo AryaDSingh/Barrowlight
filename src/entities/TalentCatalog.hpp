@@ -473,6 +473,13 @@ inline Talent basicLight() {
     t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
     t.manaCost=3; t.cooldownTurns=10; t.scalingCooldown=10; t.conjureLight=true; return t;
 }
+// Granted when you swear to a patron (entities/Patrons.hpp).
+inline Talent basicPray() {
+    Talent t; t.id="basic.pray"; t.name="Pray";
+    t.description="Call on your patron god. Needs 60 favor and spends 40; each god answers differently (see the shrine). Cooldown 20.";
+    t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+    t.cooldownTurns=20; t.scalingCooldown=20; return t;
+}
 inline Talent basicCleanse() {
     Talent t; t.id="basic.cleanse"; t.name="Cleanse";
     t.description="Remove Poison, Burn, Chill, Marked and curses (Mana Drain / Doom). Free of mana; costs one turn. Cooldown 8. C always activates it. Does not remove Stun or stun recovery.";

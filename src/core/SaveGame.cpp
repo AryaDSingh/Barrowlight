@@ -15,6 +15,7 @@
 #include "entities/Ascendancy.hpp"
 #include <bitset>
 #include "entities/HiddenTrees.hpp"
+#include "entities/Patrons.hpp"
 
 namespace engine {
 
@@ -44,7 +45,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 33;
+constexpr int kSaveFormatVersion = 34;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -143,7 +144,7 @@ bool validProgression(const SaveGameState& s) {
     // one keep it.
     for (const auto& t:s.playerTalents) {
         if (!known.insert(t.id).second || t.rank<1 || t.rank>kMaxTalentRank || t.cooldown<0 || t.cooldown>10000) return false;
-        if (t.id=="basic.attack" || t.id=="basic.cleanse" || t.id=="basic.light" || t.id=="basic.shove") { if (t.rank!=1) return false; continue; }
+        if (t.id=="basic.attack" || t.id=="basic.cleanse" || t.id=="basic.light" || t.id=="basic.shove" || t.id=="basic.pray") { if (t.rank!=1) return false; continue; }
         const auto* d=findTalentDefinition(t.id);
         if (d && isAscendancyTree(d->treeId)) {
             if (d->treeId!=s.ascendancy || t.rank!=1 || (d->ranks[0].passive && t.cooldown)) return false;
@@ -388,6 +389,7 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
             << state.trialKeys << ' ' << state.trialsCleared << '\n';
     if (version>=28) out << state.lightSource << ' ' << state.lightLit << '\n';
     if (version>=33) out << state.bloodMagicUnlocked << '\n';
+    if (version>=34) out << state.patron << ' ' << state.favor << '\n';
     if (version>=29) {
         out << state.surfaces.size();
         for (const auto& [x,y,type,turns] : state.surfaces) out << ' ' << x << ' ' << y << ' ' << type << ' ' << turns;
@@ -407,7 +409,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 32 && version != 31 && version != 30 && version != 29 && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
+    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 33 && version != 32 && version != 31 && version != 30 && version != 29 && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
         return std::nullopt;
     }
 
@@ -696,6 +698,8 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
     }
     if (version>=28 && (!(in>>state.lightSource>>state.lightLit) || state.lightSource<0 || state.lightSource>2)) return std::nullopt;
     if (version>=33 && !(in>>state.bloodMagicUnlocked)) return std::nullopt;
+    if (version>=34 && (!(in>>state.patron>>state.favor) || state.patron<0 || state.patron>kPatronCount ||
+        state.favor<kFavorMin || state.favor>kFavorMax)) return std::nullopt;
     if (version>=29) {
         std::size_t count=0;
         if (!(in>>count) || count>static_cast<std::size_t>(state.map.width()*state.map.height())) return std::nullopt;

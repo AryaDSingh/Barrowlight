@@ -245,6 +245,13 @@ void Application::renderBattleHud() {
     const auto kind=player_.inventory().armourKind();
     const std::string armour=kind==ArmourKind::Cloth?"Cloth armour":armourName(kind);
     ui_.text(window_,armour+"   Gold "+std::to_string(gold_),{14,240},13,ui::kMuted);
+    if (patron()!=Patron::None) {
+        const auto& god=patronInfo(patron());
+        const sf::Color tint(static_cast<std::uint8_t>(god.r),static_cast<std::uint8_t>(god.g),static_cast<std::uint8_t>(god.b));
+        ui_.text(window_,std::string(god.short_)+": favor "+std::to_string(player_.favor)+
+            (player_.favor>=kFavorPrayer?"  (prayer ready)":player_.favor>=kFavorBoon?"  (boon)":player_.favor<0?"  (displeased)":""),
+            {14,256},13,player_.favor<0?ui::kBad:tint);
+    }
 
     // Status effects: icon tiles, harmful ones rimmed red.
     const auto effects=hudEffects(player_);

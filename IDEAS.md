@@ -96,7 +96,7 @@ nemesis)** for longer-term stories.
 - **For us:** the 3x3 module grid could add locked gates with levers on the
   far side, and one-way drops that make you circle back.
 
-### 8. Gods with conducts
+### 8. Gods with conducts *(built 2026-10-03 as the shrine rework: Seraph, Sleeper Below, Ash Saint, Whisperer)*
 - **Source:** Dungeon Crawl Stone Soup's gods, and Caves of Qud's factions.
 - **For us:** pick a patron at a shrine (another shrine-rework angle). Each
   god wants something:

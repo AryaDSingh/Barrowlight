@@ -18,6 +18,7 @@
 #include "core/SpriteAtlas.hpp"
 #include "core/UiKit.hpp"
 #include "world/Landmark.hpp"
+#include "entities/Patrons.hpp"
 #include "world/Surfaces.hpp"
 #include "core/SaveGame.hpp"
 #include "core/TurnScheduler.hpp"
@@ -314,7 +315,18 @@ private:
     void grantUnique(std::optional<Position> ground);
     // A rare event's champion: Nightmare tier, half again its life.
     void raiseChampion(MonsterType type, int champion);
-    void placeVampireLord();            // the Blood Altar's sleeping guardian, and its blood pool
+    void placeVampireLord();
+    // Patron gods (ApplicationPatrons.cpp).
+    Patron patron() const { return static_cast<Patron>(player_.patron); }
+    bool patronBoon(Patron god) const { return patron() == god && player_.favor >= kFavorBoon; }
+    void gainFavor(Patron god, int amount, const char* why);
+    void patronWrath(Patron god);
+    void swearTo(Patron god);
+    void pray();
+    Patron shrineGod() const;           // whose shrine this floor's Shrine is
+    std::string landmarkTitle() const;  // the landmark's name, with its god for a shrine
+    void judgeKill(const Monster& defeated);
+    void judgeCast(const Talent& talent);            // the Blood Altar's sleeping guardian, and its blood pool
     bool vampireLordAlive() const;
     void scaleDungeonMonster(Monster& monster,int floor);
     Position floorEntrance_{}, floorExit_{};

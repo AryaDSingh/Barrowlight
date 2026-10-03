@@ -78,6 +78,7 @@ public:
     int lightSource=1;
     bool lightLit=true;
     bool bloodMagicUnlocked=false; // offered blood at the Blood Altar
+    int patron=0, favor=0;         // the god you are sworn to (Patron) and its favor
     int ascendancyPoints=0, trialKeys=0, trialsCleared=0;
     std::vector<int> deathlessSpentFloors;
     int& level() { return level_; }

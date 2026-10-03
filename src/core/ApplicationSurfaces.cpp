@@ -320,6 +320,7 @@ void Application::tickSurfaces() {
     const auto suffer = [&](Actor& a) {
         switch (surfaceAt(a.position())) {
             case SurfaceType::Fire:
+                if (&a == &player_ && patronBoon(Patron::AshSaint)) break; // the Ash Saint's own walk through fire
                 if (!a.statusEffects().has(StatusEffectType::Burn) && &a == &player_) log("You are standing in flames!");
                 a.statusEffects().apply({StatusEffectType::Burn, 3, 2});
                 break;
@@ -340,6 +341,9 @@ void Application::tickSurfaces() {
         player_.stats().hp = std::min(player_.stats().maxHp, player_.stats().hp + regen);
     suffer(player_);
     for (auto& m : monsters_) if (m->stats().hp > 0) suffer(*m);
+    // The Sleeper's boon: water and blood close your wounds.
+    if (patronBoon(Patron::Sleeper) && conducts(surfaceAt(player_.position())) && player_.stats().hp > 0)
+        player_.stats().hp = std::min(player_.stats().maxHp, player_.stats().hp + 2);
 
     // The creatures that live by light, dark, fire and water.
     for (auto& m : monsters_) {
