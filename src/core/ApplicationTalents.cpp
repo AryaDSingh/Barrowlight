@@ -35,7 +35,8 @@ CategoryInfo categoryInfo(TreeCategory c) {
     return {"",ui::kText};
 }
 TreeCategory treeCategory(const std::string& id) {
-    if (id=="one_handed" || id=="two_handed" || id=="bow" || id=="brawling" || id=="whip") return TreeCategory::Martial;
+    if (id=="one_handed" || id=="two_handed" || id=="bow" || id=="brawling" || id=="whip" ||
+        id=="spear" || id=="daggers" || id=="mace" || id=="crossbow") return TreeCategory::Martial;
     if (id=="fire" || id=="ice" || id=="lightning" || id=="arcane" || id=="shadow" || id=="radiance") return TreeCategory::Magic;
     if (id=="stealth" || id=="acrobatics" || id=="alchemy") return TreeCategory::Utility;
     if (id=="shield" || id=="cloth" || id=="light_armour" || id=="heavy_armour") return TreeCategory::Defence;
@@ -195,17 +196,24 @@ void Application::handleTreeKey(sf::Keyboard::Key key, bool shift) {
     if (key==sf::Keyboard::Key::Enter) {
         treeFeedback_=treePurchaseReason(player_,playerClass_,tree);
         const bool first=player_.trees().empty();
+        const bool opening=!treeAccess(player_,tree.id);
         if (purchaseTree(player_,playerClass_,tree)) {
             treeFeedback_=std::string(tree.name)+" purchased. Select an ability, then click Learn or press A.";
-            if (first && tree.starterItem[0]) {
-                const char* id=tree.starterItem;
-                if (tree.tree==TalentTree::OneHanded) id="training_sword";
-                if (tree.tree==TalentTree::TwoHanded) id="training_greatsword";
-                if (tree.tree==TalentTree::Bow) id="training_bow";
-                if (tree.tree==TalentTree::Shield) id="training_shield";
-                if (tree.tree==TalentTree::Whip) id="training_whip";
-                player_.inventory().add(std::make_unique<Item>(*findItemDefinition(id),nextItemId_++));
-                player_.equip(player_.inventory().items().size()-1);
+            // A weapon tree comes with a training weapon if you carry none of
+            // its kind; your first tree also puts it in your hands.
+            if (opening && tree.starterItem[0]) {
+                const auto kind=findItemDefinition(tree.starterItem)->weaponKind;
+                bool owned=false;
+                for (const auto& item:player_.inventory().items()) owned=owned || (item->definition() && item->definition()->weaponKind==kind);
+                for (int slot=0;slot<kEquipmentSlotCount && !owned;++slot)
+                    if (const auto* worn=player_.inventory().equipped(static_cast<EquipmentSlot>(slot))) owned=worn->definition() && worn->definition()->weaponKind==kind;
+                const ItemDefinition* training=nullptr;
+                for (const auto& d:kItemDefinitions) if (trainingItem(d) && d.weaponKind==kind) training=&d;
+                if (!owned && training && !player_.inventory().full()) {
+                    player_.inventory().add(std::make_unique<Item>(*training,nextItemId_++));
+                    if (first) player_.equip(player_.inventory().items().size()-1);
+                    else treeFeedback_+=" A "+std::string(training->name)+" is in your bag.";
+                }
             }
         }
     }

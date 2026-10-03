@@ -59,7 +59,7 @@ const sf::FloatRect kPortraitArea{{14,14},{64,64}}, kNameArea{{84,14},{160,66}},
 const sf::FloatRect kLevelBadge{{160,40},{84,22}};
 const sf::FloatRect kMinimapArea{{18,playLayout::minimapY+4},{220,142}};
 bool harmfulStatus(StatusEffectType t) {
-    return isCleansable(t) || t==StatusEffectType::Stun || t==StatusEffectType::Wither || t==StatusEffectType::Shock;
+    return isCleansable(t) || t==StatusEffectType::Stun || t==StatusEffectType::Wither || t==StatusEffectType::Shock || t==StatusEffectType::Pinned;
 }
 std::vector<StatusEffectInstance> hudEffects(const Player& player) {
     std::vector<StatusEffectInstance> effects;
@@ -70,6 +70,10 @@ std::string statusTooltip(const StatusEffectInstance& e) {
     const auto n=std::to_string(e.magnitude);
     switch(e.type) {
     case StatusEffectType::Poison: case StatusEffectType::Burn: return "Lose "+n+" HP each status tick. Bypasses Guard and reveals concealment.";
+    case StatusEffectType::Bleed: return "Loses "+n+" HP each turn, and leaves a trail of blood.";
+    case StatusEffectType::Sundered: return "Its guard is broken: every hit it takes deals "+n+" more damage.";
+    case StatusEffectType::Pinned: return "Pinned in place: it can't move, though it can still fight.";
+    case StatusEffectType::Braced: return "Spear planted: anything that steps up beside you is struck first, for "+n+" damage.";
     case StatusEffectType::Blinded: return "Sees only what is right beside it: it loses track of anything further away.";
     case StatusEffectType::Grappled: return "Held fast: it can't walk away, and is dragged along when its captor steps. Breaks when they part.";
     case StatusEffectType::Smothered: return "Pitch black: your torch or lantern can't burn and Conjure Light fails. Your light returns when this ends. Fire spells can still light braziers and oil.";

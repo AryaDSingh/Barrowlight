@@ -113,7 +113,7 @@ bool validItems(const SaveGameState& state) {
     bool shield=false,twoHanded=false;
     for (const auto& item:state.items) {
         if (item.location==3) shield=true;
-        if (item.location==0) { const auto kind=findItemDefinition(item.definitionId)->weaponKind; twoHanded=kind==WeaponKind::TwoHanded || kind==WeaponKind::Bow; }
+        if (item.location==0) { const auto kind=findItemDefinition(item.definitionId)->weaponKind; twoHanded=twoHandedKind(kind); }
     }
     if (shield && twoHanded) return false;
     return true;
@@ -264,7 +264,7 @@ bool readStatusEffects(std::istream& in, std::vector<StatusEffectInstance>& effe
         if (!(in >> type >> turnsRemaining >> magnitude)) {
             return false;
         }
-        if (type<0 || type>static_cast<int>(StatusEffectType::Blinded) || turnsRemaining<1 || turnsRemaining>10000 || magnitude<0 || magnitude>10000) return false;
+        if (type<0 || type>static_cast<int>(StatusEffectType::Braced) || turnsRemaining<1 || turnsRemaining>10000 || magnitude<0 || magnitude>10000) return false;
         if (type==static_cast<int>(StatusEffectType::Marked) && magnitude!=1) return false;
         effects.push_back(
             StatusEffectInstance{static_cast<StatusEffectType>(type), turnsRemaining, magnitude});

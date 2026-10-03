@@ -176,7 +176,7 @@ void Application::spawnTalentVfx(const Talent& talent, Position from, Position c
         if (talent.tree == TalentTree::Lightning) {
             spawnVfx({Vfx::Kind::Lightning, origin, end, kLightning, 0, .28f, 1.f});
             delay = .03f;
-        } else if (talent.tree == TalentTree::Bow || talent.tree == TalentTree::ShadowArcher) {
+        } else if (talent.tree == TalentTree::Bow || talent.tree == TalentTree::ShadowArcher || talent.tree == TalentTree::Crossbow) {
             spawnVfx({Vfx::Kind::Arrow, origin, end, color, 0, travel});
             delay = travel;
         } else if (!talent.projectile && talent.tree != TalentTree::Alchemy) {

@@ -1073,6 +1073,11 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             }
             std::string combo;
             hitTalent.power+=situationalBonus(talent,*target);
+            if (talent.backstab) {
+                const auto& fx=target->statusEffects();
+                if (wasConcealed || fx.has(StatusEffectType::Blinded) || fx.has(StatusEffectType::Stun) ||
+                    fx.has(StatusEffectType::Grappled) || fx.has(StatusEffectType::Pinned)) { hitTalent.damagePercent+=100; combo+="Backstab: double damage. "; }
+            }
             if (talent.darkBonusPercent && !tileLit(target->position())) { hitTalent.damagePercent+=talent.darkBonusPercent; combo+="In darkness: +"+std::to_string(talent.darkBonusPercent)+"%. "; }
             if (const auto* m=dynamic_cast<const Monster*>(target); talent.searing && m && (seesInDark(m->type()) || !bleeds(m->type()))) {
                 hitTalent.damagePercent+=50; combo+="Searing: +50%. ";
@@ -1103,6 +1108,21 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 if (grapple && target->statusEffects().has(StatusEffectType::Grappled)) {
                     if (immovable(*target)) { target->statusEffects().remove(StatusEffectType::Grappled); log(target->name(), " is too massive to hold."); }
                     else log("You grab ", target->name(), ". Step to drag it along.");
+                }
+                if (auto* foe=dynamic_cast<Monster*>(target); foe && talent.stagger && foe->stats().hp>0 && foe->intent()) {
+                    foe->intent()->playerActionsRemaining+=talent.stagger;
+                    log(foe->name()," staggers: its attack is delayed.");
+                }
+                if (talent.shatterIce) {
+                    const auto at=target->position();
+                    bool shattered=false;
+                    for (int dy=-1;dy<=1;++dy) for (int dx=-1;dx<=1;++dx) {
+                        const Position p{at.x+dx,at.y+dy};
+                        if (surfaceAt(p)!=SurfaceType::Ice) continue;
+                        setSurface(p,SurfaceType::None,0); shattered=true;
+                        if (Actor* cut=actorAt(p,&player_); cut && cut->stats().hp>0) { cut->stats().hp-=4; flashActor(*cut); checkAndHandleDeath(*cut); }
+                    }
+                    if (shattered) log("The ice shatters into flying shards!");
                 }
                 if (target->stats().hp>0 && talent.pullDistance>0) {
                     const auto me=player_.position(), at=target->position();
@@ -1179,6 +1199,12 @@ int Application::situationalBonus(const Talent& talent, const Actor& target) con
         effects.has(StatusEffectType::Blinded) || effects.has(StatusEffectType::Burn) || effects.has(StatusEffectType::Chill) ||
         effects.has(StatusEffectType::Shock))) bonus+=kit.passiveValue(PassiveKind::Flay);
     if (talent.tree==TalentTree::Alchemy) bonus+=kit.passiveValue(PassiveKind::PotentBrews);
+    const auto me=player_.position(), there=target.position();
+    if (talent.tree==TalentTree::Spear && std::max(std::abs(me.x-there.x),std::abs(me.y-there.y))>=2) bonus+=kit.passiveValue(PassiveKind::LongReach);
+    if (effects.has(StatusEffectType::Bleed)) bonus+=kit.passiveValue(PassiveKind::Hemorrhage);
+    if (talent.tree==TalentTree::Crossbow && player_.statusEffects().has(StatusEffectType::Opening)) bonus+=kit.passiveValue(PassiveKind::Windlass);
+    if (const auto* weapon=player_.inventory().equipped(EquipmentSlot::Weapon); weapon && weapon->definition() && weapon->definition()->weaponKind==WeaponKind::Mace)
+        if (const auto* m=dynamic_cast<const Monster*>(&target); m && !bleeds(m->type())) bonus+=kit.passiveValue(PassiveKind::Bonebreaker);
     if (const auto* m=dynamic_cast<const Monster*>(&target); m && patronBoon(Patron::Seraph) && (seesInDark(m->type()) || !bleeds(m->type()))) bonus+=3;
     if (patronBoon(Patron::AshSaint) && effects.has(StatusEffectType::Burn)) bonus+=2;
     if (isSpell(talent)) {
@@ -1414,6 +1440,7 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
 
     switch (decision.type) {
         case AIActionType::Move: {
+            if (actor.statusEffects().has(StatusEffectType::Pinned)) break;
             if (actor.statusEffects().has(StatusEffectType::Grappled)) {
                 const auto p = actor.position(), me = player_.position();
                 if (std::max(std::abs(p.x - me.x), std::abs(p.y - me.y)) <= 1) { log(actor.name(), " struggles in your grip."); break; }
@@ -1431,7 +1458,17 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     }
                 step = best;
             }
-            if (map_.isWalkable(step.x, step.y) && !isOccupied(step, &actor)) actor.setPosition(step);
+            if (map_.isWalkable(step.x, step.y) && !isOccupied(step, &actor)) {
+                const auto me = player_.position(), before = actor.position();
+                actor.setPosition(step);
+                const auto* mover = dynamic_cast<const Monster*>(&actor);
+                const bool arrived = std::abs(step.x - me.x) + std::abs(step.y - me.y) == 1 && std::abs(before.x - me.x) + std::abs(before.y - me.y) != 1;
+                if (const int brace = player_.statusEffects().magnitudeOf(StatusEffectType::Braced); brace && arrived && mover && !mover->allied) {
+                    Talent spear = basicAttack(); spear.power = brace; spear.id = "spear.braced";
+                    if (applyTalentDamage(spear, player_, actor)) { flashActor(actor); log("You catch ", actor.name(), " on your spear!"); }
+                    checkAndHandleDeath(actor);
+                }
+            }
             break;
         }
 

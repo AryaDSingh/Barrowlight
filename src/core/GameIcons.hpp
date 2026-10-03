@@ -69,6 +69,10 @@ inline std::string talentIcon(const Talent& talent) {
         {"whip.lash", "whip"}, {"whip.trip", "tripwire"}, {"whip.flay", "barbed-coil"}, {"whip.snare", "lasso"},
         {"shadow.bolt", "evil-moon"}, {"shadow.snuff", "smoking-orb"}, {"shadow.umbral", "night-sky"}, {"shadow.veil", "eclipse"},
         {"radiance.sear", "sunbeams"}, {"radiance.flare", "sun-radiations"}, {"radiance.inner_light", "candlebright"}, {"radiance.dawn", "sunrise"},
+        {"spear.thrust", "spear-feather"}, {"spear.brace", "spiked-fence"}, {"spear.long_reach", "stone-spear"}, {"spear.vault", "jump-across"},
+        {"daggers.lacerate", "cut-palm"}, {"daggers.backstab", "sacrificial-dagger"}, {"daggers.hemorrhage", "bleeding-wound"}, {"daggers.whirl", "spinning-blades"},
+        {"mace.crush", "mace-head"}, {"mace.stagger", "sands-of-time"}, {"mace.bonebreaker", "broken-bone"}, {"mace.shatter", "shatter"},
+        {"crossbow.heavy", "heavy-arrow"}, {"crossbow.pierce", "pierced-body"}, {"crossbow.windlass", "target-shot"}, {"crossbow.pin", "pin"},
         {"alchemy.oil", "round-bottom-flask"}, {"alchemy.firebomb", "molotov"}, {"alchemy.brews", "bubbling-flask"}, {"alchemy.acid", "fizzing-flask"},
     };
     if (const auto it = byId.find(talent.id); it != byId.end()) return it->second;
@@ -91,6 +95,10 @@ inline std::string itemIcon(const ItemDefinition& item) {
                 case WeaponKind::Bow: return "pocket-bow";
                 case WeaponKind::Staff: return "wizard-staff";
                 case WeaponKind::Whip: return "whip";
+                case WeaponKind::Spear: return "spear-hook";
+                case WeaponKind::Mace: return "spiked-mace";
+                case WeaponKind::Crossbow: return "crossbow";
+                case WeaponKind::Dagger: return "plain-dagger";
                 default: return std::string(item.id).find("dagger") != std::string::npos ? "plain-dagger" : "broadsword";
             }
         case EquipmentSlot::Armour:
@@ -154,6 +162,10 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::Smothered: return "shadow-follower";
         case StatusEffectType::Grappled: return "manacles";
         case StatusEffectType::Blinded: return "blindfold";
+        case StatusEffectType::Bleed: return "bleeding-wound";
+        case StatusEffectType::Sundered: return "cracked-shield";
+        case StatusEffectType::Pinned: return "pin";
+        case StatusEffectType::Braced: return "spiked-fence";
     }
     return "aura";
 }

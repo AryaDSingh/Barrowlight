@@ -99,11 +99,13 @@ https://game-icons.net/1x1/<author>/<file name without .png>.html
   Lorc -- every icon not listed below.
   Delapouite -- jump-across, leather-armor, cape,
       gloves, ring, hamburger-menu, village, spell-book, healing,
-      charging-bull, human-cannonball, push, lasso, blindfold (added 2026-10-02).
+      charging-bull, human-cannonball, push, lasso, blindfold (added 2026-10-02),
+      spear-feather, pin (added 2026-10-03).
+  Carl Olsen -- crossbow (added 2026-10-03).
   sbed -- shield.
   (Artist pages: https://game-icons.net/about.html)
 
-"Icons by Lorc, Delapouite and sbed, from game-icons.net, CC-BY 3.0."
+"Icons by Lorc, Delapouite, sbed and Carl Olsen, from game-icons.net, CC-BY 3.0."
 
 
 FONTS (assets/fonts/)

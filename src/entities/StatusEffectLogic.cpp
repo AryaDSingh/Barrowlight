@@ -14,7 +14,7 @@ bool tickStatusEffects(Actor& actor) {
     // active tick of a poison effect still deals its damage.
     bool doomTriggered=false;
     for (const StatusEffectInstance& effect : effects.active()) {
-        if (effect.type == StatusEffectType::Poison || effect.type == StatusEffectType::Burn) {
+        if (effect.type == StatusEffectType::Poison || effect.type == StatusEffectType::Burn || effect.type == StatusEffectType::Bleed) {
             actor.stats().hp -= effect.magnitude;
         }
         if (effect.type==StatusEffectType::ManaDrain)

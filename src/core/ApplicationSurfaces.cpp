@@ -49,7 +49,7 @@ Element talentElement(const Talent& t) {
     if (t.tree == TalentTree::Fire || (t.onHitEffect && t.onHitEffect->type == StatusEffectType::Burn)) return Element::Fire;
     if (t.tree == TalentTree::Ice || (t.onHitEffect && t.onHitEffect->type == StatusEffectType::Chill)) return Element::Ice;
     if (t.tree == TalentTree::Lightning) return Element::Lightning;
-    if (t.tree == TalentTree::Bow || t.tree == TalentTree::ShadowArcher) return Element::Arrow;
+    if (t.tree == TalentTree::Bow || t.tree == TalentTree::ShadowArcher || t.tree == TalentTree::Crossbow) return Element::Arrow;
     return Element::None;
 }
 
@@ -390,6 +390,9 @@ void Application::tickSurfaces() {
         player_.stats().hp = std::min(player_.stats().maxHp, player_.stats().hp + regen);
     suffer(player_);
     for (auto& m : monsters_) if (m->stats().hp > 0) suffer(*m);
+    for (auto& m : monsters_)
+        if (m->stats().hp > 0 && bleeds(m->type()) && m->statusEffects().has(StatusEffectType::Bleed) && surfaceAt(m->position()) == SurfaceType::None)
+            setSurface(m->position(), SurfaceType::Blood, 0);
     // The Sleeper's boon: water and blood close your wounds.
     if (patronBoon(Patron::Sleeper) && conducts(surfaceAt(player_.position())) && player_.stats().hp > 0)
         player_.stats().hp = std::min(player_.stats().maxHp, player_.stats().hp + 2);

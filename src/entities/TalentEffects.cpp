@@ -54,6 +54,7 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
     if (target.stats().maxHp>0 && target.stats().hp*4<target.stats().maxHp) damage+=kit.passiveValue(PassiveKind::Finisher);
     // Gear: Cruel adds to every attack; Execution to finishing blows.
     damage+=attacker.inventory().affixTotal(BonusStat::FlatDamage);
+    damage+=target.statusEffects().magnitudeOf(StatusEffectType::Sundered); // the Mace's broken guard
     if (target.stats().maxHp>0 && target.stats().hp*10<=target.stats().maxHp*3) damage+=attacker.inventory().affixTotal(BonusStat::Execution);
     if (isSpell(talent) && (target.statusEffects().has(StatusEffectType::Burn) || target.statusEffects().has(StatusEffectType::Chill) ||
         target.statusEffects().has(StatusEffectType::Shock))) damage+=kit.passiveValue(PassiveKind::Attunement);

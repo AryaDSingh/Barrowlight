@@ -13,6 +13,10 @@ enum class StatusEffectType {
     Smothered,       // the Lich's darkness: your light can't burn until it ends (not cleansable)
     Grappled,        // held by the player (Brawling): can't walk away, and is dragged along
     Blinded,         // sees only what is beside it (Shadow, Radiance)
+    Bleed,           // damage per turn, leaving a blood trail (Daggers)
+    Sundered,        // takes +magnitude damage from every hit (Mace)
+    Pinned,          // can't move (Crossbow)
+    Braced,          // the player strikes whatever steps up to them (Spear)
 };
 
 struct StatusEffectInstance {
@@ -57,7 +61,8 @@ inline bool isCurse(StatusEffectType type) {
     return type==StatusEffectType::ManaDrain || type==StatusEffectType::Doom;
 }
 inline bool isCleansable(StatusEffectType type) {
-    return type==StatusEffectType::Poison || type==StatusEffectType::Burn || type==StatusEffectType::Chill || type==StatusEffectType::Marked || isCurse(type);
+    return type==StatusEffectType::Poison || type==StatusEffectType::Burn || type==StatusEffectType::Chill || type==StatusEffectType::Marked ||
+           type==StatusEffectType::Bleed || type==StatusEffectType::Sundered || isCurse(type);
 }
 inline constexpr int kMarkedDamagePercent=25;
 inline const char* statusName(StatusEffectType type) {
@@ -86,6 +91,10 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::Smothered: return "Smothered";
     case StatusEffectType::Grappled: return "Grappled";
     case StatusEffectType::Blinded: return "Blinded";
+    case StatusEffectType::Bleed: return "Bleed";
+    case StatusEffectType::Sundered: return "Sundered";
+    case StatusEffectType::Pinned: return "Pinned";
+    case StatusEffectType::Braced: return "Braced";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

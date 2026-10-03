@@ -63,9 +63,9 @@ public:
         const auto slot = static_cast<std::size_t>(chosen);
         if (slot >= equipment_.size()) return false;
         if (const auto* weapon=equipped(EquipmentSlot::Weapon);
-            slot==3 && weapon && (weapon->definition()->weaponKind==WeaponKind::TwoHanded || weapon->definition()->weaponKind==WeaponKind::Bow)) return false;
+            slot==3 && weapon && twoHandedKind(weapon->definition()->weaponKind)) return false;
         const auto kind=items_[index]->definition()->weaponKind;
-        if (slot==0 && (kind==WeaponKind::TwoHanded || kind==WeaponKind::Bow) && equipped(EquipmentSlot::OffHand)) return false;
+        if (slot==0 && twoHandedKind(kind) && equipped(EquipmentSlot::OffHand)) return false;
         std::swap(items_[index], equipment_[slot]);
         if (!items_[index]) items_.erase(items_.begin() + index);
         return true;

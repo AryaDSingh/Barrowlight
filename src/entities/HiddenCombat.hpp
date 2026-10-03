@@ -4,7 +4,8 @@ namespace engine {
 inline bool hasMeleeWeapon(const Actor& a) {
     const auto* item=a.inventory().equipped(EquipmentSlot::Weapon);
     return item && (item->definition()->weaponKind==WeaponKind::OneHanded || item->definition()->weaponKind==WeaponKind::TwoHanded ||
-        item->definition()->weaponKind==WeaponKind::Whip);
+        item->definition()->weaponKind==WeaponKind::Whip || item->definition()->weaponKind==WeaponKind::Spear ||
+        item->definition()->weaponKind==WeaponKind::Dagger || item->definition()->weaponKind==WeaponKind::Mace);
 }
 inline bool releasableAilment(StatusEffectType type) {
     return isCleansable(type) || type==StatusEffectType::Shock || type==StatusEffectType::Stun || type==StatusEffectType::Wither || type==StatusEffectType::HuntersMark;

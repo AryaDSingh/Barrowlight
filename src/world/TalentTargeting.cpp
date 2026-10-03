@@ -45,6 +45,10 @@ std::string talentUnavailableReason(const Actor& caster, std::size_t index) {
     case WeaponRequirement::TwoHanded: if (kind!=WeaponKind::TwoHanded) return "Equip a two-handed weapon."; break;
     case WeaponRequirement::Bow: if (kind!=WeaponKind::Bow) return "Equip a bow."; break;
     case WeaponRequirement::Whip: if (kind!=WeaponKind::Whip) return "Equip a whip."; break;
+    case WeaponRequirement::Spear: if (kind!=WeaponKind::Spear) return "Equip a spear."; break;
+    case WeaponRequirement::Dagger: if (kind!=WeaponKind::Dagger) return "Equip a dagger."; break;
+    case WeaponRequirement::Mace: if (kind!=WeaponKind::Mace) return "Equip a mace."; break;
+    case WeaponRequirement::Crossbow: if (kind!=WeaponKind::Crossbow) return "Equip a crossbow."; break;
     case WeaponRequirement::Shield: if (!shield) return "Equip a shield."; break;
     default: break;
     }
@@ -93,6 +97,7 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
     }
 
     Actor* anchor = nullptr;
+    std::vector<Actor*> pierced;
     if (talent.shape == EffectShape::Movement || talent.projectile) {
         result.path.push_back(start);
         const auto ray = fireLine(start, cursor);
@@ -101,11 +106,24 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
             if (talent.shape == EffectShape::Movement &&
                 i > static_cast<std::size_t>(std::max(0, talent.moveDistance))) break;
             result.path.push_back(p);
+            if (talent.vault) {
+                // A vault clears creatures and chasms; only walls stop it.
+                if (!fireTileOpen(map, p) || fireCornerBlocked(map, ray[i - 1], p)) {
+                    result.blockedAt = p; result.message = "Path blocked by terrain."; break;
+                }
+                if (map.isWalkable(p.x, p.y) && !enemyAt(p)) result.destination = p;
+                continue;
+            }
             if (!fireTileOpen(map, p) || fireCornerBlocked(map, ray[i - 1], p) ||
                 (talent.shape == EffectShape::Movement && !map.isWalkable(p.x, p.y))) {
                 result.blockedAt = p;
                 result.message = "Path blocked by terrain.";
                 break;
+            }
+            if (Actor* enemy = enemyAt(p); enemy && talent.pierceAll && talent.shape != EffectShape::Movement) {
+                if (!anchor) anchor = enemy; else pierced.push_back(enemy);
+                if (same(p, cursor)) break;
+                continue;
             }
             if (Actor* enemy = enemyAt(p)) {
                 if (talent.shape == EffectShape::Movement) {
@@ -177,6 +195,14 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
     } else {
         result.area.push_back(center);
         if (anchor) result.affected.push_back(anchor);
+        for (Actor* more : pierced) { result.affected.push_back(more); result.area.push_back(more->position()); }
+        // A spear thrust runs on into whoever stands behind.
+        if (anchor && talent.pierceBehind) {
+            const Position d{(center.x > start.x) - (center.x < start.x), (center.y > start.y) - (center.y < start.y)};
+            const Position behind{center.x + d.x, center.y + d.y};
+            if (map.isWalkable(behind.x, behind.y) && hasLineOfFire(map, center, behind))
+                if (Actor* next = enemyAt(behind)) { result.affected.push_back(next); result.area.push_back(behind); }
+        }
     }
     result.valid = true;
     if (result.affected.empty()) result.message = "Empty ground: cast will still spend its turn, cost and cooldown.";

@@ -25,7 +25,9 @@ inline const char* armourName(ArmourKind kind) {
     }
 }
 
-enum class WeaponKind { None, OneHanded, TwoHanded, Bow, Staff, Shield, Whip };
+enum class WeaponKind { None, OneHanded, TwoHanded, Bow, Staff, Shield, Whip, Spear, Dagger, Mace, Crossbow };
+// Weapons held in both hands: no off-hand with these.
+inline bool twoHandedKind(WeaponKind k) { return k==WeaponKind::TwoHanded || k==WeaponKind::Bow || k==WeaponKind::Spear || k==WeaponKind::Crossbow; }
 inline const char* slotName(EquipmentSlot slot) {
     switch (slot) {
         case EquipmentSlot::Weapon: return "Main hand";
@@ -149,7 +151,7 @@ inline std::string equipmentTypeName(const ItemDefinition& item) {
 }
 
 // IDs are persistent identities. Display names can change independently.
-inline constexpr std::array<ItemDefinition, 44> kItemDefinitions{{
+inline constexpr std::array<ItemDefinition, 52> kItemDefinitions{{
     {"iron_sword", "Iron Sword", EquipmentSlot::Weapon, {5, 0, 0, 0, 0}, WeaponKind::OneHanded},
     {"ash_staff", "Ash Staff", EquipmentSlot::Weapon, {0, 0, 5, 0, 3}, WeaponKind::Staff},
     {"hunting_bow", "Hunting Bow", EquipmentSlot::Weapon, {0, 5, 0, 0, 0}, WeaponKind::Bow},
@@ -167,6 +169,14 @@ inline constexpr std::array<ItemDefinition, 44> kItemDefinitions{{
     {"training_shield", "Training Shield", EquipmentSlot::OffHand, {}, WeaponKind::Shield},
     {"leather_whip", "Leather Whip", EquipmentSlot::Weapon, {0,5,0,0,0}, WeaponKind::Whip},
     {"training_whip", "Training Whip", EquipmentSlot::Weapon, {}, WeaponKind::Whip},
+    {"iron_spear", "Iron Spear", EquipmentSlot::Weapon, {6,0,0,0,0}, WeaponKind::Spear},
+    {"training_spear", "Training Spear", EquipmentSlot::Weapon, {}, WeaponKind::Spear},
+    {"steel_dagger", "Steel Dagger", EquipmentSlot::Weapon, {1,4,0,0,0}, WeaponKind::Dagger},
+    {"training_dagger", "Training Dagger", EquipmentSlot::Weapon, {}, WeaponKind::Dagger},
+    {"iron_mace", "Iron Mace", EquipmentSlot::Weapon, {5,0,0,2,0}, WeaponKind::Mace},
+    {"training_mace", "Training Mace", EquipmentSlot::Weapon, {}, WeaponKind::Mace},
+    {"light_crossbow", "Light Crossbow", EquipmentSlot::Weapon, {0,6,0,0,0}, WeaponKind::Crossbow},
+    {"training_crossbow", "Training Crossbow", EquipmentSlot::Weapon, {}, WeaponKind::Crossbow},
     {"cloth_hood", "Cloth Hood", EquipmentSlot::Head, {0,0,0,0,1}, WeaponKind::None, ArmourKind::Cloth},
     {"leather_cap", "Leather Cap", EquipmentSlot::Head, {0,0,0,1,0}, WeaponKind::None, ArmourKind::Light},
     {"iron_helm", "Iron Helm", EquipmentSlot::Head, {0,0,0,2,0}, WeaponKind::None, ArmourKind::Heavy},

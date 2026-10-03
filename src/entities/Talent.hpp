@@ -13,6 +13,7 @@ enum class TalentTree {
     Flame, // legacy enemy/reserved definitions
     OneHanded, TwoHanded, Shield, Bow, Stealth, Acrobatics, Fire, Ice, Lightning, Arcane, Cloth, LightArmour, HeavyArmour, Spellblade, Animation, BloodMagic, ShadowArcher,
     Brawling, Whip, Shadow, Radiance, Alchemy,
+    Spear, Daggers, Mace, Crossbow,
 };
 
 // Abilities and talents have five ranks; rank 5 often adds a mastery effect
@@ -53,7 +54,7 @@ enum class TalentEffectKind {
 // "data-driven" even without an external file: logic and data are
 // cleanly separated, the data table is trivially swappable for a file
 // loader later, but no such loader exists yet.
-enum class WeaponRequirement { None, OneHanded, TwoHanded, Shield, Bow, Melee, Whip };
+enum class WeaponRequirement { None, OneHanded, TwoHanded, Shield, Bow, Melee, Whip, Spear, Dagger, Mace, Crossbow };
 enum class ArmourRequirement { None, Cloth, Light, Heavy };
 inline bool isMagicTree(TalentTree tree) {
     return (tree >= TalentTree::Fire && tree <= TalentTree::Arcane) || tree == TalentTree::Shadow || tree == TalentTree::Radiance;
@@ -67,7 +68,9 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     Zeal, Retribution, Devotion, Righteous, HiddenCasting, LingeringShadow, ShadeStep, SpellThief,
     Momentum, Finisher, Counter, EnGarde, Balance, Versatility, Resilience, Wellspring,
     // Brawling, Whip, Shadow, Radiance, Alchemy.
-    HardLanding, Flay, Umbral, InnerLight, PotentBrews };
+    HardLanding, Flay, Umbral, InnerLight, PotentBrews,
+    // Spear, Daggers, Mace, Crossbow.
+    LongReach, Hemorrhage, Bonebreaker, Windlass };
 
 struct Talent {
     std::string name;
@@ -209,6 +212,15 @@ struct Talent {
     // Alchemy: the surface (a SurfaceType value) a flask leaves on the
     // tiles it splashes, and for how many turns (0: until disturbed).
     int splashSurface=0, splashTurns=0;
+    // Weapons. vault: a movement that leaps over creatures and chasms (walls
+    // still stop it). pierceBehind: also strikes whoever stands right behind
+    // the target; pierceAll: a projectile passes through every enemy in line.
+    // backstab: +100% against a foe that can't fight back properly (you are
+    // hidden, or it is blinded, stunned, held or pinned). stagger: delays the
+    // target's warned attack by this many actions. shatterIce: breaks the ice
+    // around the target into shards.
+    bool vault=false, pierceBehind=false, pierceAll=false, backstab=false, shatterIce=false;
+    int stagger=0;
 
 };
 

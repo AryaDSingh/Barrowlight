@@ -14,7 +14,7 @@ struct TreeDefinition {
     const char* description;
     const char* starterItem;
 };
-inline constexpr std::array<TreeDefinition, 22> kTalentTrees{{
+inline constexpr std::array<TreeDefinition, 26> kTalentTrees{{
     {"one_handed", "One-Handed", TalentTree::OneHanded, "Efficient strikes, defensive openings and finishing blows.", "iron_sword"},
     {"two_handed", "Two-Handed", TalentTree::TwoHanded, "Heavy swings, surrounding enemies and blood-fuelled attacks.", "greatsword"},
     {"shield", "Shield", TalentTree::Shield, "Block damage, interrupt attacks and control space.", "wooden_shield"},
@@ -37,6 +37,10 @@ inline constexpr std::array<TreeDefinition, 22> kTalentTrees{{
     {"shadow", "Shadow", TalentTree::Shadow, "Darkness magic: snuff out the lights, blind your foes and strike from the dark.", ""},
     {"radiance", "Radiance", TalentTree::Radiance, "Light magic: sear the undead, blind with flares and bring back the dawn.", ""},
     {"alchemy", "Alchemy", TalentTree::Alchemy, "Thrown flasks of oil, fire and acid: make the ground fight for you.", ""},
+    {"spear", "Spear", TalentTree::Spear, "Reach and footing: strike from two tiles, brace for the charge, vault over trouble.", "iron_spear"},
+    {"daggers", "Daggers", TalentTree::Daggers, "Open wounds and finish the helpless: bleeding, backstabs and a whirl of blades.", "steel_dagger"},
+    {"mace", "Mace", TalentTree::Mace, "Break guards and bones: sunder armour, stagger the wind-up, shatter the frozen.", "iron_mace"},
+    {"crossbow", "Crossbow", TalentTree::Crossbow, "Heavy bolts that knock back, pierce lines and pin foes in place.", "light_crossbow"},
 }};
 inline const TreeDefinition* findTree(const std::string& id) {
     for (const auto& t : kTalentTrees) if (id == t.id) return &t;
@@ -115,6 +119,18 @@ inline void applyMastery(TalentDefinition& d) {
     else if (id == "alchemy.oil") { m.areaRadius = 2; d.mastery = "The flask splashes two tiles."; }
     else if (id == "alchemy.firebomb") { if (m.onHitEffect) m.onHitEffect->magnitude = 2; d.mastery = "Burn deals 2 damage per turn."; }
     else if (id == "alchemy.acid") { m.areaRadius = 2; d.mastery = "The flask splashes two tiles."; }
+    else if (id == "spear.thrust") { mark(); d.mastery = "Marks the target: its next direct hit taken deals +25%."; }
+    else if (id == "spear.brace") { longer(); d.mastery = "Braced for one enemy response longer."; }
+    else if (id == "spear.vault") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    else if (id == "daggers.lacerate") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Bleed deals 3 damage per turn."; }
+    else if (id == "daggers.backstab") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Concealed, 1, 2}; d.mastery = "You melt back into the shadows: Concealed for one response."; }
+    else if (id == "daggers.whirl") { if (m.onHitEffect) m.onHitEffect->turnsRemaining += 2; d.mastery = "Bleed lasts two turns longer."; }
+    else if (id == "mace.crush") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 6; d.mastery = "Sundered for six enemy turns."; }
+    else if (id == "mace.stagger") { m.stagger = 3; d.mastery = "Delays a warned attack by three actions."; }
+    else if (id == "mace.shatter") { stun(1); d.mastery = "The blow also stuns for one enemy turn."; }
+    else if (id == "crossbow.heavy") { m.pushDistance = 2; d.mastery = "Knocks the target back two tiles."; }
+    else if (id == "crossbow.pierce") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    else if (id == "crossbow.pin") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 5; d.mastery = "Pinned for five enemy turns."; }
 }
 
 // Explicit rank profiles share existing targeting/effect data. No runtime content loader.
@@ -154,6 +170,10 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             if (tree == 18) t.weaponRequirement=WeaponRequirement::Whip;
             if (tree == 18 || tree == 21) t.scalingStat=ScalingStat::Dexterity;
             if (tree == 19 || tree == 20) t.scalingStat=ScalingStat::Intelligence;
+            if (tree == 22) t.weaponRequirement=WeaponRequirement::Spear;
+            if (tree == 23) { t.weaponRequirement=WeaponRequirement::Dagger; t.scalingStat=ScalingStat::Dexterity; }
+            if (tree == 24) t.weaponRequirement=WeaponRequirement::Mace;
+            if (tree == 25) { t.weaponRequirement=WeaponRequirement::Crossbow; t.scalingStat=ScalingStat::Dexterity; }
             if (tree == 10) t.armourRequirement=ArmourRequirement::Cloth;
             if (tree == 11) t.armourRequirement=ArmourRequirement::Light;
             if (tree == 12) t.armourRequirement=ArmourRequirement::Heavy;
@@ -367,6 +387,38 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         add(21,"alchemy.brews",2,passive("Potent Brews","Your flasks deal +2/3/4/5/6 damage.",PassiveKind::PotentBrews,2));
         t=attack("Acid Flask","Splash acid within a tile for eight turns: anything standing in it takes 2 a turn and is Marked (its next direct hit taken deals +25%).",4,5,8,false,1);
         t.targeting=TargetingMode::RangedEnemyInSight; t.shape=EffectShape::AreaAroundTarget; t.splashSurface=7; t.splashTurns=8; add(21,"alchemy.acid",3,t);
+        // Spear (STR, two hands): reach and footing.
+        t=attack("Thrust","Strike an enemy up to two tiles away in a straight line; the point runs on into anyone standing right behind it.",5,1,2);
+        t.reach=2; t.pierceBehind=true; add(22,"spear.thrust",0,t);
+        t=buff("Brace","Plant the spear for two enemy responses: anything that steps up beside you is struck first, for 6 damage.",StatusEffectType::Braced,2,6,2,6);
+        add(22,"spear.brace",1,t);
+        add(22,"spear.long_reach",2,passive("Long Reach","Spear attacks deal +2/3/4/5/6 damage to enemies two tiles away.",PassiveKind::LongReach,2));
+        t=move("Pole Vault","Vault up to 3/3/4/4/5 tiles in a line, over enemies, chasms and burning ground. Walls still stop you.",3,3,7);
+        t.vault=true; add(22,"spear.vault",3,t);
+        // Daggers (DEX): wounds and the helpless.
+        t=attack("Lacerate","A quick cut that bleeds: 2 damage per turn for three enemy turns, and the living leave a trail of blood.",4,1,2);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Bleed,3,2}; add(23,"daggers.lacerate",0,t);
+        t=attack("Backstab","Double damage against a foe that can't fight back properly: you are hidden, or it is blinded, stunned, held or pinned.",8,3,5);
+        t.backstab=true; add(23,"daggers.backstab",1,t);
+        add(23,"daggers.hemorrhage",2,passive("Hemorrhage","Your attacks deal +2/3/4/5/6 damage to bleeding enemies.",PassiveKind::Hemorrhage,2));
+        t=attack("Whirling Blades","Spin through everything within two tiles, leaving each one bleeding for three enemy turns.",5,5,7,false,2);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Bleed,3,2}; add(23,"daggers.whirl",3,t);
+        // Mace (STR, one hand): guards and bones.
+        t=attack("Crush","A heavy blow that sunders: the target takes +2 damage from every hit for four enemy turns.",6,2,4);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Sundered,4,2}; add(24,"mace.crush",0,t);
+        t=attack("Stagger","Knock an enemy off balance: an attack it is winding up is delayed by two actions.",5,2,5);
+        t.stagger=2; add(24,"mace.stagger",1,t);
+        add(24,"mace.bonebreaker",2,passive("Bonebreaker","With a mace, your attacks deal +2/3/4/5/6 damage to skeletons, spirits and other bloodless foes.",PassiveKind::Bonebreaker,2));
+        t=attack("Shatter","Consume Chill for double damage, and break the ice around the target into shards that cut everyone standing on it (4).",9,5,7);
+        t.consumeChill=true; t.statusBonusPercent=100; t.shatterIce=true; add(24,"mace.shatter",3,t);
+        // Crossbow (DEX, two hands): heavy bolts.
+        t=attack("Heavy Bolt","A heavy bolt that knocks its target back a tile: into fire, walls, foes or chasms.",8,2,3,true);
+        t.pushDistance=1; add(25,"crossbow.heavy",0,t);
+        t=attack("Piercing Bolt","A bolt that passes through every enemy in its line.",7,4,6,true);
+        t.pierceAll=true; add(25,"crossbow.pierce",1,t);
+        add(25,"crossbow.windlass",2,passive("Windlass","Crossbow attacks deal +2/3/4/5/6 damage while you have Opening (from waiting or moving).",PassiveKind::Windlass,2));
+        t=attack("Pinning Shot","A bolt that pins its target in place: it can't move for three enemy turns (it can still fight).",7,4,7,true);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Pinned,3,0}; add(25,"crossbow.pin",3,t);
 
         // Ascendancy nodes (Ascendancy.hpp): one rank, bought with ascendancy points.
         auto node=[&](const char* treeId,const char* id,ScalingStat stat,Talent t) {

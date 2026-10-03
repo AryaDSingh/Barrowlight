@@ -821,6 +821,104 @@ struct ApplicationRewardsTestAccess {
                   "Acid eats at whatever stands in it and leaves it Marked");
             app.monsters_.clear(); app.clearSurfaces();
         }
+        // The weapon trees: Spear, Daggers, Mace and Crossbow.
+        setup(PlayerClass::Warrior);
+        {
+            for (int y=8;y<=14;++y) for (int x=8;x<=18;++x) app.map_.setTile(x,y,Tile{TileType::Floor,true,true});
+            app.setProps({}); app.clearSurfaces();
+            const auto wield=[&](const char* id) {
+                app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition(id),app.nextItemId_++));
+                return app.player_.equip(app.player_.inventory().items().size()-1);
+            };
+            const auto foe=[&](Position p) { auto* g=enemy(p); g->stats().dexterity=0; g->stats().hp=g->stats().maxHp=90; return g; };
+            const auto clearFoes=[&] { for (auto& m:app.monsters_) app.scheduler_.remove(*m); app.monsters_.clear(); app.clearSurfaces(); };
+            const auto logged=[&](std::size_t since,const char* text) {
+                const std::size_t fresh=std::min(app.logMessages_.size(),app.logTotal_-since);
+                for (std::size_t i=app.logMessages_.size()-fresh;i<app.logMessages_.size();++i) if (app.logMessages_[i].find(text)!=std::string::npos) return true;
+                return false;
+            };
+            app.player_.stats().hp=app.player_.stats().maxHp=500;
+
+            // Spear.
+            check(wield("iron_spear"),"A spear can be wielded");
+            const auto thrust=learnTalent("spear.thrust"), brace=learnTalent("spear.brace"), vault=learnTalent("spear.vault");
+            app.player_.setPosition({10,10});
+            auto* a=foe({12,10}); auto* b=foe({13,10}); app.updateFieldOfView();
+            cast(thrust,{12,10});
+            check(a->stats().hp<90 && b->stats().hp<90,"Thrust reaches two tiles and runs on into the foe behind");
+            clearFoes();
+            cast(brace,app.player_.position());
+            auto* c=foe({12,10});
+            AIDecision step; step.type=AIActionType::Move; step.movePosition={11,10};
+            app.executeAIDecision(*c,step,0);
+            check(c->position().x==11 && c->stats().hp<90,"A braced spear strikes whatever steps up beside you");
+            clearFoes(); app.player_.statusEffects().active().clear();
+            app.map_.setTile(11,10,Tile{TileType::Chasm,false,true});
+            foe({12,10}); app.updateFieldOfView();
+            cast(vault,{14,10});
+            check(app.player_.position().x>=13,"Pole Vault leaps over a chasm and a foe");
+            app.map_.setTile(11,10,Tile{TileType::Floor,true,true}); clearFoes();
+
+            // Daggers.
+            check(wield("steel_dagger"),"A dagger can be wielded");
+            const auto lacerate=learnTalent("daggers.lacerate"), backstab=learnTalent("daggers.backstab");
+            app.player_.setPosition({10,10});
+            auto* d=foe({11,10}); app.updateFieldOfView();
+            cast(lacerate,{11,10});
+            check(d->statusEffects().has(StatusEffectType::Bleed),"Lacerate makes a foe bleed");
+            app.tickSurfaces();
+            check(app.surfaceAt(d->position())==SurfaceType::Blood,"Bleeding foes leave a trail of blood");
+            d->statusEffects().apply({StatusEffectType::Stun,2,0});
+            auto since=app.logTotal_; cast(backstab,{11,10});
+            check(logged(since,"Backstab: double damage"),"Backstab doubles its damage against a stunned foe");
+            clearFoes();
+
+            // Mace.
+            check(wield("iron_mace"),"A mace can be wielded");
+            const auto crush=learnTalent("mace.crush"), stagger=learnTalent("mace.stagger"), shatter=learnTalent("mace.shatter");
+            auto* e=foe({11,10}); app.updateFieldOfView();
+            cast(crush,{11,10});
+            check(e->statusEffects().magnitudeOf(StatusEffectType::Sundered)==2,"Crush sunders the target's guard");
+            e->intent()=EnemyIntent{{11,10},{10,10},0,1,5,IntentKind::StunStrike};
+            cast(stagger,{11,10});
+            check(e->intent() && e->intent()->playerActionsRemaining>=2,"Stagger delays a warned attack");
+            e->intent().reset();
+            auto* f=foe({12,11});
+            app.setSurface({11,10},SurfaceType::Ice,0); app.setSurface({12,11},SurfaceType::Ice,0);
+            const int fBefore=f->stats().hp;
+            cast(shatter,{11,10});
+            check(app.surfaceAt({12,11})==SurfaceType::None && f->stats().hp<fBefore,"Shatter breaks the ice into shards that cut those standing on it");
+            clearFoes();
+
+            // Crossbow.
+            check(wield("light_crossbow"),"A crossbow can be wielded");
+            const auto heavy=learnTalent("crossbow.heavy"), pierce=learnTalent("crossbow.pierce"), pin=learnTalent("crossbow.pin");
+            auto* g=foe({13,10}); app.updateFieldOfView();
+            cast(heavy,{13,10});
+            check(g->position().x==14,"A heavy bolt knocks its target back");
+            clearFoes();
+            auto* h1=foe({12,10}); auto* h2=foe({14,10}); app.updateFieldOfView();
+            cast(pierce,{14,10});
+            check(h1->stats().hp<90 && h2->stats().hp<90,"A piercing bolt passes through every foe in its line");
+            cast(pin,{12,10});
+            AIDecision run; run.type=AIActionType::Move; run.movePosition={12,11};
+            app.executeAIDecision(*h1,run,0);
+            check(h1->statusEffects().has(StatusEffectType::Pinned) && h1->position().y==10,"A pinned foe can't move");
+            clearFoes();
+
+            // Opening a weapon tree hands you a training weapon of that kind.
+            app.player_.level()=5; app.player_.treePoints()=1;
+            std::size_t spearTree=0; while(std::string(kTalentTrees[spearTree].id)!="spear") ++spearTree;
+            for (std::size_t i=app.player_.inventory().items().size();i-->0;)
+                if (app.player_.inventory().items()[i]->definition()->weaponKind==WeaponKind::Spear) app.player_.inventory().take(i);
+            if (const auto* worn=app.player_.inventory().equipped(EquipmentSlot::Weapon); worn && worn->definition()->weaponKind==WeaponKind::Spear)
+                app.player_.inventory().unequip(EquipmentSlot::Weapon);
+            app.treeSelection_=spearTree; app.abilitySelection_=0; app.handleTreeKey(sf::Keyboard::Key::Enter,false);
+            bool training=false;
+            for (const auto& item:app.player_.inventory().items()) training=training || std::string(item->definition()->id)=="training_spear";
+            check(treeAccess(app.player_,"spear") && training,"Opening the Spear tree puts a training spear in your bag");
+        }
+
         // Acid and blindness survive a save (a fresh Warrior: the fixture's
         // One-Handed tree makes a level-1 Thief save invalid).
         setup(PlayerClass::Warrior);
