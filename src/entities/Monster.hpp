@@ -40,6 +40,10 @@ public:
     // Champions of the rare deep-floor events (see Landmark.hpp's
     // championName); each drops a unique item when it falls. 0 = none.
     int eventChampion=0;
+    // Boss tricks with light and surfaces (Application::bossSurfaceAction).
+    // Transient: a reload simply restarts the count.
+    int bossTimer=0;
+    bool flooded=false;
     int recoveryActions=0;
     int summonsCommitted=0;
     MonsterType type() const { return type_; }

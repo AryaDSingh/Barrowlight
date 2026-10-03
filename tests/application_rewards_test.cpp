@@ -565,6 +565,56 @@ struct ApplicationRewardsTestAccess {
             app.player_.stats().hp=app.player_.stats().maxHp;
         }
 
+        // Any window size: the layout letterboxes and clicks map back into it.
+        setup(PlayerClass::Mage);
+        {
+            app.window_.setSize({2560,1080});
+            app.handleEvent(sf::Event::Resized{{2560,1080}});
+            const auto size=app.window_.getSize();
+            if (size.x==2560 && size.y==1080) {
+                // 21:9: the 16:9 game is 1920 wide (scale 1.5), centred with 320px bars.
+                const auto box=app.letterbox();
+                check(std::abs(box.position.x-.125f)<.001f && std::abs(box.size.x-.75f)<.001f,"Ultrawide windows letterbox the game");
+                app.mode_=GameMode::Town; app.merchantOpen_=false;
+                const auto at=[&](const sf::FloatRect& r){ const auto c=screen::center(r); return sf::Vector2i{320+c.x*3/2,c.y*3/2}; };
+                app.handleEvent(sf::Event::MouseButtonPressed{sf::Mouse::Button::Left,at(screen::kTownMerchantSpot)});
+                check(app.merchantOpen_,"Clicks on an ultrawide window land on what they look like they hit");
+                app.merchantOpen_=false; app.mode_=GameMode::Playing;
+            } else std::cout<<"(hidden window could not be resized here; letterbox click test skipped)"<<std::endl;
+            app.window_.setSize({1280,720});
+            app.handleEvent(sf::Event::Resized{{1280,720}});
+        }
+
+        // Bosses use the new systems.
+        setup(PlayerClass::Warrior); app.darknessEnabled_=true;
+        {
+            auto warlord=createMonster(MonsterType::GoblinWarlord,{14,10}); auto* w=warlord.get();
+            app.monsters_.push_back(std::move(warlord)); app.boss_=w; app.scheduler_.add(*w);
+            w->tactics.alert=8;
+            app.placeBraziers({14,10},{{1,0}});
+            check(app.propIndexAt(15,10)>=0,"Boss rooms get braziers");
+            app.player_.setPosition({18,10}); app.updateFieldOfView();
+            check(app.bossSurfaceAction(*w) && app.propIndexAt(15,10)<0 && app.surfaceAt({16,10})==SurfaceType::Fire && app.surfaceAt({17,10})==SurfaceType::Fire,
+                  "The Warlord kicks a lit brazier at you, scattering coals in a line");
+            app.monsters_.clear(); app.boss_=nullptr; app.clearSurfaces();
+
+            auto lich=createMonster(MonsterType::Lich,{14,10}); auto* l=lich.get();
+            app.monsters_.push_back(std::move(lich)); app.boss_=l; app.scheduler_.add(*l);
+            l->tactics.alert=8; app.player_.setPosition({10,10}); app.player_.lightLit=true;
+            app.lightOrbs_.push_back({{12,10},20});
+            app.updateFieldOfView();
+            bool unlit=false;
+            for (int i=0;i<7 && !unlit;++i) unlit=app.bossSurfaceAction(*l);
+            check(unlit && !app.player_.lightLit && app.lightOrbs_.empty(),"The Lich breathes out the light: wisps die and your torch gutters");
+            l->stats().hp=l->stats().maxHp/2; app.bossSurfaceAction(*l);
+            check(l->flooded && app.surfaceAt({14,12})==SurfaceType::Water,"Badly hurt, the Lich floods its sanctum");
+            app.setSurface(app.player_.position(),SurfaceType::Water,0);
+            AIDecision bolt; bolt.type=AIActionType::Attack; bolt.target=&app.player_; bolt.attackPower=1; bolt.scalingStat=ScalingStat::Intelligence;
+            app.executeAIDecision(*l,bolt,0);
+            check(app.surfaceAt(app.player_.position())==SurfaceType::Ice,"The Lich's bolts freeze the water you stand in");
+            app.player_.lightLit=true; app.monsters_.clear(); app.boss_=nullptr; app.clearSurfaces();
+        }
+
         // Auto-explore still sweeps a dark room by torchlight.
         setup(PlayerClass::Mage); app.darknessEnabled_=true;
         app.player_.setPosition({2,2}); app.updateFieldOfView();

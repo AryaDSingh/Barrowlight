@@ -380,6 +380,7 @@ Application::Application()
     // and is logged rather than treated as fatal.
     window_.setFramerateLimit(60);
     window_.setKeyRepeatEnabled(false); // A held confirm key must not cast twice.
+    fitView();
     // Deliberately no regenerateLevel() call here -- mode_ starts at
     // ClassSelection (see the member's default), and selectClass()
     // calls regenerateLevel() itself once a real choice is made. Prompt
@@ -598,12 +599,53 @@ sf::Vector2f Application::worldToScreen(int tileX, int tileY) const {
             kMapTop + static_cast<float>(tileY - cameraY_) * kTileSize + shift.y};
 }
 
+sf::FloatRect Application::letterbox() const {
+    const auto size = window_.getSize();
+    if (!size.x || !size.y) return {{0, 0}, {1, 1}};
+    const float windowAspect = static_cast<float>(size.x) / size.y, gameAspect = static_cast<float>(kWindowWidth) / kWindowHeight;
+    if (windowAspect > gameAspect) {
+        const float w = gameAspect / windowAspect; // bars at the sides
+        return {{(1 - w) / 2, 0}, {w, 1}};
+    }
+    const float h = windowAspect / gameAspect;     // bars above and below
+    return {{0, (1 - h) / 2}, {1, h}};
+}
+
+void Application::fitView() {
+    uiView_ = sf::View(sf::FloatRect({0, 0}, {static_cast<float>(kWindowWidth), static_cast<float>(kWindowHeight)}));
+    uiView_.setViewport(letterbox());
+    window_.setView(uiView_);
+}
+
+// F11: borderless fullscreen at the desktop's resolution, and back.
+void Application::toggleFullscreen() {
+    fullscreen_ = !fullscreen_;
+    if (fullscreen_) window_.create(sf::VideoMode::getDesktopMode(), kWindowTitle, sf::State::Fullscreen);
+    else window_.create(sf::VideoMode({kWindowWidth, kWindowHeight}), kWindowTitle);
+    window_.setFramerateLimit(60);
+    window_.setKeyRepeatEnabled(false);
+    fitView();
+}
+
 void Application::processEvents() {
     while (const auto event=window_.pollEvent()) handleEvent(*event);
 }
 
 void Application::handleEvent(const sf::Event& input) {
-    const auto* event=&input;
+    if (input.is<sf::Event::Resized>()) { fitView(); return; }
+    if (const auto* key = input.getIf<sf::Event::KeyPressed>(); key && key->code == sf::Keyboard::Key::F11) { toggleFullscreen(); return; }
+    // Mouse positions arrive in window pixels; everything below works in the
+    // 1280x720 layout, whatever the window's size and shape.
+    const auto toLayout = [&](sf::Vector2i pixel) {
+        const auto p = window_.mapPixelToCoords(pixel, uiView_);
+        return sf::Vector2i{static_cast<int>(std::floor(p.x)), static_cast<int>(std::floor(p.y))};
+    };
+    sf::Event converted = input;
+    if (const auto* m = input.getIf<sf::Event::MouseMoved>()) converted = sf::Event::MouseMoved{toLayout(m->position)};
+    else if (const auto* m = input.getIf<sf::Event::MouseButtonPressed>()) converted = sf::Event::MouseButtonPressed{m->button, toLayout(m->position)};
+    else if (const auto* m = input.getIf<sf::Event::MouseButtonReleased>()) converted = sf::Event::MouseButtonReleased{m->button, toLayout(m->position)};
+    else if (const auto* m = input.getIf<sf::Event::MouseWheelScrolled>()) converted = sf::Event::MouseWheelScrolled{m->wheel, m->delta, toLayout(m->position)};
+    const auto* event=&converted;
     if (event->is<sf::Event::Closed>()) {
         window_.close();
     }
@@ -1126,6 +1168,12 @@ void Application::processMonsterTurns() {
                         log(actor->name(), " will recover for one player action after this attack.");
                     }
                     if (exploredMap_.at(intent.target.x,intent.target.y)==Visibility::Visible) spawnReleaseVfx(intent);
+                    if (intent.kind==IntentKind::MagicStrike && monster->type()==MonsterType::GoblinWarlord) {
+                        for (int y=intent.target.y-intent.radius;y<=intent.target.y+intent.radius;++y)
+                            for (int x=intent.target.x-intent.radius;x<=intent.target.x+intent.radius;++x)
+                                if (intent.contains({x,y}) && hasLineOfFire(map_,intent.target,{x,y}) && (x+y)%2==0)
+                                    setSurface({x,y},SurfaceType::Fire,kSpilledFireTurns);
+                    }
                     if (intent.kind==IntentKind::MagicStrike && monster->type()==MonsterType::Bomber) {
                         std::vector<Position> blast;
                         for (int y=intent.target.y-intent.radius;y<=intent.target.y+intent.radius;++y)
@@ -1165,6 +1213,8 @@ void Application::processMonsterTurns() {
                     }
                     suppressAttackVfx_=false;
                 }
+            } else if (monster && !monster->allied && monster==boss_ && bossSurfaceAction(*monster)) {
+                // The boss spent its turn on a brazier or on the light.
             } else if (monster && monster->allied) {
                 actMinion(*monster,chilledMove);
             } else if (actor->ai() != nullptr) {
@@ -1321,6 +1371,8 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                         for (const auto& p : splash) if (surfaceAt(p) == SurfaceType::None) setSurface(p, SurfaceType::Oil, 0);
                         if (visibleTile(at)) log(actor.name(), "'s flask bursts into flame!");
                         applyElement(Element::Fire, splash);
+                    } else if (attacker->type() == MonsterType::Lich && conducts(surfaceAt(at))) {
+                        applyElement(Element::Ice, {at});
                     } else if (attacker->type() == MonsterType::FrostAcolyte) {
                         std::vector<Position> chill;
                         for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) chill.push_back({at.x + dx, at.y + dy});
@@ -1911,6 +1963,13 @@ void Application::regenerateLevel(unsigned int seed) {
 
     for (auto& m:monsters_) scaleDungeonMonster(*m,currentFloor_);
     seedSurfaces(seed);
+    if (dungeon.hasBossRoom && boss_) {
+        const Position centre=boss_->position();
+        placeBraziers(centre,{{-3,-2},{3,-2},{-3,2},{3,2}});
+        if (boss_->type()==MonsterType::GoblinWarlord)
+            for (const Position o:{Position{-2,0},Position{2,0},Position{0,2}})
+                if (map_.isWalkable(centre.x+o.x,centre.y+o.y)) setSurface({centre.x+o.x,centre.y+o.y},SurfaceType::Oil,0);
+    }
     spawnFixedItems();
     spawnFloorChest();
     exploredMap_ = ExploredMap(map_);
@@ -2387,8 +2446,9 @@ void Application::render() {
     // Everything on the map is drawn through a view clipped to the map
     // rectangle, so tall wall faces and light never spill onto the HUD.
     sf::View mapView(sf::FloatRect({kMapLeft, kMapTop}, {static_cast<float>(kMapWidth), static_cast<float>(kMapHeight)}));
-    mapView.setViewport(sf::FloatRect({kMapLeft / kWindowWidth, kMapTop / kWindowHeight},
-                                      {kMapWidth / static_cast<float>(kWindowWidth), kMapHeight / static_cast<float>(kWindowHeight)}));
+    const auto box = letterbox();
+    mapView.setViewport(sf::FloatRect({box.position.x + box.size.x * kMapLeft / kWindowWidth, box.position.y + box.size.y * kMapTop / kWindowHeight},
+                                      {box.size.x * kMapWidth / static_cast<float>(kWindowWidth), box.size.y * kMapHeight / static_cast<float>(kWindowHeight)}));
     window_.setView(mapView);
     // One extra row: a wall just below the view still shows its tall face.
     const int drawEndY = std::min(map_.height(), viewEndY + 1);
@@ -2654,7 +2714,7 @@ void Application::render() {
     renderTelegraphs(viewStartX, viewStartY, viewEndX, viewEndY);
 
     renderTargetingOverlay();
-    window_.setView(window_.getDefaultView());
+    window_.setView(uiView_);
     renderBattleHud();
 
     // Frame around the map, drawn over the tile edges.

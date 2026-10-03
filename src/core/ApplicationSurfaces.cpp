@@ -200,7 +200,7 @@ void Application::explodeOilBarrel(std::size_t index) {
 }
 
 // Walking into a brazier or an oil barrel knocks it over.
-bool Application::knockOver(Position tile, Position direction) {
+bool Application::knockOver(Position tile, Position direction, const Actor* kicker) {
     const int index = propIndexAt(tile.x, tile.y);
     if (index < 0) return false;
     const Prop prop = props_[static_cast<std::size_t>(index)];
@@ -211,9 +211,14 @@ bool Application::knockOver(Position tile, Position direction) {
     setProps(rest);
     const Position beyond{tile.x + direction.x, tile.y + direction.y};
     if (prop.kind == PropKind::Brazier) {
-        for (const Position p : {tile, beyond}) setSurface(p, SurfaceType::Fire, kSpilledFireTurns);
-        if (surfaceAt(beyond) == SurfaceType::Oil) setSurface(beyond, SurfaceType::Fire, kOilFireTurns);
-        log("You kick over the brazier. Burning coals spill across the floor!");
+        // A boss's kick sends the coals further, in a line.
+        const int reach = kicker ? 3 : 1;
+        for (int step = 0; step <= reach; ++step) {
+            const Position p{tile.x + direction.x * step, tile.y + direction.y * step};
+            if (step && !map_.isWalkable(p.x, p.y)) break;
+            setSurface(p, SurfaceType::Fire, surfaceAt(p) == SurfaceType::Oil ? kOilFireTurns : kSpilledFireTurns);
+        }
+        log(kicker ? kicker->name() + " kicks a brazier at you! Burning coals scatter!" : std::string("You kick over the brazier. Burning coals spill across the floor!"));
         if (visibleTile(tile)) spawnVfx({Vfx::Kind::Burst, {beyond.x + .5f, beyond.y + .5f}, {beyond.x + .5f, beyond.y + .5f}, sf::Color(255, 140, 50), 0, .4f, 1.f});
     } else if (prop.kind == PropKind::ColdBrazier) {
         log("You knock the cold brazier over.");
@@ -227,6 +232,65 @@ bool Application::knockOver(Position tile, Position direction) {
     }
     updateFieldOfView();
     return true;
+}
+
+void Application::placeBraziers(Position centre, const std::vector<Position>& offsets) {
+    auto props = props_;
+    for (const auto& o : offsets) {
+        const Position p{centre.x + o.x, centre.y + o.y};
+        bool open = map_.isWalkable(p.x, p.y) && !isOccupied(p, nullptr);
+        for (int dy = -1; dy <= 1 && open; ++dy)
+            for (int dx = -1; dx <= 1 && open; ++dx) open = map_.isWalkable(p.x + dx, p.y + dy) && propIndexAt(p.x + dx, p.y + dy) < 0;
+        if (!open) continue;
+        props.push_back({PropKind::Brazier, p});
+        map_.setTile(p.x, p.y, Tile{TileType::Wall, false, true});
+        setProps(props);
+    }
+}
+
+// Boss tricks. The Warlord kicks a lit brazier beside it at the player;
+// the Lich breathes out every light near it and, badly hurt, floods its
+// sanctum. Returns true when the trick took the boss's turn.
+bool Application::bossSurfaceAction(Monster& boss) {
+    const auto at = boss.position(), you = player_.position();
+    const int distance = std::max(std::abs(at.x - you.x), std::abs(at.y - you.y));
+    if (boss.type() == MonsterType::GoblinWarlord && boss.tactics.alert > 0 && distance <= 5) {
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx) {
+                const Position p{at.x + dx, at.y + dy};
+                const int index = propIndexAt(p.x, p.y);
+                if (index < 0 || props_[static_cast<std::size_t>(index)].kind != PropKind::Brazier) continue;
+                const Position toward{(you.x > p.x) - (you.x < p.x), (you.y > p.y) - (you.y < p.y)};
+                if (!toward.x && !toward.y) continue;
+                notifyAttack(boss, you);
+                knockOver(p, toward, &boss);
+                return true;
+            }
+    }
+    if (boss.type() == MonsterType::Lich) {
+        if (!boss.flooded && boss.stats().hp * 10 <= boss.stats().maxHp * 6) {
+            boss.flooded = true;
+            for (int dy = -3; dy <= 3; ++dy)
+                for (int dx = -3; dx <= 3; ++dx)
+                    if (dx * dx + dy * dy <= 10 && surfaceAt({at.x + dx, at.y + dy}) == SurfaceType::None)
+                        setSurface({at.x + dx, at.y + dy}, SurfaceType::Water, 0);
+            log(boss.name(), " floods its sanctum! Dark water spreads across the floor.");
+            if (visibleTile(at)) spawnVfx({Vfx::Kind::Ring, {at.x + .5f, at.y + .5f}, {at.x + .5f, at.y + .5f}, sf::Color(80, 140, 220), 0, .7f, 3.5f});
+        }
+        if (boss.tactics.alert > 0 && distance <= 8 && ++boss.bossTimer % 7 == 0) {
+            const auto close = [&](Position p) { return std::max(std::abs(p.x - at.x), std::abs(p.y - at.y)) <= 8; };
+            for (const auto& front : wallTorches_)
+                if (close(front) && torchLit(front.x, front.y - 1)) setTorchLit(front.x, front.y - 1, false);
+            for (auto& prop : props_) if (prop.kind == PropKind::Brazier && close(prop.pos)) prop.kind = PropKind::ColdBrazier;
+            lightOrbs_.erase(std::remove_if(lightOrbs_.begin(), lightOrbs_.end(), [&](const LightOrb& o) { return close(o.at); }), lightOrbs_.end());
+            if (player_.lightLit && player_.lightSource) { player_.lightLit = false; }
+            log(boss.name(), " breathes out the light. Darkness swallows the room! (L relights your ", player_.lightSource == 2 ? "lantern" : "torch", ".)");
+            spawnVfx({Vfx::Kind::Ring, {at.x + .5f, at.y + .5f}, {at.x + .5f, at.y + .5f}, sf::Color(150, 80, 220), 0, .8f, 8.f});
+            updateFieldOfView();
+            return true;
+        }
+    }
+    return false;
 }
 
 // Once per player action: fire spreads along oil and burns out, sparks

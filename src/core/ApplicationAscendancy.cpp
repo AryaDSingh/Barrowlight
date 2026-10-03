@@ -107,6 +107,8 @@ bool Application::enterTrial(int trial) {
     guardian->lastObservedHp = guardian->stats().hp;
     boss_ = guardian.get();
     monsters_.push_back(std::move(guardian));
+    // Braziers ring the arena: light to fight by, and coals to kick.
+    placeBraziers({cx, cy}, {{-4, -2}, {4, -2}, {-4, 3}, {4, 3}});
 
     exploredMap_ = ExploredMap(map_);
     scheduler_ = TurnScheduler{};

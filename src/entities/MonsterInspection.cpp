@@ -25,7 +25,14 @@ std::vector<std::string> inspectMonster(const Monster& monster,
         lines.push_back("Rare: 2.2x base HP, 1.8x damage, 4x XP; guaranteed rare gear.");
     if (isUniqueMonster(monster.type())) lines.push_back("Unique encounter: guaranteed rare gear; does not seal the stairs.");
     if (monster.recoveryActions>0) lines.push_back("Recovering: cannot act until you complete one action.");
-    if (monster.type()==MonsterType::Lich) lines.push_back("Summon attempts left: "+std::to_string(3-monster.summonsCommitted)+" (no replacements).");
+    if (monster.type()==MonsterType::Lich) {
+        lines.push_back("Summon attempts left: "+std::to_string(3-monster.summonsCommitted)+" (no replacements).");
+        lines.push_back("Every few turns it breathes out the light: nearby torches, braziers and wisps die, and your torch gutters (L relights it).");
+        lines.push_back(monster.flooded ? "It has flooded its sanctum; its bolts freeze the water you stand in." :
+            "Below 60% life it floods its sanctum, and its bolts freeze water.");
+    }
+    if (monster.type()==MonsterType::GoblinWarlord)
+        lines.push_back("Kicks lit braziers at you when one is beside it; its Fury scorches the ground it strikes.");
     if (monster.intent()) {
         const auto& intent=*monster.intent();
         lines.push_back("Committed target: ("+std::to_string(intent.target.x)+","+std::to_string(intent.target.y)+

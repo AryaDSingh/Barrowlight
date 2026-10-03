@@ -95,8 +95,8 @@ bool same(Position a, Position b) { return a.x == b.x && a.y == b.y; }
 }
 
 std::optional<Position> Application::screenToWorld(sf::Vector2i pixel) const {
-    // mapPixelToCoords handles resizing using SFML's unchanged logical view.
-    const auto p = window_.mapPixelToCoords(pixel);
+    // Mouse positions are already in the 1280x720 layout (handleEvent converts them).
+    const auto p = sf::Vector2f(pixel);
     if (!onMap(p)) return std::nullopt;
     const auto shift = cameraShift();
     const Position tile{cameraX_ + static_cast<int>(std::floor((p.x - shift.x - kMapLeft) / kTile)),
@@ -110,7 +110,7 @@ bool Application::onMap(sf::Vector2f p) const {
 }
 
 std::optional<std::size_t> Application::talentAtPixel(sf::Vector2i pixel) const {
-    const auto p = window_.mapPixelToCoords(pixel);
+    const auto p = sf::Vector2f(pixel);
     for (std::size_t slot = 0; slot < kPageSize; ++slot)
         if (hotbarRect(slot).contains(p)) return player_.talents().hotbarIndex(talentPage_*kPageSize+slot);
     return std::nullopt;
@@ -118,7 +118,7 @@ std::optional<std::size_t> Application::talentAtPixel(sf::Vector2i pixel) const 
 
 std::optional<StatusEffectInstance> Application::hoveredStatus() const {
     if (!mousePixel_) return std::nullopt;
-    const auto p=window_.mapPixelToCoords(*mousePixel_);
+    const auto p=sf::Vector2f(*mousePixel_);
     const auto effects=hudEffects(player_);
     const int page=std::min(statusPage_,std::max(0,(static_cast<int>(effects.size())-1)/kStatusPerPage));
     for (int slot=0;slot<kStatusPerPage;++slot) {
@@ -130,7 +130,7 @@ std::optional<StatusEffectInstance> Application::hoveredStatus() const {
 
 std::optional<std::size_t> Application::hoveredLogLine() const {
     if (!mousePixel_ || logMessages_.empty()) return std::nullopt;
-    const auto p=window_.mapPixelToCoords(*mousePixel_);
+    const auto p=sf::Vector2f(*mousePixel_);
     if (!kLogArea.contains(p)) return std::nullopt;
     const int shown=std::min<int>(playLayout::logLines,static_cast<int>(logMessages_.size()));
     const int first=std::max(0,static_cast<int>(logMessages_.size())-shown-combatLogScroll_);
@@ -190,7 +190,7 @@ void Application::renderMinimap(sf::FloatRect area) {
 
 void Application::renderBattleHud() {
     using namespace playLayout;
-    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(window_.mapPixelToCoords(*mousePixel_)):std::nullopt;
+    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
     const auto& stats=player_.stats();
 
@@ -473,7 +473,7 @@ void Application::handleTargetingMouse(const sf::Event& event) {
             if (const auto tile = screenToWorld(move->position)) targetCursor_ = *tile;
     }
     if (const auto* wheel=event.getIf<sf::Event::MouseWheelScrolled>()) {
-        const auto p=window_.mapPixelToCoords(wheel->position);
+        const auto p=sf::Vector2f(wheel->position);
         const int step=wheel->delta<0?1:wheel->delta>0?-1:0;
         if (sf::FloatRect({0,playLayout::statusY},{static_cast<float>(playLayout::sidebarWidth),
                 playLayout::statusStride*playLayout::statusRows}).contains(p))
@@ -489,13 +489,13 @@ void Application::handleTargetingMouse(const sf::Event& event) {
         if (click->button == sf::Mouse::Button::Right) {
             // Right-clicking a hotbar slot opens the talents to rebind it.
             if (!aimingTalent_ && !inspecting_) {
-                const auto p=window_.mapPixelToCoords(click->position);
+                const auto p=sf::Vector2f(click->position);
                 for (std::size_t slot=0;slot<kPageSize;++slot) if (hotbarRect(slot).contains(p)) { openTalentTrees(); return; }
             }
             cancelTargeting(); return;
         }
         if (click->button != sf::Mouse::Button::Left) return;
-        const auto p=window_.mapPixelToCoords(click->position);
+        const auto p=sf::Vector2f(click->position);
         if(aimingTalent_ || inspecting_) {
             if(kCancelAction.contains(p)) { cancelTargeting(); return; }
         } else for(std::size_t i=0;i<kDungeonActionCount;++i) if(dungeonActionRect(i).contains(p)) {
@@ -655,7 +655,7 @@ void Application::renderTargetingOverlay() {
 
 void Application::renderHudTooltips() {
     using ui::Line;
-    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(window_.mapPixelToCoords(*mousePixel_)):std::nullopt;
+    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const sf::FloatRect screen{{0,0},{1280,720}};
     const sf::FloatRect aboveHotbar{{0,0},{1280,playLayout::hotbarY-8}};
 

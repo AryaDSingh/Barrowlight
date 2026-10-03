@@ -357,6 +357,15 @@ private:
     void handleTownKey(sf::Keyboard::Key key);
     void handleTownMouse(const sf::Event& event);
     void renderTown();
+    // Resolution independence: the game is laid out at 1280x720 and drawn
+    // through uiView_, scaled evenly to fit the window with black bars
+    // (letterboxing). Mouse events are converted into that layout before
+    // anything handles them, so clicks land where they look.
+    sf::View uiView_;
+    bool fullscreen_ = false;
+    void fitView();
+    void toggleFullscreen();
+    sf::FloatRect letterbox() const; // the game's area of the window, as a viewport fraction
     friend Element talentElement(const Talent& t);
     // Which music fits the current screen and floor (called from run()
     // only, so the UI tests stay silent).
@@ -577,10 +586,12 @@ private:
     void electrify(const std::vector<Position>& seeds);
     void shockStanding(const std::vector<Position>& pool);
     void explodeOilBarrel(std::size_t index);
-    bool knockOver(Position tile, Position direction);
+    bool knockOver(Position tile, Position direction, const Actor* kicker = nullptr);
     void tickSurfaces();
     bool hazardousSurface(Position p) const;
     void seedSurfaces(unsigned seed);
+    bool bossSurfaceAction(Monster& boss);         // a boss's light/surface trick, if it takes one this turn
+    void placeBraziers(Position centre, const std::vector<Position>& offsets);
     void renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>& lights, int x0, int y0, int x1, int y1);
     void renderSurfaceGlow(int x0, int y0, int x1, int y1);
     GameMode mode_ = GameMode::ClassSelection;
