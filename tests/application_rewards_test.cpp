@@ -919,6 +919,100 @@ struct ApplicationRewardsTestAccess {
             check(treeAccess(app.player_,"spear") && training,"Opening the Spear tree puts a training spear in your bag");
         }
 
+        // The magic batch: Earth, Tide, Hexes and Venom.
+        setup(PlayerClass::Mage);
+        {
+            for (int y=6;y<=16;++y) for (int x=6;x<=20;++x) app.map_.setTile(x,y,Tile{TileType::Floor,true,true});
+            app.setProps({}); app.clearSurfaces();
+            app.player_.stats().hp=app.player_.stats().maxHp=500; app.player_.stats().maxMana=500;
+            app.player_.setPosition({10,10});
+            const auto foe=[&](Position p) { auto* g=enemy(p); g->stats().dexterity=0; g->stats().hp=g->stats().maxHp=90; return g; };
+            const auto clearFoes=[&] { for (auto& m:app.monsters_) app.scheduler_.remove(*m); app.monsters_.clear(); app.clearSurfaces(); app.boss_=nullptr; };
+            check(isSpell(findTalentDefinition("earth.spike")->ranks[0]) && isSpell(findTalentDefinition("venom.plague")->ranks[0]),"Earth, Tide, Hexes and Venom are spell schools");
+
+            // Earth.
+            const auto spike=learnTalent("earth.spike"), pillar=learnTalent("earth.pillar"), quake=learnTalent("earth.quake");
+            auto* a=foe({13,10}); app.updateFieldOfView();
+            cast(spike,{13,10});
+            check(a->statusEffects().has(StatusEffectType::Pinned),"Stone Spike pins its target");
+            clearFoes(); app.updateFieldOfView();
+            cast(pillar,{12,12});
+            check(app.propIndexAt(12,12)>=0 && !app.map_.isWalkable(12,12),"Raise Pillar puts a stone pillar on the ground");
+            app.setSurface({13,10},SurfaceType::Gas,6); app.setSurface({14,10},SurfaceType::Gas,6);
+            snapshot("ui-earth-pillar.png"); app.clearSurfaces();
+            app.player_.talents().learnTalent(basicShove());
+            const auto shove=app.player_.talents().knownTalents().size()-1;
+            auto* b=foe({12,11}); app.player_.setPosition({12,10}); app.updateFieldOfView();
+            const int beforeSlam=b->stats().hp; cast(shove,{12,11});
+            check(b->stats().hp<beforeSlam,"Foes can be shoved into a pillar");
+            for (int i=0;i<13;++i) app.tickSurfaces();
+            check(app.propIndexAt(12,12)<0 && app.map_.isWalkable(12,12),"The pillar crumbles in time");
+            clearFoes(); app.player_.setPosition({10,10});
+            auto* c=foe({11,10}); app.updateFieldOfView();
+            cast(quake,{10,10});
+            check(c->position().x==12 && c->stats().hp<90,"Quake strikes and throws back everything around you");
+            clearFoes();
+
+            // Tide.
+            const auto bolt=learnTalent("tide.bolt"), wave=learnTalent("tide.wave"), maelstrom=learnTalent("tide.maelstrom");
+            auto* d=foe({13,10}); app.updateFieldOfView();
+            cast(bolt,{13,10});
+            check(app.surfaceAt({13,10})==SurfaceType::Water,"Water Bolt floods the tile it strikes");
+            clearFoes();
+            auto* e1=foe({12,10}); auto* e2=foe({14,10}); app.updateFieldOfView();
+            cast(wave,{14,10});
+            check(e1->position().x>=13 && e2->position().x>=15 && app.surfaceAt({11,10})==SurfaceType::Water,"Wave shoves a line of foes back and leaves water behind");
+            clearFoes();
+            auto* f=foe({16,10}); app.updateFieldOfView();
+            cast(maelstrom,{14,10});
+            check(f->position().x==15 && app.surfaceAt({14,10})==SurfaceType::Water && f->statusEffects().has(StatusEffectType::Chill),
+                  "Maelstrom floods, chills and drags foes to its centre");
+            clearFoes(); (void)d;
+
+            // Hexes.
+            const auto misfortune=learnTalent("hexes.misfortune"), link=learnTalent("hexes.link"), puppet=learnTalent("hexes.puppet");
+            auto* g=foe({11,10}); app.updateFieldOfView();
+            cast(misfortune,{11,10});
+            check(g->statusEffects().has(StatusEffectType::Misfortune),"Misfortune curses a foe");
+            g->statusEffects().apply({StatusEffectType::Misfortune,4,100});
+            app.player_.stats().dexterity=0;
+            const int hp=app.player_.stats().hp;
+            for (int i=0;i<5;++i) { AIDecision swing; swing.type=AIActionType::Attack; swing.target=&app.player_; swing.attackPower=5; app.executeAIDecision(*g,swing,0); }
+            check(app.player_.stats().hp==hp,"A foe cursed with total misfortune never lands a blow");
+            clearFoes();
+            auto* h1=foe({13,10}); auto* h2=foe({14,12}); app.updateFieldOfView();
+            cast(link,{13,10});
+            cast(bolt,{13,10});
+            check(h1->stats().hp<90 && h2->stats().hp<90,"Soul Link carries part of a hit to a nearby foe");
+            cast(puppet,{13,10});
+            check(h1->statusEffects().has(StatusEffectType::Puppeted) && app.nearestOpponent(*h1,false)==h2,"A puppet turns on its own kind");
+            clearFoes();
+            auto warlord=createMonster(MonsterType::GoblinWarlord,{13,10}); auto* w=warlord.get();
+            app.monsters_.push_back(std::move(warlord)); app.boss_=w; app.updateFieldOfView();
+            cast(puppet,{13,10});
+            check(!w->statusEffects().has(StatusEffectType::Puppeted),"Bosses resist being made puppets");
+            clearFoes();
+
+            // Venom.
+            const auto venom=learnTalent("venom.bolt"), miasma=learnTalent("venom.miasma"), plague=learnTalent("venom.plague");
+            auto* v=foe({13,10}); app.updateFieldOfView();
+            cast(venom,{13,10});
+            check(v->statusEffects().has(StatusEffectType::Poison),"Venom Bolt poisons");
+            clearFoes();
+            cast(miasma,{14,10});
+            check(app.surfaceAt({14,10})==SurfaceType::Gas,"Miasma fills the ground with poison gas");
+            auto* x=foe({14,10}); const int xBefore=x->stats().hp;
+            app.applyElement(Element::Fire,{{14,10}});
+            check(app.surfaceAt({14,10})==SurfaceType::Fire && x->stats().hp<xBefore,"Fire makes the gas explode");
+            clearFoes();
+            auto* p1=foe({13,10}); auto* p2=foe({14,10}); app.updateFieldOfView();
+            cast(plague,{13,10});
+            check(p1->statusEffects().has(StatusEffectType::Plague),"Plague infects its target");
+            p1->stats().hp=0; app.checkAndHandleDeath(*p1); app.removeDeadMonsters();
+            check(p2->statusEffects().has(StatusEffectType::Plague),"When the host dies, the plague spreads to its neighbours");
+            clearFoes();
+        }
+
         // Acid and blindness survive a save (a fresh Warrior: the fixture's
         // One-Handed tree makes a level-1 Thief save invalid).
         setup(PlayerClass::Warrior);

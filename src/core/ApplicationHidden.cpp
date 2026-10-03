@@ -180,7 +180,8 @@ void Application::summonMinions(const Talent& t) {
 }
 Actor* Application::nearestOpponent(Actor& actor,bool playerHidden) {
     const auto* monster=dynamic_cast<const Monster*>(&actor);
-    const bool allied=monster && monster->allied;
+    const bool puppet=monster && monster->statusEffects().has(StatusEffectType::Puppeted);
+    const bool allied=monster && (monster->allied || puppet);
     const auto visible=computeFieldOfView(map_,actor.position(),8);
     Actor* nearest=nullptr; int best=100000;
     auto consider=[&](Actor& target) {
@@ -192,7 +193,8 @@ Actor* Application::nearestOpponent(Actor& actor,bool playerHidden) {
         if (distance<best) { best=distance; nearest=&target; }
     };
     if (!allied && !playerHidden) consider(player_);
-    for (auto& other:monsters_) if (other.get()!=&actor && other->allied!=allied) consider(*other);
+    // A puppet turns on its own kind; its own kind ignores it.
+    for (auto& other:monsters_) if (other.get()!=&actor && (puppet ? !other->allied : other->allied!=allied)) consider(*other);
     return nearest;
 }
 void Application::actMinion(Monster& minion,bool chilledMove) {

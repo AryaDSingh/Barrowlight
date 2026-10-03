@@ -14,7 +14,7 @@ struct TreeDefinition {
     const char* description;
     const char* starterItem;
 };
-inline constexpr std::array<TreeDefinition, 26> kTalentTrees{{
+inline constexpr std::array<TreeDefinition, 30> kTalentTrees{{
     {"one_handed", "One-Handed", TalentTree::OneHanded, "Efficient strikes, defensive openings and finishing blows.", "iron_sword"},
     {"two_handed", "Two-Handed", TalentTree::TwoHanded, "Heavy swings, surrounding enemies and blood-fuelled attacks.", "greatsword"},
     {"shield", "Shield", TalentTree::Shield, "Block damage, interrupt attacks and control space.", "wooden_shield"},
@@ -41,6 +41,10 @@ inline constexpr std::array<TreeDefinition, 26> kTalentTrees{{
     {"daggers", "Daggers", TalentTree::Daggers, "Open wounds and finish the helpless: bleeding, backstabs and a whirl of blades.", "steel_dagger"},
     {"mace", "Mace", TalentTree::Mace, "Break guards and bones: sunder armour, stagger the wind-up, shatter the frozen.", "iron_mace"},
     {"crossbow", "Crossbow", TalentTree::Crossbow, "Heavy bolts that knock back, pierce lines and pin foes in place.", "light_crossbow"},
+    {"earth", "Earth", TalentTree::Earth, "Shape the ground: spikes that pin, pillars to block or shove into, and quakes.", ""},
+    {"tide", "Tide", TalentTree::Tide, "Water as a weapon: flood the ground, shove with waves, drag foes into the deep.", ""},
+    {"hexes", "Hexes", TalentTree::Hexes, "Curses: make foes miss, share their pain, and turn them against their own.", ""},
+    {"venom", "Venom", TalentTree::Venom, "Poison and plague: bolts, clouds of gas that explode in fire, and sickness that spreads.", ""},
 }};
 inline const TreeDefinition* findTree(const std::string& id) {
     for (const auto& t : kTalentTrees) if (id == t.id) return &t;
@@ -130,6 +134,18 @@ inline void applyMastery(TalentDefinition& d) {
     else if (id == "mace.shatter") { stun(1); d.mastery = "The blow also stuns for one enemy turn."; }
     else if (id == "crossbow.heavy") { m.pushDistance = 2; d.mastery = "Knocks the target back two tiles."; }
     else if (id == "crossbow.pierce") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    else if (id == "earth.spike") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 3; d.mastery = "Pinned for three enemy turns."; }
+    else if (id == "earth.pillar") { m.cooldownTurns = std::max(1, m.cooldownTurns - 3); d.mastery = "Cooldown three turns shorter."; }
+    else if (id == "earth.quake") { m.areaRadius = 3; d.mastery = "Reaches enemies up to three tiles away."; }
+    else if (id == "tide.bolt") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Chill, 2, 20}; m.onHitChance = 1.f; d.mastery = "Also chills the target."; }
+    else if (id == "tide.wave") { m.pushDistance = 3; d.mastery = "Shoves enemies three tiles."; }
+    else if (id == "tide.maelstrom") { m.areaRadius = 3; d.mastery = "Covers three tiles."; }
+    else if (id == "hexes.misfortune") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 40; d.mastery = "Its attacks miss 40% more often."; }
+    else if (id == "hexes.link") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 100; d.mastery = "All of the damage jumps, not half."; }
+    else if (id == "hexes.puppet") { if (m.selfBuffEffect) m.selfBuffEffect->turnsRemaining = 5; d.mastery = "The puppet serves for five turns."; }
+    else if (id == "venom.bolt") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Poison deals 3 damage per turn."; }
+    else if (id == "venom.miasma") { m.areaRadius = 2; d.mastery = "The cloud spreads two tiles."; }
+    else if (id == "venom.plague") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 7; d.mastery = "The plague lasts seven turns."; }
     else if (id == "crossbow.pin") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 5; d.mastery = "Pinned for five enemy turns."; }
 }
 
@@ -174,6 +190,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             if (tree == 23) { t.weaponRequirement=WeaponRequirement::Dagger; t.scalingStat=ScalingStat::Dexterity; }
             if (tree == 24) t.weaponRequirement=WeaponRequirement::Mace;
             if (tree == 25) { t.weaponRequirement=WeaponRequirement::Crossbow; t.scalingStat=ScalingStat::Dexterity; }
+            if (tree >= 26 && tree <= 29) t.scalingStat=ScalingStat::Intelligence;
             if (tree == 10) t.armourRequirement=ArmourRequirement::Cloth;
             if (tree == 11) t.armourRequirement=ArmourRequirement::Light;
             if (tree == 12) t.armourRequirement=ArmourRequirement::Heavy;
@@ -225,7 +242,8 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             }
             // Spell costs double at every rank, before Arcane Efficiency.
             // Keep rank discounts proportional and catalogue/preview costs aligned.
-            if ((tree>=6 && tree<=9) || tree==19 || tree==20) for (auto& r:d.ranks) if (!r.passive) r.manaCost*=2;
+            if ((tree>=6 && tree<=9) || tree==19 || tree==20 || (tree>=26 && tree<=29)) for (auto& r:d.ranks) if (!r.passive) r.manaCost*=2;
+            if (d.id=="earth.stoneskin") { constexpr int skin[]{1,1,2,2,3}; for (int rank=0;rank<kMaxTalentRank;++rank) d.ranks[rank].passiveMagnitude=skin[rank]; }
             if (tree>=10 && tree<=12) for (int rank=0; rank<kMaxTalentRank; ++rank) {
                 auto& r=d.ranks[rank];
                 // Explicit modest armour profiles: no hidden mana or cooldown discounts.
@@ -419,6 +437,39 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         add(25,"crossbow.windlass",2,passive("Windlass","Crossbow attacks deal +2/3/4/5/6 damage while you have Opening (from waiting or moving).",PassiveKind::Windlass,2));
         t=attack("Pinning Shot","A bolt that pins its target in place: it can't move for three enemy turns (it can still fight).",7,4,7,true);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Pinned,3,0}; add(25,"crossbow.pin",3,t);
+        // Earth (INT spells): shape the ground.
+        t=attack("Stone Spike","A spike of rock erupts under a visible foe and pins it in place for two enemy turns.",6,2,3,true);
+        t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Pinned,2,0}; add(26,"earth.spike",0,t);
+        t=Talent{}; t.name="Raise Pillar"; t.description="A stone pillar rises on empty visible ground for 12 turns: block a corridor, break a line of fire, or shove foes into it.";
+        t.targeting=TargetingMode::RangedEnemyInSight; t.effectKind=TalentEffectKind::SelfBuff; t.raisePillar=true; t.manaCost=3; t.cooldownTurns=10;
+        add(26,"earth.pillar",1,t);
+        add(26,"earth.stoneskin",2,passive("Stoneskin","Direct hits on you deal 1/1/2/2/3 less damage.",PassiveKind::Stoneskin,1));
+        t=attack("Quake","The ground bucks: everything within two tiles is struck and thrown back a tile.",7,6,8,false,2);
+        t.pushDistance=1; add(26,"earth.quake",3,t);
+        // Tide (INT spells): water as a weapon.
+        t=attack("Water Bolt","A bolt of water that floods the tile it strikes.",4,2,1,true);
+        t.splashSurface=2; add(27,"tide.bolt",0,t);
+        t=attack("Wave","A wave rolls down a line, shoving every enemy in it back two tiles and leaving water behind.",4,4,6,true);
+        t.pierceAll=true; t.pushDistance=2; t.splashSurface=2; t.splashPath=true; add(27,"tide.wave",1,t);
+        add(27,"tide.riptide",2,passive("Riptide","Your spells deal +2/3/4/5/6 damage to enemies standing in water or blood.",PassiveKind::Riptide,2));
+        t=attack("Maelstrom","Floods everything within two tiles of a spot, chills it, and drags every enemy there a tile toward the centre.",5,7,9,true,2);
+        t.projectile=false; t.splashSurface=2; t.vortex=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,3,30}; add(27,"tide.maelstrom",3,t);
+        // Hexes (INT spells): curses.
+        t=buff("Misfortune","Curse a visible foe for four enemy turns: its attacks miss 25% more often.",StatusEffectType::Misfortune,4,25,2,6);
+        t.targeting=TargetingMode::RangedEnemyInSight; add(28,"hexes.misfortune",0,t);
+        t=buff("Soul Link","Bind a visible foe for four enemy turns: half of every hit it takes from you jumps to the nearest other foe within three tiles.",StatusEffectType::Linked,4,50,3,7);
+        t.targeting=TargetingMode::RangedEnemyInSight; add(28,"hexes.link",1,t);
+        add(28,"hexes.malediction",2,passive("Malediction","Your attacks deal +2/3/4/5/6 damage to cursed enemies (Misfortune, Soul Link, Plague, Wither, Doom).",PassiveKind::Malediction,2));
+        t=buff("Puppet","Seize a visible foe's will for three enemy turns: it fights its own side. Bosses and champions resist.",StatusEffectType::Puppeted,3,1,6,12);
+        t.targeting=TargetingMode::RangedEnemyInSight; add(28,"hexes.puppet",3,t);
+        // Venom (INT spells): poison and plague.
+        t=attack("Venom Bolt","A bolt of venom: poisons for 2 per turn over four enemy turns.",3,2,1,true);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Poison,4,2}; add(29,"venom.bolt",0,t);
+        t=attack("Miasma","A cloud of poison gas fills a tile and its neighbours for six turns. Fire makes it explode.",2,4,6,true,1);
+        t.projectile=false; t.splashSurface=8; t.splashTurns=6; add(29,"venom.miasma",1,t);
+        add(29,"venom.ruin",2,passive("Toxic Ruin","Your attacks deal +2/3/4/5/6 damage to poisoned or plagued enemies.",PassiveKind::ToxicRuin,2));
+        t=attack("Plague","Infect a visible foe: 3 damage a turn for five enemy turns, and when it dies the plague spreads to everything beside it.",4,6,9,true);
+        t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Plague,5,3}; add(29,"venom.plague",3,t);
 
         // Ascendancy nodes (Ascendancy.hpp): one rank, bought with ascendancy points.
         auto node=[&](const char* treeId,const char* id,ScalingStat stat,Talent t) {

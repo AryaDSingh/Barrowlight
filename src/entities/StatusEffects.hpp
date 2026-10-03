@@ -17,6 +17,10 @@ enum class StatusEffectType {
     Sundered,        // takes +magnitude damage from every hit (Mace)
     Pinned,          // can't move (Crossbow)
     Braced,          // the player strikes whatever steps up to them (Spear)
+    Misfortune,      // its attacks miss magnitude% more often (Hexes)
+    Linked,          // magnitude% of the damage it takes jumps to a nearby foe (Hexes)
+    Puppeted,        // fights for the player until it ends (Hexes)
+    Plague,          // poison that spreads to its neighbours when it dies (Venom)
 };
 
 struct StatusEffectInstance {
@@ -62,7 +66,7 @@ inline bool isCurse(StatusEffectType type) {
 }
 inline bool isCleansable(StatusEffectType type) {
     return type==StatusEffectType::Poison || type==StatusEffectType::Burn || type==StatusEffectType::Chill || type==StatusEffectType::Marked ||
-           type==StatusEffectType::Bleed || type==StatusEffectType::Sundered || isCurse(type);
+           type==StatusEffectType::Bleed || type==StatusEffectType::Sundered || type==StatusEffectType::Plague || isCurse(type);
 }
 inline constexpr int kMarkedDamagePercent=25;
 inline const char* statusName(StatusEffectType type) {
@@ -95,6 +99,10 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::Sundered: return "Sundered";
     case StatusEffectType::Pinned: return "Pinned";
     case StatusEffectType::Braced: return "Braced";
+    case StatusEffectType::Misfortune: return "Misfortune";
+    case StatusEffectType::Linked: return "Soul Link";
+    case StatusEffectType::Puppeted: return "Puppet";
+    case StatusEffectType::Plague: return "Plague";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

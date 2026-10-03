@@ -73,6 +73,10 @@ inline std::string talentIcon(const Talent& talent) {
         {"daggers.lacerate", "cut-palm"}, {"daggers.backstab", "sacrificial-dagger"}, {"daggers.hemorrhage", "bleeding-wound"}, {"daggers.whirl", "spinning-blades"},
         {"mace.crush", "mace-head"}, {"mace.stagger", "sands-of-time"}, {"mace.bonebreaker", "broken-bone"}, {"mace.shatter", "shatter"},
         {"crossbow.heavy", "heavy-arrow"}, {"crossbow.pierce", "pierced-body"}, {"crossbow.windlass", "target-shot"}, {"crossbow.pin", "pin"},
+        {"earth.spike", "earth-spit"}, {"earth.pillar", "stone-tower"}, {"earth.stoneskin", "rock"}, {"earth.quake", "earth-crack"},
+        {"tide.bolt", "water-bolt"}, {"tide.wave", "big-wave"}, {"tide.riptide", "drop"}, {"tide.maelstrom", "vortex"},
+        {"hexes.misfortune", "cursed-star"}, {"hexes.link", "linked-rings"}, {"hexes.malediction", "evil-book"}, {"hexes.puppet", "puppet"},
+        {"venom.bolt", "poison-bottle"}, {"venom.miasma", "poison-gas"}, {"venom.ruin", "dripping-goo"}, {"venom.plague", "plague-doctor-profile"},
         {"alchemy.oil", "round-bottom-flask"}, {"alchemy.firebomb", "molotov"}, {"alchemy.brews", "bubbling-flask"}, {"alchemy.acid", "fizzing-flask"},
     };
     if (const auto it = byId.find(talent.id); it != byId.end()) return it->second;
@@ -166,6 +170,10 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::Sundered: return "cracked-shield";
         case StatusEffectType::Pinned: return "pin";
         case StatusEffectType::Braced: return "spiked-fence";
+        case StatusEffectType::Misfortune: return "cursed-star";
+        case StatusEffectType::Linked: return "linked-rings";
+        case StatusEffectType::Puppeted: return "puppet";
+        case StatusEffectType::Plague: return "virus";
     }
     return "aura";
 }

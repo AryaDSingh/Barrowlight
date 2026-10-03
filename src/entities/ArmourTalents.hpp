@@ -48,6 +48,7 @@ inline int armourGuardBonus(const Actor& actor) {
 inline int ascendancyGuardBonus(const Actor& actor) {
     return (actor.talents().passiveValue(PassiveKind::LastStand) && actor.stats().hp*3<=actor.stats().maxHp ? 3 : 0) +
            actor.inventory().affixTotal(BonusStat::Warding) + actor.talents().passiveValue(PassiveKind::Resilience) +
+           actor.talents().passiveValue(PassiveKind::Stoneskin) +
            (actor.statusEffects().has(StatusEffectType::Opening) ? actor.talents().passiveValue(PassiveKind::EnGarde) : 0);
 }
 inline int ascendancyDodgeBonus(const Actor& actor) {

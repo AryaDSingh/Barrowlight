@@ -100,7 +100,7 @@ https://game-icons.net/1x1/<author>/<file name without .png>.html
   Delapouite -- jump-across, leather-armor, cape,
       gloves, ring, hamburger-menu, village, spell-book, healing,
       charging-bull, human-cannonball, push, lasso, blindfold (added 2026-10-02),
-      spear-feather, pin (added 2026-10-03).
+      spear-feather, pin, plague-doctor-profile (added 2026-10-03).
   Carl Olsen -- crossbow (added 2026-10-03).
   sbed -- shield.
   (Artist pages: https://game-icons.net/about.html)

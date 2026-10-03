@@ -147,8 +147,9 @@ in both parent trees (which could also reopen the four locked trees).
 First batch chosen: Brawling, Whip, Shadow + Radiance, Alchemy (all built
 2026-10-02), then the hybrid unlock rule (built 2026-10-03). Second batch:
 Spear, Daggers, Mace and Crossbow (built 2026-10-03; Pole Vault, Bleed,
-Sundered and Pinned among them). Still open: Earth, Tide, Hexes, Venom,
-Traps, the Acrobatics expansion and the new hybrids.
+Sundered and Pinned among them). Third batch: Earth, Tide, Hexes and Venom
+(built 2026-10-03; pillars, waves, puppets, explosive gas, spreading plague).
+Still open: Traps, the Acrobatics expansion and the new hybrids.
 
 ## Weapons (each a new WeaponKind + tree)
 - **Spear / Polearm** (two-handed, reach 2): Reach Strike past an ally; Brace

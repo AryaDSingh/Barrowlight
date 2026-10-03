@@ -213,6 +213,7 @@ std::pair<SpriteFrame, const char*> propFrame(PropKind kind) {
         case PropKind::Statue: return {{kEvilDungeon, sf::IntRect({176, 408}, {72, 112})}, kEvilDungeon};
         case PropKind::OilBarrel: return {{kTileset, sf::IntRect({80, 304}, {16, 16})}, kTileset};
         case PropKind::Brazier: case PropKind::ColdBrazier: return {{kTileset, sf::IntRect({448, 304}, {16, 16})}, kTileset}; // blank: drawn by renderSurfaces
+        case PropKind::StonePillar: return {{kEvilDungeon, sf::IntRect({224, 192}, {32, 96})}, kEvilDungeon};
     }
     return {{kTileset, sf::IntRect({64, 304}, {16, 16})}, kTileset};
 }
@@ -1041,6 +1042,15 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         if (talent.restoreMana) log("Mana: ",player_.stats().mana,"/",player_.stats().maxMana);
         if (talent.restoreHpPercent) log("HP: ",player_.stats().hp,"/",player_.stats().maxHp);
         if (talent.cleanse) log("Poison, Burn, Chill, Marked and curses removed. Other effects remain.");
+        if (talent.raisePillar) {
+            if (raisePillarAt(cursor)) log("A stone pillar heaves up out of the ground.");
+            else log("The ground heaves, but nothing can rise there.");
+            updateFieldOfView();
+        }
+        for (Actor* cursed:affected) if (auto* m=dynamic_cast<Monster*>(cursed); m && m->statusEffects().has(StatusEffectType::Puppeted) && immovable(*m)) {
+            m->statusEffects().remove(StatusEffectType::Puppeted);
+            log(m->name()," shrugs off your hold.");
+        }
         if (talent.snuffRadius) {
             snuffLights(player_.position(),talent.snuffRadius);
             player_.lightLit=false;
@@ -1109,6 +1119,16 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     if (immovable(*target)) { target->statusEffects().remove(StatusEffectType::Grappled); log(target->name(), " is too massive to hold."); }
                     else log("You grab ", target->name(), ". Step to drag it along.");
                 }
+                if (const int link=target->statusEffects().magnitudeOf(StatusEffectType::Linked); link && hpBefore>target->stats().hp) {
+                    const int shared=std::max(1,(hpBefore-std::max(0,target->stats().hp))*link/100);
+                    Monster* other=nullptr; int best=4;
+                    for (auto& m:monsters_) {
+                        if (m.get()==target || m->allied || m->stats().hp<=0) continue;
+                        const int d=std::max(std::abs(m->position().x-target->position().x),std::abs(m->position().y-target->position().y));
+                        if (d<best) { best=d; other=m.get(); }
+                    }
+                    if (other) { other->stats().hp-=shared; flashActor(*other); log("The soul link carries ",shared," damage to ",other->name(),"!"); checkAndHandleDeath(*other); }
+                }
                 if (auto* foe=dynamic_cast<Monster*>(target); foe && talent.stagger && foe->stats().hp>0 && foe->intent()) {
                     foe->intent()->playerActionsRemaining+=talent.stagger;
                     log(foe->name()," staggers: its attack is delayed.");
@@ -1157,6 +1177,16 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
 
     if (talent.splashSurface) {
         for (const auto& p:target.area) setSurface(p,static_cast<SurfaceType>(talent.splashSurface),talent.splashTurns);
+        if (talent.splashPath) for (std::size_t i=1;i<target.path.size();++i)
+            if (map_.isWalkable(target.path[i].x,target.path[i].y)) setSurface(target.path[i],static_cast<SurfaceType>(talent.splashSurface),talent.splashTurns);
+    }
+    if (talent.vortex && !target.area.empty()) {
+        const Position centre=cursor;
+        for (Actor* caught:affected) if (caught->stats().hp>0 && !immovable(*caught)) {
+            const auto at=caught->position();
+            const Position toward{(centre.x>at.x)-(centre.x<at.x),(centre.y>at.y)-(centre.y<at.y)};
+            if (toward.x || toward.y) pushActor(*caught,toward,1,player_);
+        }
     }
     if (talent.flare && !target.area.empty()) {
         const Position centre=target.area.front();
@@ -1199,6 +1229,10 @@ int Application::situationalBonus(const Talent& talent, const Actor& target) con
         effects.has(StatusEffectType::Blinded) || effects.has(StatusEffectType::Burn) || effects.has(StatusEffectType::Chill) ||
         effects.has(StatusEffectType::Shock))) bonus+=kit.passiveValue(PassiveKind::Flay);
     if (talent.tree==TalentTree::Alchemy) bonus+=kit.passiveValue(PassiveKind::PotentBrews);
+    if (isSpell(talent) && conducts(surfaceAt(target.position()))) bonus+=kit.passiveValue(PassiveKind::Riptide);
+    if (effects.has(StatusEffectType::Misfortune) || effects.has(StatusEffectType::Linked) || effects.has(StatusEffectType::Plague) ||
+        effects.has(StatusEffectType::Wither) || effects.has(StatusEffectType::Doom)) bonus+=kit.passiveValue(PassiveKind::Malediction);
+    if (effects.has(StatusEffectType::Poison) || effects.has(StatusEffectType::Plague)) bonus+=kit.passiveValue(PassiveKind::ToxicRuin);
     const auto me=player_.position(), there=target.position();
     if (talent.tree==TalentTree::Spear && std::max(std::abs(me.x-there.x),std::abs(me.y-there.y))>=2) bonus+=kit.passiveValue(PassiveKind::LongReach);
     if (effects.has(StatusEffectType::Bleed)) bonus+=kit.passiveValue(PassiveKind::Hemorrhage);
@@ -1333,7 +1367,7 @@ void Application::processMonsterTurns() {
                 }
             } else if (monster && !monster->allied && monster==boss_ && bossSurfaceAction(*monster)) {
                 // The boss spent its turn on a brazier or on the light.
-            } else if (monster && monster->allied) {
+            } else if (monster && (monster->allied || monster->statusEffects().has(StatusEffectType::Puppeted))) {
                 actMinion(*monster,chilledMove);
             } else if (actor->ai() != nullptr) {
                 bool hidden=player_.statusEffects().has(StatusEffectType::Concealed);
@@ -1539,7 +1573,8 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                 }
             }
             if (decision.attackPower > 0) {
-                lastHitDodged_ = dodged = rollChance(std::min(.60f,dodgeChance(decision.target->stats().dexterity)+(decision.target->statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(*decision.target)+ascendancyDodgeBonus(*decision.target))/100.f));
+                const int misfortune = actor.statusEffects().magnitudeOf(StatusEffectType::Misfortune);
+                lastHitDodged_ = dodged = (misfortune && rollChance(misfortune / 100.f)) || rollChance(std::min(.60f,dodgeChance(decision.target->stats().dexterity)+(decision.target->statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(*decision.target)+ascendancyDodgeBonus(*decision.target))/100.f));
                 spawnAttackVfx(actor, *decision.target, decision.scalingStat==ScalingStat::Intelligence, dodged);
                 if (dodged) {
                     if (decision.target->talents().passiveValue(PassiveKind::Slippery)) decision.target->statusEffects().apply({StatusEffectType::Opening,2,0});
@@ -1739,6 +1774,17 @@ void Application::checkAndHandleDeath(Actor& actor) {
     }
     if (defeated) rewardMonster(*defeated, &actor == boss_);
     if (defeated) judgeKill(*defeated);
+    if (defeated && defeated->statusEffects().has(StatusEffectType::Plague)) {
+        const auto plague=defeated->statusEffects().magnitudeOf(StatusEffectType::Plague);
+        int spread=0;
+        for (auto& m:monsters_) {
+            if (m.get()==defeated || m->allied || m->stats().hp<=0) continue;
+            const auto p=m->position(), at=defeated->position();
+            if (std::max(std::abs(p.x-at.x),std::abs(p.y-at.y))>1) continue;
+            m->statusEffects().apply({StatusEffectType::Plague,5,plague}); ++spread;
+        }
+        if (spread) log("The plague spreads to ",spread," more!");
+    }
     if (defeated) {
         if (const int thief=player_.talents().passiveValue(PassiveKind::SpellThief); thief && !defeated->allied) {
             const auto& fx=defeated->statusEffects();
@@ -2076,7 +2122,7 @@ void Application::regenerateLevel(unsigned int seed) {
     map_ = dungeon.map;
     actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN; vfx_.clear(); hitFlash_.clear();
     vfx_.clear(); hitFlash_.clear(); lightOrbs_.clear();
-    setProps(dungeon.props);
+    setProps(dungeon.props); pillarTurns_.clear();
 
     player_.setPosition(dungeon.playerStart);
     floorEntrance_=dungeon.playerStart; floorExit_={-1,-1};
@@ -2385,7 +2431,17 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     chestPosition_ = state.chestPosition; chestExists_ = state.chestExists; chestClaimed_ = state.chestClaimed;
     ordinaryDrops_ = state.ordinaryDrops;
     landmark_=static_cast<LandmarkKind>(state.landmark); landmarkAltar_=state.landmarkAltar; landmarkUsed_=state.landmarkUsed;
-    setProps(state.props);
+    {
+        // Raised pillars are temporary: they crumble when the floor is reloaded.
+        auto props=state.props;
+        props.erase(std::remove_if(props.begin(),props.end(),[&](const Prop& p) {
+            if (p.kind!=PropKind::StonePillar) return false;
+            map_.setTile(p.pos.x,p.pos.y,Tile{TileType::Floor,true,true});
+            return true;
+        }),props.end());
+        setProps(props);
+        pillarTurns_.clear();
+    }
     vaultExists_=state.vaultExists; vaultOpened_=state.vaultOpened; vaultClaimed_=state.vaultClaimed;
     vaultCenter_=state.vaultCenter; vaultEntrance_=state.vaultEntrance;
     vaultRewards_.clear(); if (vaultExists_ && !vaultClaimed_) vaultRewards_.resize(3);

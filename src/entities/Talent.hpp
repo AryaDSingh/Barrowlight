@@ -14,6 +14,7 @@ enum class TalentTree {
     OneHanded, TwoHanded, Shield, Bow, Stealth, Acrobatics, Fire, Ice, Lightning, Arcane, Cloth, LightArmour, HeavyArmour, Spellblade, Animation, BloodMagic, ShadowArcher,
     Brawling, Whip, Shadow, Radiance, Alchemy,
     Spear, Daggers, Mace, Crossbow,
+    Earth, Tide, Hexes, Venom,
 };
 
 // Abilities and talents have five ranks; rank 5 often adds a mastery effect
@@ -57,7 +58,8 @@ enum class TalentEffectKind {
 enum class WeaponRequirement { None, OneHanded, TwoHanded, Shield, Bow, Melee, Whip, Spear, Dagger, Mace, Crossbow };
 enum class ArmourRequirement { None, Cloth, Light, Heavy };
 inline bool isMagicTree(TalentTree tree) {
-    return (tree >= TalentTree::Fire && tree <= TalentTree::Arcane) || tree == TalentTree::Shadow || tree == TalentTree::Radiance;
+    return (tree >= TalentTree::Fire && tree <= TalentTree::Arcane) || tree == TalentTree::Shadow || tree == TalentTree::Radiance ||
+           tree == TalentTree::Earth || tree == TalentTree::Tide || tree == TalentTree::Hexes || tree == TalentTree::Venom;
 }
 
 enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship, Ambush, Footwork, Kindle, StaticCharge, Frostbite, ArcaneEfficiency, ClothWard, Spellweave, LightEvasion, LightPrecision, HeavyBrace, HeavyResolve, BattleRhythm, GravePact, Deathless, Unseen,
@@ -70,7 +72,9 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // Brawling, Whip, Shadow, Radiance, Alchemy.
     HardLanding, Flay, Umbral, InnerLight, PotentBrews,
     // Spear, Daggers, Mace, Crossbow.
-    LongReach, Hemorrhage, Bonebreaker, Windlass };
+    LongReach, Hemorrhage, Bonebreaker, Windlass,
+    // Earth, Tide, Hexes, Venom.
+    Stoneskin, Riptide, Malediction, ToxicRuin };
 
 struct Talent {
     std::string name;
@@ -221,6 +225,10 @@ struct Talent {
     // around the target into shards.
     bool vault=false, pierceBehind=false, pierceAll=false, backstab=false, shatterIce=false;
     int stagger=0;
+    // Magic. raisePillar: a stone pillar rises on the target tile for a while.
+    // splashPath: the splash surface covers the whole path, not just the
+    // impact. vortex: everything hit is dragged a tile toward the centre.
+    bool raisePillar=false, splashPath=false, vortex=false;
 
 };
 

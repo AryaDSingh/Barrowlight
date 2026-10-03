@@ -8,8 +8,8 @@ namespace engine {
 // elements. Fire ignites oil and melts ice; cold freezes water and puts
 // out fire; lightning electrifies connected water. Values are saved, so
 // only ever append new kinds.
-enum class SurfaceType : std::uint8_t { None = 0, Oil = 1, Water = 2, Fire = 3, Ice = 4, Electrified = 5, Blood = 6, Acid = 7 };
-inline constexpr int kSurfaceTypeMax = 7;
+enum class SurfaceType : std::uint8_t { None = 0, Oil = 1, Water = 2, Fire = 3, Ice = 4, Electrified = 5, Blood = 6, Acid = 7, Gas = 8 };
+inline constexpr int kSurfaceTypeMax = 8;
 // Water and blood both carry lightning and freeze.
 inline bool conducts(SurfaceType t) { return t == SurfaceType::Water || t == SurfaceType::Blood || t == SurfaceType::Electrified; }
 

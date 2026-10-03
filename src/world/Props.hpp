@@ -10,8 +10,9 @@ namespace engine {
 // prop with floor under it. Values are saved, so only ever append new kinds.
 // Oil barrels, braziers and cold braziers are interactive (ApplicationSurfaces.cpp).
 enum class PropKind { Barrel = 1, Crate = 2, Sacks = 3, Throne = 4, SkeletonThrone = 5, Statue = 6,
-                      OilBarrel = 7, Brazier = 8, ColdBrazier = 9 };
-inline constexpr int kPropKindMin = 1, kPropKindMax = 9;
+                      OilBarrel = 7, Brazier = 8, ColdBrazier = 9,
+                      StonePillar = 10 }; // raised by Earth magic; crumbles in time (and on reload)
+inline constexpr int kPropKindMin = 1, kPropKindMax = 10;
 
 struct Prop {
     PropKind kind;
@@ -32,6 +33,7 @@ inline const char* propName(PropKind kind) {
         case PropKind::OilBarrel: return "Oil barrel";
         case PropKind::Brazier: return "Brazier";
         case PropKind::ColdBrazier: return "Cold brazier";
+        case PropKind::StonePillar: return "Stone pillar";
     }
     return "";
 }

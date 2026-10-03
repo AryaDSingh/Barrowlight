@@ -37,7 +37,8 @@ CategoryInfo categoryInfo(TreeCategory c) {
 TreeCategory treeCategory(const std::string& id) {
     if (id=="one_handed" || id=="two_handed" || id=="bow" || id=="brawling" || id=="whip" ||
         id=="spear" || id=="daggers" || id=="mace" || id=="crossbow") return TreeCategory::Martial;
-    if (id=="fire" || id=="ice" || id=="lightning" || id=="arcane" || id=="shadow" || id=="radiance") return TreeCategory::Magic;
+    if (id=="fire" || id=="ice" || id=="lightning" || id=="arcane" || id=="shadow" || id=="radiance" ||
+        id=="earth" || id=="tide" || id=="hexes" || id=="venom") return TreeCategory::Magic;
     if (id=="stealth" || id=="acrobatics" || id=="alchemy") return TreeCategory::Utility;
     if (id=="shield" || id=="cloth" || id=="light_armour" || id=="heavy_armour") return TreeCategory::Defence;
     return TreeCategory::Hybrid;

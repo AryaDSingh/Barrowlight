@@ -626,6 +626,9 @@ private:
     void dragGrappled(Position vacated);
     // Shadow and Radiance: put out / relight every light around a spot.
     void snuffLights(Position centre, int radius);
+    void explodeGas(Position tile);                        // poison gas meets fire
+    bool raisePillarAt(Position tile);                     // Earth: a stone pillar, for a while
+    std::map<std::pair<int, int>, int> pillarTurns_;       // raised pillars' remaining turns (not saved: they crumble on reload)
     void relightLights(Position centre, int radius);
     int situationalBonus(const Talent& talent, const Actor& target) const; // Flay, Brews, Inner Light, Umbral
     bool dominoPush_ = false;

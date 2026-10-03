@@ -59,7 +59,8 @@ const sf::FloatRect kPortraitArea{{14,14},{64,64}}, kNameArea{{84,14},{160,66}},
 const sf::FloatRect kLevelBadge{{160,40},{84,22}};
 const sf::FloatRect kMinimapArea{{18,playLayout::minimapY+4},{220,142}};
 bool harmfulStatus(StatusEffectType t) {
-    return isCleansable(t) || t==StatusEffectType::Stun || t==StatusEffectType::Wither || t==StatusEffectType::Shock || t==StatusEffectType::Pinned;
+    return isCleansable(t) || t==StatusEffectType::Stun || t==StatusEffectType::Wither || t==StatusEffectType::Shock || t==StatusEffectType::Pinned ||
+        t==StatusEffectType::Misfortune || t==StatusEffectType::Linked || t==StatusEffectType::Puppeted;
 }
 std::vector<StatusEffectInstance> hudEffects(const Player& player) {
     std::vector<StatusEffectInstance> effects;
@@ -70,6 +71,10 @@ std::string statusTooltip(const StatusEffectInstance& e) {
     const auto n=std::to_string(e.magnitude);
     switch(e.type) {
     case StatusEffectType::Poison: case StatusEffectType::Burn: return "Lose "+n+" HP each status tick. Bypasses Guard and reveals concealment.";
+    case StatusEffectType::Misfortune: return "Cursed: its attacks miss "+n+"% more often.";
+    case StatusEffectType::Linked: return n+"% of each hit it takes from you jumps to the nearest other foe within three tiles.";
+    case StatusEffectType::Puppeted: return "Its will is not its own: it fights its own side until this ends.";
+    case StatusEffectType::Plague: return "Loses "+n+" HP each turn; when it dies, the plague spreads to everything beside it.";
     case StatusEffectType::Bleed: return "Loses "+n+" HP each turn, and leaves a trail of blood.";
     case StatusEffectType::Sundered: return "Its guard is broken: every hit it takes deals "+n+" more damage.";
     case StatusEffectType::Pinned: return "Pinned in place: it can't move, though it can still fight.";

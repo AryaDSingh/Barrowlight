@@ -46,6 +46,7 @@ void line(sf::VertexArray& va, sf::Vector2f a, sf::Vector2f b, float w, sf::Colo
 
 Element talentElement(const Talent& t) {
     if (t.effectKind != TalentEffectKind::Damage || t.shape == EffectShape::Movement) return Element::None;
+    if (t.tree == TalentTree::Tide) return Element::None; // its chill must not freeze the water it brings
     if (t.tree == TalentTree::Fire || (t.onHitEffect && t.onHitEffect->type == StatusEffectType::Burn)) return Element::Fire;
     if (t.tree == TalentTree::Ice || (t.onHitEffect && t.onHitEffect->type == StatusEffectType::Chill)) return Element::Ice;
     if (t.tree == TalentTree::Lightning) return Element::Lightning;
@@ -83,6 +84,7 @@ void Application::applyElement(Element element, const std::vector<Position>& til
     for (const auto& p : tiles) {
         const auto s = surfaceAt(p);
         if (element == Element::Fire) {
+            if (s == SurfaceType::Gas) { explodeGas(p); continue; }
             if (s == SurfaceType::Oil) { setSurface(p, SurfaceType::Fire, kOilFireTurns); ignited = true; }
             else if (s == SurfaceType::Ice) { setSurface(p, SurfaceType::Water, 0); steam = true; }
             else if (s == SurfaceType::Water || s == SurfaceType::Electrified) steam = true;
@@ -354,7 +356,7 @@ void Application::tickSurfaces() {
             auto& s = surfaces_[static_cast<std::size_t>(y * w + x)];
             if (s.type != SurfaceType::Fire) continue;
             for (const Position d : {Position{1, 0}, Position{-1, 0}, Position{0, 1}, Position{0, -1}})
-                if (surfaceAt({x + d.x, y + d.y}) == SurfaceType::Oil) spreadTo.push_back({x + d.x, y + d.y});
+                if (surfaceAt({x + d.x, y + d.y}) == SurfaceType::Oil || surfaceAt({x + d.x, y + d.y}) == SurfaceType::Gas) spreadTo.push_back({x + d.x, y + d.y});
         }
     for (auto& orb : lightOrbs_) --orb.turns;
     lightOrbs_.erase(std::remove_if(lightOrbs_.begin(), lightOrbs_.end(), [](const LightOrb& o) { return o.turns <= 0; }), lightOrbs_.end());
@@ -362,8 +364,23 @@ void Application::tickSurfaces() {
         if (s.type == SurfaceType::Fire && --s.turns <= 0) s = {};
         else if (s.type == SurfaceType::Electrified && --s.turns <= 0) s = {SurfaceType::Water, 0};
         else if (s.type == SurfaceType::Acid && --s.turns <= 0) s = {};
+        else if (s.type == SurfaceType::Gas && --s.turns <= 0) s = {};
     }
-    for (const auto& p : spreadTo) setSurface(p, SurfaceType::Fire, kOilFireTurns);
+    for (const auto& p : spreadTo) {
+        if (surfaceAt(p) == SurfaceType::Gas) explodeGas(p);
+        else setSurface(p, SurfaceType::Fire, kOilFireTurns);
+    }
+    // Raised pillars crumble in time.
+    for (auto it = pillarTurns_.begin(); it != pillarTurns_.end();) {
+        if (--it->second > 0) { ++it; continue; }
+        const Position p{it->first.first, it->first.second};
+        auto props = props_;
+        props.erase(std::remove_if(props.begin(), props.end(), [&](const Prop& q) { return q.kind == PropKind::StonePillar && q.pos.x == p.x && q.pos.y == p.y; }), props.end());
+        map_.setTile(p.x, p.y, Tile{TileType::Floor, true, true});
+        setProps(props);
+        if (visibleTile(p)) log("The stone pillar crumbles.");
+        it = pillarTurns_.erase(it);
+    }
 
     std::vector<Position> shocked;
     const auto suffer = [&](Actor& a) {
@@ -375,6 +392,10 @@ void Application::tickSurfaces() {
                 break;
             case SurfaceType::Ice: a.statusEffects().apply({StatusEffectType::Chill, 2, 20}); break;
             case SurfaceType::Electrified: shocked.push_back(a.position()); break;
+            case SurfaceType::Gas:
+                a.statusEffects().apply({StatusEffectType::Poison, 2, 2});
+                if (&a == &player_) log("You choke on the poison gas!");
+                break;
             case SurfaceType::Acid:
                 // Acid eats at whatever stands in it, and leaves it exposed.
                 a.stats().hp -= 2; flashActor(a);
@@ -441,7 +462,7 @@ void Application::tickSurfaces() {
 // Dangerous ground monsters won't walk into on purpose.
 bool Application::hazardousSurface(Position p) const {
     const auto s = surfaceAt(p);
-    return s == SurfaceType::Fire || s == SurfaceType::Electrified || s == SurfaceType::Acid;
+    return s == SurfaceType::Fire || s == SurfaceType::Electrified || s == SurfaceType::Acid || s == SurfaceType::Gas;
 }
 
 // A push, step by step. Whatever stops it hurts: walls (3), another
@@ -541,6 +562,31 @@ void Application::hurlActor(Actor& target, int distance, bool domino) {
     const Position at = target.position();
     if (at.x == me.x && at.y == me.y) target.setPosition(from);
     else if (visibleTile(at)) spawnVfx({Vfx::Kind::Puff, {at.x + .5f, at.y + .5f}, {at.x + .5f, at.y + .5f}, sf::Color(150, 130, 110), 0, .45f, .7f});
+}
+
+// Poison gas meets fire: it bursts into flame, burning whoever stands in it.
+void Application::explodeGas(Position tile) {
+    setSurface(tile, SurfaceType::Fire, kSpilledFireTurns);
+    if (Actor* caught = actorAt(tile, nullptr); caught && caught->stats().hp > 0) {
+        caught->stats().hp -= 6; flashActor(*caught);
+        caught->statusEffects().apply({StatusEffectType::Burn, 3, 2});
+        checkAndHandleDeath(*caught);
+    }
+    if (visibleTile(tile)) {
+        spawnVfx({Vfx::Kind::Burst, {tile.x + .5f, tile.y + .5f}, {tile.x + .5f, tile.y + .5f}, sf::Color(255, 170, 60), 0, .35f, .9f});
+        log("The gas explodes!");
+    }
+}
+
+bool Application::raisePillarAt(Position tile) {
+    if (!map_.isWalkable(tile.x, tile.y) || isOccupied(tile, nullptr) || propIndexAt(tile.x, tile.y) >= 0 || (tile.x == floorExit_.x && tile.y == floorExit_.y)) return false;
+    auto props = props_;
+    props.push_back({PropKind::StonePillar, tile});
+    setSurface(tile, SurfaceType::None, 0);
+    map_.setTile(tile.x, tile.y, Tile{TileType::Wall, false, true});
+    setProps(props);
+    pillarTurns_[{tile.x, tile.y}] = 12;
+    return true;
 }
 
 void Application::snuffLights(Position centre, int radius) {
@@ -727,6 +773,7 @@ void Application::renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>
                 case SurfaceType::Fire: body = sf::Color(60, 25, 10, 170); break; // scorched ground under the flames
                 case SurfaceType::Blood: body = sf::Color(105, 10, 14, 175); break;
                 case SurfaceType::Acid: body = sf::Color(110, 170, 30, 165); break;
+                case SurfaceType::Gas: body = sf::Color(120, 190, 60, 95); break;
                 default: break;
             }
             // Three overlapping blobs per tile merge with the neighbours into a puddle.

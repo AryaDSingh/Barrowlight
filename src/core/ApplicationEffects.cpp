@@ -103,6 +103,10 @@ sf::Color talentColor(const Talent& t) {
     if (t.tree == TalentTree::ShadowArcher || t.tree == TalentTree::Stealth || t.tree == TalentTree::Animation) return kShadow;
     if (t.tree == TalentTree::Bow) return kArrow;
     if (t.tree == TalentTree::Shadow) return sf::Color(110, 70, 170);
+    if (t.tree == TalentTree::Earth) return sf::Color(165, 125, 80);
+    if (t.tree == TalentTree::Tide) return sf::Color(70, 145, 225);
+    if (t.tree == TalentTree::Hexes) return sf::Color(170, 90, 210);
+    if (t.tree == TalentTree::Venom) return sf::Color(120, 210, 80);
     if (t.tree == TalentTree::Radiance) return kHoly;
     if (t.splashSurface == 7) return sf::Color(150, 220, 70);
     if (t.splashSurface == 1) return sf::Color(90, 70, 40);
