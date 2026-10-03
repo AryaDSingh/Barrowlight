@@ -327,6 +327,41 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         node("trickster","trickster.slippery",Dex,passive("Slippery","Dodging an attack grants Opening.",PassiveKind::Slippery,1));
         node("trickster","trickster.quick_hands",Dex,passive("Quick Hands","+8% dodge chance. Total dodge is capped at 60%.",PassiveKind::QuickHands,8));
         node("trickster","trickster.killer_instinct",Dex,passive("Killer Instinct","Your attacks deal +4 damage to enemies below half their life.",PassiveKind::KillerInstinct,4));
+        // Templar (STR/INT).
+        t=attack("Consecrate","Smite everything within two tiles with holy fire, then stand guarded: Guard 3 for three responses.",7,8,10,false,2);
+        t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Guard,3,3}; node("templar","templar.consecrate",Int,t);
+        node("templar","templar.aegis",Int,buff("Aegis","A wall of light: Guard 8 for three enemy responses.",StatusEffectType::Guard,3,8,12,16));
+        node("templar","templar.zeal",Int,passive("Zeal","Every spell you cast grants Guard 2 for the next enemy response.",PassiveKind::Zeal,2));
+        node("templar","templar.retribution",Int,passive("Retribution","While you are guarded, enemies that hit you in melee take 4 damage.",PassiveKind::Retribution,4));
+        node("templar","templar.devotion",Int,passive("Devotion","+20% maximum mana.",PassiveKind::Devotion,20));
+        node("templar","templar.righteous",Int,passive("Righteous","Above half mana, your attacks and spells deal +3 damage.",PassiveKind::Righteous,3));
+        // Shadowcaster (DEX/INT).
+        t=move("Veil","Step up to three tiles through shadow and vanish: Concealed for two responses.",3,5,10);
+        t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Concealed,2,2}; node("shadowcaster","shadowcaster.veil",Dex,t);
+        t=buff("Hex","Curse a visible enemy: its next two direct hits taken deal +25%.",StatusEffectType::Marked,4,2,5,7);
+        t.targeting=TargetingMode::RangedEnemyInSight; node("shadowcaster","shadowcaster.hex",Int,t);
+        node("shadowcaster","shadowcaster.hidden_casting",Int,passive("Hidden Casting","Spells cast while Concealed deal +5 damage.",PassiveKind::HiddenCasting,5));
+        node("shadowcaster","shadowcaster.lingering_shadow",Dex,passive("Lingering Shadow","Attacking while Concealed has a 35% chance not to reveal you.",PassiveKind::LingeringShadow,35));
+        node("shadowcaster","shadowcaster.shade_step",Dex,passive("Shade Step","Movement abilities leave you Concealed for one response.",PassiveKind::ShadeStep,1));
+        node("shadowcaster","shadowcaster.spell_thief",Int,passive("Spell Thief","Killing an enemy that suffers an ailment restores 4 mana.",PassiveKind::SpellThief,4));
+        // Duelist (STR/DEX).
+        t=buff("Challenge","Call out a visible enemy: its next three direct hits taken deal +25%.",StatusEffectType::Marked,6,3,4,9);
+        t.targeting=TargetingMode::RangedEnemyInSight; node("duelist","duelist.challenge",Dex,t);
+        t=attack("Flurry","A storm of quick cuts on one adjacent enemy with +30% critical chance.",11,4,5); t.bonusCritChance=.3f;
+        node("duelist","duelist.flurry",Dex,t);
+        node("duelist","duelist.momentum",Dex,passive("Momentum","Each consecutive hit on the same enemy deals +2 more damage, up to +6. Switching targets resets it.",PassiveKind::Momentum,2));
+        node("duelist","duelist.finisher",Str,passive("Finisher","Your attacks deal +6 damage to enemies below a quarter of their life.",PassiveKind::Finisher,6));
+        node("duelist","duelist.counter",Dex,passive("Counter","Dodging a melee attack strikes the attacker back for 5.",PassiveKind::Counter,5));
+        node("duelist","duelist.en_garde",Str,passive("En Garde","While you have Opening, direct hits on you deal 3 less.",PassiveKind::EnGarde,3));
+        // Paragon (all three).
+        t=buff("Exalt","Shake off ailments and curses and surge: +4 damage for four turns.",StatusEffectType::Empowered,4,4,6,14); t.cleanse=true;
+        node("paragon","paragon.exalt",Str,t);
+        t=Talent{}; t.name="Renewal"; t.description="Recover 30% of your maximum life at once."; t.targeting=TargetingMode::Self;
+        t.effectKind=TalentEffectKind::SelfBuff; t.restoreHpPercent=30; t.manaCost=10; t.cooldownTurns=20; node("paragon","paragon.renewal",Int,t);
+        node("paragon","paragon.balance",Str,passive("Balance","+2 Strength, Dexterity and Intelligence.",PassiveKind::Balance,2));
+        node("paragon","paragon.versatility",Dex,passive("Versatility","+5% dodge and +5% critical chance.",PassiveKind::Versatility,5));
+        node("paragon","paragon.resilience",Str,passive("Resilience","Direct hits on you deal 2 less.",PassiveKind::Resilience,2));
+        node("paragon","paragon.wellspring",Int,passive("Wellspring","+10% maximum life and maximum mana.",PassiveKind::Wellspring,10));
         return out;
     }();
     return catalog;

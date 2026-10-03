@@ -48,6 +48,10 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
     if (attacker.talents().passiveValue(PassiveKind::LastStand) && attacker.stats().hp*3<=attacker.stats().maxHp)
         damage+=kit.passiveValue(PassiveKind::LastStand);
     if (target.stats().maxHp>0 && target.stats().hp*2<target.stats().maxHp) damage+=kit.passiveValue(PassiveKind::KillerInstinct);
+    // Hybrid ascendancies.
+    if (attacker.stats().maxMana>0 && attacker.stats().mana*2>attacker.stats().maxMana) damage+=kit.passiveValue(PassiveKind::Righteous);
+    if (isSpell(talent) && attacker.statusEffects().has(StatusEffectType::Concealed)) damage+=kit.passiveValue(PassiveKind::HiddenCasting);
+    if (target.stats().maxHp>0 && target.stats().hp*4<target.stats().maxHp) damage+=kit.passiveValue(PassiveKind::Finisher);
     // Gear: Cruel adds to every attack; Execution to finishing blows.
     damage+=attacker.inventory().affixTotal(BonusStat::FlatDamage);
     if (target.stats().maxHp>0 && target.stats().hp*10<=target.stats().maxHp*3) damage+=attacker.inventory().affixTotal(BonusStat::Execution);
@@ -98,7 +102,7 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
     // one landing the hit, not the one receiving it, unlike dodge.
     const float aim=talent.tree==TalentTree::Bow && attacker.statusEffects().has(StatusEffectType::Opening) ?
         attacker.talents().passiveValue(PassiveKind::Marksmanship)/100.f : 0.f;
-    if (rollCrit(attacker.stats().dexterity, talent.bonusCritChance+aim+(armourCritBonus(attacker)+attacker.inventory().affixTotal(BonusStat::CritChance))/100.f)) {
+    if (rollCrit(attacker.stats().dexterity, talent.bonusCritChance+aim+(armourCritBonus(attacker)+attacker.inventory().affixTotal(BonusStat::CritChance)+attacker.talents().passiveValue(PassiveKind::Versatility))/100.f)) {
         damage = estimate.critical;
     }
 

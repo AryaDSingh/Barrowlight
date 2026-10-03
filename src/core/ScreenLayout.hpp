@@ -56,6 +56,7 @@ inline const sf::FloatRect kTownObeliskSpot = townCells(21, 8, 4, 4);
 inline const sf::FloatRect kAscendDialog{{110, 40}, {1060, 640}};
 inline sf::FloatRect ascendNode(int i) { return {{140.f + 336.f * (i % 3), 170.f + 222.f * (i / 3)}, {320, 208}}; }
 inline const sf::FloatRect kAscendLearn{{760, 618}, {240, 42}}, kAscendClose{{1012, 618}, {136, 42}};
+inline sf::FloatRect ascendChoice(int i) { return {{134.f + 254.f * i, 140}, {242, 462}}; }
 
 // --- The trial obelisk ---------------------------------------------------------------
 inline const sf::FloatRect kTrialDialog{{220, 90}, {840, 540}};

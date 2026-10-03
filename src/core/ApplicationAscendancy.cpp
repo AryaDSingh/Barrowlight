@@ -41,14 +41,9 @@ void Application::completeTrial(int trial) {
     if (player_.trialsCleared & bit) return;
     player_.trialsCleared |= bit;
     ++player_.ascendancyPoints;
-    if (player_.ascendancy.empty())
-        if (const auto* a = ascendancyFor(playerClass_)) {
-            player_.ascendancy = a->id;
-            log("You ascend: you are now a ", a->name, "!");
-        }
     soundManager_.play(SoundEffect::LevelUp);
     log(trialName(trial), " is won! You gain an ascendancy point. Leave by the stairs (G) when ready.");
-    openAscendancy();
+    openAscendancy(); // the first trial asks which ascendancy to take
 }
 
 std::string Application::trialAvailability(int trial) const {
@@ -157,9 +152,25 @@ void Application::exitTrial() {
 
 // --- The ascendancy screen -------------------------------------------------------
 
+void Application::chooseAscendancy(const std::string& id) {
+    const auto* a = findAscendancy(id);
+    if (!a || !ascendancyAllowed(*a, playerClass_) || !player_.ascendancy.empty() || !player_.trialsCleared) return;
+    player_.ascendancy = a->id;
+    ascendancyChoice_ = false;
+    log("You ascend: you are now a ", a->name, "!");
+    openAscendancy();
+}
+
 void Application::openAscendancy() {
     const auto* a = findAscendancy(player_.ascendancy);
+    if (!a && player_.trialsCleared) {
+        // A trial won but no ascendancy chosen yet: choose first.
+        cancelTargeting(); inventoryOpen_ = false;
+        ascendancyChoice_ = true; ascendancyMenu_ = true; ascendancyChoiceSelection_ = 0;
+        return;
+    }
     if (!a) { log("You have no ascendancy yet. Win the ", trialName(1), " to earn one."); return; }
+    ascendancyChoice_ = false;
     cancelTargeting();
     inventoryOpen_ = false;
     ascendancyMenu_ = true;
@@ -185,6 +196,16 @@ bool Application::learnAscendancyNode(std::size_t node) {
 
 void Application::handleAscendancyKey(sf::Keyboard::Key key) {
     using K = sf::Keyboard::Key;
+    if (ascendancyChoice_) {
+        // The choice is permanent and can't be skipped.
+        const auto options = ascendanciesFor(playerClass_);
+        if (key >= K::Num1 && key <= K::Num4 && static_cast<std::size_t>(static_cast<int>(key) - static_cast<int>(K::Num1)) < options.size())
+            ascendancyChoiceSelection_ = static_cast<std::size_t>(static_cast<int>(key) - static_cast<int>(K::Num1));
+        if (key == K::Left && ascendancyChoiceSelection_ > 0) --ascendancyChoiceSelection_;
+        if (key == K::Right && ascendancyChoiceSelection_ + 1 < options.size()) ++ascendancyChoiceSelection_;
+        if (key == K::Enter && ascendancyChoiceSelection_ < options.size()) chooseAscendancy(options[ascendancyChoiceSelection_]->id);
+        return;
+    }
     if (key == K::Escape || key == K::Y) { ascendancyMenu_ = false; return; }
     if (key >= K::Num1 && key <= K::Num6) ascendancySelection_ = static_cast<std::size_t>(static_cast<int>(key) - static_cast<int>(K::Num1));
     if (key == K::Left) ascendancySelection_ = (ascendancySelection_ + 5) % 6;
@@ -198,12 +219,67 @@ void Application::handleAscendancyMouse(const sf::Event& event) {
     const auto* click = event.getIf<sf::Event::MouseButtonPressed>();
     if (!click || click->button != sf::Mouse::Button::Left) return;
     const auto p = sf::Vector2f(click->position);
+    if (ascendancyChoice_) {
+        const auto options = ascendanciesFor(playerClass_);
+        for (std::size_t i = 0; i < options.size(); ++i) if (ascendChoice(static_cast<int>(i)).contains(p)) { ascendancyChoiceSelection_ = i; return; }
+        if (kAscendLearn.contains(p) && ascendancyChoiceSelection_ < options.size()) chooseAscendancy(options[ascendancyChoiceSelection_]->id);
+        return;
+    }
     if (kAscendClose.contains(p)) { ascendancyMenu_ = false; return; }
     if (kAscendLearn.contains(p)) { learnAscendancyNode(ascendancySelection_); return; }
     for (std::size_t i = 0; i < 6; ++i) if (ascendNode(static_cast<int>(i)).contains(p)) { ascendancySelection_ = i; return; }
 }
 
+// The first trial's reward: choose one of the class's four ascendancies.
+void Application::renderAscendancyChoice() {
+    const auto mouse = mousePixel_ ? std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)) : std::nullopt;
+    const auto hovered = [&](const sf::FloatRect& r) { return mouse && r.contains(*mouse); };
+    sf::RectangleShape dim({1280, 720}); dim.setFillColor(sf::Color(0, 0, 0, 160)); window_.draw(dim);
+    ui_.panel(window_, kAscendDialog, true, sf::Color(150, 135, 150));
+    const float x = kAscendDialog.position.x, w = kAscendDialog.size.x, top = kAscendDialog.position.y;
+    ui_.textCentered(window_, "Choose your ascendancy", {{x, top + 22}, {w, 44}}, 34, ui::kUnique, ui::Font::Title);
+    ui_.textCentered(window_, "This choice is permanent. Each trial won buys one of its six nodes.", {{x, top + 70}, {w, 22}}, 16, ui::kMuted);
+    const auto options = ascendanciesFor(playerClass_);
+    const Talent* tip = nullptr;
+    sf::Vector2f tipAt;
+    for (std::size_t i = 0; i < options.size(); ++i) {
+        const auto& a = *options[i];
+        const auto r = ascendChoice(static_cast<int>(i));
+        const bool selected = i == ascendancyChoiceSelection_;
+        ui_.inset(window_, r, selected ? ui::kUnique : hovered(r) ? ui::kBronze : sf::Color::Transparent);
+        const sf::FloatRect emblem{{r.position.x + r.size.x / 2 - 34, r.position.y + 16}, {68, 68}};
+        ui_.inset(window_, emblem, selected ? ui::kUnique : sf::Color::Transparent);
+        ui_.icon(window_, a.icon, {{emblem.position.x + 10, emblem.position.y + 10}, {48, 48}}, selected ? ui::kUnique : ui::kText);
+        ui_.textCentered(window_, std::to_string(i + 1) + ".  " + a.name, {{r.position.x, r.position.y + 92}, {r.size.x, 30}}, 22,
+                         selected ? ui::kUnique : ui::kGold, ui::Font::Title);
+        ui_.textCentered(window_, a.attributes, {{r.position.x, r.position.y + 122}, {r.size.x, 20}}, 13, ui::kInfo, ui::Font::Bold);
+        float y = r.position.y + 150;
+        ui_.paragraph(window_, a.tagline, r.position.x + 14, y, r.size.x - 28, 14, ui::kText);
+        y += 10;
+        for (const char* nodeId : a.nodes)
+            if (const auto* d = findTalentDefinition(nodeId)) {
+                const sf::FloatRect line{{r.position.x + 12, y - 1}, {r.size.x - 24, 20}};
+                const bool over = hovered(line);
+                ui_.text(window_, std::string(d->ranks[0].passive ? "- " : "+ ") + d->ranks[0].name, {r.position.x + 18, y}, 14,
+                         over ? ui::kGold : d->ranks[0].passive ? ui::kMuted : ui::kMagic);
+                if (over) { tip = &d->ranks[0]; tipAt = {line.position.x + line.size.x, line.position.y}; }
+                y += 20;
+            }
+    }
+    if (tip) {
+        std::vector<ui::Line> lines{{tip->name, ui::kGold, 16, ui::Font::Bold},
+                                    {tip->passive ? "Passive" : "Active, " + std::to_string(tip->manaCost) + " mana, cooldown " + std::to_string(tip->cooldownTurns),
+                                     tip->passive ? ui::kInfo : ui::kMagic, 13},
+                                    {tip->description, ui::kText, 14}};
+        ui_.tooltip(window_, lines, tipAt, 280);
+    }
+    const auto& chosen = *options[std::min(ascendancyChoiceSelection_, options.size() - 1)];
+    ui_.button(window_, kAscendLearn, std::string("Become a ") + chosen.name + " (Enter)", hovered(kAscendLearn), true, 16);
+    ui_.text(window_, "1-4 or click to choose; hover a node to read it. + active, - passive.", {x + 30, kAscendLearn.position.y + 12}, 14, ui::kMuted);
+}
+
 void Application::renderAscendancy() {
+    if (ascendancyMenu_ && ascendancyChoice_) { renderAscendancyChoice(); return; }
     const auto* a = findAscendancy(player_.ascendancy);
     if (!ascendancyMenu_ || !a) return;
     const auto mouse = mousePixel_ ? std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)) : std::nullopt;
@@ -276,9 +352,9 @@ void Application::renderTrialMenu() {
     ui_.panel(window_, kTrialDialog, true, sf::Color(140, 130, 150));
     const float x = kTrialDialog.position.x, w = kTrialDialog.size.x, top = kTrialDialog.position.y;
     ui_.textCentered(window_, "The Trial Obelisk", {{x, top + 18}, {w, 44}}, 34, ui::kUnique, ui::Font::Title);
-    const auto* a = ascendancyFor(playerClass_);
+    const auto* a = findAscendancy(player_.ascendancy);
     ui_.textCentered(window_, std::string("Sigils from the great bosses open its trials. Win them to ascend") +
-                     (a ? std::string(" as a ") + a->name + "." : "."), {{x, top + 64}, {w, 22}}, 16, ui::kMuted);
+                     (a ? std::string(" further as a ") + a->name + "." : "; the first lets you choose how."), {{x, top + 64}, {w, 22}}, 16, ui::kMuted);
     const char* rewards[]{"Reward: your ascendancy and its first point.", "Reward: a second ascendancy point."};
     const char* fights[]{"A living statue that slams the ground and quakes the arena. Its blows grow wilder as it cracks.",
                          "A saint who fell to the Lich: bolts, curses and rituals that raise the dead."};

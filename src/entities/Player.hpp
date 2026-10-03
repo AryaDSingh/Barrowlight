@@ -49,7 +49,11 @@ public:
             result.intelligence += b.intelligence;
             result.maxHp += b.maxHp; result.maxMana += b.maxMana;
         }
-        result.maxHp += result.maxHp * talents().passiveValue(PassiveKind::IronSkin) / 100; // Juggernaut's Iron Skin
+        result.maxHp += result.maxHp * (talents().passiveValue(PassiveKind::IronSkin) + talents().passiveValue(PassiveKind::Wellspring)) / 100;
+        result.maxMana += result.maxMana * (talents().passiveValue(PassiveKind::Devotion) + talents().passiveValue(PassiveKind::Wellspring)) / 100;
+        if (const int balance = talents().passiveValue(PassiveKind::Balance)) {
+            result.strength += balance; result.dexterity += balance; result.intelligence += balance;
+        }
         result.hp = std::clamp(stats().hp, 0, result.maxHp);
         result.mana = std::clamp(stats().mana, 0, result.maxMana);
         return result;

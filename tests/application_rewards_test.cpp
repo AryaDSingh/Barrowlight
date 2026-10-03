@@ -9,6 +9,7 @@
 #include <set>
 #include "entities/TalentProgression.hpp"
 #include "entities/PlayerLeveling.hpp"
+#include "entities/Ascendancy.hpp"
 #include "entities/RunProgression.hpp"
 #include "world/EncounterPlan.hpp"
 #include "world/LineOfFire.hpp"
@@ -794,8 +795,15 @@ struct ApplicationRewardsTestAccess {
         app.boss_->setPosition({app.player_.position().x,app.player_.position().y-3}); app.updateFieldOfView();
         snapshot("ui-trial-warden.png");
         auto* warden=app.boss_; warden->stats().hp=0; app.checkAndHandleDeath(*warden); app.removeDeadMonsters();
-        check(app.player_.trialsCleared==1 && app.player_.ascendancy=="juggernaut" && app.player_.ascendancyPoints==1 && app.ascendancyMenu_,
-              "Winning the trial grants the Juggernaut ascendancy, a point, and opens the choice");
+        check(app.player_.trialsCleared==1 && app.player_.ascendancy.empty() && app.player_.ascendancyPoints==1 && app.ascendancyChoice_,
+              "Winning the trial grants a point and asks which ascendancy to take");
+        check(ascendanciesFor(PlayerClass::Warrior).size()==4 && ascendanciesFor(PlayerClass::Mage).size()==4 && ascendanciesFor(PlayerClass::Thief).size()==4,
+              "Every class chooses among four ascendancies");
+        snapshot("ui-ascendancy-choice.png");
+        app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Escape});
+        check(app.ascendancyChoice_ && app.player_.ascendancy.empty(),"The choice can't be skipped");
+        clickOn(screen::ascendChoice(0)); clickOn(screen::kAscendLearn);
+        check(app.player_.ascendancy=="juggernaut" && !app.ascendancyChoice_ && app.ascendancyMenu_,"Choosing an ascendancy opens its nodes");
         snapshot("ui-ascendancy.png");
         const int lifeBeforeSkin=app.player_.stats().maxHp;
         clickOn(screen::ascendNode(4)); clickOn(screen::kAscendLearn);
@@ -863,6 +871,30 @@ struct ApplicationRewardsTestAccess {
             app.animTimeOffset_+=.25f; snapshot("ui-vfx-conceal.png");
             app.animTimeOffset_=0;
             check(!app.vfx_.empty(),"Spells leave visible effects while they play");
+        }
+
+        // Hybrid ascendancy nodes.
+        setup(PlayerClass::Warrior);
+        {
+            const int strBefore=app.player_.stats().strength;
+            app.player_.talents().learnTalent(findTalentDefinition("paragon.balance")->ranks[0]); app.player_.refreshEquipmentStats();
+            check(app.player_.stats().strength==strBefore+2,"Paragon's Balance raises every attribute");
+            auto* foe=enemy({11,10});
+            foe->stats().hp=foe->stats().maxHp/5;
+            const int plain=estimateTalentDamage(basicAttack(),app.player_,*foe).normal;
+            app.player_.talents().learnTalent(findTalentDefinition("duelist.finisher")->ranks[0]);
+            check(estimateTalentDamage(basicAttack(),app.player_,*foe).normal==plain+6,"Duelist's Finisher hits wounded foes harder");
+            app.player_.talents().learnTalent(findTalentDefinition("duelist.counter")->ranks[0]);
+            app.player_.statusEffects().apply({StatusEffectType::Evasion,100,60});
+            foe->stats().hp=foe->stats().maxHp; const int foeBefore=foe->stats().hp;
+            AIDecision swing; swing.type=AIActionType::Attack; swing.target=&app.player_; swing.attackPower=1;
+            for (int i=0;i<30 && foe->stats().hp==foeBefore;++i) app.executeAIDecision(*foe,swing,0);
+            check(foe->stats().hp<foeBefore,"Duelist's Counter strikes back on a dodge");
+            app.player_.talents().learnTalent(findTalentDefinition("templar.zeal")->ranks[0]);
+            app.player_.statusEffects().active().clear();
+            Talent spell=findTalentDefinition("arcane.bolt")->ranks[0];
+            app.afterHiddenCast(spell,true,false,0);
+            check(app.player_.statusEffects().has(StatusEffectType::Guard),"Templar's Zeal guards you after a spell");
         }
 
         // Very rare events: each leads to a unique item.

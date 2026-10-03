@@ -224,7 +224,11 @@ void Application::afterHiddenCast(const Talent& t,bool landed,bool killed,int co
     if (isSpell(t) && player_.talents().passiveValue(PassiveKind::BattleRhythm))
         player_.statusEffects().apply({StatusEffectType::BattleRhythm,10000,player_.talents().passiveValue(PassiveKind::BattleRhythm)});
     const bool offensive=(t.effectKind==TalentEffectKind::Damage && t.shape!=EffectShape::Movement) || t.huntersMark || t.id=="blood_magic.wither";
-    bool remain=concealed && t.stayHiddenPercent && rollChance(t.stayHiddenPercent/100.f);
+    const int stay=t.stayHiddenPercent+player_.talents().passiveValue(PassiveKind::LingeringShadow);
+    bool remain=concealed && stay && rollChance(stay/100.f);
+    // Templar's Zeal: every spell guards you for the next response.
+    if (isSpell(t) && t.effectKind==TalentEffectKind::Damage)
+        if (const int zeal=player_.talents().passiveValue(PassiveKind::Zeal)) player_.statusEffects().apply({StatusEffectType::Guard,1,zeal});
     if (offensive && !remain) player_.statusEffects().remove(StatusEffectType::Concealed);
     if (t.returnConcealed && t.selfBuffEffect) player_.statusEffects().apply(*t.selfBuffEffect);
     if (killed && concealed && player_.talents().passiveValue(PassiveKind::Unseen) && player_.statusEffects().has(StatusEffectType::UnseenReady)) {

@@ -47,10 +47,12 @@ inline int armourGuardBonus(const Actor& actor) {
 // Gear affixes join them: Warding blunts hits, Nimble adds dodge.
 inline int ascendancyGuardBonus(const Actor& actor) {
     return (actor.talents().passiveValue(PassiveKind::LastStand) && actor.stats().hp*3<=actor.stats().maxHp ? 3 : 0) +
-           actor.inventory().affixTotal(BonusStat::Warding);
+           actor.inventory().affixTotal(BonusStat::Warding) + actor.talents().passiveValue(PassiveKind::Resilience) +
+           (actor.statusEffects().has(StatusEffectType::Opening) ? actor.talents().passiveValue(PassiveKind::EnGarde) : 0);
 }
 inline int ascendancyDodgeBonus(const Actor& actor) {
-    return actor.talents().passiveValue(PassiveKind::QuickHands) + actor.inventory().affixTotal(BonusStat::Dodge);
+    return actor.talents().passiveValue(PassiveKind::QuickHands) + actor.inventory().affixTotal(BonusStat::Dodge) +
+           actor.talents().passiveValue(PassiveKind::Versatility);
 }
 inline bool armourResistsStun(const Actor& actor) {
     const int chance=armourPassive(actor,PassiveKind::HeavyResolve);

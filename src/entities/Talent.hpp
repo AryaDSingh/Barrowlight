@@ -59,7 +59,10 @@ inline bool isMagicTree(TalentTree tree) { return tree >= TalentTree::Fire && tr
 enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship, Ambush, Footwork, Kindle, StaticCharge, Frostbite, ArcaneEfficiency, ClothWard, Spellweave, LightEvasion, LightPrecision, HeavyBrace, HeavyResolve, BattleRhythm, GravePact, Deathless, Unseen,
     // Ascendancy passives (entities/Ascendancy.hpp).
     Rampage, LastStand, IronSkin, CrushingBlows, Conduit, LingeringElements, Overload, Attunement,
-    Opportunist, Slippery, QuickHands, KillerInstinct };
+    Opportunist, Slippery, QuickHands, KillerInstinct,
+    // Hybrid ascendancies.
+    Zeal, Retribution, Devotion, Righteous, HiddenCasting, LingeringShadow, ShadeStep, SpellThief,
+    Momentum, Finisher, Counter, EnGarde, Balance, Versatility, Resilience, Wellspring };
 
 struct Talent {
     std::string name;

@@ -559,6 +559,12 @@ private:
     struct LightOrb { Position at; int turns; };
     std::vector<LightOrb> lightOrbs_; // Conjure Light's wisps
     int regenTicks_ = 0;
+    const Actor* momentumTarget_ = nullptr; // Duelist's Momentum
+    int momentumStreak_ = 0;
+    bool ascendancyChoice_ = false;          // choosing which ascendancy, after the first trial
+    std::size_t ascendancyChoiceSelection_ = 0;
+    void chooseAscendancy(const std::string& id);
+    void renderAscendancyChoice();
     void renderLootBeams();
     std::set<std::pair<int, int>> torchToggles_; // wall torches whose lit state differs from the floor's default
     bool torchLit(int x, int y) const;

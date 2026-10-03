@@ -126,10 +126,10 @@ bool validProgression(const SaveGameState& s) {
     const int fullTrials=(1<<kTrialCount)-1;
     if (s.trialKeys<0 || s.trialKeys>fullTrials || s.trialsCleared<0 || (s.trialsCleared & ~s.trialKeys) ||
         ((s.trialsCleared & 2) && !(s.trialsCleared & 1)) || s.ascendancyPoints<0) return false;
-    if (s.ascendancy.empty() != (s.trialsCleared==0)) return false;
+    if (!s.ascendancy.empty() && !s.trialsCleared) return false; // an ascendancy needs a trial won (choosing may still be pending)
     if (!s.ascendancy.empty()) {
         const auto* a=findAscendancy(s.ascendancy);
-        if (!a || a->cls!=s.playerClass) return false;
+        if (!a || !ascendancyAllowed(*a,s.playerClass)) return false;
     }
     std::unordered_set<std::string> trees,known,bound;
     for (std::size_t i=0;i<s.trees.size();++i) {
@@ -729,10 +729,17 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         const auto bonus = Item(*findItemDefinition(item.definitionId), item.instanceId, {}, item.affixes, item.rollTier).bonuses();
         maxHp += bonus.maxHp; maxMana += bonus.maxMana;
     }
-    // Iron Skin (an ascendancy passive) raises maximum life by a percentage.
+    // Ascendancy passives that raise maximum life or mana by a percentage
+    // (Iron Skin, Devotion, Wellspring), applied the way the player does.
+    int lifePercent = 0, manaPercent = 0;
     for (const auto& t : state.playerTalents)
-        if (const auto* d = findTalentDefinition(t.id); d && d->ranks[0].passiveKind == PassiveKind::IronSkin)
-            maxHp += maxHp * d->ranks[0].passiveMagnitude / 100;
+        if (const auto* d = findTalentDefinition(t.id)) {
+            const auto kind = d->ranks[0].passiveKind;
+            if (kind == PassiveKind::IronSkin || kind == PassiveKind::Wellspring) lifePercent += d->ranks[0].passiveMagnitude;
+            if (kind == PassiveKind::Devotion || kind == PassiveKind::Wellspring) manaPercent += d->ranks[0].passiveMagnitude;
+        }
+    maxHp += maxHp * lifePercent / 100;
+    maxMana += maxMana * manaPercent / 100;
     if (stats.hp < 0 || stats.hp > maxHp || stats.mana < 0 || stats.mana > maxMana)
         return std::nullopt;
     return state;

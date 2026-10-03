@@ -986,6 +986,11 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         for (Actor* target : affected) {
             Talent hitTalent = talent;
             if (target == chainedTarget) hitTalent.damagePercent /= 2;
+            if (const int momentum=player_.talents().passiveValue(PassiveKind::Momentum)) {
+                momentumStreak_=target==momentumTarget_ ? std::min(momentumStreak_+1,3) : 0;
+                momentumTarget_=target;
+                hitTalent.power+=momentum*momentumStreak_;
+            }
             std::string combo;
             if (target->statusEffects().has(StatusEffectType::Marked)) combo+="Marked +25%; charge consumed. ";
             if (talent.consumeBurn && target->statusEffects().has(StatusEffectType::Burn)) combo+="Burn consumed: +50%. ";
@@ -1313,6 +1318,13 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                 spawnAttackVfx(actor, *decision.target, decision.scalingStat==ScalingStat::Intelligence, dodged);
                 if (dodged) {
                     if (decision.target->talents().passiveValue(PassiveKind::Slippery)) decision.target->statusEffects().apply({StatusEffectType::Opening,2,0});
+                    const bool adjacent=std::max(std::abs(actor.position().x-decision.target->position().x),
+                                                 std::abs(actor.position().y-decision.target->position().y))<=1;
+                    if (const int counter=decision.target->talents().passiveValue(PassiveKind::Counter); counter && adjacent && actor.stats().hp>0) {
+                        actor.stats().hp-=counter; flashActor(actor);
+                        log(decision.target->name()," counters for ",counter,"!");
+                        checkAndHandleDeath(actor);
+                    }
                     log(decision.target->name(), " dodges ", actor.name(), "'s attack!");
                     soundManager_.play(SoundEffect::Dodge);
                 } else {
@@ -1345,6 +1357,13 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     damage=std::max(0,damage-guard);
                     decision.target->stats().hp -= damage;
                     if (damage>0) flashActor(*decision.target);
+                    if (const int retribution=decision.target->talents().passiveValue(PassiveKind::Retribution);
+                        retribution && guard && actor.stats().hp>0 && std::max(std::abs(actor.position().x-decision.target->position().x),
+                                                                               std::abs(actor.position().y-decision.target->position().y))<=1) {
+                        actor.stats().hp-=retribution;
+                        log(actor.name()," is struck by retribution for ",retribution,".");
+                        checkAndHandleDeath(actor);
+                    }
                     if (const int thorns=decision.target->inventory().affixTotal(BonusStat::Thorns);
                         thorns && damage>0 && std::max(std::abs(actor.position().x-decision.target->position().x),
                                                        std::abs(actor.position().y-decision.target->position().y))<=1) {
@@ -1489,6 +1508,12 @@ void Application::checkAndHandleDeath(Actor& actor) {
     }
     if (defeated) rewardMonster(*defeated, &actor == boss_);
     if (defeated) {
+        if (const int thief=player_.talents().passiveValue(PassiveKind::SpellThief); thief && !defeated->allied) {
+            const auto& fx=defeated->statusEffects();
+            if (fx.has(StatusEffectType::Burn) || fx.has(StatusEffectType::Chill) || fx.has(StatusEffectType::Shock) ||
+                fx.has(StatusEffectType::Poison) || fx.has(StatusEffectType::Marked))
+                player_.stats().mana=std::min(player_.stats().maxMana,player_.stats().mana+thief);
+        }
         if (const int siphon=player_.inventory().affixTotal(BonusStat::ManaOnKill); siphon && !defeated->allied)
             player_.stats().mana=std::min(player_.stats().maxMana,player_.stats().mana+siphon);
         // Juggernaut's Rampage: every kill shortens running cooldowns.
@@ -2077,6 +2102,9 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     lightOrbs_.clear();
     for (const auto& [x,y,turns]:state.lightOrbs) lightOrbs_.push_back({{x,y},turns});
     ascendancyMenu_=false; trialMenu_=false;
+    // A trial won before choosing an ascendancy: the choice comes back.
+    if (player_.trialsCleared && player_.ascendancy.empty()) { ascendancyChoice_=true; ascendancyMenu_=true; ascendancyChoiceSelection_=0; }
+    else ascendancyChoice_=false;
     player_.level() = state.playerLevel;
     player_.bloodRelic=state.bloodRelic; player_.animationRelic=state.animationRelic; player_.deathlessSpentFloors=state.deathlessSpentFloors;
     player_.xp() = state.playerXp;
