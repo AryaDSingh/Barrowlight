@@ -828,6 +828,31 @@ struct ApplicationRewardsTestAccess {
             app.monsters_.clear(); app.clearSurfaces();
         }
 
+        // Hybrid trees open with five ranks in each parent tree.
+        setup(PlayerClass::Warrior);
+        {
+            const auto invest=[&](const char* id,int rank) {
+                app.player_.talents().learnTalent(findTalentDefinition(id)->ranks[0]);
+                app.player_.talents().setRank(app.player_.talents().knownTalents().size()-1,rank);
+            };
+            check(!hiddenTreeAvailable(app.player_,"spellblade") && !hiddenTreeAvailable(app.player_,"shadow_archer") &&
+                  !hiddenTreeAvailable(app.player_,"animation"),"Hybrid trees start locked");
+            const auto* archer=findTree("shadow_archer");
+            check(treePurchaseReason(app.player_,PlayerClass::Warrior,*archer).find("Bow")!=std::string::npos,
+                  "A locked hybrid tree says what it needs");
+            invest("bow.quick_shot",5);
+            check(!hiddenTreeAvailable(app.player_,"shadow_archer"),"One parent is not enough");
+            invest("stealth.conceal",3); invest("stealth.strike",2);
+            check(hiddenTreeAvailable(app.player_,"shadow_archer"),"Shadow Archer opens with 5 ranks in Bow and in Stealth");
+            invest("fire.ember_bolt",5);
+            check(!hiddenTreeAvailable(app.player_,"spellblade"),"Spellblade needs a melee tree too");
+            invest("whip.lash",5);
+            check(hiddenTreeAvailable(app.player_,"spellblade"),"Spellblade opens with 5 melee ranks and 5 magic ranks");
+            invest("shadow.bolt",5);
+            check(hiddenTreeAvailable(app.player_,"animation"),"Animation opens with Shadow and another school");
+            check(!hiddenTreeAvailable(app.player_,"blood_magic"),"Blood Magic still needs the altar");
+        }
+
         // The Blood Altar: its Vampire Lord, and the Blood Magic it teaches.
         setup(PlayerClass::Warrior);
         {
@@ -988,7 +1013,7 @@ struct ApplicationRewardsTestAccess {
             app.handleEvent(sf::Event::MouseWheelScrolled{sf::Mouse::Wheel::Vertical,20.f,{100,300}});
             check(app.treeScroll_==0,"Scrolling stops at the top");
             app.treeSelection_=oneHanded; app.handleTreeKey(sf::Keyboard::Key::Up,false);
-            check(app.treeSelection_==alchemy && app.talentTreeAbilityRect(alchemy,0).position.y+50<=app.treeViewBottom_,
+            check(app.treeSelection_!=oneHanded && app.treeScroll_>0 && app.talentTreeAbilityRect(app.treeSelection_,0).position.y+50<=app.treeViewBottom_,
                   "Browsing with the keyboard scrolls the selected tree into view");
             app.treeViewBottom_=712; app.treeScroll_=0; app.treeSelection_=fire;
         }

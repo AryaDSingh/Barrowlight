@@ -42,9 +42,11 @@ TreeCategory treeCategory(const std::string& id) {
     return TreeCategory::Hybrid;
 }
 
-// Locked hidden trees stay off the screen, unless an older save already owns one.
+// Hybrid trees always show, with what they ask for; Blood Magic stays a
+// secret until the altar (or an older save already owns it).
 bool treeVisible(const Player& player,std::size_t tree) {
-    return hiddenTreeAvailable(player,kTalentTrees[tree].id) || treeAccess(player,kTalentTrees[tree].id);
+    const std::string id=kTalentTrees[tree].id;
+    return hiddenTreeAvailable(player,id) || treeAccess(player,id) || !hybridRequirement(id).empty();
 }
 
 // Where every visible tree and category heading goes. `trees` is in on-screen
