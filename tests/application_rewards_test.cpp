@@ -1013,6 +1013,133 @@ struct ApplicationRewardsTestAccess {
             clearFoes();
         }
 
+        // The last batch: Traps, Skirmish and five more hybrids.
+        setup(PlayerClass::Warrior);
+        {
+            for (int y=6;y<=16;++y) for (int x=6;x<=20;++x) app.map_.setTile(x,y,Tile{TileType::Floor,true,true});
+            app.setProps({}); app.clearSurfaces();
+            app.player_.stats().hp=app.player_.stats().maxHp=500; app.player_.stats().maxMana=500;
+            app.player_.setPosition({10,10});
+            const auto foe=[&](Position p) { auto* g=enemy(p); g->stats().dexterity=0; g->stats().hp=g->stats().maxHp=90; return g; };
+            const auto clearFoes=[&] { for (auto& m:app.monsters_) app.scheduler_.remove(*m); app.monsters_.clear(); app.clearSurfaces(); app.traps_.clear(); };
+            const auto walk=[&](Monster* m,Position to) { AIDecision step; step.type=AIActionType::Move; step.movePosition=to; app.executeAIDecision(*m,step,0); };
+            const auto wield=[&](const char* id) {
+                app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition(id),app.nextItemId_++));
+                return app.player_.equip(app.player_.inventory().items().size()-1);
+            };
+            app.updateFieldOfView();
+
+            // Traps.
+            const auto snare=learnTalent("traps.snare"), tripwire=learnTalent("traps.tripwire"), rigged=learnTalent("traps.rigged");
+            cast(snare,{12,10});
+            check(app.traps_.size()==1,"A snare is set on the ground");
+            app.traps_.push_back({{12,12},2,40,1}); app.traps_.push_back({{13,11},3,40,1}); app.traps_.push_back({{11,12},4,40,1}); app.traps_.push_back({{13,9},5,40,1});
+            snapshot("ui-traps.png"); app.traps_.resize(1);
+            auto* a=foe({13,10}); walk(a,{12,10});
+            check(a->statusEffects().has(StatusEffectType::Pinned) && a->stats().hp<90 && app.traps_.empty(),"A foe that steps on the snare is caught and pinned");
+            clearFoes();
+            cast(tripwire,{12,12});
+            auto* b=foe({12,13}); walk(b,{12,12});
+            check(b->position().y<=10,"A tripwire flings the foe on in the direction it was walking");
+            clearFoes();
+            cast(rigged,{14,10});
+            auto* c=foe({15,10}); auto* c2=foe({15,11}); walk(c,{14,10});
+            check(c->stats().hp<90 && c2->stats().hp<90 && app.surfaceAt({14,10})==SurfaceType::Fire,"A rigged charge blows up everything near and sets the ground alight");
+            clearFoes();
+
+            // Skirmish: moving is attacking.
+            learnTalent("skirmish.lunge"); learnTalent("skirmish.pass");
+            app.player_.setPosition({10,10});
+            auto* d=foe({12,10}); app.updateFieldOfView();
+            app.tryMovePlayer(1,0);
+            check(d->stats().hp<90,"Lunge: stepping toward a foe two tiles ahead strikes it");
+            clearFoes();
+            app.player_.setPosition({10,10});
+            auto* e=foe({11,11}); app.updateFieldOfView();
+            app.tryMovePlayer(1,0);
+            check(e->stats().hp<90,"Pass Strike: stepping past a foe cuts it");
+            clearFoes();
+            const auto blitz=learnTalent("skirmish.blitz");
+            app.player_.setPosition({10,10});
+            auto* f1=foe({11,11}); auto* f2=foe({12,9}); app.updateFieldOfView();
+            cast(blitz,{13,10});
+            check(f1->stats().hp<90 && f2->stats().hp<90,"Blitz strikes everything beside its path");
+            clearFoes();
+
+            // Lamplighter.
+            const auto swing=learnTalent("lamplighter.swing"), hurlTorch=learnTalent("lamplighter.hurl");
+            app.player_.setPosition({10,10}); app.player_.lightLit=false;
+            check(!talentUnavailableReason(app.player_,swing).empty(),"Lamplighter needs your light burning");
+            app.player_.lightLit=true;
+            auto* g=foe({11,10}); app.updateFieldOfView();
+            cast(swing,{11,10});
+            check(g->statusEffects().has(StatusEffectType::Burn),"Torch Swing sets the foe burning");
+            clearFoes(); app.lightOrbs_.clear();
+            foe({14,10}); app.updateFieldOfView();
+            cast(hurlTorch,{14,10});
+            check(!app.player_.lightLit && !app.lightOrbs_.empty(),"Hurl Torch leaves your torch burning where it lands, and your hand empty");
+            clearFoes(); app.player_.lightLit=true;
+
+            // Stormlance.
+            wield("iron_spear");
+            const auto thrust=learnTalent("stormlance.thrust"), tvault=learnTalent("stormlance.vault");
+            app.player_.setPosition({10,10});
+            auto* h=foe({12,10}); app.updateFieldOfView();
+            cast(thrust,{12,10});
+            check(h->statusEffects().has(StatusEffectType::Shock),"Charged Thrust shocks from two tiles away");
+            clearFoes();
+            auto* i1=foe({11,10}); auto* i2=foe({14,11}); app.updateFieldOfView();
+            cast(tvault,{14,10});
+            check(i2->statusEffects().has(StatusEffectType::Shock) && i2->stats().hp<90 && i1->stats().hp==90,"Thunder Vault lands in a burst of lightning");
+            clearFoes();
+
+            // Hexblade.
+            wield("iron_sword");
+            const auto edge=learnTalent("hexblade.edge"), rend=learnTalent("hexblade.rend");
+            app.player_.setPosition({10,10});
+            auto* j=foe({11,10}); app.updateFieldOfView();
+            cast(edge,{11,10});
+            check(j->statusEffects().has(StatusEffectType::Misfortune),"Cursed Edge lays Misfortune");
+            const auto since=app.logTotal_; cast(rend,{11,10});
+            bool rent=false;
+            for (std::size_t k=app.logMessages_.size()-std::min(app.logMessages_.size(),app.logTotal_-since);k<app.logMessages_.size();++k)
+                rent=rent || app.logMessages_[k].find("curse is rent")!=std::string::npos;
+            check(rent,"Soul Rend doubles its damage against the cursed");
+            clearFoes();
+
+            // Saboteur.
+            const auto caltrops=learnTalent("saboteur.caltrops"), smoke=learnTalent("saboteur.smoke"), booby=learnTalent("saboteur.booby");
+            cast(caltrops,{13,12});
+            check(app.traps_.size()>=4,"Caltrops scatter over a tile and its neighbours");
+            app.traps_.clear();
+            auto* k=foe({11,11}); app.updateFieldOfView();
+            cast(smoke,app.player_.position());
+            check(app.player_.statusEffects().has(StatusEffectType::Concealed) && k->statusEffects().has(StatusEffectType::Blinded),"Smoke Bomb hides you and blinds those near");
+            clearFoes(); app.player_.statusEffects().active().clear();
+            cast(booby,{14,12});
+            auto* l=foe({15,12}); walk(l,{14,12});
+            check(app.surfaceAt({14,12})==SurfaceType::Fire && l->stats().hp<90,"A booby trap bursts into burning gas");
+            clearFoes();
+
+            // Stonefist.
+            const auto slam=learnTalent("stonefist.slam");
+            app.player_.setPosition({10,10});
+            auto* m=foe({11,10}); app.updateFieldOfView();
+            cast(slam,{11,10});
+            check(app.propIndexAt(12,10)>=0 && m->position().x==11 && m->stats().hp<85,"Pillar Slam raises a pillar behind the foe and drives it in");
+            clearFoes(); app.pillarTurns_.clear(); app.setProps({});
+            app.map_.setTile(12,10,Tile{TileType::Floor,true,true});
+
+            // The hybrids open with their parent trees.
+            check(!hiddenTreeAvailable(app.player_,"lamplighter") && !hybridRequirement("stonefist").empty(),"The new hybrids start locked, showing what they need");
+            const auto invest=[&](const char* id) {
+                app.player_.talents().learnTalent(findTalentDefinition(id)->ranks[0]);
+                app.player_.talents().setRank(app.player_.talents().knownTalents().size()-1,5);
+            };
+            invest("radiance.sear"); invest("fire.ember_bolt");
+            check(hiddenTreeAvailable(app.player_,"lamplighter"),"Lamplighter opens with 5 ranks in Radiance and in Fire");
+        }
+
         // Acid and blindness survive a save (a fresh Warrior: the fixture's
         // One-Handed tree makes a level-1 Thief save invalid).
         setup(PlayerClass::Warrior);

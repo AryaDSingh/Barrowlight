@@ -47,6 +47,7 @@ void line(sf::VertexArray& va, sf::Vector2f a, sf::Vector2f b, float w, sf::Colo
 Element talentElement(const Talent& t) {
     if (t.effectKind != TalentEffectKind::Damage || t.shape == EffectShape::Movement) return Element::None;
     if (t.tree == TalentTree::Tide) return Element::None; // its chill must not freeze the water it brings
+    if (t.tree == TalentTree::Stormlance) return Element::Lightning;
     if (t.tree == TalentTree::Fire || (t.onHitEffect && t.onHitEffect->type == StatusEffectType::Burn)) return Element::Fire;
     if (t.tree == TalentTree::Ice || (t.onHitEffect && t.onHitEffect->type == StatusEffectType::Chill)) return Element::Ice;
     if (t.tree == TalentTree::Lightning) return Element::Lightning;
@@ -370,6 +371,17 @@ void Application::tickSurfaces() {
         if (surfaceAt(p) == SurfaceType::Gas) explodeGas(p);
         else setSurface(p, SurfaceType::Fire, kOilFireTurns);
     }
+    for (auto& trap : traps_) --trap.turns;
+    traps_.erase(std::remove_if(traps_.begin(), traps_.end(), [](const Trap& t) { return t.turns <= 0; }), traps_.end());
+    if (const int ward = player_.talents().passiveValue(PassiveKind::LanternWard); ward && playerLightRadius() > 0) {
+        const auto me = player_.position();
+        for (auto& m : monsters_)
+            if (!m->allied && m->stats().hp > 0 && std::max(std::abs(m->position().x - me.x), std::abs(m->position().y - me.y)) <= 1) {
+                m->stats().hp -= ward; flashActor(*m);
+                if (visibleTile(m->position())) log("Your lantern sears ", m->name(), " for ", ward, ".");
+                checkAndHandleDeath(*m);
+            }
+    }
     // Raised pillars crumble in time.
     for (auto it = pillarTurns_.begin(); it != pillarTurns_.end();) {
         if (--it->second > 0) { ++it; continue; }
@@ -562,6 +574,72 @@ void Application::hurlActor(Actor& target, int distance, bool domino) {
     const Position at = target.position();
     if (at.x == me.x && at.y == me.y) target.setPosition(from);
     else if (visibleTile(at)) spawnVfx({Vfx::Kind::Puff, {at.x + .5f, at.y + .5f}, {at.x + .5f, at.y + .5f}, sf::Color(150, 130, 110), 0, .45f, .7f});
+}
+
+void Application::addLightOrb(Position at, int turns) {
+    if (lightOrbs_.size() >= 4) lightOrbs_.erase(lightOrbs_.begin());
+    lightOrbs_.push_back({at, turns});
+}
+
+// A trap springs on the foe that stepped on it.
+void Application::triggerTrap(std::size_t index, Monster& victim, Position heading) {
+    if (index >= traps_.size()) return;
+    const Trap trap = traps_[index];
+    traps_.erase(traps_.begin() + static_cast<std::ptrdiff_t>(index));
+    const int bonus = player_.talents().passiveValue(PassiveKind::Trapper);
+    const auto hurt = [&](Actor& a, int amount) { a.stats().hp -= amount; flashActor(a); };
+    switch (trap.kind) {
+        case 1: // snare
+            hurt(victim, 4 + bonus);
+            victim.statusEffects().apply({StatusEffectType::Pinned, 3, 0});
+            log(victim.name(), " is caught in a snare!");
+            break;
+        case 2: // tripwire
+            hurt(victim, 2 + bonus);
+            log(victim.name(), " trips over the wire!");
+            if ((heading.x || heading.y) && !immovable(victim)) pushActor(victim, heading, 2, player_);
+            break;
+        case 3: { // rigged charge
+            std::vector<Position> blast;
+            for (int dy = -trap.radius; dy <= trap.radius; ++dy)
+                for (int dx = -trap.radius; dx <= trap.radius; ++dx) blast.push_back({trap.at.x + dx, trap.at.y + dy});
+            log("A rigged charge goes off!");
+            for (auto& m : monsters_)
+                if (m->stats().hp > 0 && !m->allied && std::max(std::abs(m->position().x - trap.at.x), std::abs(m->position().y - trap.at.y)) <= trap.radius) {
+                    hurt(*m, 8 + bonus); m->statusEffects().apply({StatusEffectType::Burn, 3, 2});
+                }
+            for (const auto& p : blast) if (map_.isWalkable(p.x, p.y) && surfaceAt(p) == SurfaceType::None) setSurface(p, SurfaceType::Fire, kSpilledFireTurns);
+            applyElement(Element::Fire, blast);
+            spawnVfx({Vfx::Kind::Burst, {trap.at.x + .5f, trap.at.y + .5f}, {trap.at.x + .5f, trap.at.y + .5f}, sf::Color(255, 160, 60), 0, .4f, trap.radius + .6f});
+            break;
+        }
+        case 4: // caltrops
+            hurt(victim, 2 + bonus);
+            victim.statusEffects().apply({StatusEffectType::Bleed, 3, 2});
+            log(victim.name(), " steps on caltrops!");
+            break;
+        case 5: { // booby trap: a gas cloud that catches fire
+            log("A booby trap bursts into poison gas, and the gas catches fire!");
+            hurt(victim, 4 + bonus);
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx)
+                    if (map_.isWalkable(trap.at.x + dx, trap.at.y + dy)) setSurface({trap.at.x + dx, trap.at.y + dy}, SurfaceType::Gas, 6);
+            explodeGas(trap.at);
+            break;
+        }
+        default: break;
+    }
+    for (auto& m : monsters_) if (m->stats().hp <= 0) checkAndHandleDeath(*m);
+}
+
+void Application::renderTraps() {
+    static constexpr const char* kTrapIcons[]{"", "wolf-trap", "tripwire", "time-bomb", "caltrops", "rolling-bomb"};
+    for (const auto& trap : traps_) {
+        if (!visibleTile(trap.at) || trap.kind < 1 || trap.kind > 5) continue;
+        const auto at = worldToScreen(trap.at.x, trap.at.y);
+        const float tile = kTile;
+        ui_.icon(window_, kTrapIcons[trap.kind], {{at.x + tile * .2f, at.y + tile * .2f}, {tile * .6f, tile * .6f}}, sf::Color(205, 190, 160, 200));
+    }
 }
 
 // Poison gas meets fire: it bursts into flame, burning whoever stands in it.

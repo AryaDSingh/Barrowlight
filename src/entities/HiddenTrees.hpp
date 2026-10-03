@@ -31,6 +31,11 @@ inline std::string hybridRequirement(const std::string& id) {
     if (id=="spellblade") return "Opens with 5 ranks in a melee tree (One-Handed, Two-Handed, Brawling or Whip) and 5 in a magic tree.";
     if (id=="shadow_archer") return "Opens with 5 ranks in Bow and 5 in Stealth.";
     if (id=="animation") return "Opens with 5 ranks in Shadow and 5 in another magic tree.";
+    if (id=="lamplighter") return "Opens with 5 ranks in Radiance and 5 in Fire.";
+    if (id=="stormlance") return "Opens with 5 ranks in Spear and 5 in Lightning.";
+    if (id=="hexblade") return "Opens with 5 ranks in One-Handed and 5 in Hexes.";
+    if (id=="saboteur") return "Opens with 5 ranks in Stealth and 5 in Alchemy.";
+    if (id=="stonefist") return "Opens with 5 ranks in Brawling and 5 in Earth.";
     return {};
 }
 // Hidden trees open by special means. Blood Magic: an offering at the Blood
@@ -41,6 +46,12 @@ inline bool hiddenTreeAvailable(const Player& p,const std::string& id) {
     if (id=="spellblade") return investedInAny(p,ENGINE_MELEE_TREES) && investedInAny(p,ENGINE_MAGIC_TREES);
     if (id=="shadow_archer") return ranksInvested(p,"bow")>=kHybridParentRanks && ranksInvested(p,"stealth")>=kHybridParentRanks;
     if (id=="animation") return ranksInvested(p,"shadow")>=kHybridParentRanks && investedInAny(p,ENGINE_MAGIC_TREES,"shadow");
+    const auto both=[&](const char* a,const char* b){ return ranksInvested(p,a)>=kHybridParentRanks && ranksInvested(p,b)>=kHybridParentRanks; };
+    if (id=="lamplighter") return both("radiance","fire");
+    if (id=="stormlance") return both("spear","lightning");
+    if (id=="hexblade") return both("one_handed","hexes");
+    if (id=="saboteur") return both("stealth","alchemy");
+    if (id=="stonefist") return both("brawling","earth");
     for (const auto* hidden:kHiddenIds) if (id==hidden) return false;
     return true;
 }

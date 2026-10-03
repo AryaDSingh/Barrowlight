@@ -948,6 +948,7 @@ bool Application::tryMovePlayer(int dx, int dy) {
 
     player_.setPosition(target);
     dragGrappled(current);
+    skirmishStrikes(current, target);
     for (const auto& item : groundItems_) {
         if (item->position().x == target.x && item->position().y == target.y)
             log("You see ", item->name(), ". G: pick up (1 turn).");
@@ -1028,6 +1029,31 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         player_.setPosition(blinkDestination);
         log(player_.name(), " uses ", talent.name, ", blinks to (", blinkDestination.x, ',',
             blinkDestination.y, ")");
+        if (talent.blitz || talent.landingBurst) {
+            combatThisTurn_=true;
+            Talent strike=talent; strike.effectKind=TalentEffectKind::Damage; strike.shape=EffectShape::SingleTarget;
+            if (talent.landingBurst) strike.power=talent.landingBurst;
+            std::vector<Monster*> struck;
+            const auto beside=[&](Position p,Position q){ return std::max(std::abs(p.x-q.x),std::abs(p.y-q.y))<=1; };
+            for (auto& m:monsters_) {
+                if (m->allied || m->stats().hp<=0) continue;
+                bool near=false;
+                if (talent.blitz) for (const auto& p:target.path) near=near || beside(p,m->position());
+                else near=beside(blinkDestination,m->position());
+                if (near) struck.push_back(m.get());
+            }
+            for (auto* m:struck) {
+                if (applyTalentDamage(strike,player_,*m)) { flashActor(*m); if (talent.landingBurst) m->statusEffects().apply({StatusEffectType::Shock,4,0}); }
+                checkAndHandleDeath(*m);
+            }
+            if (talent.landingBurst) {
+                std::vector<Position> ring;
+                for (int dy=-1;dy<=1;++dy) for (int dx=-1;dx<=1;++dx) ring.push_back({blinkDestination.x+dx,blinkDestination.y+dy});
+                applyElement(Element::Lightning,ring);
+                spawnVfx({Vfx::Kind::Ring,{blinkDestination.x+.5f,blinkDestination.y+.5f},{blinkDestination.x+.5f,blinkDestination.y+.5f},sf::Color(170,220,255),0,.4f,1.6f});
+                log("Lightning bursts where you land!");
+            } else if (!struck.empty()) log("You cut through ",struck.size()," foe",struck.size()==1?"":"s"," as you pass!");
+        }
     } else if (talent.effectKind == TalentEffectKind::Heal) {
         for (Actor* target : affected) {
             applyTalentHeal(talent, player_, *target);
@@ -1042,6 +1068,24 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         if (talent.restoreMana) log("Mana: ",player_.stats().mana,"/",player_.stats().maxMana);
         if (talent.restoreHpPercent) log("HP: ",player_.stats().hp,"/",player_.stats().maxHp);
         if (talent.cleanse) log("Poison, Burn, Chill, Marked and curses removed. Other effects remain.");
+        if (talent.placeTrap) {
+            int set=0;
+            for (const auto& p:target.area) {
+                if (!map_.isWalkable(p.x,p.y) || isOccupied(p,nullptr) || std::any_of(traps_.begin(),traps_.end(),[&](const Trap& t){return t.at.x==p.x && t.at.y==p.y;})) continue;
+                traps_.push_back({p,talent.placeTrap,40,std::max(1,talent.areaRadius)});
+                ++set;
+            }
+            while (traps_.size()>8) traps_.erase(traps_.begin());
+            log(set?"You set your trap.":"There's no room to set a trap there.");
+        }
+        if (talent.smokeBomb) {
+            const auto me=player_.position();
+            for (auto& m:monsters_)
+                if (!m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-me.x),std::abs(m->position().y-me.y))<=2)
+                    m->statusEffects().apply({StatusEffectType::Blinded,2,0});
+            spawnVfx({Vfx::Kind::Smoke,{me.x+.5f,me.y+.5f},{me.x+.5f,me.y+.5f},sf::Color(150,150,160),0,.9f,1.6f});
+            log("Smoke billows out around you.");
+        }
         if (talent.raisePillar) {
             if (raisePillarAt(cursor)) log("A stone pillar heaves up out of the ground.");
             else log("The ground heaves, but nothing can rise there.");
@@ -1061,7 +1105,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             log("Your wisp gutters and dies in the smothering dark.");
         } else if (talent.conjureLight) {
             lightOrbs_.clear();
-            lightOrbs_.push_back({player_.position(), 40});
+            addLightOrb(player_.position(), 40);
             log("A wisp of light hangs in the air.");
             updateFieldOfView();
         }
@@ -1083,6 +1127,11 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             }
             std::string combo;
             hitTalent.power+=situationalBonus(talent,*target);
+            if (talent.curseBonus) {
+                const auto& fx=target->statusEffects();
+                if (fx.has(StatusEffectType::Misfortune) || fx.has(StatusEffectType::Linked) || fx.has(StatusEffectType::Plague) ||
+                    fx.has(StatusEffectType::Wither) || fx.has(StatusEffectType::Doom)) { hitTalent.damagePercent+=100; combo+="The curse is rent: double damage. "; }
+            }
             if (talent.backstab) {
                 const auto& fx=target->statusEffects();
                 if (wasConcealed || fx.has(StatusEffectType::Blinded) || fx.has(StatusEffectType::Stun) ||
@@ -1119,6 +1168,18 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     if (immovable(*target)) { target->statusEffects().remove(StatusEffectType::Grappled); log(target->name(), " is too massive to hold."); }
                     else log("You grab ", target->name(), ". Step to drag it along.");
                 }
+                if (talent.pillarSlam && target->stats().hp>0 && !immovable(*target)) {
+                    const auto from=player_.position(), at=target->position();
+                    const Position d{(at.x>from.x)-(at.x<from.x),(at.y>from.y)-(at.y<from.y)};
+                    if (raisePillarAt({at.x+d.x,at.y+d.y})) log("A pillar erupts behind ",target->name(),"!");
+                    pushActor(*target,d,1,player_);
+                }
+                if (const int linger=player_.talents().passiveValue(PassiveKind::LingeringHex); linger && isMeleeAttack(talent))
+                    for (auto& e:target->statusEffects().active())
+                        if (e.type==StatusEffectType::Misfortune || e.type==StatusEffectType::Linked || e.type==StatusEffectType::Plague || e.type==StatusEffectType::Wither)
+                            e.turnsRemaining=std::min(12,e.turnsRemaining+linger);
+                if (const int tricks=player_.talents().passiveValue(PassiveKind::DirtyTricks); tricks && wasConcealed && target->stats().hp>0)
+                    target->statusEffects().apply({StatusEffectType::Poison,3,tricks});
                 if (const int link=target->statusEffects().magnitudeOf(StatusEffectType::Linked); link && hpBefore>target->stats().hp) {
                     const int shared=std::max(1,(hpBefore-std::max(0,target->stats().hp))*link/100);
                     Monster* other=nullptr; int best=4;
@@ -1192,7 +1253,27 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         const Position centre=target.area.front();
         for (auto& m:monsters_) for (const auto& p:target.area)
             if (m->tactics.concealed && m->position().x==p.x && m->position().y==p.y) { m->tactics.concealed=false; log(m->name(), " is caught in the light!"); }
-        lightOrbs_.push_back({centre,8});
+        addLightOrb(centre,8);
+        updateFieldOfView();
+    }
+    if (talent.hurlTorch) {
+        const Position landed=!target.path.empty()?target.path.back():cursor;
+        std::vector<Position> burn;
+        for (int dy=-talent.areaRadius;dy<=talent.areaRadius;++dy) for (int dx=-talent.areaRadius;dx<=talent.areaRadius;++dx) burn.push_back({landed.x+dx,landed.y+dy});
+        for (const auto& p:burn) if (map_.isWalkable(p.x,p.y) && surfaceAt(p)==SurfaceType::None && std::abs(p.x-landed.x)+std::abs(p.y-landed.y)<=1) setSurface(p,SurfaceType::Fire,kSpilledFireTurns);
+        addLightOrb(landed,15);
+        player_.lightLit=false;
+        log("Your torch lies burning where it fell. (L lights another.)");
+        updateFieldOfView();
+    }
+    if (talent.bonfire) {
+        const auto me=player_.position();
+        for (int dy=-1;dy<=1;++dy) for (int dx=-1;dx<=1;++dx) {
+            const Position p{me.x+dx,me.y+dy};
+            if ((dx||dy) && map_.isWalkable(p.x,p.y) && !isOccupied(p,nullptr)) setSurface(p,SurfaceType::Fire,kSpilledFireTurns);
+        }
+        addLightOrb(me,30);
+        log("The bonfire roars up around you.");
         updateFieldOfView();
     }
     if (talent.dawn) {
@@ -1229,6 +1310,14 @@ int Application::situationalBonus(const Talent& talent, const Actor& target) con
         effects.has(StatusEffectType::Blinded) || effects.has(StatusEffectType::Burn) || effects.has(StatusEffectType::Chill) ||
         effects.has(StatusEffectType::Shock))) bonus+=kit.passiveValue(PassiveKind::Flay);
     if (talent.tree==TalentTree::Alchemy) bonus+=kit.passiveValue(PassiveKind::PotentBrews);
+    if (player_.statusEffects().has(StatusEffectType::Opening)) bonus+=kit.passiveValue(PassiveKind::RunningStart);
+    if ((talent.tree==TalentTree::Spear || talent.tree==TalentTree::Stormlance) && effects.has(StatusEffectType::Shock)) bonus+=kit.passiveValue(PassiveKind::StaticEdge);
+    if (const int granite=kit.passiveValue(PassiveKind::GraniteFists); granite && isMeleeAttack(talent)) {
+        const auto at=target.position();
+        bool braced=false;
+        for (const Position d:{Position{1,0},Position{-1,0},Position{0,1},Position{0,-1}}) braced=braced || !map_.isWalkable(at.x+d.x,at.y+d.y);
+        if (braced) bonus+=granite;
+    }
     if (isSpell(talent) && conducts(surfaceAt(target.position()))) bonus+=kit.passiveValue(PassiveKind::Riptide);
     if (effects.has(StatusEffectType::Misfortune) || effects.has(StatusEffectType::Linked) || effects.has(StatusEffectType::Plague) ||
         effects.has(StatusEffectType::Wither) || effects.has(StatusEffectType::Doom)) bonus+=kit.passiveValue(PassiveKind::Malediction);
@@ -1246,6 +1335,29 @@ int Application::situationalBonus(const Talent& talent, const Actor& target) con
         if (playerLightRadius()==0) bonus+=kit.passiveValue(PassiveKind::Umbral);
     }
     return bonus;
+}
+
+// Skirmish: stepping is striking. Lunge hits the foe two tiles ahead that you
+// now stand beside; Pass Strike cuts foes beside both where you were and are.
+void Application::skirmishStrikes(Position from, Position to) {
+    const int lunge=player_.talents().passiveValue(PassiveKind::Lunge), pass=player_.talents().passiveValue(PassiveKind::PassStrike);
+    if (!lunge && !pass) return;
+    const Position ahead{to.x+(to.x-from.x),to.y+(to.y-from.y)};
+    const auto beside=[](Position a,Position b){ return std::max(std::abs(a.x-b.x),std::abs(a.y-b.y))<=1; };
+    std::vector<std::pair<Monster*,int>> struck;
+    for (auto& m:monsters_) {
+        if (m->allied || m->stats().hp<=0 || !visibleTile(m->position())) continue;
+        const auto p=m->position();
+        if (lunge && p.x==ahead.x && p.y==ahead.y) struck.push_back({m.get(),lunge});
+        else if (pass && beside(p,from) && beside(p,to)) struck.push_back({m.get(),pass});
+    }
+    for (auto& [m,power]:struck) {
+        Talent cut=basicAttack(); cut.id="skirmish.strike"; cut.power=power;
+        combatThisTurn_=true;
+        if (applyTalentDamage(cut,player_,*m)) { flashActor(*m); log("You strike ",m->name()," as you move!"); }
+        else log(m->name()," dodges your passing strike.");
+        checkAndHandleDeath(*m);
+    }
 }
 
 void Application::advanceEnemyIntents() {
@@ -1495,6 +1607,13 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
             if (map_.isWalkable(step.x, step.y) && !isOccupied(step, &actor)) {
                 const auto me = player_.position(), before = actor.position();
                 actor.setPosition(step);
+                if (auto* walker = dynamic_cast<Monster*>(&actor); walker && !walker->allied)
+                    for (std::size_t i = 0; i < traps_.size(); ++i)
+                        if (traps_[i].at.x == step.x && traps_[i].at.y == step.y) {
+                            triggerTrap(i, *walker, {step.x - before.x, step.y - before.y});
+                            break;
+                        }
+                if (actor.stats().hp <= 0) break;
                 const auto* mover = dynamic_cast<const Monster*>(&actor);
                 const bool arrived = std::abs(step.x - me.x) + std::abs(step.y - me.y) == 1 && std::abs(before.x - me.x) + std::abs(before.y - me.y) != 1;
                 if (const int brace = player_.statusEffects().magnitudeOf(StatusEffectType::Braced); brace && arrived && mover && !mover->allied) {
@@ -2122,7 +2241,7 @@ void Application::regenerateLevel(unsigned int seed) {
     map_ = dungeon.map;
     actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN; vfx_.clear(); hitFlash_.clear();
     vfx_.clear(); hitFlash_.clear(); lightOrbs_.clear();
-    setProps(dungeon.props); pillarTurns_.clear();
+    setProps(dungeon.props); pillarTurns_.clear(); traps_.clear();
 
     player_.setPosition(dungeon.playerStart);
     floorEntrance_=dungeon.playerStart; floorExit_={-1,-1};
@@ -2440,7 +2559,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
             return true;
         }),props.end());
         setProps(props);
-        pillarTurns_.clear();
+        pillarTurns_.clear(); traps_.clear();
     }
     vaultExists_=state.vaultExists; vaultOpened_=state.vaultOpened; vaultClaimed_=state.vaultClaimed;
     vaultCenter_=state.vaultCenter; vaultEntrance_=state.vaultEntrance;
@@ -2882,6 +3001,7 @@ void Application::render() {
             lights.push_back({{at.x + kTileSize / 2, at.y - kTileSize * 0.2f}, sf::Color(255, 160, 80)});
         }
     renderSurfaces(lights, viewStartX, viewStartY, viewEndX, viewEndY);
+    renderTraps();
     renderGroundItems();
     renderCorpses();
     // Visible monsters are drawn under the lighting; monsters hunting you

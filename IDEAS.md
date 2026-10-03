@@ -149,7 +149,9 @@ First batch chosen: Brawling, Whip, Shadow + Radiance, Alchemy (all built
 Spear, Daggers, Mace and Crossbow (built 2026-10-03; Pole Vault, Bleed,
 Sundered and Pinned among them). Third batch: Earth, Tide, Hexes and Venom
 (built 2026-10-03; pillars, waves, puppets, explosive gas, spreading plague).
-Still open: Traps, the Acrobatics expansion and the new hybrids.
+Fourth batch: Traps, Skirmish (the Acrobatics expansion as its own tree,
+since trees hold four abilities) and the hybrids Lamplighter, Stormlance,
+Hexblade, Saboteur and Stonefist (built 2026-10-03). The brainstorm is done.
 
 ## Weapons (each a new WeaponKind + tree)
 - **Spear / Polearm** (two-handed, reach 2): Reach Strike past an ally; Brace

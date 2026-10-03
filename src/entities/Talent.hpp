@@ -15,6 +15,7 @@ enum class TalentTree {
     Brawling, Whip, Shadow, Radiance, Alchemy,
     Spear, Daggers, Mace, Crossbow,
     Earth, Tide, Hexes, Venom,
+    Traps, Skirmish, Lamplighter, Stormlance, Hexblade, Saboteur, Stonefist,
 };
 
 // Abilities and talents have five ranks; rank 5 often adds a mastery effect
@@ -59,7 +60,8 @@ enum class WeaponRequirement { None, OneHanded, TwoHanded, Shield, Bow, Melee, W
 enum class ArmourRequirement { None, Cloth, Light, Heavy };
 inline bool isMagicTree(TalentTree tree) {
     return (tree >= TalentTree::Fire && tree <= TalentTree::Arcane) || tree == TalentTree::Shadow || tree == TalentTree::Radiance ||
-           tree == TalentTree::Earth || tree == TalentTree::Tide || tree == TalentTree::Hexes || tree == TalentTree::Venom;
+           tree == TalentTree::Earth || tree == TalentTree::Tide || tree == TalentTree::Hexes || tree == TalentTree::Venom ||
+           tree == TalentTree::Lamplighter;
 }
 
 enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship, Ambush, Footwork, Kindle, StaticCharge, Frostbite, ArcaneEfficiency, ClothWard, Spellweave, LightEvasion, LightPrecision, HeavyBrace, HeavyResolve, BattleRhythm, GravePact, Deathless, Unseen,
@@ -74,7 +76,9 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // Spear, Daggers, Mace, Crossbow.
     LongReach, Hemorrhage, Bonebreaker, Windlass,
     // Earth, Tide, Hexes, Venom.
-    Stoneskin, Riptide, Malediction, ToxicRuin };
+    Stoneskin, Riptide, Malediction, ToxicRuin,
+    // Traps, Skirmish and the second hybrids.
+    Trapper, Lunge, PassStrike, RunningStart, LanternWard, StaticEdge, LingeringHex, DirtyTricks, GraniteFists };
 
 struct Talent {
     std::string name;
@@ -229,6 +233,15 @@ struct Talent {
     // splashPath: the splash surface covers the whole path, not just the
     // impact. vortex: everything hit is dragged a tile toward the centre.
     bool raisePillar=false, splashPath=false, vortex=false;
+    // placeTrap: a trap kind (Application::Trap) set on the target tile(s).
+    // needsLight: only while your torch or lantern burns. hurlTorch: your
+    // light goes with it. bonfire: sets the ground around you alight.
+    // landingBurst: lightning of this power around where a movement lands.
+    // curseBonus: +100% against a cursed foe. pillarSlam: raise a pillar
+    // behind the target and drive it in. smokeBomb: blind those near you.
+    // blitz: a movement that strikes everything beside its path.
+    int placeTrap=0, landingBurst=0;
+    bool needsLight=false, hurlTorch=false, bonfire=false, curseBonus=false, pillarSlam=false, smokeBomb=false, blitz=false;
 
 };
 

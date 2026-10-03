@@ -29,6 +29,11 @@ std::string talentUnavailableReason(const Actor& caster, std::size_t index) {
     if (effective.cleanse && std::none_of(caster.statusEffects().active().begin(),caster.statusEffects().active().end(),
         [](const auto& e){return isCleansable(e.type);})) return "No removable ailments. Cleanse was not spent.";
     if (effective.passive) return "Passive abilities do not need to be cast.";
+    if (effective.needsLight) {
+        const auto* player=dynamic_cast<const Player*>(&caster);
+        if (!player || !player->lightSource || !player->lightLit || caster.statusEffects().has(StatusEffectType::Smothered))
+            return "Your torch or lantern must be burning (L).";
+    }
     if (effective.id=="basic.pray") {
         const auto* player=dynamic_cast<const Player*>(&caster);
         if (!player || !player->patron) return "You are sworn to no god.";

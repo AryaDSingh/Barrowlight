@@ -627,6 +627,14 @@ private:
     // Shadow and Radiance: put out / relight every light around a spot.
     void snuffLights(Position centre, int radius);
     void explodeGas(Position tile);                        // poison gas meets fire
+    // Traps (Traps, Saboteur): set on the ground, sprung by the first foe to
+    // step there. Not saved: a reload clears them, like raised pillars.
+    struct Trap { Position at; int kind; int turns; int radius; };
+    std::vector<Trap> traps_;
+    void triggerTrap(std::size_t index, Monster& victim, Position heading);
+    void renderTraps();
+    void addLightOrb(Position at, int turns);              // never more than the save allows
+    void skirmishStrikes(Position from, Position to);       // Lunge and Pass Strike, as you step
     bool raisePillarAt(Position tile);                     // Earth: a stone pillar, for a while
     std::map<std::pair<int, int>, int> pillarTurns_;       // raised pillars' remaining turns (not saved: they crumble on reload)
     void relightLights(Position centre, int radius);

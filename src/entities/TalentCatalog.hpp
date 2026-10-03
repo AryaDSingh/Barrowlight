@@ -14,7 +14,7 @@ struct TreeDefinition {
     const char* description;
     const char* starterItem;
 };
-inline constexpr std::array<TreeDefinition, 30> kTalentTrees{{
+inline constexpr std::array<TreeDefinition, 37> kTalentTrees{{
     {"one_handed", "One-Handed", TalentTree::OneHanded, "Efficient strikes, defensive openings and finishing blows.", "iron_sword"},
     {"two_handed", "Two-Handed", TalentTree::TwoHanded, "Heavy swings, surrounding enemies and blood-fuelled attacks.", "greatsword"},
     {"shield", "Shield", TalentTree::Shield, "Block damage, interrupt attacks and control space.", "wooden_shield"},
@@ -45,6 +45,13 @@ inline constexpr std::array<TreeDefinition, 30> kTalentTrees{{
     {"tide", "Tide", TalentTree::Tide, "Water as a weapon: flood the ground, shove with waves, drag foes into the deep.", ""},
     {"hexes", "Hexes", TalentTree::Hexes, "Curses: make foes miss, share their pain, and turn them against their own.", ""},
     {"venom", "Venom", TalentTree::Venom, "Poison and plague: bolts, clouds of gas that explode in fire, and sickness that spreads.", ""},
+    {"traps", "Traps", TalentTree::Traps, "Set snares, tripwires and charges where your foes will walk.", ""},
+    {"skirmish", "Skirmish", TalentTree::Skirmish, "Moving is attacking: lunge, cut past, strike from a running start.", ""},
+    {"lamplighter", "Lamplighter", TalentTree::Lamplighter, "Radiance and Fire: fight with the torch itself.", ""},
+    {"stormlance", "Stormlance", TalentTree::Stormlance, "Spear and Lightning: a spear that carries the storm. Needs a spear.", ""},
+    {"hexblade", "Hexblade", TalentTree::Hexblade, "One-Handed and Hexes: a blade that lays and feeds on curses. Needs a one-handed weapon.", ""},
+    {"saboteur", "Saboteur", TalentTree::Saboteur, "Stealth and Alchemy: caltrops, smoke and booby traps.", ""},
+    {"stonefist", "Stonefist", TalentTree::Stonefist, "Brawling and Earth: fists of stone, and pillars to break foes against.", ""},
 }};
 inline const TreeDefinition* findTree(const std::string& id) {
     for (const auto& t : kTalentTrees) if (id == t.id) return &t;
@@ -146,6 +153,24 @@ inline void applyMastery(TalentDefinition& d) {
     else if (id == "venom.bolt") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Poison deals 3 damage per turn."; }
     else if (id == "venom.miasma") { m.areaRadius = 2; d.mastery = "The cloud spreads two tiles."; }
     else if (id == "venom.plague") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 7; d.mastery = "The plague lasts seven turns."; }
+    else if (id == "traps.snare" || id == "traps.tripwire") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    else if (id == "traps.rigged") { m.areaRadius = 2; d.mastery = "The charge blasts two tiles."; }
+    else if (id == "skirmish.blitz") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    else if (id == "lamplighter.swing") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Burn deals 3 damage per turn."; }
+    else if (id == "lamplighter.hurl") { m.areaRadius = 2; d.mastery = "The torch's fire spreads two tiles."; }
+    else if (id == "lamplighter.bonfire") { m.areaRadius = 3; d.mastery = "Reaches enemies up to three tiles away."; }
+    else if (id == "stormlance.thrust") { m.pierceBehind = true; d.mastery = "The charge runs on into the foe behind."; }
+    else if (id == "stormlance.javelin") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    else if (id == "stormlance.vault") { m.landingBurst = 10; d.mastery = "The landing burst hits for 10."; }
+    else if (id == "hexblade.edge") { if (m.onHitEffect) m.onHitEffect->magnitude = 40; d.mastery = "Misfortune of 40%."; }
+    else if (id == "hexblade.rend") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    else if (id == "hexblade.doom") { if (m.onHitEffect) m.onHitEffect->magnitude = 25; d.mastery = "Doom erupts for 25."; }
+    else if (id == "saboteur.caltrops") { m.areaRadius = 2; d.mastery = "Scatters caltrops two tiles wide."; }
+    else if (id == "saboteur.smoke") { longer(); longer(); d.mastery = "Hidden for two responses longer."; }
+    else if (id == "saboteur.booby") { m.cooldownTurns = std::max(1, m.cooldownTurns - 3); d.mastery = "Cooldown three turns shorter."; }
+    else if (id == "stonefist.fist") { m.pushDistance = 2; d.mastery = "Knocks the target two tiles."; }
+    else if (id == "stonefist.slam") { stun(1); d.mastery = "The slam also stuns for one enemy turn."; }
+    else if (id == "stonefist.landslide") { ++m.chargeDistance; d.mastery = "Charges one tile further."; }
     else if (id == "crossbow.pin") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 5; d.mastery = "Pinned for five enemy turns."; }
 }
 
@@ -191,6 +216,11 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             if (tree == 24) t.weaponRequirement=WeaponRequirement::Mace;
             if (tree == 25) { t.weaponRequirement=WeaponRequirement::Crossbow; t.scalingStat=ScalingStat::Dexterity; }
             if (tree >= 26 && tree <= 29) t.scalingStat=ScalingStat::Intelligence;
+            if (tree == 30 || tree == 31 || tree == 35) t.scalingStat=ScalingStat::Dexterity;
+            if (tree == 32) t.scalingStat=ScalingStat::Intelligence;
+            if (tree == 33 || tree == 34 || tree == 36) t.scalingStat=ScalingStat::Strength;
+            if (tree == 33) t.weaponRequirement=WeaponRequirement::Spear;
+            if (tree == 34) t.weaponRequirement=WeaponRequirement::OneHanded;
             if (tree == 10) t.armourRequirement=ArmourRequirement::Cloth;
             if (tree == 11) t.armourRequirement=ArmourRequirement::Light;
             if (tree == 12) t.armourRequirement=ArmourRequirement::Heavy;
@@ -242,7 +272,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             }
             // Spell costs double at every rank, before Arcane Efficiency.
             // Keep rank discounts proportional and catalogue/preview costs aligned.
-            if ((tree>=6 && tree<=9) || tree==19 || tree==20 || (tree>=26 && tree<=29)) for (auto& r:d.ranks) if (!r.passive) r.manaCost*=2;
+            if ((tree>=6 && tree<=9) || tree==19 || tree==20 || (tree>=26 && tree<=29) || tree==32) for (auto& r:d.ranks) if (!r.passive) r.manaCost*=2;
             if (d.id=="earth.stoneskin") { constexpr int skin[]{1,1,2,2,3}; for (int rank=0;rank<kMaxTalentRank;++rank) d.ranks[rank].passiveMagnitude=skin[rank]; }
             if (tree>=10 && tree<=12) for (int rank=0; rank<kMaxTalentRank; ++rank) {
                 auto& r=d.ranks[rank];
@@ -470,6 +500,59 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         add(29,"venom.ruin",2,passive("Toxic Ruin","Your attacks deal +2/3/4/5/6 damage to poisoned or plagued enemies.",PassiveKind::ToxicRuin,2));
         t=attack("Plague","Infect a visible foe: 3 damage a turn for five enemy turns, and when it dies the plague spreads to everything beside it.",4,6,9,true);
         t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Plague,5,3}; add(29,"venom.plague",3,t);
+        // Traps (DEX): set where your foes will walk. Up to eight at once; each lasts 40 turns.
+        const auto trap=[&](const char* name,const char* desc,int kind,int mana,int cd,int radius=0,bool spread=false) {
+            Talent tr; tr.name=name; tr.description=desc; tr.targeting=TargetingMode::RangedEnemyInSight; tr.effectKind=TalentEffectKind::SelfBuff;
+            tr.placeTrap=kind; tr.manaCost=mana; tr.cooldownTurns=cd; tr.areaRadius=radius; if (spread) tr.shape=EffectShape::AreaAroundTarget; return tr;
+        };
+        add(30,"traps.snare",0,trap("Snare","Set a snare on visible ground: the first foe to step on it takes 4 and is pinned for three turns.",1,1,4));
+        add(30,"traps.tripwire",1,trap("Tripwire","Stretch a tripwire: the first foe to cross it takes 2 and is flung two tiles on in the direction it was walking.",2,2,5));
+        add(30,"traps.trapper",2,passive("Trapper","Your traps deal +2/3/4/5/6 damage.",PassiveKind::Trapper,2));
+        add(30,"traps.rigged",3,trap("Rigged Charge","Bury a charge: when a foe steps on it, it blows up for 8 to everything within a tile and sets the ground alight.",3,4,8,1));
+        // Skirmish (DEX): moving is attacking.
+        add(31,"skirmish.lunge",0,passive("Lunge","Step toward a foe two tiles ahead and you strike it as you close, for 4/5/6/7/8.",PassiveKind::Lunge,4));
+        add(31,"skirmish.pass",1,passive("Pass Strike","Step from beside a foe to another tile beside it and you cut it in passing, for 3/4/5/6/7.",PassiveKind::PassStrike,3));
+        add(31,"skirmish.running_start",2,passive("Running Start","While you have Opening (after moving or waiting), your attacks deal +2/3/4/5/6 damage.",PassiveKind::RunningStart,2));
+        t=move("Blitz","Dash up to 3/3/4/4/5 tiles and strike everything beside your path. Counts as movement.",3,3,7);
+        t.blitz=true; t.power=6; add(31,"skirmish.blitz",3,t);
+        // Lamplighter (INT; Radiance + Fire): the torch itself. Needs your light burning.
+        t=attack("Torch Swing","Swing your burning torch: the foe takes the hit and burns for 2 a turn. Needs your light lit.",6,1,2);
+        t.needsLight=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,2}; add(32,"lamplighter.swing",0,t);
+        t=attack("Hurl Torch","Throw your torch: it bursts on impact, burning everything within a tile, and lies there burning as a light. Your own light goes with it (L lights another).",6,3,6,true,1);
+        t.needsLight=true; t.hurlTorch=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,2}; add(32,"lamplighter.hurl",1,t);
+        add(32,"lamplighter.ward",2,passive("Lantern Ward","While your light burns, every foe that ends its turn beside you is seared for 2/3/4/5/6.",PassiveKind::LanternWard,2));
+        t=attack("Bonfire","Plant your torch and let it roar: everything within two tiles burns, the ground around you catches, and the spot stays lit. Needs your light lit.",7,7,10,false,2);
+        t.needsLight=true; t.bonfire=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,2}; add(32,"lamplighter.bonfire",3,t);
+        // Stormlance (STR; Spear + Lightning): the spear carries the storm. Needs a spear.
+        t=attack("Charged Thrust","Strike up to two tiles away with a spear full of lightning: the foe is Shocked for four turns.",6,2,3);
+        t.reach=2; t.onHitEffect=StatusEffectInstance{StatusEffectType::Shock,4,0}; add(33,"stormlance.thrust",0,t);
+        t=attack("Lightning Javelin","Hurl a bolt-tipped spear that leaps to a second foe nearby. Shocks.",8,4,6,true);
+        t.chain=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Shock,4,0}; add(33,"stormlance.javelin",1,t);
+        add(33,"stormlance.static_edge",2,passive("Static Edge","Spear and Stormlance attacks deal +2/3/4/5/6 damage to Shocked enemies.",PassiveKind::StaticEdge,2));
+        t=move("Thunder Vault","Vault up to 3/3/4/4/5 tiles over foes and chasms and come down in a burst of lightning: everything beside you takes 6 and is Shocked.",3,5,8);
+        t.vault=true; t.landingBurst=6; add(33,"stormlance.vault",3,t);
+        // Hexblade (STR; One-Handed + Hexes): a cursed blade.
+        t=attack("Cursed Edge","A strike that curses: Misfortune (25%) for three enemy turns.",5,1,2);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Misfortune,3,25}; add(34,"hexblade.edge",0,t);
+        t=attack("Soul Rend","Double damage against a cursed foe (Misfortune, Soul Link, Plague, Wither or Doom).",8,3,5);
+        t.curseBonus=true; add(34,"hexblade.rend",1,t);
+        add(34,"hexblade.lingering",2,passive("Lingering Hex","Your melee hits make the curses on a foe last 1/2/3/4/5 turns longer (not Doom).",PassiveKind::LingeringHex,1));
+        t=attack("Doom Blade","A strike that dooms: in four enemy turns the foe takes 15.",7,5,8);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Doom,4,15}; add(34,"hexblade.doom",3,t);
+        // Saboteur (DEX; Stealth + Alchemy): dirty work.
+        add(35,"saboteur.caltrops",0,trap("Caltrops","Scatter caltrops over a tile and its neighbours: whatever steps on one takes 2 and bleeds.",4,2,5,1,true));
+        t=buff("Smoke Bomb","Vanish in smoke: Concealed for three responses, and everything within two tiles is blinded for two enemy turns.",StatusEffectType::Concealed,3,3,3,8);
+        t.smokeBomb=true; add(35,"saboteur.smoke",1,t);
+        add(35,"saboteur.tricks",2,passive("Dirty Tricks","Attacks made from concealment poison the target for 2/3/4/5/6 a turn over three turns.",PassiveKind::DirtyTricks,2));
+        add(35,"saboteur.booby",3,trap("Booby Trap","Hide a gas charge: when a foe steps on it, poison gas bursts out and catches fire, the blast running through the cloud.",5,4,9));
+        // Stonefist (STR; Brawling + Earth): fists of stone.
+        t=attack("Rock Fist","A stone-heavy punch that knocks the foe back a tile.",6,1,2);
+        t.pushDistance=1; add(36,"stonefist.fist",0,t);
+        t=attack("Pillar Slam","Raise a stone pillar right behind an adjacent foe and drive it into it.",5,3,6);
+        t.pillarSlam=true; add(36,"stonefist.slam",1,t);
+        add(36,"stonefist.granite",2,passive("Granite Fists","Your melee attacks deal +2/3/4/5/6 damage to foes standing against a wall, pillar or fixture.",PassiveKind::GraniteFists,2));
+        t=attack("Landslide","Charge up to 4/4/5/5/6 tiles in a straight line, smash the foe two tiles back and stun it for a turn.",9,5,9);
+        t.chargeDistance=4; t.pushDistance=2; t.onHitEffect=StatusEffectInstance{StatusEffectType::Stun,1,0}; add(36,"stonefist.landslide",3,t);
 
         // Ascendancy nodes (Ascendancy.hpp): one rank, bought with ascendancy points.
         auto node=[&](const char* treeId,const char* id,ScalingStat stat,Talent t) {

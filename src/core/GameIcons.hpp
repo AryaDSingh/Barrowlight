@@ -77,6 +77,13 @@ inline std::string talentIcon(const Talent& talent) {
         {"tide.bolt", "water-bolt"}, {"tide.wave", "big-wave"}, {"tide.riptide", "drop"}, {"tide.maelstrom", "vortex"},
         {"hexes.misfortune", "cursed-star"}, {"hexes.link", "linked-rings"}, {"hexes.malediction", "evil-book"}, {"hexes.puppet", "puppet"},
         {"venom.bolt", "poison-bottle"}, {"venom.miasma", "poison-gas"}, {"venom.ruin", "dripping-goo"}, {"venom.plague", "plague-doctor-profile"},
+        {"traps.snare", "wolf-trap"}, {"traps.tripwire", "tripwire"}, {"traps.trapper", "trap-mask"}, {"traps.rigged", "time-bomb"},
+        {"skirmish.lunge", "sword-slice"}, {"skirmish.pass", "crossed-swords"}, {"skirmish.running_start", "sprint"}, {"skirmish.blitz", "wind-slap"},
+        {"lamplighter.swing", "torch"}, {"lamplighter.hurl", "flame-spin"}, {"lamplighter.ward", "lantern-flame"}, {"lamplighter.bonfire", "campfire"},
+        {"stormlance.thrust", "lightning-tear"}, {"stormlance.javelin", "thrown-spear"}, {"stormlance.static_edge", "zeus-sword"}, {"stormlance.vault", "thunder-struck"},
+        {"hexblade.edge", "bloody-sword"}, {"hexblade.rend", "skull-slices"}, {"hexblade.lingering", "hourglass"}, {"hexblade.doom", "death-zone"},
+        {"saboteur.caltrops", "caltrops"}, {"saboteur.smoke", "powder"}, {"saboteur.tricks", "ninja-mask"}, {"saboteur.booby", "rolling-bomb"},
+        {"stonefist.fist", "fist"}, {"stonefist.slam", "punch-blast"}, {"stonefist.granite", "stone-block"}, {"stonefist.landslide", "falling-rocks"},
         {"alchemy.oil", "round-bottom-flask"}, {"alchemy.firebomb", "molotov"}, {"alchemy.brews", "bubbling-flask"}, {"alchemy.acid", "fizzing-flask"},
     };
     if (const auto it = byId.find(talent.id); it != byId.end()) return it->second;
