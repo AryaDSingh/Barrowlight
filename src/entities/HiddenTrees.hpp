@@ -73,7 +73,7 @@ inline void synchronizeImbues(Player& p) {
     for (int element=0;element<4;++element) {
         bool owned=false; for (const auto& access:p.trees()) if (access.id==parents[element]) owned=true;
         if (!owned) continue;
-        if (!p.talents().rankOf(ids[element])) p.talents().learnTalent(findTalentDefinition(ids[element])->ranks[rank-1]);
+        if (!p.talents().rankOf(ids[element])) p.talents().learnTalent(findTalentDefinition(ids[element])->atRank(rank));
         for (std::size_t i=0;i<p.talents().knownTalents().size();++i) if (p.talents().knownTalents()[i].id==ids[element]) {
             p.talents().setRank(i,rank); p.talents().setCooldownRemaining(i,cooldown);
         }

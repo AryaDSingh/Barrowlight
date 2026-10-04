@@ -2914,7 +2914,7 @@ void Application::renderClassSelection() {
             const auto tree=info.trees[t];
             const sf::FloatRect icon{{x+26+slot*t+(slot-46)/2,y+344},{46,46}};
             ui_.inset(window_,icon);
-            ui_.icon(window_,talentIcon(talentCatalog()[tree*4].ranks[0]),{{icon.position.x+6,icon.position.y+6},{34,34}},ui::kText);
+            ui_.icon(window_,talentIcon(treeNodes(tree).front()->ranks[0]),{{icon.position.x+6,icon.position.y+6},{34,34}},ui::kText);
             ui_.textCentered(window_,kTalentTrees[tree].name,{{x+26+slot*t,y+392},{slot,20}},13,ui::kMuted);
         }
     }

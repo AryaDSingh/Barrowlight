@@ -2,6 +2,8 @@
 
 #include <array>
 #include <algorithm>
+#include <functional>
+#include <map>
 #include <vector>
 #include "entities/Talent.hpp"
 #include "entities/PlayerClass.hpp"
@@ -62,18 +64,27 @@ inline bool startingTreeAllowed(PlayerClass cls, TalentTree tree) {
     if (cls == PlayerClass::Thief) return tree == TalentTree::Stealth || tree == TalentTree::Bow || tree == TalentTree::Acrobatics || tree == TalentTree::Whip;
     return cls == PlayerClass::Mage && (tree == TalentTree::Fire || tree == TalentTree::Ice || tree == TalentTree::Lightning || tree == TalentTree::Arcane);
 }
+// One node of a talent tree. A node has as many ranks as `ranks` holds (at
+// most kMaxTalentRank). `prerequisites` lists nodes of which at least one
+// must be learned first; nodes of one tree that share a `fork` exclude each
+// other, so learning one closes the rest.
 struct TalentDefinition {
     std::string id;
     std::string treeId;
     int tier = 0;
-    std::array<Talent, kMaxTalentRank> ranks;
-    std::string mastery; // what rank 5 adds beyond bigger numbers, if anything
+    std::vector<Talent> ranks;
+    std::string mastery; // what the last rank adds beyond bigger numbers, if anything
+    std::vector<std::string> prerequisites;
+    std::string fork;
+    int maxRank() const { return static_cast<int>(ranks.size()); }
+    // The talent at `rank` (1-based), clamped to the ranks this node has.
+    const Talent& atRank(int rank) const { return ranks[static_cast<std::size_t>(std::clamp(rank, 1, maxRank()) - 1)]; }
 };
 
 // Rank 5 masteries: mostly utility rather than raw damage. Applied to the
 // fifth rank only, after the ordinary rank curve.
 inline void applyMastery(TalentDefinition& d) {
-    Talent& m = d.ranks[kMaxTalentRank - 1];
+    Talent& m = d.ranks.back();
     const auto mark = [&] { m.onHitEffect = StatusEffectInstance{StatusEffectType::Marked, 3, 1}; m.onHitChance = 1.f; };
     const auto longer = [&] { if (m.selfBuffEffect) ++m.selfBuffEffect->turnsRemaining; };
     const auto dodge = [&](int amount) { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Evasion, 1, amount}; };
@@ -227,9 +238,9 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             if (tree==13) t.weaponRequirement=WeaponRequirement::Melee;
             if (tree==16) t.weaponRequirement=WeaponRequirement::Bow;
             if (hybrid) t.scalingStat=tree==16?ScalingStat::Dexterity:ScalingStat::Intelligence;
-            TalentDefinition d{id,kTalentTrees[tree].id,tier,{t,t,t,t,t}};
+            TalentDefinition d{id,kTalentTrees[tree].id,tier,std::vector<Talent>(kMaxTalentRank,t)};
             // The rank curve, by rank index 1-4 (ranks 2-5).
-            for (int rank=1; rank<kMaxTalentRank; ++rank) {
+            for (int rank=1; rank<d.maxRank(); ++rank) {
                 auto& r=d.ranks[rank];
                 if (r.passive) {
                     constexpr int precise[]{10,12,15,18,20}, efficient[]{10,20,30,35,40};
@@ -258,10 +269,10 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             }
             if (d.id=="bow.piercing_shot" || d.id=="two_handed.fury") {
                 constexpr int piercing[]{100,112,125,137,150}, fury[]{100,112,112,125,125};
-                for (int rank=1; rank<kMaxTalentRank; ++rank) d.ranks[rank].damagePercent=d.id=="bow.piercing_shot" ? piercing[rank] : fury[rank];
-                for (int rank=2; rank<kMaxTalentRank; ++rank) d.ranks[rank].cooldownTurns=t.cooldownTurns-1;
+                for (int rank=1; rank<d.maxRank(); ++rank) d.ranks[rank].damagePercent=d.id=="bow.piercing_shot" ? piercing[rank] : fury[rank];
+                for (int rank=2; rank<d.maxRank(); ++rank) d.ranks[rank].cooldownTurns=t.cooldownTurns-1;
             }
-            for (int rank=0; rank<kMaxTalentRank; ++rank) {
+            for (int rank=0; rank<d.maxRank(); ++rank) {
                 auto& r=d.ranks[rank];
                 if (r.selfBuffEffect && r.selfBuffEffect->type==StatusEffectType::Concealed)
                     r.selfBuffEffect->magnitude=rank+1;
@@ -273,8 +284,8 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             // Spell costs double at every rank, before Arcane Efficiency.
             // Keep rank discounts proportional and catalogue/preview costs aligned.
             if ((tree>=6 && tree<=9) || tree==19 || tree==20 || (tree>=26 && tree<=29) || tree==32) for (auto& r:d.ranks) if (!r.passive) r.manaCost*=2;
-            if (d.id=="earth.stoneskin") { constexpr int skin[]{1,1,2,2,3}; for (int rank=0;rank<kMaxTalentRank;++rank) d.ranks[rank].passiveMagnitude=skin[rank]; }
-            if (tree>=10 && tree<=12) for (int rank=0; rank<kMaxTalentRank; ++rank) {
+            if (d.id=="earth.stoneskin") { constexpr int skin[]{1,1,2,2,3}; for (int rank=0;rank<d.maxRank();++rank) d.ranks[rank].passiveMagnitude=skin[rank]; }
+            if (tree>=10 && tree<=12) for (int rank=0; rank<d.maxRank(); ++rank) {
                 auto& r=d.ranks[rank];
                 // Explicit modest armour profiles: no hidden mana or cooldown discounts.
                 r.manaCost=t.manaCost; r.cooldownTurns=t.cooldownTurns;
@@ -285,7 +296,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 if (t.restoreMana) r.restoreMana=mana[rank];
                 if (t.restoreHpPercent) r.restoreHpPercent=life[rank];
             }
-            if (hybrid) for (int rank=0;rank<kMaxTalentRank;++rank) {
+            if (hybrid) for (int rank=0;rank<d.maxRank();++rank) {
                 auto& r=d.ranks[rank]; r.manaCost=t.manaCost; r.cooldownTurns=t.cooldownTurns;
                 r.summonRank=std::min(rank+1,3);
                 if (d.id=="spellblade.imbue" && rank>0) r.manaCost=3;
@@ -298,7 +309,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             }
             // Higher ranks cost more: +10% mana per rank over rank 1, rounded
             // to the nearest point (so the cheapest abilities barely move).
-            for (int rank=1; rank<kMaxTalentRank; ++rank) if (!d.ranks[rank].passive && d.ranks[0].manaCost>0)
+            for (int rank=1; rank<d.maxRank(); ++rank) if (!d.ranks[rank].passive && d.ranks[0].manaCost>0)
                 d.ranks[rank].manaCost=(d.ranks[0].manaCost*(100+10*rank)+50)/100;
             if (!hybrid) applyMastery(d);
             for (auto& r:d.ranks) r.tags=talentTags(r);
@@ -557,7 +568,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         // Ascendancy nodes (Ascendancy.hpp): one rank, bought with ascendancy points.
         auto node=[&](const char* treeId,const char* id,ScalingStat stat,Talent t) {
             t.id=id; t.tree=TalentTree::Blade; t.scalingStat=stat; t.scalingCooldown=t.cooldownTurns;
-            TalentDefinition d; d.id=id; d.treeId=treeId; d.tier=0; d.ranks={t,t,t,t,t};
+            TalentDefinition d; d.id=id; d.treeId=treeId; d.tier=0; d.ranks={t};
             out.push_back(d);
         };
         constexpr auto Str=ScalingStat::Strength, Dex=ScalingStat::Dexterity, Int=ScalingStat::Intelligence;
@@ -642,6 +653,51 @@ inline const TalentDefinition* findTalentDefinition(const std::string& id) {
     for (const auto& t : talentCatalog()) if (t.id == id) return &t;
     return nullptr;
 }
+// The nodes of one tree, in catalogue order.
+inline const std::vector<const TalentDefinition*>& treeNodes(const std::string& treeId) {
+    static const auto byTree = [] {
+        std::map<std::string, std::vector<const TalentDefinition*>> out;
+        for (const auto& d : talentCatalog()) out[d.treeId].push_back(&d);
+        return out;
+    }();
+    static const std::vector<const TalentDefinition*> none;
+    const auto found = byTree.find(treeId);
+    return found == byTree.end() ? none : found->second;
+}
+inline const std::vector<const TalentDefinition*>& treeNodes(std::size_t treeIndex) { return treeNodes(kTalentTrees[treeIndex].id); }
+
+// Why a node can't be learned yet, or empty if it can: the one rule shared by
+// purchases and save validation. `rankOf` reports the rank held in a node.
+// `nodes` is the node's tree (a test can pass one of its own).
+inline std::string nodeRequirementReason(const TalentDefinition& d, const std::vector<const TalentDefinition*>& nodes, int level,
+                                         bool specialized, const std::function<int(const std::string&)>& rankOf) {
+    constexpr int levels[]{1,1,4,5}, investments[]{0,1,3,4};
+    const auto tier = static_cast<std::size_t>(std::clamp(d.tier, 0, 3));
+    if (level < levels[tier]) return "Requires character level " + std::to_string(levels[tier]) + ".";
+    int invested = 0;
+    for (const auto* other : nodes) if (other->tier < d.tier) invested += rankOf(other->id);
+    if (invested < investments[tier]) return "Requires " + std::to_string(investments[tier]) + " ability points invested in this tree.";
+    if (tier == 3 && !specialized) return "Requires tree specialization.";
+    if (!d.prerequisites.empty() &&
+        std::none_of(d.prerequisites.begin(), d.prerequisites.end(), [&](const std::string& id) { return rankOf(id) > 0; })) {
+        std::string names;
+        for (const auto& id : d.prerequisites) {
+            const auto it = std::find_if(nodes.begin(), nodes.end(), [&](const TalentDefinition* n) { return n->id == id; });
+            names += (names.empty() ? "" : " or ") + (it == nodes.end() ? id : (*it)->ranks.front().name);
+        }
+        return "Requires " + names + ".";
+    }
+    if (!d.fork.empty())
+        for (const auto* other : nodes)
+            if (other != &d && other->fork == d.fork && rankOf(other->id) > 0)
+                return "You took " + other->ranks.front().name + " instead.";
+    return {};
+}
+inline std::string nodeRequirementReason(const TalentDefinition& d, int level, bool specialized,
+                                         const std::function<int(const std::string&)>& rankOf) {
+    return nodeRequirementReason(d, treeNodes(d.treeId), level, specialized, rankOf);
+}
+
 inline Talent basicAttack() {
     Talent t; t.id="basic.attack"; t.name="Basic Attack"; t.description="A free adjacent strike. Also available by bumping an enemy.";
     t.power=4; t.cooldownTurns=1; t.scalingCooldown=1; return t;

@@ -35,14 +35,9 @@ inline std::string abilityPurchaseReason(const Player& p,const TalentDefinition&
     const auto* access=treeAccess(p,d.treeId);
     if (!access) return "Unlock this tree first.";
     const int rank=p.talents().rankOf(d.id);
-    if (rank>=kMaxTalentRank) return "Maximum rank ("+std::to_string(kMaxTalentRank)+").";
+    if (rank>=d.maxRank()) return "Maximum rank ("+std::to_string(d.maxRank())+").";
     if (p.abilityPoints()<=0) return "No ability points available.";
-    if (!rank) {
-        constexpr int levels[]{1,1,4,5}, investments[]{0,1,3,4};
-        if (p.level()<levels[d.tier]) return "Requires character level "+std::to_string(levels[d.tier])+".";
-        if (treeInvestment(p,d.treeId)<investments[d.tier]) return "Requires "+std::to_string(investments[d.tier])+" ability points invested in this tree.";
-        if (d.tier==3 && !access->specialized) return "Requires tree specialization.";
-    }
+    if (!rank) return nodeRequirementReason(d,p.level(),access->specialized,[&](const std::string& id){ return p.talents().rankOf(id); });
     return {};
 }
 inline bool purchaseAbility(Player& p,const TalentDefinition& d) {

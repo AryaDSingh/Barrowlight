@@ -60,7 +60,7 @@ void TalentSet::resetCooldowns() {
 Talent TalentSet::effectiveTalent(std::size_t index) const {
     if (index>=knownTalents_.size()) return {};
     const auto* d=findTalentDefinition(knownTalents_[index].id);
-    Talent t=d ? d->ranks[rank(index)-1] : knownTalents_[index];
+    Talent t=d ? d->atRank(rank(index)) : knownTalents_[index];
     if (t.scalingCooldown<0) t.scalingCooldown=t.cooldownTurns;
     if (!t.passive && isSpell(t) && t.manaCost>0) {
         const int reduction=passiveValue(PassiveKind::ArcaneEfficiency);

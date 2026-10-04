@@ -159,21 +159,14 @@ bool validProgression(const SaveGameState& s) {
             if (!trees.count(parents[d->ranks[0].imbueElement-1])) return false;
             continue;
         }
-        constexpr int levels[]{1,1,4,5};
-        if (s.playerLevel<levels[d->tier]) return false;
-        if (d->ranks[0].passive && t.cooldown) return false;
-        int investment=0;
-        for (const auto& other:s.playerTalents) {
-            const auto* od=findTalentDefinition(other.id);
-            // Only earlier nodes can establish the prerequisites of a learned node.
-            if (od && !isImbueVariant(od->id) && od->treeId==d->treeId && od->tier<d->tier) investment+=other.rank;
-        }
-        constexpr int required[]{0,1,3,4};
-        if (investment<required[d->tier]) return false;
-        if (d->tier==3) {
-            const auto access=std::find_if(s.trees.begin(),s.trees.end(),[&](const auto& a){return a.id==d->treeId;});
-            if (!access->specialized) return false;
-        }
+        if (t.rank>d->maxRank() || (d->ranks[0].passive && t.cooldown)) return false;
+        // Only earlier nodes establish a learned node's requirements (the shared purchase rule).
+        const auto access=std::find_if(s.trees.begin(),s.trees.end(),[&](const auto& a){return a.id==d->treeId;});
+        const auto rankOf=[&](const std::string& id) {
+            for (const auto& other:s.playerTalents) if (other.id==id) return other.rank;
+            return 0;
+        };
+        if (!nodeRequirementReason(*d,s.playerLevel,access->specialized,rankOf).empty()) return false;
         abilitySpent+=t.rank;
     }
     if (ascendancyNodes+s.ascendancyPoints!=static_cast<int>(std::bitset<8>(static_cast<unsigned>(s.trialsCleared)).count())) return false;

@@ -166,7 +166,7 @@ void Application::handleTreeMouse(const sf::Event& event) {
         if(treeHeaderRect(layout.origins[row]).contains(p)) {
             treeSelection_=layout.trees[row]; abilitySelection_=0; imbueSelection_=0; treeFeedback_.clear(); return;
         }
-        for(std::size_t i=0;i<4;++i) if(abilityRect(layout.origins[row],i).contains(p)) {
+        for(std::size_t i=0;i<treeNodes(layout.trees[row]).size();++i) if(abilityRect(layout.origins[row],i).contains(p)) {
             treeSelection_=layout.trees[row]; abilitySelection_=i; imbueSelection_=0; treeFeedback_.clear(); return;
         }
     }
@@ -203,10 +203,12 @@ void Application::handleTreeKey(sf::Keyboard::Key key, bool shift) {
         abilitySelection_=0;
         revealSelectedTree();
     }
-    if (key==sf::Keyboard::Key::Left) abilitySelection_=(abilitySelection_+3)%4;
-    if (key==sf::Keyboard::Key::Right) abilitySelection_=(abilitySelection_+1)%4;
+    const std::size_t nodes=treeNodes(treeSelection_).size();
+    if (key==sf::Keyboard::Key::Left) abilitySelection_=(abilitySelection_+nodes-1)%nodes;
+    if (key==sf::Keyboard::Key::Right) abilitySelection_=(abilitySelection_+1)%nodes;
+    abilitySelection_=std::min(abilitySelection_,nodes-1);
     const auto& tree=kTalentTrees[treeSelection_];
-    const auto& ability=talentCatalog()[treeSelection_*4+abilitySelection_];
+    const auto& ability=*treeNodes(treeSelection_)[abilitySelection_];
     if (key==sf::Keyboard::Key::Enter) {
         treeFeedback_=treePurchaseReason(player_,playerClass_,tree);
         const bool first=player_.trees().empty();
@@ -307,17 +309,17 @@ void Application::renderTalentTrees() {
         dash.setFillColor(headerColor); window_.draw(dash);
         ui_.text(window_,std::string(tree.name)+(access?(access->specialized?"  (specialised)":""):"  (locked)"),
             {header.position.x+16,header.position.y},16,t==treeSelection_?sf::Color(255,236,170):headerColor,ui::Font::Bold);
-        for(std::size_t i=0;i<4;++i) {
-            const auto& d=talentCatalog()[t*4+i];
+        for(std::size_t i=0;i<treeNodes(t).size();++i) {
+            const auto& d=*treeNodes(t)[i];
             const int rank=player_.talents().rankOf(d.id);
             const auto r=abilityRect(origin,i);
             const bool chosen=t==treeSelection_ && i==abilitySelection_;
-            ui_.inset(window_,r,chosen?ui::kGold:hovered(r)?ui::kBronze:i==3?sf::Color(120,70,150,120):sf::Color::Transparent);
+            ui_.inset(window_,r,chosen?ui::kGold:hovered(r)?ui::kBronze:d.tier==3?sf::Color(120,70,150,120):sf::Color::Transparent);
             ui_.icon(window_,talentIcon(d.ranks[0]),{{r.position.x+6,r.position.y+6},{r.size.x-12,r.size.y-12}},
                 rank?sf::Color(240,230,206):access?sf::Color(150,142,128):sf::Color(84,80,76));
-            const std::string label=std::to_string(rank)+"/"+std::to_string(kMaxTalentRank);
+            const std::string label=std::to_string(rank)+"/"+std::to_string(d.maxRank());
             ui_.text(window_,label,{r.position.x+(r.size.x-ui_.textWidth(label,13,ui::Font::Bold))/2,r.position.y+r.size.y+1},13,
-                rank==kMaxTalentRank?ui::kRare:rank>=3?ui::kGood:rank?ui::kText:access?ui::kMuted:sf::Color(170,70,60),ui::Font::Bold);
+                rank==d.maxRank()?ui::kRare:rank>=3?ui::kGood:rank?ui::kText:access?ui::kMuted:sf::Color(170,70,60),ui::Font::Bold);
         }
     }
     window_.setView(frame);
@@ -333,7 +335,7 @@ void Application::renderTalentTrees() {
     // --- Details of the selected ability -------------------------------------
     const auto& tree=kTalentTrees[treeSelection_];
     const auto* access=treeAccess(player_,tree.id);
-    const auto& d=talentCatalog()[treeSelection_*4+abilitySelection_];
+    const auto& d=*treeNodes(treeSelection_)[std::min(abilitySelection_,treeNodes(treeSelection_).size()-1)];
     const auto& t0=d.ranks[0];
     const int rank=player_.talents().rankOf(d.id);
     ui_.glass(window_,kDetails,false);
@@ -344,9 +346,9 @@ void Application::renderTalentTrees() {
     ui_.icon(window_,talentIcon(t0),{{bigIcon.position.x+7,bigIcon.position.y+7},{42,42}},rank?ui::kGold:ui::kText);
     ui_.text(window_,t0.name,{left+68,y},22,ui::kGold,ui::Font::Title);
     ui_.text(window_,std::string(categoryInfo(treeCategory(tree.id)).name)+" / "+tree.name+(access?(access->specialized?", specialised":", open"):", locked")+
-        (abilitySelection_==3?", advanced":"")+(t0.passive?", passive":""),{left+68,y+30},14,access?ui::kGood:ui::kMuted);
+        (d.tier==3?", advanced":"")+(t0.passive?", passive":""),{left+68,y+30},14,access?ui::kGood:ui::kMuted);
     y+=68;
-    ui_.text(window_,"Current rank: "+std::to_string(rank)+" of "+std::to_string(kMaxTalentRank),{left,y},15,ui::kText,ui::Font::Bold); y+=22;
+    ui_.text(window_,"Current rank: "+std::to_string(rank)+" of "+std::to_string(d.maxRank()),{left,y},15,ui::kText,ui::Font::Bold); y+=22;
     if (t0.armourRequirement!=ArmourRequirement::None) {
         const bool active=armourMatches(player_,t0.armourRequirement);
         ui_.paragraph(window_,std::string(active?"Equipment matches: ":"Inactive: ")+armourRequirementText(t0.armourRequirement),
@@ -360,8 +362,8 @@ void Application::renderTalentTrees() {
     const float columns[]{0,48,124,180,262,316};
     for(int c=0;c<6;++c) ui_.text(window_,headings[c],{left+columns[c],y},14,ui::kGold,ui::Font::Bold);
     y+=22;
-    for (int r=0;r<kMaxTalentRank;++r) {
-        const auto& t=d.ranks[r];
+    for (int r=0;r<d.maxRank();++r) {
+        const auto& t=d.ranks[static_cast<std::size_t>(r)];
         const sf::Color c=r<rank?ui::kGood:ui::kText;
         const std::string cells[]{std::to_string(r+1),
             (t.passive || t.effectKind!=TalentEffectKind::Damage || t.shape==EffectShape::Movement)?"-":std::to_string(t.damagePercent)+"%",
@@ -374,7 +376,7 @@ void Application::renderTalentTrees() {
     }
     y+=4;
     if (!d.mastery.empty()) {
-        ui_.paragraph(window_,"Rank 5 mastery: "+d.mastery,left,y,width,14,rank>=kMaxTalentRank?ui::kRare:sf::Color(214,170,96),ui::Font::Bold,y+40);
+        ui_.paragraph(window_,"Rank "+std::to_string(d.maxRank())+" mastery: "+d.mastery,left,y,width,14,rank>=d.maxRank()?ui::kRare:sf::Color(214,170,96),ui::Font::Bold,y+40);
         y+=4;
     }
     y+=4;
@@ -387,7 +389,7 @@ void Application::renderTalentTrees() {
     ui_.text(window_,"Tree investment: "+std::to_string(treeInvestment(player_,tree.id)),{left,548},13,ui::kMuted);
 
     ui_.button(window_,treeButton,access?"Specialise (Enter)":"Unlock tree (Enter)",hovered(treeButton),treeReason.empty(),14);
-    ui_.button(window_,abilityButton,rank>=kMaxTalentRank?"Maximum rank":rank?"Rank up (A)":"Learn (A)",hovered(abilityButton),reason.empty(),14);
+    ui_.button(window_,abilityButton,rank>=d.maxRank()?"Maximum rank":rank?"Rank up (A)":"Learn (A)",hovered(abilityButton),reason.empty(),14);
     ui_.button(window_,bindButton,"Assign hotbar (B)",hovered(bindButton),rank>0 && !t0.passive,14);
     if(d.id=="spellblade.imbue") ui_.button(window_,variantButton,"Next element (V)",hovered(variantButton),rank>0,14);
     y=656;
@@ -395,11 +397,11 @@ void Application::renderTalentTrees() {
         left,y,width,14,treeFeedback_.empty()?ui::kMuted:sf::Color(255,226,150),ui::Font::Body,704);
 
     // Hover tooltip for an ability icon you're not already inspecting.
-    if(!bindingTalent_ && mouse && mouse->y>=kTreeViewTop && mouse->y<=treeViewBottom_) for(std::size_t row=0;row<layout.trees.size();++row) for(std::size_t i=0;i<4;++i) {
+    if(!bindingTalent_ && mouse && mouse->y>=kTreeViewTop && mouse->y<=treeViewBottom_) for(std::size_t row=0;row<layout.trees.size();++row) for(std::size_t i=0;i<treeNodes(layout.trees[row]).size();++i) {
         if(!abilityRect(layout.origins[row],i).contains(*mouse)) continue;
-        const auto& hd=talentCatalog()[layout.trees[row]*4+i];
+        const auto& hd=*treeNodes(layout.trees[row])[i];
         ui_.tooltip(window_,{{hd.ranks[0].name,ui::kGold,17,ui::Font::Title},
-            {"Rank "+std::to_string(player_.talents().rankOf(hd.id))+" of "+std::to_string(kMaxTalentRank)+(hd.ranks[0].passive?", passive":""),ui::kMuted,13},
+            {"Rank "+std::to_string(player_.talents().rankOf(hd.id))+" of "+std::to_string(hd.maxRank())+(hd.ranks[0].passive?", passive":""),ui::kMuted,13},
             {hd.ranks[0].description,ui::kText,14},{"Click to see ranks and learn it.",ui::kInfo,13}},*mouse,300);
     }
 

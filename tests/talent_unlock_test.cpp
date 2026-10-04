@@ -8,6 +8,8 @@
 
 #include "ai/NullAIBehavior.hpp"
 #include "entities/MageTalents.hpp"
+#include "entities/TalentCatalog.hpp"
+#include <map>
 #include "entities/Monster.hpp"
 #include "entities/PlayerClassFactory.hpp"
 #include "entities/TalentEffects.hpp"
@@ -131,6 +133,42 @@ int main() {
           "Spellblade has no talentUnlockedAtLevel unlock at level 4");
     check(!talentUnlockedAtLevel(PlayerClass::Spellblade, 7).has_value(),
           "Spellblade has no talentUnlockedAtLevel unlock at level 7");
+
+    // --- The node model: today's trees are unchanged by it.
+    {
+        bool fourEach=true, fiveRanks=true;
+        for (std::size_t tree=0;tree<kTalentTrees.size();++tree) {
+            const auto& nodes=treeNodes(tree);
+            fourEach&=nodes.size()==4;
+            for (std::size_t i=0;i<nodes.size();++i) fiveRanks&=nodes[i]->maxRank()==kMaxTalentRank && nodes[i]->tier==static_cast<int>(i) &&
+                nodes[i]->prerequisites.empty() && nodes[i]->fork.empty();
+        }
+        check(fourEach,"Every tree still has its four nodes, in order");
+        check(fiveRanks,"Every tree node still has five ranks, one per tier, with no forks yet");
+        check(findTalentDefinition("juggernaut.iron_skin")->maxRank()==1,"Ascendancy nodes have a single rank");
+        check(findTalentDefinition("juggernaut.iron_skin")->atRank(3).name=="Iron Skin","Asking past a node's last rank gives its last rank");
+    }
+    // --- Forks and prerequisites, on a made-up tree.
+    {
+        const auto node=[](const char* id,int tier,int ranks,const char* fork,std::vector<std::string> needs) {
+            Talent t; t.id=id; t.name=id;
+            TalentDefinition d; d.id=id; d.treeId="test"; d.tier=tier; d.ranks=std::vector<Talent>(static_cast<std::size_t>(ranks),t);
+            d.fork=fork; d.prerequisites=std::move(needs); return d;
+        };
+        const auto root=node("Root",0,3,"",{}), wall=node("Wall",1,3,"path",{"Root"}), ball=node("Ball",1,3,"path",{"Root"}),
+                   haze=node("Haze",2,1,"",{"Wall"}), kindling=node("Kindling",2,1,"",{"Ball"});
+        const std::vector<const TalentDefinition*> tree{&root,&wall,&ball,&haze,&kindling};
+        std::map<std::string,int> held;
+        const auto rankOf=[&](const std::string& id){ const auto it=held.find(id); return it==held.end()?0:it->second; };
+        const auto reason=[&](const TalentDefinition& d){ return nodeRequirementReason(d,tree,10,true,rankOf); };
+        check(reason(root).empty() && !reason(wall).empty(),"A fork waits for its root");
+        held["Root"]=1;
+        check(reason(wall).empty() && reason(ball).empty(),"With the root learned, both sides of a fork are open");
+        held["Wall"]=1; held["Root"]=2; // tier 2 also needs 3 points spent below it
+        check(reason(ball)=="You took Wall instead.","Taking one side of a fork closes the other");
+        check(reason(haze).empty() && reason(kindling)=="Requires Ball.","A passive follows the side you took");
+        check(root.maxRank()==3 && haze.maxRank()==1,"Nodes carry their own rank counts");
+    }
 
     std::cout << "\n"
               << (g_allOk ? "All talent-unlock checks passed." : "Some talent-unlock checks FAILED.")

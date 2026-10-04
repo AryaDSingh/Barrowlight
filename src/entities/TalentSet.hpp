@@ -44,7 +44,7 @@ public:
         int value=0;
         for (std::size_t i=0;i<knownTalents_.size();++i) {
             const auto* d=findTalentDefinition(knownTalents_[i].id);
-            const auto& t=d ? d->ranks[rank(i)-1] : knownTalents_[i];
+            const auto& t=d ? d->atRank(rank(i)) : knownTalents_[i];
             if (t.passiveKind==kind) value+=t.passiveMagnitude;
         }
         return value;
