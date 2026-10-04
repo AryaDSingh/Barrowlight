@@ -2810,9 +2810,8 @@ void Application::renderClassSelection() {
     using namespace screen;
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
-    ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(140,135,130));
+    if (playLayout::screenWidth<=1280.f) ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(140,135,130));
     ui_.textCentered(window_,"Choose your class",{{0,26},{1280,50}},38,ui::kGold,ui::Font::Title);
-    ui_.textCentered(window_,"Your class sets your starting attributes and the trees you can begin with.",{{0,78},{1280,26}},17,ui::kMuted);
     struct ClassInfo { const char* name; PlayerClass cls; sf::Color color; const char* stats; const char* pools; const char* blurb; std::vector<std::size_t> trees; };
     const ClassInfo classes[]{
         {"Warrior",PlayerClass::Warrior,sf::Color(232,150,108),"Str 6   Dex 2   Int 2","Life 30   Mana 10",
@@ -2845,12 +2844,8 @@ void Application::renderClassSelection() {
             ui_.textCentered(window_,kTalentTrees[tree].name,{{x+26+slot*t,y+392},{slot,20}},13,ui::kMuted);
         }
     }
-    ui_.textCentered(window_,"You start with 1 tree point and 4 ability points. The other core trees open at level 5.",
-        {{0,556},{1280,24}},16,ui::kText);
     ui_.button(window_,kStartLoad,"Load game (F9)",hovered(kStartLoad));
     ui_.button(window_,kModeToggle,adventureMode_?"Mode: Adventure, 2 extra lives (M)":"Mode: Roguelike, one life (M)",hovered(kModeToggle));
-    ui_.textCentered(window_,"Click a class or press 1-3. Pick the mode first; revival returns you to town with your gear.",
-        {{0,656},{1280,24}},15,ui::kMuted);
     if(!logMessages_.empty()) ui_.textCentered(window_,logMessages_.back(),{{0,684},{1280,24}},15,sf::Color(232,196,130));
 }
 
@@ -2874,7 +2869,7 @@ void Application::renderGameOver() {
     using namespace screen;
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
-    ui_.panel(window_,kGameOverDialog,true,sf::Color(150,140,138));
+    ui_.glass(window_,kGameOverDialog,true);
     const float cx=kGameOverDialog.position.x, w=kGameOverDialog.size.x;
     ui_.icon(window_,wonGame_?"relic-blade":"skull-crossed-bones",{{cx+w/2-36,kGameOverDialog.position.y+24},{72,72}},
         wonGame_?ui::kRare:sf::Color(200,60,52));
@@ -2901,8 +2896,6 @@ void Application::renderAttributeAllocation() {
     const int points=player_.unspentAttributePoints();
     ui_.textCentered(window_,"You have "+std::to_string(points)+(points==1?" attribute point":" attribute points")+" to spend.",
         {{x,kAttributeDialog.position.y+76},{w,24}},18,ui::kText);
-    ui_.textCentered(window_,"Click an attribute or press 1-3. Each choice spends one point; Esc keeps the rest for later.",
-        {{x,kAttributeDialog.position.y+102},{w,22}},15,ui::kMuted);
     ui_.button(window_,kAttributeClose,"Later (Esc)",mouse && kAttributeClose.contains(*mouse));
     const Stats& stats = player_.stats();
     struct Choice { const char* name; const char* detail; const char* icon; sf::Color color; int value; };
@@ -2939,6 +2932,7 @@ void Application::render() {
         ui_.stone(window_, {{0, 0}, {playLayout::screenWidth, 720}}, sf::Color(120, 115, 112));
         const auto finish = [&] { window_.display(); };
         if (mode_ == GameMode::Town) {
+            if (!dungeonMenu_) renderTownWings();
             drawMenu([&] { renderTown(); });
             finish(); return;
         }

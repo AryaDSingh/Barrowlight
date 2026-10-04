@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "core/PlayLayout.hpp"
 #include "core/ScreenLayout.hpp"
 #include "entities/Ascendancy.hpp"
 
@@ -38,6 +39,68 @@ struct Station {
     const char* about;
     const char* action;
 };
+}
+
+// On a wide screen the back wall and the cobbles run on past the square to
+// the screen's edges, torch-lit here and there, fading into the night. Drawn
+// in the play screen's frame, before the (centred) square.
+void Application::renderTownWings() {
+    const float extra = playLayout::screenWidth - 1280.f;
+    if (extra <= 0.f) return;
+    const float now = animationClock_.getElapsedTime().asSeconds();
+    const float sceneLeft = extra / 2 + kTownScene.position.x, sceneRight = sceneLeft + kTownScene.size.x;
+    const int rows = static_cast<int>(kTownScene.size.y / kCell);
+    const auto at = [&](int c, float r) { return sf::Vector2f{sceneLeft + c * kCell, kTownScene.position.y + r * kCell}; };
+    const int firstCol = -static_cast<int>(std::ceil(sceneLeft / kCell)) - 1;
+    const int lastCol = static_cast<int>(kTownScene.size.x / kCell) + static_cast<int>(std::ceil((playLayout::screenWidth - sceneRight) / kCell)) + 1;
+    const int sceneCols = static_cast<int>(kTownScene.size.x / kCell);
+    sf::VertexArray cobbles(sf::PrimitiveType::Triangles), stone(sf::PrimitiveType::Triangles);
+    for (int c = firstCol; c <= lastCol; ++c) {
+        if (c >= 0 && c < sceneCols) continue;
+        for (int r = 3; r < rows; ++r)
+            for (int q = 0; q < 4; ++q) {
+                const unsigned v = cellHash(c * 2 + q % 2 + 400, r * 2 + q / 2);
+                const auto shade = static_cast<std::uint8_t>(200 + cellHash(c + 400, r) % 40);
+                const SpriteFrame frame{kCobbles, sf::IntRect({static_cast<int>(v % 7) * 16, 160 + static_cast<int>((v >> 8) % 4) * 16}, {16, 16})};
+                SpriteAtlas::append(cobbles, frame, at(c, r) + sf::Vector2f{(q % 2) * kCell / 2, (q / 2) * kCell / 2}, kCell / 2, sf::Color(shade, shade, shade));
+            }
+        SpriteAtlas::append(stone, {kEvil, sf::IntRect({64, 0}, {32, 32})}, at(c, 0), kCell, sf::Color(96, 88, 108));
+        constexpr int kPlain[]{0, 32, 160, 192, 224, 0, 32, 192};
+        const unsigned h = cellHash(c + 400, 99);
+        SpriteAtlas::append(stone, {kEvil, sf::IntRect({kPlain[(h >> 4) % std::size(kPlain)], 128}, {32, 64})}, {at(c, 1).x - kCell / 2, at(c, 1).y}, kCell * 2);
+    }
+    if (const auto* tex = sprites_.texture(kCobbles)) { sf::RenderStates st; st.texture = tex; window_.draw(cobbles, st); }
+    if (const auto* tex = sprites_.texture(kEvil)) { sf::RenderStates st; st.texture = tex; window_.draw(stone, st); }
+    // Night: the same gloom as the square's, deepening toward the screen's edges.
+    sf::VertexArray dark(sf::PrimitiveType::Triangles);
+    const float top = kTownScene.position.y, bottom = top + kTownScene.size.y;
+    const auto band = [&](float x0, float x1, std::uint8_t a0, std::uint8_t a1) {
+        const sf::Color c0(4, 4, 10, a0), c1(4, 4, 10, a1);
+        for (const auto& v : {sf::Vertex{{x0, top}, c0}, sf::Vertex{{x1, top}, c1}, sf::Vertex{{x1, bottom}, c1},
+                              sf::Vertex{{x0, top}, c0}, sf::Vertex{{x1, bottom}, c1}, sf::Vertex{{x0, bottom}, c0}}) dark.append(v);
+    };
+    band(0, sceneLeft, 235, 120);
+    band(sceneRight, playLayout::screenWidth, 120, 235);
+    window_.draw(dark);
+    // A few torches along the wall, each with a warm pool on the stones.
+    for (int c = firstCol; c <= lastCol; ++c) {
+        if ((c >= -1 && c <= sceneCols) || ((c % 6) + 6) % 6 != 2) continue;
+        const sf::Vector2f flame = at(c, 2.55f) + sf::Vector2f{kCell / 2, 0};
+        const float fade = std::clamp(1.f - std::min(std::abs(flame.x - sceneLeft), std::abs(flame.x - sceneRight)) / (extra / 2 + 1.f), 0.25f, 1.f);
+        const float flicker = 0.85f + 0.15f * std::sin(now * 9.f + c);
+        if (ensureLightBlob()) {
+            sf::Sprite pool(*lightBlob_);
+            const float scale = 3.f * flicker * kCell * 2 / 128.f;
+            pool.setOrigin({64, 64}); pool.setScale({scale, scale});
+            pool.setPosition({flame.x, flame.y + kCell * 0.5f});
+            pool.setColor(sf::Color(static_cast<std::uint8_t>(150 * fade), static_cast<std::uint8_t>(80 * fade), static_cast<std::uint8_t>(30 * fade)));
+            window_.draw(pool, sf::BlendAdd);
+        }
+        const int frame = (static_cast<int>(now * 6.f) + c * 7 + 300) % 3;
+        const float size = kCell;
+        sprites_.draw(window_, {kTiles, sf::IntRect({176 + frame * 16, 304}, {16, 16})}, {flame.x - size / 2, flame.y - size}, size,
+                      sf::Color(255, 255, 255, static_cast<std::uint8_t>(255 * fade)));
+    }
 }
 
 void Application::renderTownSquare() {
@@ -245,11 +308,15 @@ void Application::renderTownSquare() {
                                   sf::Vertex{p0, edge}, sf::Vertex{p2, none}, sf::Vertex{p3, none}}) edges.append(v);
         };
         strip({l, b}, {r, b}, {r, b - 120}, {l, b - 120}, 170);
-        strip({l, t}, {l, b}, {l + 80, b}, {l + 80, t}, 130);
-        strip({r, t}, {r, b}, {r - 80, b}, {r - 80, t}, 130);
+        // On a wide screen the street runs on past the square: no side shadows, no frame.
+        const bool wide = playLayout::screenWidth > 1280.f;
+        if (!wide) {
+            strip({l, t}, {l, b}, {l + 80, b}, {l + 80, t}, 130);
+            strip({r, t}, {r, b}, {r - 80, b}, {r - 80, t}, 130);
+        }
         window_.draw(edges);
+        if (!wide) ui_.frame(window_, kTownScene);
     }
-    ui_.frame(window_, kTownScene);
 
     // --- Names over each building; the hovered one explains itself --------------
     const Station* hovered = nullptr;

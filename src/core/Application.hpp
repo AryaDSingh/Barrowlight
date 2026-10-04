@@ -356,7 +356,8 @@ private:
     float menuSplit() const;
     sf::Vector2f designFromPlay(sf::Vector2f p) const;
     void drawMenu(const std::function<void()>& draw);
-    void beginMenu(std::uint8_t dim);    // dims the whole play screen, then draws in the menu's frame
+    void beginMenu(std::uint8_t dim);
+    void renderTownWings();              // the town's street, on past the square on a wide screen    // dims the whole play screen, then draws in the menu's frame
     sf::FloatRect hotbarSlotRect(std::size_t slot) const;
     sf::FloatRect actionButtonRect(std::size_t index) const;
     sf::FloatRect cancelButtonRect() const;

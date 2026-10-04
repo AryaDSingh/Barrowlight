@@ -109,9 +109,9 @@ void Application::renderVault() {
         ui_.button(window_,vaultCancel(1),"Leave it sealed (Esc)",hovered(vaultCancel(1)),true,16);
         return;
     }
-    ui_.glass(window_,{{0,0},{1280,720}},true);
+    beginMenu(150);
+    ui_.glass(window_,{{40,16},{1200,540}},true);
     ui_.heading(window_,"Choose one reward",{60,30},32);
-    ui_.text(window_,"Click a reward to inspect it, then claim it. The other two are lost.",{420,46},15,ui::kMuted);
     for (std::size_t i=0;i<vaultRewards_.size();++i) {
         const auto& item=*vaultRewards_[i]; const auto b=item.bonuses();
         const auto r=vaultRewardCard(static_cast<int>(i));

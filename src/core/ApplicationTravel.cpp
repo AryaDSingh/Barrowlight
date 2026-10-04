@@ -187,7 +187,7 @@ void Application::travelFloor(int destination,bool fromTown,bool falling) {
     // The Cathedral's last stairs, and its first, lead back to town.
     if(!fromTown && currentFloor_==kCathedralLast && destination==kCathedralLast+1) { returnToTown(true); if (mode_==GameMode::Town) log("You climb out of the Drowned Cathedral."); return; }
     if(destination<1 || destination>kMaxFloorId) return;
-    if(cathedralFloor(destination) && !cathedralOpen()) { log("The Drowned Cathedral is sealed. Slay the Goblin Warlord to open it."); return; }
+    if(cathedralFloor(destination) && !cathedralOpen()) { log("The way down is sealed."); return; }
     if(destination==currentFloor_) {
         if(fromTown) { dungeonMenu_=false; handleTownKey(sf::Keyboard::Key::D); }
         return;
@@ -351,7 +351,7 @@ void Application::renderTown() {
     if(dungeonMenu_) { renderDungeonSelection(); return; }
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const auto hovered=[&](const sf::FloatRect& r){ return !inventoryOpen_ && mouse && r.contains(*mouse); };
-    ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(140,135,130));
+    if (playLayout::screenWidth<=1280.f) ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(140,135,130));
     ui_.heading(window_,"Town",{40,16},34);
     ui_.text(window_,"Gold",{190,30},16,ui::kMuted); ui_.text(window_,std::to_string(gold_),{232,26},22,ui::kRare,ui::Font::Bold);
     const auto& stats=player_.stats();
@@ -364,8 +364,6 @@ void Application::renderTown() {
     renderTownSquare();
     if (merchantOpen_) renderMerchant();
     if (!logMessages_.empty()) ui_.text(window_,logMessages_.back(),{40,612},16,sf::Color(232,196,130));
-    ui_.text(window_,merchantOpen_?"Tab buy or sell   Enter trade   Esc back to the square   F5/F9 save or load":
-        "Click a building to visit it   D resume   R inn   B stash   M dungeons   Tab merchant   F5/F9 save or load",{40,684},14,ui::kMuted);
     if (inventoryOpen_) { renderInventory(); renderDraggedItem(); }
     renderTrialMenu();
     renderAscendancy();
@@ -374,7 +372,7 @@ void Application::renderTown() {
 void Application::renderMerchant() {
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const auto hovered=[&](const sf::FloatRect& r){ return !inventoryOpen_ && mouse && r.contains(*mouse); };
-    ui_.panel(window_,{{kTownScene.position.x,kTownScene.position.y},{kTownScene.size.x,kTownScene.size.y}},true);
+    ui_.glass(window_,{{kTownScene.position.x,kTownScene.position.y},{kTownScene.size.x,kTownScene.size.y}},true);
     // --- Merchant list ---------------------------------------------------------
     ui_.button(window_,kTownBuy,"Buy",hovered(kTownBuy) || !selling_);
     ui_.button(window_,kTownSell,"Sell",hovered(kTownSell) || selling_);
@@ -410,7 +408,7 @@ void Application::renderMerchant() {
         {{kTownPrevious.position.x+kTownPrevious.size.x,kTownPrevious.position.y},{kTownNext.position.x-kTownPrevious.position.x-kTownPrevious.size.x,34}},15,ui::kMuted);
 
     // --- Preview of the selected item --------------------------------------------
-    ui_.panel(window_,kTownPreview,false,sf::Color(130,125,125));
+    ui_.glass(window_,kTownPreview,false);
     const float left=kTownPreview.position.x+20;
     if (count) {
         const ItemDefinition& definition=selling_?*bag[shopSelection_]->definition():*stock[shopSelection_];
@@ -480,13 +478,13 @@ void Application::handleDungeonMouse(const sf::Event& event) {
 void Application::renderDungeonSelection() {
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
-    ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(140,135,130));
+    if (playLayout::screenWidth<=1280.f) ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(140,135,130));
     ui_.heading(window_,"Choose your descent",{40,16},32);
-    ui_.text(window_,"Pick a dungeon and a depth. Arrows also work; Enter descends, Esc returns to town.",{40,70},15,ui::kMuted);
+
     const char* descriptions[]{"Barracks, a ruined sanctum and the crypts. The Warlord at depth 5, the Lich at 10.",
                                "Undead legions beyond the broken seal. The final Lich waits at depth 10.",
                                cathedralOpen()?"A sunken church, as deadly as Ruins 7-12. The Sleeper Below waits at depth 6.":
-                                               "Sealed. Slay the Goblin Warlord to open it."};
+                                               "Sealed. Its key was a warlord's."};
     const char* icons[]{"relic-blade","skull-crossed-bones","eclipse"};
     for(int i=0;i<3;++i) {
         const auto r=dungeonCard(i);
@@ -523,9 +521,7 @@ void Application::renderDungeonSelection() {
     y+=28;
     ui_.paragraph(window_,visited?"Visited: enemies and loot stay exactly as you left them. Nothing respawns.":
         "A new floor, generated once. Entering doesn't heal you or take a turn.",40,y,1180,16,ui::kText);
-    y+=6;
-    ui_.paragraph(window_,"Entry is never restricted, so deep floors can be deadly. Difficulty depends only on depth. "
-        "Returning to your current floor puts you back where you stood; other visited floors start at their entrance.",40,y,1180,15,ui::kMuted);
+
     ui_.button(window_,kDungeonEnter,"Descend (Enter)",hovered(kDungeonEnter),true,17);
     ui_.button(window_,kDungeonBack,"Back to town (Esc)",hovered(kDungeonBack),true,17);
     if(!logMessages_.empty()) ui_.text(window_,logMessages_.back(),{600,616},15,sf::Color(232,196,130));

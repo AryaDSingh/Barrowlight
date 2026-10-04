@@ -836,6 +836,8 @@ struct ApplicationRewardsTestAccess {
                 app.inventoryOpen_=false;
                 app.openTalentTrees(); snapshot("ui-menu-talents-ultrawide.png"); app.mode_=GameMode::Playing;
                 app.mode_=GameMode::Town; snapshot("ui-menu-town-ultrawide.png"); app.mode_=GameMode::Playing;
+                app.mode_=GameMode::ClassSelection; snapshot("ui-menu-class-ultrawide.png");
+                app.mode_=GameMode::GameOver; snapshot("ui-menu-gameover-ultrawide.png"); app.mode_=GameMode::Playing;
                 app.window_.setSize({1280,720}); app.fitView(); app.updateCamera();
                 snapshot("ui-hud-16x9.png");
                 app.player_.statusEffects().active().clear();
