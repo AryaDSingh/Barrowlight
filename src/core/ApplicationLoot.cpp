@@ -176,7 +176,9 @@ void Application::rewardMonster(Monster& monster, bool boss) {
     const bool special=unique || monster.tier()!=MonsterTier::Base;
     const int quality = boss || unique ? 2 : static_cast<int>(monster.tier());
     const int count = boss ? 2 : 1;
-    if (!boss && !special && (ordinaryDrops_ >= 2 || loot_.roll(100) >= static_cast<unsigned>(35 + quality * 15))) return;
+    if (!boss && !special && (ordinaryDrops_ >= 2 || loot_.roll(100) >= 20u)) return;
+    // Elites usually, not always, carry something.
+    if (!boss && !unique && monster.tier()==MonsterTier::Elite && loot_.roll(100) >= 60u) return;
     for (int i = 0; i < count && nextItemId_ < std::numeric_limits<std::uint64_t>::max(); ++i) {
         auto item = loot_.generate(floorDepth(currentFloor_), quality, nextItemId_++, monster.position(),
                                    boss || unique || monster.tier()==MonsterTier::Nightmare ? ItemRarity::Rare :

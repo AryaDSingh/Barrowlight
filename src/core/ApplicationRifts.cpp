@@ -119,9 +119,15 @@ std::unique_ptr<Item> Application::essenceItem(Essence essence, Position at) {
     std::vector<RolledAffix> affixes;
     const bool fits = wanted && (wanted->slots & (1u << static_cast<unsigned>(item->definition()->slot)));
     if (fits) {
+        // Its power at its strongest, in place of one of the same kind (prefix or suffix).
         affixes.push_back({wanted->id, wanted->maximum + tier * wanted->perTier});
-        for (const auto& a : item->affixes())
-            if (affixes.size() < 2 && findAffix(a.id)->stat != wanted->stat) affixes.push_back(a);
+        bool replaced = false;
+        for (const auto& a : item->affixes()) {
+            const auto* def = findAffix(a.id);
+            if (def->stat == wanted->stat) continue;
+            if (!replaced && def->prefix == wanted->prefix) { replaced = true; continue; }
+            affixes.push_back(a);
+        }
     } else {
         // No room for its own affix: the first one is perfected instead.
         affixes = item->affixes();

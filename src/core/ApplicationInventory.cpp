@@ -111,7 +111,12 @@ void Application::handleInventoryKey(sf::Keyboard::Key key) {
             const auto index = inventorySelection_ - kEquipmentSlotCount;
             if (index >= player_.inventory().items().size()) return;
             const auto name = player_.inventory().items()[index]->name();
-            if (player_.equip(index, inventoryEquipTarget_)) {
+            const auto& wanted = *player_.inventory().items()[index]->definition();
+            if (!player_.meetsRequirements(wanted)) {
+                const auto& st = player_.stats();
+                log(st.strength < wanted.reqStrength ? "It's too heavy for you." : st.dexterity < wanted.reqDexterity ?
+                    "It's too unwieldy in your hands." : "Its runes mean nothing to you yet.");
+            } else if (player_.equip(index, inventoryEquipTarget_)) {
                 log("Equipped ", name, ".");
                 finishInventoryTurn(true);
             } else log("Remove your shield or two-handed/bow weapon before equipping this item.");
@@ -400,13 +405,45 @@ void Application::renderInventory() {
         if(delta) text+="   ("+signedNumber(delta)+" if "+(removing?"removed":"equipped")+")";
         lines.push_back({text,delta>0?ui::kGood:delta<0?ui::kBad:ui::kText,15});
     };
+    const auto* currentDef=current?current->definition():nullptr;
+    const auto baseLine=[&](const std::string& name,int value,int was) {
+        if(!value && !was) return;
+        std::string text=std::to_string(value)+" "+name;
+        if(value!=was && !removing) text+="   ("+signedNumber(value-was)+")";
+        lines.push_back({text,value>was&&!removing?ui::kGood:value<was&&!removing?ui::kBad:ui::kText,16,ui::Font::Bold});
+    };
+    if(definition.damage || (currentDef && currentDef->damage && definition.slot==EquipmentSlot::Weapon))
+        baseLine(definition.weaponKind==WeaponKind::Staff?"spell damage":"damage",definition.damage,currentDef?currentDef->damage:0);
+    if(definition.defence) {
+        const auto kind=definition.weaponKind==WeaponKind::Shield?ArmourKind::Heavy:definition.armourKind;
+        baseLine(kind==ArmourKind::Heavy?"armour":kind==ArmourKind::Light?"evasion":"ward",definition.defence,
+                 currentDef && currentDef->armourKind==definition.armourKind?currentDef->defence:0);
+    }
+    if(definition.implicit) lines.push_back({affixText(*findAffix(definition.implicit),definition.implicitValue),ui::kText,15});
+    const auto& st=player_.stats();
+    std::string needs;
+    const auto need=[&](int value,int have,const char* stat) {
+        if(!value) return;
+        needs+=(needs.empty()?"Requires ":", ")+std::to_string(value)+" "+stat;
+        if(have<value) needs+="!";
+    };
+    need(definition.reqStrength,st.strength,"Str"); need(definition.reqDexterity,st.dexterity,"Dex"); need(definition.reqIntelligence,st.intelligence,"Int");
+    if(!needs.empty()) {
+        const bool unmet=needs.find('!')!=std::string::npos;
+        needs.erase(std::remove(needs.begin(),needs.end(),'!'),needs.end());
+        lines.push_back({needs,unmet?ui::kBad:ui::kMuted,14});
+    }
+    if(definition.damage || definition.defence || definition.implicit || !needs.empty()) lines.push_back({""});
     statLine("Strength",bonus.strength,after.strength-before.strength);
     statLine("Dexterity",bonus.dexterity,after.dexterity-before.dexterity);
     statLine("Intelligence",bonus.intelligence,after.intelligence-before.intelligence);
     statLine("Max life",bonus.maxHp,after.maxHp-before.maxHp);
     statLine("Max mana",bonus.maxMana,after.maxMana-before.maxMana);
-    for(const auto& roll:selected->affixes())
-        lines.push_back({affixText(*findAffix(roll.id),roll.value),attributeAffix(findAffix(roll.id)->stat)?ui::kMagic:ui::kInfo,15});
+    for(const auto& roll:selected->affixes()) {
+        const auto& affix=*findAffix(roll.id);
+        lines.push_back({affixText(affix,roll.value),affix.cursed?sf::Color(220,120,200):attributeAffix(affix.stat)?ui::kMagic:ui::kInfo,15});
+        if(affix.cursed) lines.push_back({"   "+affixPenaltyText(affix,roll.value),ui::kBad,15});
+    }
     if(definition.lore) { lines.push_back({""}); lines.push_back({definition.lore,sf::Color(200,150,100),14}); }
     lines.push_back({""});
     lines.push_back({removing?std::string("Equipped: ")+slotName(slot):

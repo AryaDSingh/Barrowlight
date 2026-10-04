@@ -40,6 +40,9 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
     const auto& kit=attacker.talents();
     const auto* weapon=attacker.inventory().equipped(EquipmentSlot::Weapon);
     const auto kind=weapon && weapon->definition() ? weapon->definition()->weaponKind : WeaponKind::None;
+    // The weapon's own damage: on attacks, or a staff's on spells.
+    if (weapon && weapon->definition() && talent.damagePercent > 0 && (kind == WeaponKind::Staff) == isSpell(talent))
+        damage += weapon->definition()->damage;
     if (attacker.statusEffects().has(StatusEffectType::Concealed)) damage+=kit.passiveValue(PassiveKind::Ambush);
     if (target.statusEffects().has(StatusEffectType::Chill)) damage+=kit.passiveValue(PassiveKind::Frostbite);
     if (kind==WeaponKind::OneHanded && attacker.statusEffects().has(StatusEffectType::Guard) && talent.targeting==TargetingMode::AdjacentEnemy)
@@ -82,8 +85,9 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
     const bool opportune=attacker.statusEffects().has(StatusEffectType::Concealed) || attacker.statusEffects().has(StatusEffectType::Opening);
     const float critBonus=talent.bonusCritDamageMultiplier+(opportune ? kit.passiveValue(PassiveKind::Opportunist)/100.f : 0.f)+
         attacker.inventory().affixTotal(BonusStat::CritDamage)/100.f;
-    const int critical=std::max(0,static_cast<int>(damage*critDamageMultiplier(critBonus))-guard);
-    damage=std::max(0,damage-guard);
+    const int armour=armourReductionPercent(gearArmour(target));
+    const int critical=std::max(0,static_cast<int>(damage*critDamageMultiplier(critBonus))*(100-armour)/100-guard);
+    damage=std::max(0,damage*(100-armour)/100-guard);
     return {damage,critical};
 }
 
@@ -116,6 +120,10 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
             if (rollChance(gear.affixTotal(BonusStat::BurnChance)/100.f)) target.statusEffects().apply({StatusEffectType::Burn,3,2});
             if (rollChance(gear.affixTotal(BonusStat::ChillChance)/100.f)) target.statusEffects().apply({StatusEffectType::Chill,3,20});
             if (rollChance(gear.affixTotal(BonusStat::ShockChance)/100.f)) target.statusEffects().apply({StatusEffectType::Shock,3,0});
+            if (rollChance(gear.affixTotal(BonusStat::BleedChance)/100.f)) target.statusEffects().apply({StatusEffectType::Bleed,3,2});
+            if (rollChance(gear.affixTotal(BonusStat::BlindChance)/100.f)) target.statusEffects().apply({StatusEffectType::Blinded,2,0});
+            if (target.statusEffects().canReceiveStun() && rollChance(gear.affixTotal(BonusStat::StunChance)/100.f))
+                target.statusEffects().apply({StatusEffectType::Stun,1,0});
         }
     }
     const int wither=target.statusEffects().magnitudeOf(StatusEffectType::Wither);

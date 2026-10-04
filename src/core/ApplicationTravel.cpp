@@ -1,4 +1,5 @@
 #include "core/Application.hpp"
+#include "entities/ArmourTalents.hpp"
 #include "entities/RunProgression.hpp"
 
 #include <algorithm>
@@ -15,9 +16,18 @@ namespace {
 bool sameTile(Position a,Position b) { return a.x==b.x && a.y==b.y; }
 bool training(const Item& item) { return std::string_view(item.definition()->id).find("training_")==0; }
 int salePrice(const Item& item) { return training(item)?0:5+10*static_cast<int>(item.rarity())+2*item.rollTier(); }
-constexpr int kShopPrice=30;
+int shopPrice(const ItemDefinition& d) { return 20+10*d.depth; }
 using namespace screen;
 bool contains(const sf::FloatRect& rect,sf::Vector2i p) { return rect.contains(sf::Vector2f(p)); }
+}
+
+// Plain bases, none deeper than you've been.
+std::vector<const ItemDefinition*> Application::shopStock() const {
+    int deepest=std::max(1,floorDepth(currentFloor_));
+    for (const auto& [floor,state]:floorCache_) deepest=std::max(deepest,floorDepth(floor));
+    auto stock=rewardItemDefinitions();
+    stock.erase(std::remove_if(stock.begin(),stock.end(),[&](const ItemDefinition* d){return d->depth>deepest;}),stock.end());
+    return stock;
 }
 
 bool Application::dangerNearby() const {
@@ -36,7 +46,7 @@ void Application::handleTownMouse(const sf::Event& event) {
         mousePixel_=moved->position;
         if(!merchantOpen_) return;
         const auto& bag=player_.inventory().items();
-        const auto stock=rewardItemDefinitions();
+        const auto stock=shopStock();
         const auto count=selling_?bag.size():stock.size();
         const auto first=(shopSelection_/kTownRowsPerPage)*kTownRowsPerPage;
         for(std::size_t row=0;row<kTownRowsPerPage && first+row<count;++row)
@@ -44,7 +54,7 @@ void Application::handleTownMouse(const sf::Event& event) {
     }
     if(const auto* wheel=event.getIf<sf::Event::MouseWheelScrolled>()) {
         if(!merchantOpen_ || wheel->position.x>kTownPreview.position.x) return;
-        const auto stock=rewardItemDefinitions();
+        const auto stock=shopStock();
         const auto count=selling_?player_.inventory().items().size():stock.size();
         if(!count) return;
         shopSelection_=wheel->delta<0?std::min(shopSelection_+9,count-1):shopSelection_>9?shopSelection_-9:0;
@@ -69,7 +79,7 @@ void Application::handleTownMouse(const sf::Event& event) {
     if(contains(kTownBuy,p)) { selling_=false; shopSelection_=0; return; }
     if(contains(kTownSell,p)) { selling_=true; shopSelection_=0; return; }
     if(contains(kTownTrade,p)) { handleTownKey(sf::Keyboard::Key::Enter); return; }
-    const auto stock=rewardItemDefinitions();
+    const auto stock=shopStock();
     const auto count=selling_?player_.inventory().items().size():stock.size();
     const std::size_t perPage=kTownRowsPerPage;
     const auto first=(shopSelection_/perPage)*perPage;
@@ -82,6 +92,7 @@ void Application::handleTownMouse(const sf::Event& event) {
 
 void Application::recordQuietTurn() {
     tickHunt();
+    tickWard();
     tickBreach();
     const bool danger=combatThisTurn_ || dangerNearby();
     if (danger) quietTurns_=0;
@@ -95,6 +106,13 @@ void Application::recordQuietTurn() {
     combatThisTurn_=false;
     if (danger && autoExploring_) stopAutoExplore("danger or combat detected.");
     if (danger && restTurns_>0) { restTurns_=0; log("Rest interrupted by danger."); }
+}
+
+// Ward: after three turns untouched it refills a third of itself each turn.
+void Application::tickWard() {
+    const int most=gearWard(player_);
+    player_.ward=std::min(player_.ward,most);
+    if (++player_.wardRest>=3 && player_.ward<most) player_.ward=std::min(most,player_.ward+std::max(1,most/3));
 }
 
 void Application::startRest() {
@@ -302,7 +320,7 @@ void Application::handleTownKey(sf::Keyboard::Key key) {
         shopSelection_=0;
     }
     if (!merchantOpen_) return;
-    const auto stock=rewardItemDefinitions();
+    const auto stock=shopStock();
     const std::size_t count=selling_?player_.inventory().items().size():stock.size();
     if (!count) { shopSelection_=0; return; }
     shopSelection_=std::min(shopSelection_,count-1);
@@ -319,11 +337,12 @@ void Application::handleTownKey(sf::Keyboard::Key key) {
         shopSelection_=0;
     } else {
         if (player_.inventory().full()) { log("Bag full (50). Sell an item first."); return; }
-        if (gold_<kShopPrice) { log("Not enough gold."); return; }
+        const int price=shopPrice(*stock[shopSelection_]);
+        if (gold_<price) { log("Not enough gold."); return; }
         if (nextItemId_==std::numeric_limits<std::uint64_t>::max()) return;
         auto item=std::make_unique<Item>(*stock[shopSelection_],nextItemId_++);
-        log("Bought ",item->name()," for ",kShopPrice," gold.");
-        gold_-=kShopPrice; player_.inventory().add(std::move(item));
+        log("Bought ",item->name()," for ",price," gold.");
+        gold_-=price; player_.inventory().add(std::move(item));
     }
 }
 
@@ -362,9 +381,9 @@ void Application::renderMerchant() {
     sf::RectangleShape underline({active.size.x-8,3}); underline.setPosition({active.position.x+4,active.position.y+active.size.y+1});
     underline.setFillColor(ui::kGold); window_.draw(underline);
     const auto& bag=player_.inventory().items();
-    const auto stock=rewardItemDefinitions();
+    const auto stock=shopStock();
     const auto count=selling_?bag.size():stock.size();
-    ui_.text(window_,selling_?"Your bag, "+std::to_string(bag.size())+" items":"The merchant's stock, "+std::to_string(kShopPrice)+" gold each",
+    ui_.text(window_,selling_?"Your bag, "+std::to_string(bag.size())+" items":"The merchant's stock",
         {362,102},15,ui::kMuted);
     if (count) shopSelection_=std::min(shopSelection_,count-1);
     const auto first=(shopSelection_/kTownRowsPerPage)*kTownRowsPerPage;
@@ -377,7 +396,7 @@ void Application::renderMerchant() {
         ui_.inset(window_,row,i==shopSelection_?ui::kGold:hovered(row)?ui::kBronze:sf::Color::Transparent);
         ui_.icon(window_,itemIcon(definition),{{row.position.x+8,row.position.y+5},{28,28}},nameColor);
         ui_.text(window_,selling_?bag[i]->name():std::string(definition.name),{row.position.x+46,row.position.y+8},16,nameColor);
-        const int price=selling_?salePrice(*bag[i]):kShopPrice;
+        const int price=selling_?salePrice(*bag[i]):shopPrice(*stock[i]);
         const std::string priceText=price?std::to_string(price)+" gold":"no value";
         ui_.text(window_,priceText,{row.position.x+row.size.x-14-ui_.textWidth(priceText,15,ui::Font::Bold),row.position.y+9},15,
             price?ui::kRare:ui::kMuted,ui::Font::Bold);
@@ -424,11 +443,11 @@ void Application::renderMerchant() {
         y+=30;
         ui_.paragraph(window_,"The merchant only stocks basic gear; stronger affixed items come from the dungeon. Buying costs more than selling earns.",
             left,y,kTownPreview.size.x-40,14,ui::kMuted);
-        const bool canTrade=selling_?salePrice(*bag[shopSelection_])>0:(gold_>=kShopPrice && !player_.inventory().full());
+        const bool canTrade=selling_?salePrice(*bag[shopSelection_])>0:(gold_>=shopPrice(*stock[shopSelection_]) && !player_.inventory().full());
         ui_.button(window_,kTownTrade,selling_?"Sell for "+std::to_string(salePrice(*bag[shopSelection_]))+" gold (Enter)":
-            "Buy for "+std::to_string(kShopPrice)+" gold (Enter)",hovered(kTownTrade),canTrade,16);
+            "Buy for "+std::to_string(shopPrice(*stock[shopSelection_]))+" gold (Enter)",hovered(kTownTrade),canTrade,16);
         if(!selling_ && player_.inventory().full()) ui_.text(window_,"Your bag is full.",{kTownTrade.position.x,kTownTrade.position.y-28},15,ui::kBad);
-        else if(!selling_ && gold_<kShopPrice) ui_.text(window_,"Not enough gold.",{kTownTrade.position.x,kTownTrade.position.y-28},15,ui::kBad);
+        else if(!selling_ && gold_<shopPrice(*stock[shopSelection_])) ui_.text(window_,"Not enough gold.",{kTownTrade.position.x,kTownTrade.position.y-28},15,ui::kBad);
     } else {
         ui_.textCentered(window_,selling_?"Nothing to sell.":"Nothing in stock.",kTownPreview,18,ui::kMuted);
     }

@@ -20,6 +20,8 @@
 #include "entities/MonsterFactory.hpp"
 #include "entities/PlayerClassFactory.hpp"
 #include "entities/StatusEffectLogic.hpp"
+#include "entities/ArmourTalents.hpp"
+#include "entities/LootGenerator.hpp"
 #include "entities/TalentEffects.hpp"
 
 namespace engine {
@@ -121,18 +123,45 @@ struct ApplicationRewardsTestAccess {
             auto second = b.generate(1+i%10, i%3, i+1, {});
             sameRolls &= itemRecord(*first) == itemRecord(*second) && a.state() == b.state();
             rarities[static_cast<int>(first->rarity())] = true;
-            unsigned int stats = 0;
+            std::uint64_t stats = 0;
+            int prefixes = 0, suffixes = 0, cursed = 0;
             for (const auto& rolled : first->affixes()) {
                 const auto* definition = findAffix(rolled.id);
-                const auto mask = 1u << static_cast<unsigned>(definition->stat);
+                (definition->prefix ? prefixes : suffixes)++; cursed += definition->cursed;
+                const auto mask = std::uint64_t{1} << static_cast<unsigned>(definition->stat);
                 valid &= !(stats & mask) && (definition->slots & (1u << static_cast<unsigned>(first->definition()->slot)));
                 valid &= rolled.value >= definition->minimum + first->rollTier()*definition->perTier &&
                          rolled.value <= definition->maximum + first->rollTier()*definition->perTier;
                 stats |= mask;
             }
+            const int cap = first->rarity()==ItemRarity::Rare ? 3 : 1;
+            valid &= prefixes <= cap && suffixes <= cap && first->affixes().size() <= static_cast<std::size_t>(kMaxAffixes);
+            valid &= first->definition()->depth <= std::max(1, 1+i%10) && first->definition()->depth > 0;
+            valid &= cursed == 0 || (first->rarity()==ItemRarity::Rare && cursed == 1);
         }
         check(sameRolls, "Same seed reproduces 500 complete item rolls and RNG states");
         check(valid && rarities[0] && rarities[1] && rarities[2], "All rarities occur with compatible, distinct, bounded affixes");
+        {
+            LootGenerator shallow(4242);
+            int normals = 0, magics = 0, rares = 0; bool firstBasesOnly = true;
+            for (int i = 0; i < 2000; ++i) {
+                const auto item = shallow.generate(1, 0, i + 1, {});
+                firstBasesOnly &= item->definition()->depth == 1;
+                const auto r = item->rarity();
+                normals += r == ItemRarity::Normal; magics += r == ItemRarity::Magic; rares += r == ItemRarity::Rare;
+            }
+            std::cout << "Floor-1 finds: " << normals << " plain, " << magics << " magic, " << rares << " rare\n";
+            check(firstBasesOnly, "Floor one only ever drops the first bases");
+            check(normals > magics && magics > rares * 4 && rares > 0, "Most finds are plain; rares are rare");
+            LootGenerator deep(77);
+            bool deepest = false; std::size_t longest = 0;
+            for (int i = 0; i < 2000; ++i) {
+                const auto item = deep.generate(13, 2, i + 1, {}, ItemRarity::Rare);
+                deepest |= item->definition()->depth == 13;
+                longest = std::max(longest, item->affixes().size());
+            }
+            check(deepest && longest >= 5, "Deep floors bring the best bases, and rares with five or six affixes");
+        }
 
         setup(PlayerClass::Mage);
         app.chestExists_ = true; app.chestPosition_ = app.player_.position();
@@ -757,6 +786,97 @@ struct ApplicationRewardsTestAccess {
             check(w->stats().hp>0 && w->position().y==14 && w->stats().hp<bossHp,"Bosses teeter on the edge instead of falling");
             snapshot("ui-chasm.png");
             app.monsters_.clear(); app.boss_=nullptr;
+        }
+
+        // Gear: a base's own damage, defences, requirements, traits, curses and wards.
+        setup(PlayerClass::Warrior);
+        {
+            auto& hero = app.player_;
+            const auto give = [&](const char* id, std::vector<RolledAffix> affixes = {}) {
+                hero.inventory().add(std::make_unique<Item>(*findItemDefinition(id), app.nextItemId_++, Position{}, affixes, 0));
+                return hero.inventory().items().size() - 1;
+            };
+            for (int slot = 0; slot < kEquipmentSlotCount; ++slot) hero.unequip(static_cast<EquipmentSlot>(slot));
+            auto* target = enemy({11, 10});
+            const auto attack = basicAttack();
+            const int bare = estimateTalentDamage(attack, hero, *target).normal;
+            check(hero.equip(give("iron_sword")) && estimateTalentDamage(attack, hero, *target).normal == bare + 2,
+                  "A sword's own damage lands on every attack");
+            auto spell = findTalentDefinition("fire.ember_bolt")->ranks[0];
+            hero.unequip(EquipmentSlot::Weapon);
+            const int bareSpell = estimateTalentDamage(spell, hero, *target).normal;
+            check(hero.equip(give("ash_staff")) && estimateTalentDamage(attack, hero, *target).normal == bare &&
+                  estimateTalentDamage(spell, hero, *target).normal == bareSpell + 2, "A staff's damage goes to spells, not blows");
+            hero.unequip(EquipmentSlot::Weapon);
+            check(Item(*findItemDefinition("iron_mace"), 1).affixValue(BonusStat::StunChance) == 5 &&
+                  Item(*findItemDefinition("iron_spear"), 1).affixValue(BonusStat::BleedChance) == 10,
+                  "Every base carries its trait: maces stun, spears bleed");
+
+            // Requirements: deeper bases ask for the attribute.
+            hero.baseStats().strength = hero.stats().strength = 6;
+            const auto longsword = give("steel_longsword");
+            check(!hero.equip(longsword), "A Steel Longsword is too heavy at 6 Strength");
+            hero.baseStats().strength = hero.stats().strength = 12; hero.baseStats().dexterity = hero.stats().dexterity = 6;
+            check(hero.equip(longsword), "...and wielded at 12");
+            hero.unequip(EquipmentSlot::Weapon);
+
+            // Armour, evasion and ward.
+            check(hero.equip(give("chain_coat")) && hero.equip(give("wooden_shield")) && gearArmour(hero) == 12 &&
+                  armourReductionPercent(12) > 20 && armourReductionPercent(1000) == 60, "Heavy armour and shields add armour; it caps at 60%");
+            hero.unequip(EquipmentSlot::Armour); hero.unequip(EquipmentSlot::OffHand);
+            const int dodgeBefore = armourDodgeBonus(hero);
+            check(hero.equip(give("scout_leathers")) && armourDodgeBonus(hero) == dodgeBefore + 4, "Light armour is evasion: more dodge");
+            hero.unequip(EquipmentSlot::Armour);
+            check(hero.equip(give("woven_robes")) && gearWard(hero) == 6, "Cloth is ward");
+            hero.ward = 0;
+            for (int i = 0; i < 6; ++i) app.tickWard();
+            check(hero.ward == 6, "Ward refills once you've been left alone a few turns");
+            hero.baseStats().dexterity = hero.stats().dexterity = 0;
+            const int life = hero.stats().hp;
+            AIDecision blow; blow.type = AIActionType::Attack; blow.target = &hero; blow.attackPower = 2;
+            target->stats().strength = target->stats().dexterity = target->stats().intelligence = 0;
+            app.executeAIDecision(*target, blow, 0);
+            check(hero.stats().hp == life && hero.ward < 6, "A small hit is soaked by ward, not life");
+            snapshot("ui-ward.png");
+            hero.unequip(EquipmentSlot::Armour);
+
+            // Cursed affixes, conditional damage and ailment wards.
+            const Item cursed(*findItemDefinition("iron_sword"), 2, {}, {{"bloodthirsty", 4}}, 0);
+            check(cursed.affixValue(BonusStat::FlatDamage) == 4 && cursed.bonuses().maxHp == -16, "A cursed affix gives, and takes");
+            app.darknessEnabled_ = false;
+            const int plain = app.situationalBonus(attack, *target);
+            check(hero.equip(give("copper_ring", {{"dawnlit", 3}, {"stalking", 5}})), "Rings with conditions can be worn");
+            target->tactics.alert = 0;
+            check(app.situationalBonus(attack, *target) == plain + 8, "In the light, against an unaware foe, both conditions pay");
+            target->tactics.alert = 8;
+            check(app.situationalBonus(attack, *target) == plain + 3, "...and a foe that's noticed you loses the surprise");
+            app.darknessEnabled_ = true;
+            hero.equip(give("silver_ring", {{"salamander", 100}}), EquipmentSlot::Ring2);
+            hero.statusEffects().apply({StatusEffectType::Burn, 5, 1});
+            tickStatusEffects(hero);
+            check(!hero.statusEffects().has(StatusEffectType::Burn), "A burn ward shakes off burning");
+
+            // The shop only sells bases you've reached.
+            const auto shallowStock = app.shopStock();
+            check(std::all_of(shallowStock.begin(), shallowStock.end(), [](const auto* d) { return d->depth <= 1; }) && !shallowStock.empty(),
+                  "At first the merchant sells only the first bases");
+            app.floorCache_[9] = app.captureState(false);
+            const auto deeperStock = app.shopStock();
+            check(std::any_of(deeperStock.begin(), deeperStock.end(), [](const auto* d) { return d->depth == 8; }),
+                  "Reach deeper and better bases appear in the shop");
+            app.floorCache_.erase(9);
+
+            // A long rare survives a save (the hand-made test rings above wouldn't).
+            hero.inventory() = Inventory{}; hero.refreshEquipmentStats();
+            LootGenerator deep(5);
+            std::unique_ptr<Item> longRare;
+            for (int i = 0; i < 4000 && (!longRare || longRare->affixes().size() < 6); ++i)
+                longRare = deep.generate(13, 2, app.nextItemId_, {}, ItemRarity::Rare);
+            const auto affixCount = longRare->affixes().size();
+            ++app.nextItemId_;
+            hero.inventory().add(std::move(longRare));
+            roundTrip();
+            check(app.player_.inventory().items().back()->affixes().size() == affixCount && affixCount == 6, "A six-affix rare survives a save");
         }
 
         // Brawling: charge, grab, drag and throw.

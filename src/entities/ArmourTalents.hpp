@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "entities/Actor.hpp"
 
 namespace engine {
@@ -31,10 +33,17 @@ inline int armourPassive(const Actor& actor, PassiveKind kind) {
     }
     return armourMatches(actor,requirement) ? actor.talents().passiveValue(kind) : 0;
 }
+// Gear defences. Armour takes a share off every hit (with diminishing
+// returns), evasion is dodge, and ward is a shield that soaks hits and
+// refills once you've been left alone a few turns (Application::tickWard).
+inline int gearArmour(const Actor& actor) { return std::max(0, actor.inventory().defence(ArmourKind::Heavy) + actor.inventory().affixTotal(BonusStat::Armour)); }
+inline int gearEvasion(const Actor& actor) { return actor.inventory().defence(ArmourKind::Light) + actor.inventory().affixTotal(BonusStat::Evasion); }
+inline int gearWard(const Actor& actor) { return std::max(0, actor.inventory().defence(ArmourKind::Cloth) + actor.inventory().affixTotal(BonusStat::Ward)); }
+inline int armourReductionPercent(int armour) { return armour <= 0 ? 0 : std::min(60, armour * 100 / (armour + 40)); }
 inline int armourDodgeBonus(const Actor& actor) {
     int bonus=actor.stats().maxMana>0 && actor.stats().mana*2>=actor.stats().maxMana ? armourPassive(actor,PassiveKind::ClothWard) : 0;
     if (actor.statusEffects().has(StatusEffectType::Opening)) bonus+=armourPassive(actor,PassiveKind::LightEvasion);
-    return bonus;
+    return bonus+gearEvasion(actor);
 }
 inline int armourCritBonus(const Actor& actor) {
     return actor.statusEffects().has(StatusEffectType::Opening) ? armourPassive(actor,PassiveKind::LightPrecision) : 0;

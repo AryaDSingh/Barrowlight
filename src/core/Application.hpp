@@ -342,6 +342,8 @@ private:
     AIDecision roamStep(Monster& monster);
     std::optional<Position> flankStep(const Monster& monster, Position goal);
     void tickHunt();
+    void tickWard();
+    std::vector<const ItemDefinition*> shopStock() const;
     void spawnHunters();
     static std::string wandererName(const Monster& monster); // "Ogre, the Wanderer": no tier prefix
     // Breach and Essence (ApplicationRifts.cpp).

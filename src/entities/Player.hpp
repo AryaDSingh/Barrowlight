@@ -59,7 +59,13 @@ public:
         return result;
     }
     void refreshEquipmentStats() { stats() = effectiveStats(); }
+    // Deeper bases ask for Strength, Dexterity or Intelligence to wear.
+    bool meetsRequirements(const ItemDefinition& d) const {
+        return stats().strength >= d.reqStrength && stats().dexterity >= d.reqDexterity && stats().intelligence >= d.reqIntelligence;
+    }
     bool equip(std::size_t index, std::optional<EquipmentSlot> target={}) {
+        if (index < inventory().items().size() && inventory().items()[index]->definition() &&
+            !meetsRequirements(*inventory().items()[index]->definition())) return false;
         if (!inventory().equip(index,target)) return false;
         refreshEquipmentStats(); return true;
     }
@@ -69,6 +75,8 @@ public:
     }
 
     bool bloodRelic=false, animationRelic=false;
+    // Cloth's ward: a shield over your life. Transient: it refills on load.
+    int ward=0, wardRest=0;
     // Ascendancy (entities/Ascendancy.hpp): the chosen ascendancy's id
     // (empty until the first trial), unspent ascendancy points, and the
     // trials' sigils held and trials cleared (bit n-1 = trial n).

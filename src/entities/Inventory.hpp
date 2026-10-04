@@ -28,6 +28,18 @@ public:
         for (const auto& item : equipment_) if (item) total += item->affixValue(stat);
         return total;
     }
+    // The worn bases' defence of one kind: heavy pieces and shields give
+    // armour, light pieces evasion, cloth pieces ward.
+    int defence(ArmourKind kind) const {
+        int total = 0;
+        for (const auto& item : equipment_) {
+            if (!item || !item->definition()) continue;
+            const auto& d = *item->definition();
+            const auto own = d.weaponKind == WeaponKind::Shield ? ArmourKind::Heavy : d.armourKind;
+            if (own == kind) total += d.defence;
+        }
+        return total;
+    }
     const Item* equipped(EquipmentSlot slot) const {
         const auto index = static_cast<std::size_t>(slot);
         return index < equipment_.size() ? equipment_[index].get() : nullptr;

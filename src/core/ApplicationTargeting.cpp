@@ -231,6 +231,14 @@ void Application::renderBattleHud() {
 
     ui_.bar(window_,{{14,90},{228,20}},stats.maxHp?static_cast<float>(stats.hp)/stats.maxHp:0.f,sf::Color(176,38,34),
         "Life  "+std::to_string(stats.hp)+" / "+std::to_string(stats.maxHp));
+    // Ward: a pale, shimmering layer along the top of your life.
+    if (player_.ward>0 && stats.maxHp>0) {
+        const float shimmer=0.5f+0.5f*std::sin(animationClock_.getElapsedTime().asSeconds()*3.f);
+        sf::RectangleShape ward({226.f*std::min(1.f,static_cast<float>(player_.ward)/stats.maxHp),6.f});
+        ward.setPosition({15.f,91.f});
+        ward.setFillColor(sf::Color(170,215,255,static_cast<std::uint8_t>(150+70*shimmer)));
+        window_.draw(ward);
+    }
     ui_.bar(window_,{{14,114},{228,20}},stats.maxMana?static_cast<float>(stats.mana)/stats.maxMana:0.f,sf::Color(52,92,190),
         "Mana  "+std::to_string(stats.mana)+" / "+std::to_string(stats.maxMana));
     const bool maxLevel=player_.level()>=kRunMaxLevel;

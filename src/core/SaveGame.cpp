@@ -77,12 +77,12 @@ bool validItems(const SaveGameState& state) {
         if (!definition || item.instanceId == 0 || item.instanceId >= state.nextItemId ||
             !ids.insert(item.instanceId).second || item.location < -5 || item.location >= kEquipmentSlotCount)
             return false;
-        if (item.affixes.size() > 2 || item.rollTier < 0 || item.rollTier > 5) return false;
-        unsigned int usedStats = 0;
+        if (item.affixes.size() > static_cast<std::size_t>(kMaxAffixes) || item.rollTier < 0 || item.rollTier > 5) return false;
+        std::uint64_t usedStats = 0;
         for (const auto& rolled : item.affixes) {
             const auto* affix = findAffix(rolled.id);
             if (!affix || !(affix->slots & (1u << static_cast<unsigned>(definition->slot)))) return false;
-            const unsigned int mask = 1u << static_cast<unsigned>(affix->stat);
+            const std::uint64_t mask = std::uint64_t{1} << static_cast<unsigned>(affix->stat);
             if ((usedStats & mask) || rolled.value < affix->minimum + item.rollTier * affix->perTier ||
                 rolled.value > affix->maximum + item.rollTier * affix->perTier) return false;
             usedStats |= mask;
@@ -593,7 +593,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
     for (std::size_t i = 0; i < itemCount; ++i) {
         SaveGameState::ItemSaveData item;
         std::size_t affixCount = 0;
-        if (!(in >> item.definitionId >> item.instanceId >> item.location >> item.position.x >> item.position.y >> item.rollTier >> affixCount) || affixCount > 2)
+        if (!(in >> item.definitionId >> item.instanceId >> item.location >> item.position.x >> item.position.y >> item.rollTier >> affixCount) || affixCount > static_cast<std::size_t>(kMaxAffixes))
             return std::nullopt;
         for (std::size_t j = 0; j < affixCount; ++j) {
             RolledAffix affix;

@@ -197,7 +197,9 @@ struct PlaytestBot {
     int itemScore(const Item& item, PlayerClass cls) {
         const auto b = item.bonuses();
         const int primary = cls == PlayerClass::Warrior ? b.strength : cls == PlayerClass::Thief ? b.dexterity : b.intelligence;
-        return primary * 3 + b.strength + b.dexterity + b.intelligence + b.maxHp + b.maxMana / 2 + static_cast<int>(item.rarity()) * 2;
+        const auto* d = item.definition();
+        const int base = d ? d->damage * 4 + d->defence * 2 : 0; // a base's own damage and defence
+        return base + primary * 3 + b.strength + b.dexterity + b.intelligence + b.maxHp + b.maxMana / 2 + static_cast<int>(item.affixes().size()) * 2;
     }
     void equipBetter(PlayerClass cls) {
         auto& inv = app.player_.inventory();

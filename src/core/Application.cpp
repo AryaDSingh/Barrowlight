@@ -1313,6 +1313,15 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
 int Application::situationalBonus(const Talent& talent, const Actor& target) const {
     const auto& kit=player_.talents();
     int bonus=0;
+    {
+        // Gear that rewards the moment: darkness or light, water, desperation, surprise.
+        const auto& gear=player_.inventory();
+        const auto here=player_.position();
+        bonus+=tileLit(here)?gear.affixTotal(BonusStat::LightDamage):gear.affixTotal(BonusStat::DarkDamage);
+        if (conducts(surfaceAt(here))) bonus+=gear.affixTotal(BonusStat::WaterDamage);
+        if (player_.stats().hp*2<player_.stats().maxHp) bonus+=gear.affixTotal(BonusStat::LowLifeDamage);
+        if (const auto* m=dynamic_cast<const Monster*>(&target); m && m->tactics.alert==0) bonus+=gear.affixTotal(BonusStat::UnawareDamage);
+    }
     const auto& effects=target.statusEffects();
     if (talent.tree==TalentTree::Whip && (effects.has(StatusEffectType::Stun) || effects.has(StatusEffectType::Grappled) ||
         effects.has(StatusEffectType::Blinded) || effects.has(StatusEffectType::Burn) || effects.has(StatusEffectType::Chill) ||
@@ -1755,7 +1764,15 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     int guard=decision.target->statusEffects().magnitudeOf(StatusEffectType::Guard);
                     if (guard && decision.target->inventory().equipped(EquipmentSlot::OffHand)) guard+=decision.target->talents().passiveValue(PassiveKind::ShieldTraining);
                     guard+=armourGuardBonus(*decision.target)+ascendancyGuardBonus(*decision.target);
+                    damage=damage*(100-armourReductionPercent(gearArmour(*decision.target)))/100;
                     damage=std::max(0,damage-guard);
+                    // Ward soaks the blow before your life does.
+                    if (decision.target==&player_ && damage>0) {
+                        player_.wardRest=0;
+                        const int soaked=std::min(player_.ward,damage);
+                        player_.ward-=soaked; damage-=soaked;
+                        if (soaked && !damage) log("Your ward drinks the blow.");
+                    }
                     decision.target->stats().hp -= damage;
                     if (damage>0) flashActor(*decision.target);
                     if (const auto* lord=dynamic_cast<const Monster*>(&actor); lord && lord->eventChampion==kChampionVampire && damage>0) {
@@ -2666,6 +2683,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
         player_.position().y, "), ", player_.stats().hp, '/', player_.stats().maxHp, " hp.");
     floorEntrance_=state.floorEntrance; floorExit_=state.floorExit;
     gold_=state.gold; quietTurns_=state.quietTurns; floorTurns_=state.floorTurns;
+    player_.ward=gearWard(player_); player_.wardRest=0;
     breachTurns_=state.breachTurns; breachAt_=state.breachAt; breachKills_=state.breachKills; crystalCracks_.clear(); combatThisTurn_=false;
     if (includeFloors) {
         floorCache_.clear();
