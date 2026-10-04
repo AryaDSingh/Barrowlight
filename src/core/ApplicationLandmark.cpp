@@ -107,12 +107,11 @@ std::vector<Application::LandmarkChoice> Application::landmarkChoices() const {
             const Patron god = shrineGod();
             const auto& info = patronInfo(god);
             if (patron() == god)
-                return {{"Commune", "aura", "Restore all life and mana and reset every cooldown. " + std::string(info.short_) + " is pleased: +" +
-                         std::to_string(kCommuneFavor) + " favor.", "Free", true}};
-            const std::string cost = patron() == Patron::None ? "Your oath. Favor starts at " + std::to_string(kSwornFavor) + "."
-                : "You forsake " + std::string(patronInfo(patron()).short_) + ", and its wrath falls on you.";
+                return {{"Commune", "aura", "Kneel before your god, and be made whole.", "Freely given", true}};
+            const std::string cost = patron() == Patron::None ? "An oath, once made, binds"
+                : std::string(patronInfo(patron()).short_) + " will not forgive you";
             return {{"Swear yourself", "skull-crossed-bones", std::string("Likes: ") + info.likes + " Hates: " + info.hates, cost, true},
-                    {"Pray for rest", "healing", "Restore all life and mana and reset every cooldown. No oath is asked.", "Free", true}};
+                    {"Pray for rest", "healing", "Rest a while in its shadow. Nothing is asked.", "Freely given", true}};
         }
         case LandmarkKind::HealingFountain:
             return {{"Drink", "healing", "Restore all life and mana, and wash away poison, burns, chills and curses.", "Free", true}};
@@ -128,27 +127,23 @@ std::vector<Application::LandmarkChoice> Application::landmarkChoices() const {
                          " turns unless you cleanse it", true}};
         }
         case LandmarkKind::TreasureHoard:
-            return {{"Take a handful", "knapsack", "+" + std::to_string(handfulGold(floorDepth(currentFloor_))) + " gold. Nothing stirs.", "Free", true},
-                    {"Seize it all", "locked-chest", "+" + std::to_string(hoardGold(floorDepth(currentFloor_))) +
-                     " gold and a rare item. Its guardians wake: three foes, one elite, come for you.", "Guardians attack", true}};
+            return {{"Take a handful", "knapsack", "Just a little. No one will notice.", "Quietly", true},
+                    {"Seize it all", "locked-chest", "All of it. Every coin.", "Greedy", true}};
         case LandmarkKind::PrisonerCage:
-            return {{"Break the lock", "hammer-drop", "The prisoner repays you with a rare item. The clang wakes every enemy within " +
-                     std::to_string(kCageAlertRadius) + " steps.", "Loud", true},
-                    {"Pick the lock", "stiletto", "Quietly. The prisoner repays you with a magic item.",
-                     "Needs " + std::to_string(kPickLockDexterity) + " Dexterity (you have " + std::to_string(stats.dexterity) + ")",
-                     stats.dexterity >= kPickLockDexterity}};
+            return {{"Break the lock", "hammer-drop", "Smash it open. He'll be grateful.", "Loud", true},
+                    {"Pick the lock", "stiletto", "Ease it open without a sound.",
+                     stats.dexterity >= kPickLockDexterity ? "Quiet" : "Your hands aren't steady enough", stats.dexterity >= kPickLockDexterity}};
         case LandmarkKind::ChampionPit:
-            return {{"Light the brazier", "campfire", "A nightmare champion answers the challenge. It drops a rare item when it falls.",
-                     "One champion", true},
-                    {"Stoke it high", "sword-clash", "Two nightmare champions answer at once, each with a rare item.", "Two champions", true}};
+            return {{"Light the brazier", "campfire", "Issue the challenge.", "Something will answer", true},
+                    {"Stoke it high", "sword-clash", "Make it a blaze no one could ignore.", "More will answer", true}};
         case LandmarkKind::SealedTomb:
             return {{"Break the seal", "tombstone", "The Risen King climbs out with two skeletal guards. Slay him for a unique item.",
                      "A nightmare champion", true}};
         case LandmarkKind::PalePeddler:
-            return {{"Pay in gold", "locked-chest", "He sells you one unique item, sight unseen.",
-                     "Costs " + std::to_string(peddlerGold(floorDepth(currentFloor_))) + " gold", gold_ >= peddlerGold(floorDepth(currentFloor_))},
-                    {"Pay in blood", "bleeding-heart", "He sells you one unique item, sight unseen.",
-                     "Costs " + std::to_string(kPeddlerLife) + " maximum life, forever", player_.baseStats().maxHp > 3 * kPeddlerLife}};
+            return {{"Pay in gold", "locked-chest", "Something rare, sight unseen.",
+                     std::to_string(peddlerGold(floorDepth(currentFloor_))) + " gold", gold_ >= peddlerGold(floorDepth(currentFloor_))},
+                    {"Pay in blood", "bleeding-heart", "Something rare, sight unseen.",
+                     "A piece of you, forever", player_.baseStats().maxHp > 3 * kPeddlerLife}};
         case LandmarkKind::LamplighterRest:
             if (player_.lightSource < 2)
                 return {{"Take the lantern", "campfire", "A lantern lights six tiles around you instead of a torch's four. L still shutters it.", "Free", true}};
@@ -164,11 +159,9 @@ std::vector<Application::LandmarkChoice> Application::landmarkChoices() const {
         }
         case LandmarkKind::ChainedDemon: {
             const int doom = std::max(1, stats.maxHp * kDemonDoomPercent / 100);
-            return {{"Accept its bargain", "skull-crossed-bones", "It hands you a unique item from its hoard.",
-                     "Doom: lose " + std::to_string(doom) + " life in " + std::to_string(kDemonDoomTurns) +
-                         " turns unless cleansed, and mana drains for " + std::to_string(kDemonDrainTurns) + " turns", true},
-                    {"Slay it in its chains", "decapitation", "The chains snap and it fights. Kill it for a unique item.",
-                     "A nightmare champion", true}};
+            (void)doom;
+            return {{"Accept its bargain", "skull-crossed-bones", "Take what it offers.", "It will want something back", true},
+                    {"Slay it in its chains", "decapitation", "Break its chains and fight.", "It has waited a long time", true}};
         }
         case LandmarkKind::None: break;
     }
@@ -843,21 +836,6 @@ void Application::renderShrine() {
         ui_.paragraph(window_, c.effect, r.position.x + 18, y, r.size.x - 36, 15, ui::kText);
         float costY = r.position.y + r.size.y - 50;
         ui_.paragraph(window_, c.cost, r.position.x + 18, costY, r.size.x - 36, 14, c.affordable ? ui::kGood : ui::kBad, ui::Font::Bold);
-    }
-    // A shrine's god: what it gives its faithful, on the card between the two offers.
-    if (landmark_ == LandmarkKind::Shrine && count == 2) {
-        const auto& god = patronInfo(shrineGod());
-        const auto r = shrineChoice(1);
-        const sf::Color tint(static_cast<std::uint8_t>(god.r), static_cast<std::uint8_t>(god.g), static_cast<std::uint8_t>(god.b));
-        ui_.inset(window_, r, sf::Color(tint.r, tint.g, tint.b, 90));
-        ui_.textCentered(window_, "Its gifts", {{r.position.x, r.position.y + 12}, {r.size.x, 30}}, 20, tint, ui::Font::Title);
-        float y = r.position.y + 50;
-        ui_.text(window_, "At " + std::to_string(kFavorBoon) + " favor", {r.position.x + 18, y}, 14, ui::kGold, ui::Font::Bold); y += 20;
-        ui_.paragraph(window_, god.boon, r.position.x + 18, y, r.size.x - 36, 14, ui::kText); y += 8;
-        ui_.text(window_, "At " + std::to_string(kFavorPrayer) + " favor, pray", {r.position.x + 18, y}, 14, ui::kGold, ui::Font::Bold); y += 20;
-        ui_.paragraph(window_, god.prayer, r.position.x + 18, y, r.size.x - 36, 14, ui::kText); y += 8;
-        ui_.text(window_, "At " + std::to_string(kFavorWrath) + " favor: wrath", {r.position.x + 18, y}, 14, ui::kBad, ui::Font::Bold); y += 20;
-        ui_.paragraph(window_, god.wrath, r.position.x + 18, y, r.size.x - 36, 14, ui::kMuted);
     }
     ui_.button(window_, kShrineLeave, "Leave (Esc)", hovered(kShrineLeave), true, 16);
 }
