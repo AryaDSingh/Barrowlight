@@ -1,3 +1,4 @@
+#include "entities/AttributeFormulas.hpp"
 #include "core/Application.hpp"
 #include "entities/ArmourTalents.hpp"
 #include "entities/RunProgression.hpp"
@@ -205,7 +206,7 @@ void Application::travelFloor(int destination,bool fromTown,bool falling) {
     cancelTargeting(); exitMenu_=false; restTurns_=0;
     if (found==floorCache_.end()) {
         currentFloor_=destination; mode_=GameMode::Playing; dungeonMenu_=false;
-        regenerateLevel(std::random_device{}());
+        regenerateLevel(freshSeed());
         log("Entered ",dungeonName(dungeonIndex(currentFloor_)),", depth ",floorInDungeon(currentFloor_),".");
         return;
     }
@@ -263,7 +264,7 @@ void Application::fallToNextFloor() {
             landing.push_back(p);
         }
     if (!landing.empty()) {
-        std::mt19937 rng(std::random_device{}());
+        std::mt19937 rng(freshSeed());
         player_.setPosition(landing[std::uniform_int_distribution<std::size_t>(0, landing.size() - 1)(rng)]);
     }
     updateFieldOfView();

@@ -2,6 +2,7 @@
 // Not part of the test suite: run it on demand for a playtest report.
 //   playtest_bot [runs per class]   (default 4)
 // Writes build/playtest/report.txt and screenshots beside it.
+#include <optional>
 #include <algorithm>
 #include <chrono>
 #include <deque>
@@ -451,7 +452,7 @@ struct PlaytestBot {
     }
 
     // Plays every run and writes the report (a member, for the hidden window).
-    static int play(int runs) {
+    static int play(int runs, std::optional<unsigned> seed = std::nullopt) {
         const auto out = std::filesystem::current_path() / "build" / "playtest";
         std::filesystem::create_directories(out);
         Application app;
@@ -462,12 +463,16 @@ struct PlaytestBot {
         const auto started = std::chrono::steady_clock::now();
         for (auto cls : {PlayerClass::Warrior, PlayerClass::Mage, PlayerClass::Thief}) {
             for (int r = 1; r <= runs; ++r) {
+                // Each run gets its own repeatable luck: same seed, same run.
+                if (seed) seedRandomness(*seed + static_cast<unsigned>(r) * 101u + static_cast<unsigned>(cls) * 7919u);
                 results.push_back(bot.playRun(cls, r));
                 std::cout << "run done: class " << static_cast<int>(cls) << " #" << r << " -> floor " << results.back().floor << " (" << results.back().end << ")" << std::endl;
             }
         }
         std::ostringstream summary;
-        summary << "PLAYTEST BOT REPORT\n" << runs << " runs per class, "
+        summary << "PLAYTEST BOT REPORT\n" << runs << " runs per class, ";
+        if (seed) summary << "seed " << *seed << ", ";
+        summary
                 << std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - started).count() << "s\n\n";
         for (auto cls : {PlayerClass::Warrior, PlayerClass::Mage, PlayerClass::Thief}) {
             int total = 0, best = 0, n = 0, levels = 0, wins = 0;
@@ -497,5 +502,12 @@ int main(int argc, char** argv) {
         std::cout << (ok ? "loads fine" : "load FAILED") << std::endl;
         return ok ? 0 : 1;
     }
-    return engine::PlaytestBot::play(argc > 1 ? std::max(1, std::atoi(argv[1])) : 4);
+    // playtest_bot [runs] [--seed S]
+    int runs = 4; std::optional<unsigned> seed;
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--seed" && i + 1 < argc) seed = static_cast<unsigned>(std::strtoul(argv[++i], nullptr, 10));
+        else runs = std::max(1, std::atoi(argv[i]));
+    }
+    return engine::PlaytestBot::play(runs, seed);
 }

@@ -90,10 +90,16 @@ bool didDodge(float chance, float roll) {
     return roll < chance;
 }
 
-bool rollChance(float probability) {
+std::mt19937& combatRng() {
     static std::mt19937 rng{std::random_device{}()};
+    return rng;
+}
+void seedRandomness(std::uint32_t seed) { combatRng().seed(seed); }
+unsigned freshSeed() { return static_cast<unsigned>(combatRng()()); }
+
+bool rollChance(float probability) {
     std::uniform_real_distribution<float> roll(0.f, 1.f);
-    return didDodge(probability, roll(rng)); // didDodge is really just "roll < chance" --
+    return didDodge(probability, roll(combatRng())); // didDodge is really just "roll < chance" --
                                               // reused generically here, not dodge-specific
 }
 

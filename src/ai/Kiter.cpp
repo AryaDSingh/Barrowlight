@@ -5,6 +5,7 @@
 
 #include "ai/AIUtils.hpp"
 #include "entities/Actor.hpp"
+#include "entities/AttributeFormulas.hpp"
 #include "world/FieldOfView.hpp"
 #include "world/Map.hpp"
 #include "world/LineOfFire.hpp"
@@ -41,9 +42,8 @@ AIDecision Kiter::decideAction(const Actor& self, const Map& map, Actor& player,
         decision.attackPower = attackProfile_.power;
         decision.scalingStat = attackProfile_.scalingStat;
         if (attackProfile_.onHitEffect.has_value()) {
-            static std::mt19937 rng{std::random_device{}()};
             std::uniform_real_distribution<float> roll(0.f, 1.f);
-            if (roll(rng) <= attackProfile_.onHitChance) {
+            if (roll(combatRng()) <= attackProfile_.onHitChance) {
                 decision.effectToApply = attackProfile_.onHitEffect;
             }
         }

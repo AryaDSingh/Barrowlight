@@ -2403,7 +2403,7 @@ void Application::selectClass(PlayerClass cls) {
     pendingFinalVictory_ = false;
 
     progressionReviewPending_=true;
-    loot_.restore(std::random_device{}());
+    loot_.restore(freshSeed());
     player_.talents() = TalentSet({basicAttack(),basicCleanse()});
     player_.talents().learnTalent(basicShove()); // anyone can push a foe into trouble
     if (cls == PlayerClass::Mage) player_.talents().learnTalent(basicLight()); // mages make their own light

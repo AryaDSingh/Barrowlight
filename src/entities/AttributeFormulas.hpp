@@ -1,6 +1,18 @@
 #pragma once
 
+#include <cstdint>
+#include <random>
+
 namespace engine {
+
+// One source of in-run randomness: combat rolls, enemy on-hit rolls and the
+// seeds of new floors all draw from it. Unseeded, it starts from the system's
+// entropy as before; seedRandomness() makes a whole run repeatable, so two
+// builds can be compared on the same luck (the playtest bot's --seed).
+std::mt19937& combatRng();
+void seedRandomness(std::uint32_t seed);
+// A seed for something new (a floor, the loot stream), drawn from combatRng().
+unsigned freshSeed();
 
 // Attribute-driven combat formulas. Fully rewritten for the new
 // attribute system (superseding the original Prompt 14 version, which

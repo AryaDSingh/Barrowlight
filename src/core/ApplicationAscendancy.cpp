@@ -1,3 +1,4 @@
+#include "entities/AttributeFormulas.hpp"
 #include "core/Application.hpp"
 
 #include <algorithm>
@@ -136,7 +137,7 @@ bool Application::leaveTrialState() {
     trial_ = 0;
     if (found == floorCache_.end()) {
         currentFloor_ = trialReturnFloor_;
-        regenerateLevel(std::random_device{}());
+        regenerateLevel(freshSeed());
         return true;
     }
     auto next = captureState(false);

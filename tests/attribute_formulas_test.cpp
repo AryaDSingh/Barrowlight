@@ -99,6 +99,20 @@ int main() {
     check(!didDodge(0.f, 0.f), "didDodge(0, 0) == false (zero chance never dodges, even at roll 0)");
     check(didDodge(1.f, 0.f), "didDodge(1.0, 0.0) == true (a theoretical 100% chance always dodges)");
 
+    // --- Seeded randomness: the same seed replays the same rolls and floors.
+    {
+        const auto sample=[] {
+            std::string rolls;
+            for (int i=0;i<64;++i) rolls+=rollChance(0.5f)?'1':'0';
+            return rolls+":"+std::to_string(freshSeed());
+        };
+        seedRandomness(1234); const auto first=sample();
+        seedRandomness(1234); const auto again=sample();
+        seedRandomness(1235); const auto other=sample();
+        check(first==again,"seedRandomness replays the same rolls and seeds");
+        check(first!=other,"a different seed gives different rolls");
+    }
+
     std::cout << "\n"
               << (g_allOk ? "All attribute formula checks passed." : "Some checks FAILED.") << '\n';
     return g_allOk ? 0 : 1;
