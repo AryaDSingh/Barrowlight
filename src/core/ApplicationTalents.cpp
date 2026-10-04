@@ -245,7 +245,9 @@ void Application::handleTreeKey(sf::Keyboard::Key key, bool shift) {
 void Application::renderTalentTrees() {
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const auto hovered=[&](const sf::FloatRect& r){ return !bindingTalent_ && mouse && r.contains(*mouse); };
-    ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(150,145,140));
+    // Two framed halves (trees, details): on a wide screen they dock to its edges.
+    ui_.glass(window_,{{0,0},{842,720}},true);
+    ui_.glass(window_,{{842,0},{438,720}},true);
     ui_.heading(window_,"Talents",{28,16},28);
     // Point counters, like ToME's boxed "Class points: 0" tabs.
     float x=200;
@@ -264,10 +266,17 @@ void Application::renderTalentTrees() {
     const auto layout=layoutTrees(player_,treeScroll_);
     for(float dx:{kTreeColumnX[1]-14,kTreeColumnX[2]-14,836.f}) ui_.divider(window_,dx,72,700);
     const float viewHeight=treeViewBottom_-kTreeViewTop;
-    sf::View clip(sf::FloatRect({0,kTreeViewTop},{kTreeViewWidth,viewHeight}));
-    const auto box=letterbox();
-    clip.setViewport(sf::FloatRect({box.position.x,box.position.y+box.size.y*kTreeViewTop/720.f},
-        {box.size.x*kTreeViewWidth/1280.f,box.size.y*viewHeight/720.f}));
+    // Clipped to the tree area, within whatever frame the screen is drawn in.
+    const sf::View frame=window_.getView();
+    // Only the part of the tree area inside this frame (a docked half may hold none of it).
+    const sf::Vector2f frameOrigin=frame.getCenter()-frame.getSize()/2.f, frameSize=frame.getSize();
+    const float clipLeft=std::max(0.f,frameOrigin.x), clipRight=std::min(kTreeViewWidth,frameOrigin.x+frameSize.x);
+    sf::View clip(sf::FloatRect({clipLeft,kTreeViewTop},{std::max(1.f,clipRight-clipLeft),viewHeight}));
+    {
+        const auto vp=frame.getViewport();
+        clip.setViewport(sf::FloatRect({vp.position.x+vp.size.x*(clipLeft-frameOrigin.x)/frameSize.x,vp.position.y+vp.size.y*(kTreeViewTop-frameOrigin.y)/frameSize.y},
+            {clipRight>clipLeft?vp.size.x*(clipRight-clipLeft)/frameSize.x:0.f,vp.size.y*viewHeight/frameSize.y}));
+    }
     window_.setView(clip);
     for(const auto& [category,at]:layout.headings) {
         const auto info=categoryInfo(category);
@@ -298,7 +307,7 @@ void Application::renderTalentTrees() {
                 rank==kMaxTalentRank?ui::kRare:rank>=3?ui::kGood:rank?ui::kText:access?ui::kMuted:sf::Color(170,70,60),ui::Font::Bold);
         }
     }
-    window_.setView(uiView_);
+    window_.setView(frame);
     // A slim scrollbar beside the last column once the trees overflow.
     if (const float range=treeScrollMax(); range>0) {
         const float trackTop=kTreeViewTop+4, track=viewHeight-8, thumb=std::max(40.f,track*viewHeight/(viewHeight+range));
@@ -313,7 +322,7 @@ void Application::renderTalentTrees() {
     const auto& d=talentCatalog()[treeSelection_*4+abilitySelection_];
     const auto& t0=d.ranks[0];
     const int rank=player_.talents().rankOf(d.id);
-    ui_.panel(window_,kDetails,false,sf::Color(130,125,125));
+    ui_.glass(window_,kDetails,false);
     const float left=kDetails.position.x+18, width=kDetails.size.x-36;
     float y=kDetails.position.y+14;
     const sf::FloatRect bigIcon{{left,y},{56,56}};
@@ -383,7 +392,7 @@ void Application::renderTalentTrees() {
     // --- Hotbar binding dialog -------------------------------------------------
     if(bindingTalent_) {
         beginMenu(140);
-        ui_.panel(window_,kBindingDialog,true,sf::Color(150,145,140));
+        ui_.glass(window_,kBindingDialog,true);
         ui_.text(window_,"Assign to a hotbar slot",{kBindingDialog.position.x+24,kBindingDialog.position.y+16},20,ui::kGold,ui::Font::Title);
         ui_.text(window_,"Page one on top, page two below. The slot you pick is replaced.",
             {kBindingDialog.position.x+24,kBindingDialog.position.y+46},14,ui::kMuted);

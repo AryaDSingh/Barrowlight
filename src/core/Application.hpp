@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include <climits>
 #include <deque>
 #include <set>
@@ -348,6 +350,12 @@ private:
     float hudHintTop_ = 120.f;           // where map hints start, under the top-left cluster
     std::deque<float> logTimes_;         // when each log line was written, so old ones fade
     bool menuOpen() const;               // a 1280x720 menu is in front of the play screen
+    // Wide screens dock a menu's two halves to the screen's edges: its left
+    // part (design x below the split) to the left edge, the rest to the
+    // right edge, with the play screen showing between. 0 = centred.
+    float menuSplit() const;
+    sf::Vector2f designFromPlay(sf::Vector2f p) const;
+    void drawMenu(const std::function<void()>& draw);
     void beginMenu(std::uint8_t dim);    // dims the whole play screen, then draws in the menu's frame
     sf::FloatRect hotbarSlotRect(std::size_t slot) const;
     sf::FloatRect actionButtonRect(std::size_t index) const;

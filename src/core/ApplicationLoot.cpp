@@ -91,7 +91,7 @@ void Application::renderVault() {
     using namespace screen;
     if (vaultMenu_==1) {
         beginMenu(140);
-        ui_.panel(window_,kVaultWarning,true,sf::Color(150,140,150));
+        ui_.glass(window_,kVaultWarning,true);
         const float x=kVaultWarning.position.x, w=kVaultWarning.size.x;
         ui_.icon(window_,"locked-chest",{{x+w/2-34,kVaultWarning.position.y+22},{68,68}},sf::Color(235,190,255));
         ui_.textCentered(window_,"Optional vault",{{x,kVaultWarning.position.y+96},{w,44}},34,ui::kGold,ui::Font::Title);
@@ -109,7 +109,7 @@ void Application::renderVault() {
         ui_.button(window_,vaultCancel(1),"Leave it sealed (Esc)",hovered(vaultCancel(1)),true,16);
         return;
     }
-    ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(150,140,150));
+    ui_.glass(window_,{{0,0},{1280,720}},true);
     ui_.heading(window_,"Choose one reward",{60,30},32);
     ui_.text(window_,"Click a reward to inspect it, then claim it. The other two are lost.",{420,46},15,ui::kMuted);
     for (std::size_t i=0;i<vaultRewards_.size();++i) {

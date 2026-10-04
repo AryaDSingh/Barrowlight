@@ -798,7 +798,7 @@ void Application::renderShrine() {
     const auto mouse = mousePixel_ ? std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)) : std::nullopt;
     const auto hovered = [&](const sf::FloatRect& r) { return mouse && r.contains(*mouse); };
     beginMenu(140);
-    ui_.panel(window_, kShrineDialog, true, sf::Color(150, 140, 130));
+    ui_.glass(window_, kShrineDialog,true);
     const float x = kShrineDialog.position.x, w = kShrineDialog.size.x;
     ui_.textCentered(window_, landmarkTitle(),
         {{x, kShrineDialog.position.y + 20}, {w, 44}}, 34, ui::kRare, ui::Font::Title);

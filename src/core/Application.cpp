@@ -680,8 +680,43 @@ bool Application::menuOpen() const {
     return mode_ != GameMode::Playing || inventoryOpen_ || shrineMenu_ || vaultMenu_ || exitMenu_ || trialMenu_ || ascendancyMenu_;
 }
 
+float Application::menuSplit() const {
+    if (mode_ == GameMode::Town) return 0.f;          // the town stays centred
+    if (inventoryOpen_) return 540.f;                 // character | bag
+    if (mode_ == GameMode::AbilityChoice) return 842.f; // trees | details
+    return 0.f;
+}
+
+// A point on the play screen, in the menu's own 1280x720 coordinates.
+sf::Vector2f Application::designFromPlay(sf::Vector2f p) const {
+    const float w = playLayout::screenWidth, extra = w - static_cast<float>(kWindowWidth);
+    const float split = menuSplit();
+    if (extra <= 0.f) return p;
+    if (split <= 0.f) return {p.x - extra / 2, p.y};
+    if (p.x < split) return p;
+    if (p.x >= split + extra) return {p.x - extra, p.y};
+    return {-10000.f, p.y}; // the gap: the map, not the menu
+}
+
+// Draws a menu: centred, or in two docked halves on a wide screen.
+void Application::drawMenu(const std::function<void()>& draw) {
+    const float w = playLayout::screenWidth, extra = w - static_cast<float>(kWindowWidth);
+    const float split = menuSplit();
+    if (extra <= 0.f || split <= 0.f) { window_.setView(uiView_); draw(); return; }
+    const auto box = playView_.getViewport();
+    const auto half = [&](float designLeft, float designWidth, float screenLeft) {
+        sf::View view(sf::FloatRect({designLeft, 0}, {designWidth, static_cast<float>(kWindowHeight)}));
+        view.setViewport(sf::FloatRect({box.position.x + box.size.x * screenLeft / w, box.position.y},
+                                       {box.size.x * designWidth / w, box.size.y}));
+        window_.setView(view);
+        draw();
+    };
+    half(0.f, split, 0.f);
+    half(split, static_cast<float>(kWindowWidth) - split, split + extra);
+}
+
 void Application::beginMenu(std::uint8_t dim) {
-    if (mode_ == GameMode::Playing) {
+    if (mode_ == GameMode::Playing || mode_ == GameMode::AbilityChoice || mode_ == GameMode::AttributeAllocation) {
         window_.setView(playView_);
         sf::RectangleShape shade({playLayout::screenWidth, static_cast<float>(kWindowHeight)});
         shade.setFillColor(sf::Color(0, 0, 0, dim)); window_.draw(shade);
@@ -713,7 +748,8 @@ void Application::handleEvent(const sf::Event& input) {
     // Mouse positions arrive in window pixels; everything below works in the
     // 1280x720 layout, whatever the window's size and shape.
     const auto toLayout = [&](sf::Vector2i pixel) {
-        const auto p = window_.mapPixelToCoords(pixel, menuOpen() ? uiView_ : playView_);
+        auto p = window_.mapPixelToCoords(pixel, playView_);
+        if (menuOpen()) p = designFromPlay(p);
         return sf::Vector2i{static_cast<int>(std::floor(p.x)), static_cast<int>(std::floor(p.y))};
     };
     sf::Event converted = input;
@@ -2859,7 +2895,7 @@ void Application::renderGameOver() {
 void Application::renderAttributeAllocation() {
     using namespace screen;
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
-    ui_.panel(window_,kAttributeDialog,true,sf::Color(150,145,140));
+    ui_.glass(window_,kAttributeDialog,true);
     const float x=kAttributeDialog.position.x, w=kAttributeDialog.size.x;
     ui_.textCentered(window_,"Level up",{{x,kAttributeDialog.position.y+22},{w,50}},38,ui::kGold,ui::Font::Title);
     const int points=player_.unspentAttributePoints();
@@ -2895,32 +2931,19 @@ void Application::render() {
     window_.clear(sf::Color(0, 0, 0));
     // Full-screen menus share a dim stone backdrop; screens that paint
     // their own background simply cover it.
-    window_.setView(uiView_);
-    if (mode_ != GameMode::Playing) ui_.stone(window_, {{0, 0}, {1280, 720}}, sf::Color(120, 115, 112));
-
-    if (mode_==GameMode::Town) { renderTown(); window_.display(); return; }
-    if (mode_ == GameMode::ClassSelection) {
-        renderClassSelection();
-        window_.display();
-        return;
-    }
-
-    if (mode_ == GameMode::GameOver) {
-        renderGameOver();
-        window_.display();
-        return;
-    }
-
-    if (mode_ == GameMode::AbilityChoice) {
-        renderTalentTrees();
-        window_.display();
-        return;
-    }
-
-    if (mode_ == GameMode::AttributeAllocation) {
-        renderAttributeAllocation();
-        window_.display();
-        return;
+    // The talent and attribute screens open over the dungeon, which stays drawn behind their glass.
+    const bool overScene = mode_ == GameMode::AbilityChoice || mode_ == GameMode::AttributeAllocation;
+    if (mode_ != GameMode::Playing && !overScene) {
+        // Full-screen menus: one backdrop edge to edge, never black bars.
+        window_.setView(playView_);
+        ui_.stone(window_, {{0, 0}, {playLayout::screenWidth, 720}}, sf::Color(120, 115, 112));
+        const auto finish = [&] { window_.display(); };
+        if (mode_ == GameMode::Town) {
+            drawMenu([&] { renderTown(); });
+            finish(); return;
+        }
+        if (mode_ == GameMode::ClassSelection) { drawMenu([&] { renderClassSelection(); }); finish(); return; }
+        if (mode_ == GameMode::GameOver) { drawMenu([&] { renderGameOver(); }); finish(); return; }
     }
 
     updateCamera();
@@ -3288,7 +3311,7 @@ void Application::render() {
     if (boss_ != nullptr && boss_->stats().hp > 0 &&
         exploredMap_.at(boss_->position().x, boss_->position().y) == Visibility::Visible) {
         const sf::FloatRect box{{playLayout::screenWidth / 2.f - 260, 8}, {520, 50}};
-        ui_.panel(window_, box, true, sf::Color(150, 140, 130));
+        ui_.glass(window_, box,true);
         ui_.textCentered(window_, boss_->name(), {box.position, {box.size.x, 26}}, 18, ui::kRare, ui::Font::Title);
         ui_.bar(window_, {{box.position.x + 16, box.position.y + 28}, {box.size.x - 32, 14}},
                 static_cast<float>(boss_->stats().hp) / static_cast<float>(boss_->stats().maxHp), sf::Color(196, 40, 32),
@@ -3303,7 +3326,10 @@ void Application::render() {
     if (vaultMenu_ || shrineMenu_ || exitMenu_) mapHints_.clear();
     window_.setView(playView_);
     renderMapHints();
-    if (inventoryOpen_) { beginMenu(150); renderInventory(); renderDraggedItem(); }
+    if (overScene) {
+        beginMenu(110);
+        drawMenu([&] { if (mode_ == GameMode::AbilityChoice) renderTalentTrees(); else renderAttributeAllocation(); });
+    } else if (inventoryOpen_) { beginMenu(110); drawMenu([&] { renderInventory(); renderDraggedItem(); }); }
     else if (!vaultMenu_ && !shrineMenu_ && !exitMenu_) { window_.setView(playView_); renderHudTooltips(); }
     window_.display();
 }

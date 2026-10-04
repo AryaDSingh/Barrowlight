@@ -247,6 +247,15 @@ void Kit::panel(sf::RenderTarget& target, sf::FloatRect r, bool ornate, sf::Colo
     flushQuads(target);
 }
 
+void Kit::glass(sf::RenderTarget& target, sf::FloatRect r, bool ornate, std::uint8_t alpha) const {
+    rect(target, r, sf::Color(9, 8, 11, alpha));
+    outline(target, r, sf::Color(140, 108, 62, 200), 1.f);
+    // A faint inner line keeps the edge crisp over bright ground.
+    outline(target, {{r.position.x + 3, r.position.y + 3}, {r.size.x - 6, r.size.y - 6}}, sf::Color(255, 230, 180, 18), 1.f);
+    flushQuads(target);
+    if (ornate) frame(target, r, true);
+}
+
 void Kit::inset(sf::RenderTarget& target, sf::FloatRect r, sf::Color glow) const {
     rect(target, r, sf::Color(12, 11, 12));
     // Raised rim: light top-left edge of the surrounding stone...

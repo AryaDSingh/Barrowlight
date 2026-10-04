@@ -826,6 +826,16 @@ struct ApplicationRewardsTestAccess {
                 app.window_.setSize({1680,720}); app.fitView(); app.updateCamera();
                 check(playLayout::screenWidth==1680.f && playLayout::mapWidth==1680.f,"An ultrawide window gets a wider play screen, all of it map");
                 snapshot("ui-hud-ultrawide.png");
+                // Menus on the ultrawide: halves docked to the edges, or centred on a full backdrop.
+                app.openInventory(); snapshot("ui-menu-inventory-ultrawide.png");
+                {
+                    // A click on the bag's right half lands on the same cell as at 16:9.
+                    const auto atWide=app.designFromPlay({1680.f-100.f,300.f}), inGap=app.designFromPlay({840.f,300.f});
+                    check(atWide.x==1180.f && inGap.x<0,"Docked menu halves keep their own coordinates; the gap is the map");
+                }
+                app.inventoryOpen_=false;
+                app.openTalentTrees(); snapshot("ui-menu-talents-ultrawide.png"); app.mode_=GameMode::Playing;
+                app.mode_=GameMode::Town; snapshot("ui-menu-town-ultrawide.png"); app.mode_=GameMode::Playing;
                 app.window_.setSize({1280,720}); app.fitView(); app.updateCamera();
                 snapshot("ui-hud-16x9.png");
                 app.player_.statusEffects().active().clear();

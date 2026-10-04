@@ -245,7 +245,7 @@ void Application::renderAscendancyChoice() {
     const auto mouse = mousePixel_ ? std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)) : std::nullopt;
     const auto hovered = [&](const sf::FloatRect& r) { return mouse && r.contains(*mouse); };
     beginMenu(160);
-    ui_.panel(window_, kAscendDialog, true, sf::Color(150, 135, 150));
+    ui_.glass(window_, kAscendDialog,true);
     const float x = kAscendDialog.position.x, w = kAscendDialog.size.x, top = kAscendDialog.position.y;
     ui_.textCentered(window_, "Choose your ascendancy", {{x, top + 22}, {w, 44}}, 34, ui::kUnique, ui::Font::Title);
     ui_.textCentered(window_, "This choice is permanent. Each trial won buys one of its six nodes.", {{x, top + 70}, {w, 22}}, 16, ui::kMuted);
@@ -295,7 +295,7 @@ void Application::renderAscendancy() {
     const auto mouse = mousePixel_ ? std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)) : std::nullopt;
     const auto hovered = [&](const sf::FloatRect& r) { return mouse && r.contains(*mouse); };
     beginMenu(150);
-    ui_.panel(window_, kAscendDialog, true, sf::Color(150, 135, 150));
+    ui_.glass(window_, kAscendDialog,true);
     const float x = kAscendDialog.position.x, w = kAscendDialog.size.x, top = kAscendDialog.position.y;
     const sf::FloatRect emblem{{x + 30, top + 22}, {72, 72}};
     ui_.inset(window_, emblem, ui::kUnique);

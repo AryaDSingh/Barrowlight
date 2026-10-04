@@ -560,7 +560,7 @@ void Application::renderTravel() {
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
     beginMenu(120);
-    ui_.panel(window_,kTravelDialog,true,sf::Color(150,145,140));
+    ui_.glass(window_,kTravelDialog,true);
     ui_.textCentered(window_,"Stairs down",{{kTravelDialog.position.x,kTravelDialog.position.y+22},{kTravelDialog.size.x,44}},32,ui::kGold,ui::Font::Title);
     ui_.textCentered(window_,"Floors persist, so you can come back for loot. Travel doesn't heal you.",
         {{kTravelDialog.position.x,kTravelDialog.position.y+64},{kTravelDialog.size.x,22}},15,ui::kMuted);

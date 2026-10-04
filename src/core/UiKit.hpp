@@ -64,6 +64,8 @@ public:
     // A recessed slot: near-black well, shadowed top-left, lit bottom-right.
     // `glow` colors the rim (selection, drop target, rarity); Transparent = plain.
     void inset(sf::RenderTarget& target, sf::FloatRect rect, sf::Color glow = sf::Color::Transparent) const;
+    // Dark glass over the map, like the play HUD: translucent, with a thin bronze rim.
+    void glass(sf::RenderTarget& target, sf::FloatRect rect, bool ornate = false, std::uint8_t alpha = 232) const;
     void button(sf::RenderTarget& target, sf::FloatRect rect, const std::string& label, bool hover,
                 bool enabled = true, unsigned size = 15) const;
     // A framed bar. `label` is centered on it.

@@ -785,13 +785,13 @@ void Application::renderHudTooltips() {
         const float width=band.size.x-36;
         float probe=y; ui_.paragraph(window_,floorNotice_,-10000,probe,width,16,sf::Color::Transparent); // measure only
         const sf::FloatRect box{band.position,{band.size.x,probe-band.position.y+12}};
-        ui_.panel(window_,box,false,sf::Color(150,140,130,static_cast<std::uint8_t>(255*fade)));
+        ui_.glass(window_,box,false,static_cast<std::uint8_t>(200*fade));
         ui_.paragraph(window_,floorNotice_,box.position.x+18,y,width,16,sf::Color(232,206,150,static_cast<std::uint8_t>(255*fade)));
     }
 
     // --- Mode banner along the bottom of the map ----------------------------
     if (autoExploring_ || restTurns_>0 || aimingTalent_ || inspecting_) {
-        ui_.panel(window_,kModeBanner(),false,sf::Color(150,140,130));
+        ui_.glass(window_,kModeBanner(),false,200);
         const std::string text=autoExploring_ && travelGoal_ ? "Walking. Any key or click stops; danger and new sightings pause it." :
             autoExploring_ ? "Exploring. Any key or click stops; danger and discoveries pause it." :
             restTurns_>0 ? "Resting. Any key or click stops; recovers life, mana and cooldowns." :

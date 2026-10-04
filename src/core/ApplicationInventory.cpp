@@ -304,11 +304,11 @@ void Application::renderDraggedItem() {
 
 void Application::renderInventory() {
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
-    ui_.panel(window_,{{0,0},{1280,720}},true);
+    // Two framed halves: on a wide screen they dock to its edges.
+    ui_.glass(window_,{{0,0},{540,720}},true);
+    ui_.glass(window_,{{540,0},{740,720}},true);
     ui_.heading(window_,"Inventory",{28,18},28);
     ui_.button(window_,kCloseButton,"Close",mouse && kCloseButton.contains(*mouse));
-    ui_.text(window_,mode_==GameMode::Town ? "Equipment changes are free in town." : "Equipping, removing and dropping take a turn. Looking is free.",
-        {240,28},15,sf::Color(232,196,130));
 
     const auto& inventory=player_.inventory(); const auto& bag=inventory.items();
     inventorySelection_=std::min(inventorySelection_,bag.size()+kEquipmentSlotCount-1);
@@ -335,10 +335,7 @@ void Application::renderInventory() {
     float y=486;
     ui_.text(window_,inventory.armourKind()==ArmourKind::Cloth?std::string("Cloth armour"):std::string(armourName(inventory.armourKind())),
         {30,y},18,ui::kGold,ui::Font::Title);
-    y+=26;
-    ui_.paragraph(window_,"Your armour type is the majority of head, body, hands and feet. Empty pieces count as cloth; ties favour the body.",
-        30,y,476,14,ui::kMuted);
-    y+=8;
+    y+=30;
     const auto& stats=player_.stats();
     const auto stat=[&](const char* name,const std::string& value,float x,float row) {
         ui_.text(window_,name,{x,row},15,ui::kMuted); ui_.text(window_,value,{x+92,row},15,ui::kText,ui::Font::Bold);
@@ -379,13 +376,7 @@ void Application::renderInventory() {
 
     // --- Help and the latest message --------------------------------------
     y=520;
-    ui_.text(window_,"Controls",{kBagX,y},16,ui::kGold,ui::Font::Bold); y+=24;
-    for(const char* line:{"Drag an item onto a slot to equip it, or back to the bag to remove it.",
-                          "Right-click to equip or remove. Hover to compare with what you wear.",
-                          "Arrows: select   Enter: equip or remove   D: drop (in the dungeon)   B or Esc: close"}) {
-        ui_.text(window_,line,{kBagX,y},14,ui::kMuted); y+=20;
-    }
-    if(!logMessages_.empty()) { y+=12; ui_.paragraph(window_,logMessages_.back(),kBagX,y,560,15,sf::Color(232,196,130),ui::Font::Body,712); }
+    if(!logMessages_.empty()) ui_.paragraph(window_,logMessages_.back(),kBagX,y,560,15,sf::Color(232,196,130),ui::Font::Body,712);
 
     // --- Tooltip for the hovered/selected item, with comparison ------------
     const bool removing=inventorySelection_<kEquipmentSlotCount;
