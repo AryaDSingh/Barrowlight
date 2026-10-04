@@ -1369,7 +1369,7 @@ struct ApplicationRewardsTestAccess {
                 app.bossSurfaceAction(*sleeper);
                 for (std::size_t i=app.logMessages_.size()-std::min(app.logMessages_.size(),app.logTotal_-before);i<app.logMessages_.size();++i) {
                     flooded=flooded || app.logMessages_[i].find("wells up")!=std::string::npos;
-                    warned=warned || app.logMessages_[i].find("will be charged")!=std::string::npos;
+                    warned=warned || app.logMessages_[i].find("kindles with lightning")!=std::string::npos;
                     charged=charged || app.logMessages_[i].find("races through the water")!=std::string::npos;
                 }
             }
@@ -1789,16 +1789,17 @@ struct ApplicationRewardsTestAccess {
         app.landmarkAltar_={11,10}; app.map_.setTile(11,10,Tile{TileType::Wall,false,false}); app.updateFieldOfView();
         app.landmark_=LandmarkKind::HealingFountain; app.player_.stats().hp=30;
         app.player_.statusEffects().apply({StatusEffectType::Poison,5,2});
-        app.pickupItem(); snapshot("ui-fountain.png"); clickOn(screen::shrineChoice(1));
+        app.pickupItem(); snapshot("ui-fountain.png");
+        check(!app.shrineMenu_,"A fountain is simply drunk from: no menu");
         check(app.landmarkUsed_ && app.player_.stats().hp==app.player_.stats().maxHp && !app.player_.statusEffects().has(StatusEffectType::Poison),
             "The healing fountain restores life and washes away poison");
         app.landmark_=LandmarkKind::BloodFont; app.landmarkUsed_=false;
         const int maxBefore=app.player_.baseStats().maxHp;
-        app.pickupItem(); app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Enter});
+        app.pickupItem();
         check(app.landmarkUsed_ && app.player_.baseStats().maxHp==maxBefore+4 && app.player_.stats().hp<app.player_.stats().maxHp,
             "The blood font trades current life for permanent maximum life");
         app.landmark_=LandmarkKind::RitualCircle; app.landmarkUsed_=false;
-        app.pickupItem(); clickOn(screen::shrineChoice(1));
+        app.pickupItem();
         check(app.landmarkUsed_ && app.player_.unspentAttributePoints()==1 && app.player_.statusEffects().has(StatusEffectType::Doom) &&
             app.mode_==GameMode::AttributeAllocation,"The ritual circle grants an attribute point and lays a Doom curse");
 

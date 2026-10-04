@@ -292,7 +292,7 @@ bool Application::bossSurfaceAction(Monster& boss) {
             return true;
         }
         if (phase == 5) {
-            log(boss.name(), "'s eye kindles with lightning. The water will be charged next turn: get out of it!");
+            log(boss.name(), "'s eye kindles with lightning.");
             spawnVfx({Vfx::Kind::Ring, {at.x + .5f, at.y + .5f}, {at.x + .5f, at.y + .5f}, sf::Color(170, 230, 255), 0, .8f, 6.f});
             return true;
         }
@@ -337,7 +337,7 @@ bool Application::bossSurfaceAction(Monster& boss) {
             lightOrbs_.erase(std::remove_if(lightOrbs_.begin(), lightOrbs_.end(), [&](const LightOrb& o) { return close(o.at); }), lightOrbs_.end());
             // Pitch black: your own light can't burn for a few turns, then returns by itself.
             player_.statusEffects().apply({StatusEffectType::Smothered, 4, 0});
-            log(boss.name(), " breathes out the light. Pitch darkness swallows you for 4 turns!");
+            log(boss.name(), " breathes out the light. Darkness swallows you.");
             spawnVfx({Vfx::Kind::Ring, {at.x + .5f, at.y + .5f}, {at.x + .5f, at.y + .5f}, sf::Color(150, 80, 220), 0, .8f, 8.f});
             updateFieldOfView();
             return true;

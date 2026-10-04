@@ -13,7 +13,7 @@ namespace engine {
 void Application::alertEnemyGroup(Monster& source,Position target) {
     // Only direct sightings/damage call this. Recipients never relay an alert.
     if(source.tactics.alert==0 && !source.tactics.concealed && exploredMap_.at(source.position().x,source.position().y)==Visibility::Visible)
-        log(source.name()," alerts nearby allies!");
+        log(source.name()," shouts a warning!");
     for(auto& ally:monsters_) {
         if(ally->allied || ally->stats().hp<=0) continue;
         const int dx=ally->position().x-source.position().x, dy=ally->position().y-source.position().y;
@@ -39,7 +39,7 @@ AIDecision Application::enemyDecision(Monster& m,Actor* opponent) {
         alertEnemyGroup(m,opponent->position());
         if(t.concealed && distance(here,opponent->position())<=3) {
             t.concealed=false;
-            if(exploredMap_.at(here.x,here.y)==Visibility::Visible) log(m.name()," emerges from stealth! Preparing to strike.");
+            if(exploredMap_.at(here.x,here.y)==Visibility::Visible) log(m.name()," emerges from the shadows!");
             return {}; // reveal spends the ambusher's action
         }
     } else if(t.alert>0) --t.alert;
@@ -56,7 +56,7 @@ AIDecision Application::enemyDecision(Monster& m,Actor* opponent) {
     };
     if(!boss && !t.retreated && m.stats().hp*100<=m.stats().maxHp*30 && t.alert>0) {
         t.retreated=true; t.retreat=3;
-        if(visible) log(m.name()," will retreat to cover!");
+        if(visible) log(m.name()," falls back!");
         return {};
     }
     if(t.retreat>0) {

@@ -101,7 +101,7 @@ void Application::startRest() {
     if (dangerNearby()) { log("Cannot rest: enemies, an attack warning or harmful effects are present."); return; }
     autoExploring_=false;
     cancelTargeting(); restTurns_=100; restClock_.restart();
-    log("Resting until HP, mana and cooldowns recover. HP recovery starts at 10 quiet turns. Any key/click stops.");
+    log("You rest. Any key or click stops.");
 }
 
 void Application::reviveInTown() {
@@ -188,7 +188,7 @@ void Application::travelFloor(int destination,bool fromTown,bool falling) {
     if (found==floorCache_.end()) {
         currentFloor_=destination; mode_=GameMode::Playing; dungeonMenu_=false;
         regenerateLevel(std::random_device{}());
-        log("Entered ",dungeonName(dungeonIndex(currentFloor_))," depth ",floorInDungeon(currentFloor_),". G: stairs; H: Waystone after 10 quiet turns.");
+        log("Entered ",dungeonName(dungeonIndex(currentFloor_)),", depth ",floorInDungeon(currentFloor_),".");
         return;
     }
     const auto& floor=found->second;

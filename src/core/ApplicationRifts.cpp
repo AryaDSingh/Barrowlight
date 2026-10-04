@@ -211,7 +211,7 @@ void Application::eventDeath(Monster& m) {
         const int count = m.corrupted ? 2 : 1;
         for (int i = 0; i < count && nextItemId_ < std::numeric_limits<std::uint64_t>::max(); ++i) {
             auto item = essenceItem(static_cast<Essence>(m.essence), m.position());
-            log("The essence crystallises: ", item->name(), ".");
+            log(m.name(), " drops ", item->name(), ".");
             groundItems_.push_back(std::move(item));
         }
     }

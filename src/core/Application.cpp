@@ -1075,7 +1075,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         log(player_.name(), " uses ", talent.name, "!");
         if (talent.restoreMana) log("Mana: ",player_.stats().mana,"/",player_.stats().maxMana);
         if (talent.restoreHpPercent) log("HP: ",player_.stats().hp,"/",player_.stats().maxHp);
-        if (talent.cleanse) log("Poison, Burn, Chill, Marked and curses removed. Other effects remain.");
+        if (talent.cleanse) log("You feel cleansed.");
         if (talent.placeTrap) {
             int set=0;
             for (const auto& p:target.area) {
@@ -1163,7 +1163,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 if (!couldStun && (talent.consumeChill || (talent.onHitEffect && talent.onHitEffect->type==StatusEffectType::Stun)))
                     log(target->name(), " is protected from another stun.");
                 if (talent.onHitEffect && talent.onHitEffect->type==StatusEffectType::Marked && target->stats().hp>0)
-                    log(target->name(), " is Marked: next direct hit +25%.");
+                    log(target->name(), " is marked.");
                 log(player_.name(), " uses ", talent.name, " on ", target->name(), " (",
                     target->stats().hp, "/", target->stats().maxHp, " hp left)");
                 soundManager_.play(SoundEffect::Hit);
@@ -1200,7 +1200,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 }
                 if (auto* foe=dynamic_cast<Monster*>(target); foe && talent.stagger && foe->stats().hp>0 && foe->intent()) {
                     foe->intent()->playerActionsRemaining+=talent.stagger;
-                    log(foe->name()," staggers: its attack is delayed.");
+                    log(foe->name()," staggers!");
                 }
                 if (talent.shatterIce) {
                     const auto at=target->position();
@@ -1271,7 +1271,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         for (const auto& p:burn) if (map_.isWalkable(p.x,p.y) && surfaceAt(p)==SurfaceType::None && std::abs(p.x-landed.x)+std::abs(p.y-landed.y)<=1) setSurface(p,SurfaceType::Fire,kSpilledFireTurns);
         addLightOrb(landed,15);
         player_.lightLit=false;
-        log("Your torch lies burning where it fell. (L lights another.)");
+        log("Your torch lies burning where it fell.");
         updateFieldOfView();
     }
     if (talent.bonfire) {
@@ -1428,7 +1428,6 @@ void Application::processMonsterTurns() {
                     monster->intent().reset();
                     if (monster->type()==MonsterType::GoblinWarlord || monster->type()==MonsterType::SkeletonGuard || intent.kind==IntentKind::Summon) {
                         monster->recoveryActions=1;
-                        log(actor->name(), " will recover for one player action after this attack.");
                     }
                     if (exploredMap_.at(intent.target.x,intent.target.y)==Visibility::Visible) spawnReleaseVfx(intent);
                     if (intent.kind==IntentKind::MagicStrike && monster->type()==MonsterType::GoblinWarlord) {
@@ -1498,7 +1497,7 @@ void Application::processMonsterTurns() {
                     if (chance>0.f && rollChance(chance)) {
                         player_.statusEffects().remove(StatusEffectType::Concealed);
                         hidden=false;
-                        log(actor->name(), " spots you! Concealment breaks.");
+                        log(actor->name(), " spots you!");
                         gainFavor(Patron::Whisperer, -3, "you were seen");
                     }
                 }
@@ -1530,8 +1529,8 @@ void Application::processMonsterTurns() {
                             if (blast || summon) actor->talents().startCooldown(decision.abilityIndex);
                             if (summon) {
                                 ++monster->summonsCommitted;
-                                log("Ritual: 2 actions to interrupt or occupy the purple tile. Attempt ",monster->summonsCommitted,"/3.");
-                            } else log(actor->name()," prepares a strike: ",warning," action(s) to leave the marked tiles. It can hit other enemies.");
+                                log(actor->name()," begins a ritual.");
+                            } else log(actor->name()," winds up.");
                         }
                     } else if (!(chilledMove && decision.type==AIActionType::Move)) executeAIDecision(*actor,decision,chillMagnitude);
                 }
@@ -1777,8 +1776,8 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                         log(actor.name()," is cut by thorns for ",thorns,".");
                         checkAndHandleDeath(actor);
                     }
-                    if (marked) { decision.target->statusEffects().consumeMark(); log("Marked consumed: +25% direct damage before Guard."); }
-                    if (guard) log("Guard reduced the incoming hit by up to ",guard," damage.");
+                    if (marked) { decision.target->statusEffects().consumeMark(); log("The mark flares."); }
+                    if (guard) log("Your guard takes some of the blow.");
                     if (damage>0) decision.target->statusEffects().remove(StatusEffectType::Concealed);
                     log(actor.name(), crit ? " critically hits " : " hits ", decision.target->name(),
                         " for ", damage, " (", decision.target->stats().hp, "/",
@@ -1795,7 +1794,7 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                 const bool armourBlocked=decision.effectToApply->type==StatusEffectType::Stun && !blocked && armourResistsStun(*decision.target);
                 if (!armourBlocked) decision.target->statusEffects().apply(*decision.effectToApply);
                 if (armourBlocked) log(decision.target->name(), " resists stun with Unyielding!");
-                else if (blocked) log(decision.target->name(), " resists stun: recovery or an existing stun prevents reapplication.");
+                else if (blocked) log(decision.target->name(), " shrugs off the stun.");
                 else {
                     log(decision.target->name(), " is affected by ",statusName(decision.effectToApply->type),"!");
                     if (decision.effectToApply->type==StatusEffectType::Doom)
@@ -1888,7 +1887,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
             player_.deathlessSpentFloors.push_back(currentFloor_); player_.stats().hp=1;
             const int guard=player_.talents().passiveValue(PassiveKind::Deathless)-1;
             if (guard) player_.statusEffects().apply({StatusEffectType::Guard,2,guard});
-            log("Deathless saves you at 1 HP! Spent on this floor."); return;
+            log("Death refuses you."); return;
         }
         log("You have died!");
         // As of Prompt 17: a real GameOver screen instead of closing
@@ -2194,7 +2193,7 @@ void Application::toggleLight() {
     if (!player_.lightSource) { log("You carry no light."); return; }
     for (const auto& e : player_.statusEffects().active())
         if (e.type == StatusEffectType::Smothered) {
-            log("The darkness smothers your light. It won't catch for another ", e.turnsRemaining, " turns.");
+            log("The darkness smothers your light.");
             return;
         }
     player_.lightLit = !player_.lightLit;

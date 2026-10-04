@@ -185,9 +185,7 @@ void Application::renderGroundItems() {
         }
     }
     if (chestExists_ && !chestClaimed_ && chestPosition_.x == player_.position().x && chestPosition_.y == player_.position().y)
-        mapHints_.push_back({currentFloor_<=3 ? "Chest of martial gear. G: open (1 turn)" :
-            currentFloor_<=6 ? "Chest of casting gear. G: open (1 turn)" :
-            "Chest of jewellery. G: open (1 turn)", ui::kGold});
+        mapHints_.push_back({"A chest. G to open it", ui::kGold});
 }
 
 

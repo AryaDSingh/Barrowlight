@@ -35,6 +35,11 @@ inline bool touchedLandmark(LandmarkKind kind) {
     return kind == LandmarkKind::Strongbox || kind == LandmarkKind::Breach || kind == LandmarkKind::Essence;
 }
 inline constexpr int kCrystalStrikes = 3;
+// Landmarks with one thing to do: touching them does it, no menu.
+inline bool singleUseLandmark(LandmarkKind kind) {
+    return kind == LandmarkKind::HealingFountain || kind == LandmarkKind::BloodFont || kind == LandmarkKind::RitualCircle ||
+           kind == LandmarkKind::LamplighterRest || kind == LandmarkKind::SealedTomb || kind == LandmarkKind::BloodAltar;
+}
 inline constexpr int kLandmarkKindCount = 16;
 inline constexpr int kBreachTurns = 14;
 

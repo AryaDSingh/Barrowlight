@@ -33,10 +33,10 @@ bool Application::interactVault() {
     const auto p=player_.position();
     auto near=[&](Position q){return std::abs(p.x-q.x)+std::abs(p.y-q.y)<=1;};
     if (!vaultOpened_ && near(vaultEntrance_)) {
-        cancelTargeting(); vaultMenu_=1; return true;
+        cancelTargeting(); vaultMenu_=1; handleVaultKey(sf::Keyboard::Key::Enter); return true;
     }
     if (vaultOpened_ && near(vaultCenter_)) {
-        if (!vaultCleared()) { log("Vault cache sealed: defeat both vault guards first."); return true; }
+        if (!vaultCleared()) { log("The cache won't budge."); return true; }
         cancelTargeting(); vaultSelection_=0; vaultMenu_=2; return true;
     }
     return false;
@@ -55,7 +55,7 @@ void Application::handleVaultKey(sf::Keyboard::Key key) {
     if (vaultMenu_==1 && !vaultOpened_) {
         vaultOpened_=true; vaultMenu_=0;
         map_.setTile(vaultEntrance_.x,vaultEntrance_.y,Tile{TileType::Floor,true,true});
-        log("Vault opened. Defeat the Elite Goblin and Archer; retreat is allowed.");
+        log("The vault door grinds open.");
         updateFieldOfView(); finishInventoryTurn();
     } else if (vaultMenu_==2 && vaultCleared() && !vaultClaimed_ && vaultSelection_<vaultRewards_.size()) {
         if (player_.inventory().full()) { log("Bag full (50). Make space, then claim your reward."); return; }
@@ -81,9 +81,8 @@ void Application::renderVault() {
     const bool nearCache=std::abs(p.x-vaultCenter_.x)+std::abs(p.y-vaultCenter_.y)<=1;
     if (!vaultMenu_) {
         if ((!vaultOpened_ && nearEntrance) || (vaultOpened_ && !vaultClaimed_ && nearCache)) {
-            mapHints_.push_back({!vaultOpened_ ? "Optional vault: Elite Goblin and Archer. G: read the warning (free)" :
-                vaultCleared()?"Vault cleared. G: choose one of three rare rewards":"Vault cache: defeat both guards to claim a reward.",
-                sf::Color(235,190,255)});
+            mapHints_.push_back({!vaultOpened_ ? "A sealed door. G or click to open it" :
+                vaultCleared()?"The cache. G to open it":"The cache, locked fast.", sf::Color(235,190,255)});
         }
         return;
     }
@@ -170,7 +169,7 @@ void Application::spawnFloorChest() {
 }
 
 void Application::rewardMonster(Monster& monster, bool boss) {
-    if (monster.vaultGuard && vaultCleared()) log("Vault cleared! Return to its cache and press G to choose a rare item.");
+    if (monster.vaultGuard && vaultCleared()) log("The vault falls silent.");
     if (!monster.rewardsEligible()) return;
     if (monster.eventChampion && !trialGuardianChampion(monster.eventChampion)) grantUnique(monster.position());
     const bool unique=isUniqueMonster(monster.type());

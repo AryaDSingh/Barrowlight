@@ -75,6 +75,23 @@ bool Application::nearAltar() const {
 void Application::openShrine() {
     if (landmark_ == LandmarkKind::None) return;
     if (touchedLandmark(landmark_)) { if (!landmarkUsed_) touchLandmark(); return; }
+    if (singleUseLandmark(landmark_)) {
+        if (landmarkUsed_) return; // you can see it's spent
+        if (landmark_ == LandmarkKind::BloodAltar && vampireLordAlive()) {
+            for (auto& m : monsters_)
+                if (m->eventChampion == kChampionVampire && m->stats().hp > 0) { m->tactics.alert = 8; m->tactics.lastKnown = player_.position(); }
+            log("Something beside the altar stirs.");
+            finishInventoryTurn();
+            return;
+        }
+        const auto choices = landmarkChoices();
+        if (choices.empty()) return;
+        if (!choices[0].affordable) { log("Your hand shakes. Not now."); return; }
+        cancelTargeting();
+        shrineMenu_ = true;
+        chooseBlessing(0);
+        return;
+    }
     if (landmarkUsed_) { log("The ", landmarkTitle(), " is spent."); return; }
     cancelTargeting();
     shrineMenu_ = true;
@@ -489,7 +506,7 @@ void Application::chooseBlessing(int choice) {
             if (player_.bloodMagicUnlocked) { stats.hp = stats.maxHp; break; }
             stats.hp -= std::max(1, stats.maxHp * kAltarCostPercent / 100);
             player_.bloodMagicUnlocked = true;
-            log("Your blood runs into the altar's channels, and the old rite opens in your mind. Blood Magic can now be learned (T).");
+            log("Your blood runs into the altar's channels, and an old rite opens in your mind.");
             break;
         case LandmarkKind::None: return;
     }
@@ -497,7 +514,14 @@ void Application::chooseBlessing(int choice) {
     shrineMenu_ = false;
     soundManager_.play(SoundEffect::LevelUp);
     const std::string name = landmarkTitle();
-    if (landmark_ != LandmarkKind::Strongbox && landmark_ != LandmarkKind::Breach && landmark_ != LandmarkKind::Essence)
+    if (singleUseLandmark(landmark_)) {
+        switch (landmark_) {
+            case LandmarkKind::HealingFountain: log("The water is cold and clean."); break;
+            case LandmarkKind::BloodFont: log("You drink deep. It burns going down."); break;
+            case LandmarkKind::RitualCircle: log("The circle flares, and something is owed."); break;
+            default: break;
+        }
+    } else if (!touchedLandmark(landmark_))
         log(name.rfind("The ", 0) == 0 ? "" : "The ", name, " grants you ", choices[static_cast<std::size_t>(choice)].name, ".");
     finishInventoryTurn(); // using a landmark takes a turn
     if (attributePoint && mode_ == GameMode::Playing) mode_ = GameMode::AttributeAllocation;
@@ -737,7 +761,7 @@ void Application::renderLandmark() {
         }
         case LandmarkKind::None: break;
     }
-    if (nearAltar() && !(touchedLandmark(landmark_) && landmarkUsed_)) // spent: you can see it is
+    if (nearAltar() && !landmarkUsed_) // spent: you can see it is
         mapHints_.push_back({landmarkTitle() +
             (landmarkUsed_ ? (landmark_ == LandmarkKind::Strongbox ? ". Empty." : landmark_ == LandmarkKind::Breach ? ". The rift is closed." :
                               landmark_ == LandmarkKind::Essence ? ". Only shards remain." : ". Its power is spent.") : std::string(". G or click it to ") + verb(landmark_) + "."), ui::kRare});
