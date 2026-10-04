@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdlib>
 #include <vector>
+#include "entities/Difficulty.hpp"
 #include "entities/MonsterTier.hpp"
 #include "entities/MonsterType.hpp"
 #include "world/DungeonGenerator.hpp"
@@ -22,7 +23,7 @@ inline std::vector<EncounterSpawn> planEncounters(const GeneratedDungeon& dungeo
     std::vector<EncounterSpawn> result;
     const bool cathedral=cathedralFloor(floorId);
     const int floor=floorDepth(floorId); // difficulty follows depth
-    int budget=23+4*(std::clamp(floor,1,20)-1);
+    int budget=(23+4*(std::clamp(floor,1,20)-1))*kEncounterBudgetPercent/100;
     int elitesLeft=floor>=7?2:floor>=3?1:0;
     bool rarePlaced=false, uniquePlaced=false;
     if (dungeon.hasVault) { budget-=7; elitesLeft=std::max(0,elitesLeft-1); }

@@ -849,6 +849,26 @@ struct ApplicationRewardsTestAccess {
             check(app.decals_.size()==litter && litter>0,"Save/load keeps what lies on the floor");
         }
 
+        // Esc pauses instead of quitting: resume, options, save and exit.
+        setup(PlayerClass::Warrior);
+        {
+            const auto press=[&](int x,int y) { app.handleEvent(sf::Event::MouseButtonPressed{sf::Mouse::Button::Left,{x,y}}); };
+            const auto at=app.player_.position();
+            app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Escape});
+            check(app.pauseMenu_ && app.window_.isOpen(),"Esc opens the pause menu, and doesn't quit");
+            app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::D});
+            check(app.player_.position().x==at.x,"While paused, the game takes no input");
+            snapshot("ui-pause.png");
+            const auto r=app.pauseButton(1);
+            press(static_cast<int>(r.position.x+r.size.x/2),static_cast<int>(r.position.y+r.size.y/2));
+            check(app.pauseOptions_,"Options opens its own page");
+            app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Escape});
+            check(app.pauseMenu_ && !app.pauseOptions_,"Esc backs out of options to the pause menu");
+            const auto resume=app.pauseButton(0);
+            press(static_cast<int>(resume.position.x+resume.size.x/2),static_cast<int>(resume.position.y+resume.size.y/2));
+            check(!app.pauseMenu_,"Resume closes the pause menu");
+        }
+
         // Gear: a base's own damage, defences, requirements, traits, curses and wards.
         setup(PlayerClass::Warrior);
         {
@@ -1750,25 +1770,33 @@ struct ApplicationRewardsTestAccess {
         check(app.player_.abilityPoints()==earnedAbilityPoints(1)-1 && app.player_.talents().rankOf(talentCatalog()[fire*4].id)==1,"Learn button spends exactly one ability point");
         // More trees than fit: the columns scroll with the wheel and follow the keyboard.
         {
-            check(app.treeScrollMax()>0,"With the new trees, the columns overflow and scroll");
+            check(app.treeScrollMax(0)>0 || app.treeScrollMax(1)>0 || app.treeScrollMax(2)>0,"With the new trees, the columns overflow and scroll");
             std::size_t acrobatics=0; while(std::string(kTalentTrees[acrobatics].id)!="acrobatics") ++acrobatics;
             std::size_t alchemy=0; while(std::string(kTalentTrees[alchemy].id)!="alchemy") ++alchemy;
             std::size_t oneHanded=0; while(std::string(kTalentTrees[oneHanded].id)!="one_handed") ++oneHanded;
             const float before=app.talentTreeAbilityRect(alchemy,0).position.y;
             check(before+50>app.treeViewBottom_,"Some trees start below the fold");
-            app.handleEvent(sf::Event::MouseWheelScrolled{sf::Mouse::Wheel::Vertical,-6.f,{100,300}});
+            const int column=app.treeColumnOf(alchemy);
+            const int overAlchemy=static_cast<int>(app.talentTreeAbilityRect(alchemy,0).position.x)+10;
+            const auto others=app.treeScroll_;
+            app.handleEvent(sf::Event::MouseWheelScrolled{sf::Mouse::Wheel::Vertical,-6.f,{overAlchemy,300}});
             const auto icon=app.talentTreeAbilityRect(alchemy,0);
-            check(app.treeScroll_>0 && app.treeScroll_<=app.treeScrollMax() && icon.position.y<before && icon.position.y+50<=app.treeViewBottom_,
-                  "The mouse wheel scrolls the tree columns");
+            const auto c=static_cast<std::size_t>(column);
+            check(app.treeScroll_[c]>0 && app.treeScroll_[c]<=app.treeScrollMax(column) && icon.position.y<before && icon.position.y+50<=app.treeViewBottom_,
+                  "The mouse wheel scrolls the column it's over");
+            bool othersStill=true;
+            for (std::size_t k=0;k<3;++k) if (k!=c) othersStill&=app.treeScroll_[k]==others[k];
+            check(othersStill,"...and leaves the other columns where they were");
             click(static_cast<int>(icon.position.x)+10,static_cast<int>(icon.position.y)+10);
             check(app.treeSelection_==alchemy,"Clicks land on the scrolled rows");
             snapshot("ui-talent-scroll.png");
-            app.handleEvent(sf::Event::MouseWheelScrolled{sf::Mouse::Wheel::Vertical,20.f,{100,300}});
-            check(app.treeScroll_==0,"Scrolling stops at the top");
+            app.handleEvent(sf::Event::MouseWheelScrolled{sf::Mouse::Wheel::Vertical,20.f,{overAlchemy,300}});
+            check(app.treeScroll_[c]==0,"Scrolling stops at the top");
             app.treeSelection_=oneHanded; app.handleTreeKey(sf::Keyboard::Key::Up,false);
-            check(app.treeSelection_!=oneHanded && app.treeScroll_>0 && app.talentTreeAbilityRect(app.treeSelection_,0).position.y+50<=app.treeViewBottom_,
+            const auto picked=static_cast<std::size_t>(app.treeColumnOf(app.treeSelection_));
+            check(app.treeSelection_!=oneHanded && app.treeScroll_[picked]>0 && app.talentTreeAbilityRect(app.treeSelection_,0).position.y+50<=app.treeViewBottom_,
                   "Browsing with the keyboard scrolls the selected tree into view");
-            app.treeViewBottom_=712; app.treeScroll_=0; app.treeSelection_=fire;
+            app.treeViewBottom_=712; app.treeScroll_={}; app.treeSelection_=fire;
         }
         {
             // Five ranks: rank ups continue past 3 and rank 5 adds the mastery.

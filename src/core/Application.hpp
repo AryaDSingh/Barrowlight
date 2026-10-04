@@ -204,9 +204,12 @@ private:
     // The tree columns scroll (mouse wheel, or by following the keyboard
     // selection) once there are more trees than fit. treeViewBottom_ is where
     // the scrolling area ends; tests shrink it to force an overflow.
-    float treeScroll_ = 0.f, treeViewBottom_ = 712.f;
-    float treeScrollMax() const;
-    void scrollTrees(float pixels);
+    // Each column of the talent screen scrolls on its own.
+    std::array<float, 3> treeScroll_{};
+    float treeViewBottom_ = 712.f;
+    float treeScrollMax(int column) const;
+    void scrollTrees(int column, float pixels);
+    int treeColumnOf(std::size_t tree) const;
     void revealSelectedTree();
     void closeTalentTrees();
     void requestHotbar(std::size_t slot);
@@ -357,7 +360,14 @@ private:
     sf::Vector2f designFromPlay(sf::Vector2f p) const;
     void drawMenu(const std::function<void()>& draw);
     void beginMenu(std::uint8_t dim);
-    void renderTownWings();              // the town's street, on past the square on a wide screen    // dims the whole play screen, then draws in the menu's frame
+    void renderTownWings();
+    // Esc: the pause menu (resume, options, save and exit). Options is a
+    // placeholder for now.
+    bool pauseMenu_ = false, pauseOptions_ = false;
+    void openPause() { pauseMenu_ = true; pauseOptions_ = false; cancelTargeting(); }
+    void handlePauseEvent(const sf::Event& event);
+    void renderPause();
+    sf::FloatRect pauseButton(int index) const;              // the town's street, on past the square on a wide screen    // dims the whole play screen, then draws in the menu's frame
     sf::FloatRect hotbarSlotRect(std::size_t slot) const;
     sf::FloatRect actionButtonRect(std::size_t index) const;
     sf::FloatRect cancelButtonRect() const;

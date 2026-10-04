@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include <SFML/Graphics.hpp>
 
 #include <map>
@@ -84,8 +86,15 @@ public:
     // right, flipping left/up to stay inside `bounds`). Returns its rect.
     sf::FloatRect tooltip(sf::RenderTarget& target, const std::vector<Line>& lines, sf::Vector2f anchor,
                           float width = 330.f, sf::FloatRect bounds = {{0, 0}, {1280, 720}}) const;
+    // A menu drawn in two docked halves draws twice; its tooltip is held back
+    // meanwhile and drawn once afterwards, over both halves and the gap.
+    struct HeldTooltip { std::vector<Line> lines; sf::Vector2f anchor; float width; sf::FloatRect bounds; };
+    void holdTooltips(bool on) const { holding_ = on; if (on) held_.reset(); }
+    const std::optional<HeldTooltip>& heldTooltip() const { return held_; }
 
 private:
+    mutable bool holding_ = false;
+    mutable std::optional<HeldTooltip> held_;
     // SFML shapes text (HarfBuzz) whenever an sf::Text is built, which costs
     // hundreds of microseconds. Every distinct string is shaped once and the
     // sf::Text reused; only its position and colour change per draw. Both

@@ -3,6 +3,7 @@
 #include "entities/HiddenCombat.hpp"
 #include "entities/HiddenTrees.hpp"
 #include "core/Application.hpp"
+#include "entities/Difficulty.hpp"
 
 #include <algorithm>
 #include <array>
@@ -220,7 +221,7 @@ std::pair<SpriteFrame, const char*> propFrame(PropKind kind) {
         case PropKind::Chair: return {{kTileset, sf::IntRect({240, 240}, {16, 32})}, kTileset};
         case PropKind::Bookcase: return {{kTileset, sf::IntRect({368, 240}, {16, 48})}, kTileset};
         case PropKind::Sarcophagus: return {{kTileset, sf::IntRect({416, 304}, {32, 32})}, kTileset};
-        case PropKind::Idol: return {{kTileset, sf::IntRect({336, 288}, {16, 32})}, kTileset};
+        case PropKind::Idol: return {{kTileset, sf::IntRect({336, 304}, {16, 32})}, kTileset};
     }
     return {{kTileset, sf::IntRect({64, 304}, {16, 16})}, kTileset};
 }
@@ -675,9 +676,53 @@ void Application::fitView() {
     window_.setView(uiView_);
 }
 
+// --- Pause ------------------------------------------------------------------------
+sf::FloatRect Application::pauseButton(int index) const { return {{520.f, 282.f + 56.f * static_cast<float>(index)}, {240.f, 44.f}}; }
+
+void Application::handlePauseEvent(const sf::Event& event) {
+    if (const auto* move = event.getIf<sf::Event::MouseMoved>()) mousePixel_ = move->position;
+    const auto choose = [&](int index) {
+        if (pauseOptions_) { pauseOptions_ = false; return; } // the only button there: Back
+        if (index == 0) pauseMenu_ = false;
+        else if (index == 1) pauseOptions_ = true;
+        else if (index == 2) {
+            // Save the run, if there is one, then leave.
+            if (mode_ == GameMode::Playing || mode_ == GameMode::Town) saveGame();
+            window_.close();
+        }
+    };
+    if (const auto* key = event.getIf<sf::Event::KeyPressed>()) {
+        if (key->code == sf::Keyboard::Key::Escape) { if (pauseOptions_) pauseOptions_ = false; else pauseMenu_ = false; }
+        return;
+    }
+    if (const auto* click = event.getIf<sf::Event::MouseButtonPressed>(); click && click->button == sf::Mouse::Button::Left) {
+        const auto p = sf::Vector2f(click->position);
+        for (int i = 0; i < (pauseOptions_ ? 1 : 3); ++i)
+            if (pauseButton(pauseOptions_ ? 2 : i).contains(p)) { choose(i); return; }
+    }
+}
+
+void Application::renderPause() {
+    if (!pauseMenu_) return;
+    if (mode_ == GameMode::Playing) window_.setView(playView_);
+    beginMenu(170);
+    const auto mouse = mousePixel_ ? std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)) : std::nullopt;
+    const sf::FloatRect dialog{{490, 190}, {300, 284}};
+    ui_.glass(window_, dialog, true);
+    if (pauseOptions_) {
+        ui_.textCentered(window_, "Options", {{dialog.position.x, 214}, {dialog.size.x, 44}}, 32, ui::kGold, ui::Font::Title);
+        ui_.textCentered(window_, "Nothing here yet.", {{dialog.position.x, 300}, {dialog.size.x, 24}}, 16, ui::kMuted);
+        ui_.button(window_, pauseButton(2), "Back (Esc)", mouse && pauseButton(2).contains(*mouse), true, 16);
+        return;
+    }
+    ui_.textCentered(window_, "Paused", {{dialog.position.x, 214}, {dialog.size.x, 44}}, 32, ui::kGold, ui::Font::Title);
+    const char* labels[]{"Resume (Esc)", "Options", "Save and exit"};
+    for (int i = 0; i < 3; ++i) ui_.button(window_, pauseButton(i), labels[i], mouse && pauseButton(i).contains(*mouse), true, 16);
+}
+
 // A 1280x720 menu is in front: the mouse speaks its coordinates.
 bool Application::menuOpen() const {
-    return mode_ != GameMode::Playing || inventoryOpen_ || shrineMenu_ || vaultMenu_ || exitMenu_ || trialMenu_ || ascendancyMenu_;
+    return mode_ != GameMode::Playing || inventoryOpen_ || shrineMenu_ || vaultMenu_ || exitMenu_ || trialMenu_ || ascendancyMenu_ || pauseMenu_;
 }
 
 float Application::menuSplit() const {
@@ -711,8 +756,16 @@ void Application::drawMenu(const std::function<void()>& draw) {
         window_.setView(view);
         draw();
     };
+    ui_.holdTooltips(true);
     half(0.f, split, 0.f);
     half(split, static_cast<float>(kWindowWidth) - split, split + extra);
+    ui_.holdTooltips(false);
+    // The tooltip, drawn once over both halves: menu coordinates mapped to the screen.
+    if (const auto& held = ui_.heldTooltip()) {
+        const auto toScreen = [&](float x) { return x < split ? x : x + extra; };
+        window_.setView(playView_);
+        ui_.tooltip(window_, held->lines, {toScreen(held->anchor.x), held->anchor.y}, held->width, {{0, 0}, {w, static_cast<float>(kWindowHeight)}});
+    }
 }
 
 void Application::beginMenu(std::uint8_t dim) {
@@ -768,6 +821,7 @@ void Application::handleEvent(const sf::Event& input) {
         return;
     }
 
+    if (pauseMenu_) { handlePauseEvent(*event); return; }
     if (autoExploring_ && (event->is<sf::Event::KeyPressed>() ||
         event->is<sf::Event::MouseButtonPressed>() || event->is<sf::Event::FocusLost>())) {
         stopAutoExplore("interrupted by input or focus change.");
@@ -840,7 +894,7 @@ void Application::handleEvent(const sf::Event& input) {
                 cancelTargeting();
                 return;
             }
-            window_.close();
+            openPause();
             return;
         }
 
@@ -1837,6 +1891,9 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     // eligible turn" is the closest existing tier to that
                     // -- see MonsterAttackProfile's own comment.
                     damage += abilityDamageBonus(decision.scalingStat, statValue, /*cooldownTurns=*/0);
+                    // The dungeon hits harder than its base numbers (entities/Difficulty.hpp).
+                    if (const auto* foe = dynamic_cast<const Monster*>(&actor); foe && !foe->allied)
+                        damage = damage * kMonsterDamagePercent / 100;
                     if (actor.statusEffects().has(StatusEffectType::Empowered)) {
                         damage += actor.statusEffects().magnitudeOf(StatusEffectType::Empowered);
                     }
@@ -2930,7 +2987,7 @@ void Application::render() {
         // Full-screen menus: one backdrop edge to edge, never black bars.
         window_.setView(playView_);
         ui_.stone(window_, {{0, 0}, {playLayout::screenWidth, 720}}, sf::Color(120, 115, 112));
-        const auto finish = [&] { window_.display(); };
+        const auto finish = [&] { renderPause(); window_.display(); };
         if (mode_ == GameMode::Town) {
             if (!dungeonMenu_) renderTownWings();
             drawMenu([&] { renderTown(); });
@@ -3325,6 +3382,7 @@ void Application::render() {
         drawMenu([&] { if (mode_ == GameMode::AbilityChoice) renderTalentTrees(); else renderAttributeAllocation(); });
     } else if (inventoryOpen_) { beginMenu(110); drawMenu([&] { renderInventory(); renderDraggedItem(); }); }
     else if (!vaultMenu_ && !shrineMenu_ && !exitMenu_) { window_.setView(playView_); renderHudTooltips(); }
+    renderPause();
     window_.display();
 }
 

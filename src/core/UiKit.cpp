@@ -355,6 +355,7 @@ bool Kit::icon(sf::RenderTarget& target, const std::string& name, sf::FloatRect 
 
 sf::FloatRect Kit::tooltip(sf::RenderTarget& target, const std::vector<Line>& lines, sf::Vector2f anchor, float width,
                            sf::FloatRect bounds) const {
+    if (holding_) { held_ = HeldTooltip{lines, anchor, width, bounds}; return {anchor, {width, 0.f}}; }
     constexpr float kPad = 12.f;
     struct Laid { std::string text; const Line* line; float height; };
     std::vector<Laid> laid;

@@ -56,20 +56,23 @@ bool treeVisible(const Player& player,std::size_t tree) {
 struct TreeLayout {
     std::vector<std::size_t> trees;
     std::vector<sf::Vector2f> origins;
+    std::vector<int> columns;          // which column each tree sits in
     std::vector<std::pair<TreeCategory,sf::Vector2f>> headings;
-    float bottom=kTreeTop; // where the tallest column ends, before scrolling
+    float bottoms[3]{kTreeTop,kTreeTop,kTreeTop}; // where each column ends, before scrolling
 };
-// `scroll` moves everything up by that many pixels.
-TreeLayout layoutTrees(const Player& player,float scroll=0.f) {
+// Each column moves up by its own scroll.
+TreeLayout layoutTrees(const Player& player,const std::array<float,3>& scroll={}) {
     TreeLayout layout;
-    float columnY[3]{kTreeTop-scroll,kTreeTop-scroll,kTreeTop-scroll};
+    float columnY[3]{kTreeTop,kTreeTop,kTreeTop};
     const auto place=[&](int column,TreeCategory category,const std::vector<std::size_t>& trees) {
         if (trees.empty()) return;
-        layout.headings.push_back({category,{kTreeColumnX[column],columnY[column]}});
+        const float shift=scroll.at(static_cast<std::size_t>(column));
+        layout.headings.push_back({category,{kTreeColumnX[column],columnY[column]-shift}});
         columnY[column]+=kCategoryHeight;
         for (const auto tree:trees) {
             layout.trees.push_back(tree);
-            layout.origins.push_back({kTreeColumnX[column],columnY[column]});
+            layout.columns.push_back(column);
+            layout.origins.push_back({kTreeColumnX[column],columnY[column]-shift});
             columnY[column]+=kTreeRowHeight;
         }
     };
@@ -89,7 +92,7 @@ TreeLayout layoutTrees(const Player& player,float scroll=0.f) {
     const auto hybrid=treesIn(TreeCategory::Hybrid);
     place(1,TreeCategory::Hybrid,std::vector<std::size_t>(hybrid.begin(),hybrid.begin()+std::min<std::size_t>(2,hybrid.size())));
     if (hybrid.size()>2) place(2,TreeCategory::Hybrid,std::vector<std::size_t>(hybrid.begin()+2,hybrid.end()));
-    layout.bottom=std::max({columnY[0],columnY[1],columnY[2]})+scroll;
+    for (int c=0;c<3;++c) layout.bottoms[c]=columnY[c];
     return layout;
 }
 constexpr float kTreeViewTop=kTreeTop-6, kTreeViewWidth=836;
@@ -102,21 +105,28 @@ sf::FloatRect bindingRect(std::size_t slot) {
 }
 }
 
-float Application::treeScrollMax() const {
-    return std::max(0.f,layoutTrees(player_).bottom-treeViewBottom_);
+float Application::treeScrollMax(int column) const {
+    return std::max(0.f,layoutTrees(player_).bottoms[std::clamp(column,0,2)]-treeViewBottom_);
 }
-void Application::scrollTrees(float pixels) {
-    treeScroll_=std::clamp(treeScroll_+pixels,0.f,treeScrollMax());
+void Application::scrollTrees(int column, float pixels) {
+    auto& scroll=treeScroll_.at(static_cast<std::size_t>(std::clamp(column,0,2)));
+    scroll=std::clamp(scroll+pixels,0.f,treeScrollMax(column));
 }
-// Keep the selected tree's row on screen.
+int Application::treeColumnOf(std::size_t tree) const {
+    const auto layout=layoutTrees(player_);
+    for (std::size_t row=0;row<layout.trees.size();++row) if (layout.trees[row]==tree) return layout.columns[row];
+    return 0;
+}
+// Keep the selected tree's row on screen, in its own column.
 void Application::revealSelectedTree() {
     const auto layout=layoutTrees(player_);
     for (std::size_t row=0;row<layout.trees.size();++row) if (layout.trees[row]==treeSelection_) {
+        auto& scroll=treeScroll_.at(static_cast<std::size_t>(layout.columns[row]));
         const float top=layout.origins[row].y, bottom=top+kTreeRowHeight;
-        if (top-kCategoryHeight<treeScroll_+kTreeViewTop) treeScroll_=top-kCategoryHeight-kTreeViewTop;
-        if (bottom>treeScroll_+treeViewBottom_) treeScroll_=bottom-treeViewBottom_;
+        if (top-kCategoryHeight<scroll+kTreeViewTop) scroll=top-kCategoryHeight-kTreeViewTop;
+        if (bottom>scroll+treeViewBottom_) scroll=bottom-treeViewBottom_;
     }
-    scrollTrees(0);
+    for (int c=0;c<3;++c) scrollTrees(c,0);
 }
 
 sf::FloatRect Application::talentTreeAbilityRect(std::size_t tree, std::size_t ability) const {
@@ -129,7 +139,10 @@ sf::FloatRect Application::talentTreeAbilityRect(std::size_t tree, std::size_t a
 void Application::handleTreeMouse(const sf::Event& event) {
     if(const auto* move=event.getIf<sf::Event::MouseMoved>()) mousePixel_=move->position;
     if(const auto* wheel=event.getIf<sf::Event::MouseWheelScrolled>(); wheel && !bindingTalent_ && wheel->position.x<kTreeViewWidth) {
-        scrollTrees(-wheel->delta*kTreeRowHeight/2); return;
+        // The wheel scrolls the column it's over.
+        const float x=static_cast<float>(wheel->position.x);
+        const int column=x<kTreeColumnX[1]-14?0:x<kTreeColumnX[2]-14?1:2;
+        scrollTrees(column,-wheel->delta*kTreeRowHeight/2); return;
     }
     const auto* click=event.getIf<sf::Event::MouseButtonPressed>();
     if(!click || click->button!=sf::Mouse::Button::Left) return;
@@ -262,7 +275,7 @@ void Application::renderTalentTrees() {
     ui_.button(window_,playButton,"Continue (T)",hovered(playButton));
 
     // --- Trees by category, three columns of icon rows ------------------------
-    scrollTrees(0); // the tree list may have changed size
+    for (int c=0;c<3;++c) scrollTrees(c,0); // the tree list may have changed size
     const auto layout=layoutTrees(player_,treeScroll_);
     for(float dx:{kTreeColumnX[1]-14,kTreeColumnX[2]-14,836.f}) ui_.divider(window_,dx,72,700);
     const float viewHeight=treeViewBottom_-kTreeViewTop;
@@ -308,11 +321,12 @@ void Application::renderTalentTrees() {
         }
     }
     window_.setView(frame);
-    // A slim scrollbar beside the last column once the trees overflow.
-    if (const float range=treeScrollMax(); range>0) {
+    // A slim scrollbar at the right of each column that overflows.
+    for (int c=0;c<3;++c) if (const float range=treeScrollMax(c); range>0) {
         const float trackTop=kTreeViewTop+4, track=viewHeight-8, thumb=std::max(40.f,track*viewHeight/(viewHeight+range));
-        sf::RectangleShape rail({4,track}); rail.setPosition({829,trackTop}); rail.setFillColor(sf::Color(60,52,44)); window_.draw(rail);
-        sf::RectangleShape bar({4,thumb}); bar.setPosition({829,trackTop+(track-thumb)*treeScroll_/range});
+        const float x=c<2?kTreeColumnX[c+1]-22:829.f;
+        sf::RectangleShape rail({4,track}); rail.setPosition({x,trackTop}); rail.setFillColor(sf::Color(60,52,44)); window_.draw(rail);
+        sf::RectangleShape bar({4,thumb}); bar.setPosition({x,trackTop+(track-thumb)*treeScroll_.at(static_cast<std::size_t>(c))/range});
         bar.setFillColor(ui::kBronze); window_.draw(bar);
     }
 

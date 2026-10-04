@@ -303,7 +303,7 @@ void Application::handleTownKey(sf::Keyboard::Key key) {
         dungeonMenu_=true; dungeonSelection_=dungeonIndex(currentFloor_); dungeonDepth_=floorInDungeon(currentFloor_); return;
     }
     if (key==sf::Keyboard::Key::Escape) {
-        if (merchantOpen_) merchantOpen_=false; else window_.close();
+        if (merchantOpen_) merchantOpen_=false; else openPause();
         return;
     }
     if (key==sf::Keyboard::Key::B) { openInventory(); return; }

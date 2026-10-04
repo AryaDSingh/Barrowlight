@@ -1,4 +1,5 @@
 #include "core/Application.hpp"
+#include "entities/Difficulty.hpp"
 #include "world/LineOfFire.hpp"
 #include <queue>
 #include "entities/HiddenTrees.hpp"
@@ -138,7 +139,7 @@ void Application::scaleDungeonMonster(Monster& m,int floor) {
     scaleDeepMonster(m,floor);
     if(m.allied) return;
     const int bonus=dungeonDepthBonus(floor);
-    m.stats().maxHp=m.stats().maxHp*(100+8*bonus)/100;
+    m.stats().maxHp=m.stats().maxHp*(100+8*bonus)/100*kMonsterLifePercent/100;
     m.stats().hp=m.stats().maxHp;
     m.stats().strength+=bonus/2; m.stats().intelligence+=bonus/2;
     m.setXpReward(m.xpReward()*(100+5*bonus)/100);
