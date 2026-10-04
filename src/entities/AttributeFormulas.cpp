@@ -6,9 +6,12 @@
 namespace engine {
 
 namespace {
-constexpr float kDodgePercentPerPoint = 0.005f;
-constexpr float kDodgeCap = 0.25f;
-constexpr float kCritPercentPerPoint = 0.005f;
+// Dexterity was doing too much (dodge, crit and damage at full rate), so
+// both its dodge and its crit were halved. Dodge from Dexterity alone may
+// reach the same 75% cap as total dodge.
+constexpr float kDodgePercentPerPoint = 0.0025f;
+constexpr float kDodgeCap = 0.75f;
+constexpr float kCritPercentPerPoint = 0.0025f;
 constexpr float kBaseCritChance = 0.05f; // every actor, player and monster alike, starts here
 constexpr float kCritDamageMultiplier = 1.5f;
 

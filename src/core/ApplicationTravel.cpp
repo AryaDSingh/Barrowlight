@@ -339,7 +339,7 @@ void Application::renderTown() {
     if (!logMessages_.empty()) ui_.text(window_,logMessages_.back(),{40,612},16,sf::Color(232,196,130));
     ui_.text(window_,merchantOpen_?"Tab buy or sell   Enter trade   Esc back to the square   F5/F9 save or load":
         "Click a building to visit it   D resume   R inn   B stash   M dungeons   Tab merchant   F5/F9 save or load",{40,684},14,ui::kMuted);
-    if (inventoryOpen_) renderInventory();
+    if (inventoryOpen_) { renderInventory(); renderDraggedItem(); }
     renderTrialMenu();
     renderAscendancy();
 }

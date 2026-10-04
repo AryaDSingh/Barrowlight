@@ -4,6 +4,7 @@
 // Writes build/playtest/report.txt and screenshots beside it.
 #include <algorithm>
 #include <chrono>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -135,7 +136,13 @@ struct PlaytestBot {
     }
 
     // ------------------------------------------------------------ build
+    int variant = 0; // even runs try a second build, using the newer trees
     std::vector<const char*> treePlan(PlayerClass cls) {
+        if (variant) {
+            if (cls == PlayerClass::Warrior) return {"two_handed", "brawling", "heavy_armour", "skirmish", "shield"};
+            if (cls == PlayerClass::Mage) return {"lightning", "ice", "venom", "hexes", "earth", "tide", "cloth"};
+            return {"whip", "acrobatics", "skirmish", "light_armour", "stealth"};
+        }
         if (cls == PlayerClass::Warrior) return {"one_handed", "brawling", "heavy_armour", "shield", "two_handed"};
         if (cls == PlayerClass::Mage) return {"fire", "lightning", "cloth", "arcane", "radiance"};
         return {"bow", "stealth", "light_armour", "acrobatics", "alchemy"};
@@ -332,6 +339,7 @@ struct PlaytestBot {
         RunResult result; result.cls = cls;
         const char* name = cls == PlayerClass::Warrior ? "warrior" : cls == PlayerClass::Mage ? "mage" : "thief";
         chase.clear(); ignoredUntil.clear();
+        variant = runNumber % 2 == 0 ? 1 : 0;
         app.adventureMode_ = false;
         app.selectClass(cls);
         spendPoints(cls);

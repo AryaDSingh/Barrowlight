@@ -88,7 +88,7 @@ std::string statusTooltip(const StatusEffectInstance& e) {
     case StatusEffectType::StunRecovery: return "Temporarily immune to another Stun. Cannot be cleansed.";
     case StatusEffectType::Empowered: return "Adds "+n+" damage to direct attacks.";
     case StatusEffectType::Guard: return "Blocks up to "+n+" damage from each direct hit. Does not block damage over time or Doom.";
-    case StatusEffectType::Evasion: return "Adds "+n+" percentage points of dodge. Total dodge is capped at 60%.";
+    case StatusEffectType::Evasion: return "Adds "+n+" percentage points of dodge. Total dodge is capped at 75%.";
     case StatusEffectType::Chill: return "Reduces damage dealt by "+n+"%. Chilled enemies also skip movement on alternating turns.";
     case StatusEffectType::Shock: return "Enables Lightning follow-ups. Certain talents consume Shock for an additional effect.";
     case StatusEffectType::Concealed: return "Enemies roll detection using distance, Dexterity and concealment rank. Most attacks and taking damage reveal you.";
@@ -673,6 +673,33 @@ void Application::renderTargetingOverlay() {
         mark(preview.destination, sf::Color(130, 255, 150), true);
 }
 
+// The aimed ability in one line: its name, then the expected damage or why
+// the target won't do.
+std::string Application::aimingSummary() {
+    if (!aimingTalent_) return {};
+    const auto talent = combatTalent(player_, player_.talents().effectiveTalent(*aimingTalent_));
+    std::string text = talent.name + ": ";
+    auto preview = targetPreview(*aimingTalent_, targetCursor_);
+    preview.affected.erase(std::remove_if(preview.affected.begin(), preview.affected.end(), [](const Actor* a) {
+        const auto* m = dynamic_cast<const Monster*>(a); return m && m->tactics.concealed;
+    }), preview.affected.end());
+    if (!preview.valid) return text + preview.message + "  (Esc cancels)";
+    if (talent.effectKind == TalentEffectKind::Damage && !preview.affected.empty()) {
+        int low = 0, high = 0; bool first = true;
+        for (const auto* actor : preview.affected) {
+            auto hit = talent;
+            if (actor == preview.chainedTarget) hit.damagePercent /= 2;
+            const auto damage = estimateTalentDamage(hit, player_, *actor);
+            low = first ? damage.normal : std::min(low, damage.normal);
+            high = std::max(high, damage.critical); first = false;
+        }
+        text += std::to_string(low) + "-" + std::to_string(high) + " damage";
+        if (preview.affected.size() > 1) text += ", " + std::to_string(preview.affected.size()) + " targets";
+        return text + ". Enter or click casts.";
+    }
+    return text + "Tab cycles targets; Enter or click casts.";
+}
+
 void Application::renderHudTooltips() {
     using ui::Line;
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
@@ -685,7 +712,7 @@ void Application::renderHudTooltips() {
         const std::string text=autoExploring_ && travelGoal_ ? "Walking. Any key or click stops; danger and new sightings pause it." :
             autoExploring_ ? "Exploring. Any key or click stops; danger and discoveries pause it." :
             restTurns_>0 ? "Resting. Any key or click stops; recovers life, mana and cooldowns." :
-            aimingTalent_ ? "Aim with mouse or arrows, Tab cycles targets, Enter or click casts" :
+            aimingTalent_ ? aimingSummary() :
             "Inspecting: mouse or arrows, Tab for the next enemy, I or Esc closes";
         ui_.text(window_,text,{kModeBanner.position.x+14,kModeBanner.position.y+7},15,ui::kText);
         ui_.button(window_,kCancelAction,autoExploring_ || restTurns_>0?"Stop":"Cancel",
@@ -694,7 +721,8 @@ void Application::renderHudTooltips() {
 
     // --- Talent: hovered or being aimed, shown above its hotbar slot --------
     const auto& talents = player_.talents().knownTalents();
-    const auto selected = aimingTalent_ ? aimingTalent_ : hoveredTalent_;
+    // Only on hover: once you're aiming, the banner says what matters and the map stays clear.
+    const auto selected = hoveredTalent_;
     if (selected && *selected < talents.size()) {
         const auto talent = combatTalent(player_,player_.talents().effectiveTalent(*selected));
         std::vector<Line> lines{{talent.name,ui::kGold,19,ui::Font::Title},

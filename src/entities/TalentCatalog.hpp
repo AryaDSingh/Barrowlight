@@ -350,12 +350,12 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t=Talent{}; t.name="Gather Mana"; t.description="Spend a turn restoring 6/7/9/10/12 mana. Requires cloth or no armour.";
         t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.restoreMana=6; t.cooldownTurns=8;
         add(10,"cloth.gather_mana",0,t);
-        add(10,"cloth.ward",1,passive("Loose Weave","With cloth or no armour and at least half mana, gain +8/10/12/14/16% dodge. Total dodge is capped at 60%.",PassiveKind::ClothWard,8));
+        add(10,"cloth.ward",1,passive("Loose Weave","With cloth or no armour and at least half mana, gain +8/10/12/14/16% dodge. Total dodge is capped at 75%.",PassiveKind::ClothWard,8));
         add(10,"cloth.spellweave",2,passive("Spellweave","With cloth or no armour, magic-tree hits against Burn, Chill or Shock gain +4/5/6/7/8 damage. Multiple ailments do not stack this bonus.",PassiveKind::Spellweave,4));
         t=attack("Repelling Pulse","With cloth or no armour, hit adjacent enemies and push survivors two tiles. Intelligence-scaled; creates room to cast.",5,6,7,false,1); t.pushDistance=2;
         add(10,"cloth.pulse",3,t);
         add(11,"light_armour.sidestep",0,move("Sidestep","Requires light armour. Move up to 2/2/3/3/4 visible tiles, gaining Opening and triggering movement talents.",2,0,5));
-        add(11,"light_armour.evasion",1,passive("Agile Fit","With light armour and Opening from waiting or movement abilities, gain +8/10/12/14/16% dodge. Total dodge is capped at 60%.",PassiveKind::LightEvasion,8));
+        add(11,"light_armour.evasion",1,passive("Agile Fit","With light armour and Opening from waiting or movement abilities, gain +8/10/12/14/16% dodge. Total dodge is capped at 75%.",PassiveKind::LightEvasion,8));
         add(11,"light_armour.precision",2,passive("Moving Aim","With light armour and Opening, all direct attacks gain +10/12/15/17/20% critical chance. Combines with Bow's Marksmanship.",PassiveKind::LightPrecision,10));
         t=attack("Parting Strike","Requires light armour. Strike and Mark an adjacent enemy, then retreat two tiles even on a miss. No weapon requirement.",6,3,6); t.retreatDistance=2; t.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,3,1};
         add(11,"light_armour.parting_strike",3,t);
@@ -581,7 +581,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,3,1}; node("trickster","trickster.fan_of_knives",Dex,t);
         node("trickster","trickster.opportunist",Dex,passive("Opportunist","Critical hits while Concealed or with Opening deal +50% critical damage.",PassiveKind::Opportunist,50));
         node("trickster","trickster.slippery",Dex,passive("Slippery","Dodging an attack grants Opening.",PassiveKind::Slippery,1));
-        node("trickster","trickster.quick_hands",Dex,passive("Quick Hands","+8% dodge chance. Total dodge is capped at 60%.",PassiveKind::QuickHands,8));
+        node("trickster","trickster.quick_hands",Dex,passive("Quick Hands","+8% dodge chance. Total dodge is capped at 75%.",PassiveKind::QuickHands,8));
         node("trickster","trickster.killer_instinct",Dex,passive("Killer Instinct","Your attacks deal +4 damage to enemies below half their life.",PassiveKind::KillerInstinct,4));
         // Templar (STR/INT).
         t=attack("Consecrate","Smite everything within two tiles with holy fire, then stand guarded: Guard 3 for three responses.",7,8,10,false,2);

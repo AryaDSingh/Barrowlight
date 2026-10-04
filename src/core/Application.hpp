@@ -166,7 +166,12 @@ private:
     void handleInventoryMouse(const sf::Event& event);
     void renderGroundItems();
     void pickupItem();
-    void finishInventoryTurn();
+    // keepOpen: an inventory action (equip, remove, drop) that takes a turn
+    // but leaves the inventory open, so you can equip more.
+    void finishInventoryTurn(bool keepOpen = false);
+    void updateGlimpses();
+    std::string aimingSummary();      // one line for the banner while you aim            // after the enemies act: who was just alerted
+    void renderDraggedItem();         // the item riding on the cursor while you drag it
     void spawnFixedItems();
     LootGenerator loot_;
     Position chestPosition_;

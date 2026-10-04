@@ -40,6 +40,11 @@ public:
     // Champions of the rare deep-floor events (see Landmark.hpp's
     // championName); each drops a unique item when it falls. 0 = none.
     int eventChampion=0;
+    // Out of sight, an alerted monster is glimpsed only on the turn it is
+    // alerted (glimpseTurns), then only when you can actually see it.
+    // Transient: not saved.
+    bool wasAlerted=false;
+    int glimpseTurns=0;
     // Boss tricks with light and surfaces (Application::bossSurfaceAction).
     // Transient: a reload simply restarts the count.
     int bossTimer=0;

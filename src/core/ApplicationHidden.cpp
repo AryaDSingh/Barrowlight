@@ -25,7 +25,7 @@ void Application::alertEnemyGroup(Monster& source,Position target) {
 
 bool Application::sensedMonster(const Monster& m) const {
     const auto p=m.position();
-    return !m.allied && m.stats().hp>0 && m.tactics.alert>0 && !m.tactics.concealed &&
+    return !m.allied && m.stats().hp>0 && m.tactics.alert>0 && !m.tactics.concealed && m.glimpseTurns>0 &&
         exploredMap_.at(p.x,p.y)!=Visibility::Visible;
 }
 

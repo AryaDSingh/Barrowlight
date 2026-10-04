@@ -70,6 +70,8 @@ int abilityDamageBonus(ScalingStat stat, int statValue, int cooldownTurns);
 // value to conflict with, so computing them fresh from the total stat
 // is consistent rather than double-counting anything.
 float dodgeChance(int dexterity);
+// Total dodge from every source (Dexterity, Evasion, armour, passives, gear) is capped here.
+inline constexpr float kTotalDodgeCap = 0.75f;
 
 // Dexterity: +0.5% crit chance per point of current total Dexterity,
 // added on top of the 5% every actor (player and monster alike) starts

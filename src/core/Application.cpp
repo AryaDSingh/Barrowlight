@@ -1536,7 +1536,19 @@ void Application::processMonsterTurns() {
     removeDeadMonsters();
 }
 
+// An enemy that has just been alerted is glimpsed through the walls for the
+// rest of this turn; after that you see it only where you can actually see.
+void Application::updateGlimpses() {
+    for (auto& m : monsters_) {
+        const bool alert = m->tactics.alert > 0;
+        if (alert && !m->wasAlerted) m->glimpseTurns = 1;
+        else if (m->glimpseTurns > 0) --m->glimpseTurns;
+        m->wasAlerted = alert;
+    }
+}
+
 void Application::advanceTurnsUntilPlayerCanAct() {
+    updateGlimpses();
     // Safety bound, not expected to be hit given finite stun durations --
     // defensive against a genuine bug rather than an anticipated case.
     constexpr int kMaxStunSkips = 50;
@@ -1693,7 +1705,7 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
             }
             if (decision.attackPower > 0) {
                 const int misfortune = actor.statusEffects().magnitudeOf(StatusEffectType::Misfortune);
-                lastHitDodged_ = dodged = (misfortune && rollChance(misfortune / 100.f)) || rollChance(std::min(.60f,dodgeChance(decision.target->stats().dexterity)+(decision.target->statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(*decision.target)+ascendancyDodgeBonus(*decision.target))/100.f));
+                lastHitDodged_ = dodged = (misfortune && rollChance(misfortune / 100.f)) || rollChance(std::min(kTotalDodgeCap,dodgeChance(decision.target->stats().dexterity)+(decision.target->statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(*decision.target)+ascendancyDodgeBonus(*decision.target))/100.f));
                 spawnAttackVfx(actor, *decision.target, decision.scalingStat==ScalingStat::Intelligence, dodged);
                 if (dodged) {
                     if (decision.target->talents().passiveValue(PassiveKind::Slippery)) decision.target->statusEffects().apply({StatusEffectType::Opening,2,0});
@@ -2741,7 +2753,7 @@ void Application::renderAttributeAllocation() {
     struct Choice { const char* name; const char* detail; const char* icon; sf::Color color; int value; };
     const Choice choices[]{
         {"Strength","+1 max life. Strengthens Strength-based abilities.","axe-swing",sf::Color(232,140,100),stats.strength},
-        {"Dexterity","+0.5% dodge (up to 25%) and +0.5% critical chance. Strengthens Dexterity-based abilities.","dodging",sf::Color(130,214,140),stats.dexterity},
+        {"Dexterity","+0.25% dodge and +0.25% critical chance (total dodge is capped at 75%). Strengthens Dexterity-based abilities.","dodging",sf::Color(130,214,140),stats.dexterity},
         {"Intelligence","+1 max mana. Strengthens Intelligence-based abilities.","third-eye",sf::Color(142,172,236),stats.intelligence}};
     for(int i=0;i<3;++i) {
         const auto r=attributeChoice(i);
@@ -3139,7 +3151,7 @@ void Application::render() {
     renderAscendancy();
     if (vaultMenu_ || shrineMenu_ || exitMenu_) mapHints_.clear();
     renderMapHints();
-    if (inventoryOpen_) renderInventory();
+    if (inventoryOpen_) { renderInventory(); renderDraggedItem(); }
     else if (!vaultMenu_ && !shrineMenu_ && !exitMenu_) renderHudTooltips();
     window_.display();
 }

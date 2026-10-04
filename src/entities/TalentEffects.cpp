@@ -88,7 +88,7 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
 }
 
 bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
-    if (rollChance(std::min(.60f,dodgeChance(target.stats().dexterity)+(target.statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(target)+ascendancyDodgeBonus(target))/100.f))) {
+    if (rollChance(std::min(kTotalDodgeCap,dodgeChance(target.stats().dexterity)+(target.statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(target)+ascendancyDodgeBonus(target))/100.f))) {
         if (target.talents().passiveValue(PassiveKind::Slippery)) target.statusEffects().apply({StatusEffectType::Opening,2,0});
         return false;
     }

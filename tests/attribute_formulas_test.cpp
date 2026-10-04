@@ -61,33 +61,23 @@ int main() {
           "abilityDamageBonus(Intelligence, 24, Signature) == 12 (24/5 == 4.8, *2.5 == 12.0) -- "
           "a heavily-invested Signature ability, the top of this formula's current range");
 
-    // --- dodgeChance: +0.5% per point of *current total* dexterity (no
-    // baseline subtraction at all -- every point counts, including a
-    // class's starting spread), capped at 25%.
+    // --- dodgeChance: +0.25% per point of *current total* dexterity (no
+    // baseline subtraction -- every point counts), capped at 75%.
     check(dodgeChance(0) == 0.f, "dodgeChance(0) == 0");
-    const float dexTwoDodge = dodgeChance(2);
-    check(dexTwoDodge > 0.0099f && dexTwoDodge < 0.0101f,
-          "dodgeChance(2) == 0.01 (1%) -- Thief's Dex-2 minority stats would compute this way");
     const float dexSixDodge = dodgeChance(6);
-    check(dexSixDodge > 0.0299f && dexSixDodge < 0.0301f,
-          "dodgeChance(6) == 0.03 (3%) -- Thief's own starting Dexterity");
-    const float dexFiftyDodge = dodgeChance(50);
-    check(dexFiftyDodge > 0.2499f && dexFiftyDodge < 0.2501f,
-          "dodgeChance(50) == 0.25 (exactly at the cap, computed via multiplication -- "
-          "compared with tolerance, not exact ==, since 50*0.005f isn't guaranteed bit-exact "
-          "to the literal 0.25f the way a clamped return value is)");
-    check(dodgeChance(100) == 0.25f, "dodgeChance(100) == 0.25 (well past the cap, still clamped)");
+    check(dexSixDodge > 0.0149f && dexSixDodge < 0.0151f, "dodgeChance(6) == 0.015 (1.5%) -- Thief's own starting Dexterity");
+    const float dexHundredDodge = dodgeChance(100);
+    check(dexHundredDodge > 0.2499f && dexHundredDodge < 0.2501f, "dodgeChance(100) == 0.25 (25%)");
+    check(dodgeChance(400) == 0.75f, "dodgeChance(400) == 0.75 (clamped at the 75% cap)");
+    check(kTotalDodgeCap == 0.75f, "total dodge from every source is capped at 75%");
 
-    // --- critChanceBonus: +0.5% per point of current total dexterity,
-    // no cap (unlike dodge, crit is allowed to climb as high as
-    // investment takes it).
+    // --- critChanceBonus: +0.25% per point of current total dexterity,
+    // no cap (unlike dodge, crit climbs as high as investment takes it).
     check(critChanceBonus(0) == 0.f, "critChanceBonus(0) == 0");
     const float critBonusAtSix = critChanceBonus(6);
-    check(critBonusAtSix > 0.0299f && critBonusAtSix < 0.0301f,
-          "critChanceBonus(6) == 0.03 (3%) -- Thief's own starting Dexterity");
+    check(critBonusAtSix > 0.0149f && critBonusAtSix < 0.0151f, "critChanceBonus(6) == 0.015 (1.5%) -- Thief's own starting Dexterity");
     const float critBonusAtHundred = critChanceBonus(100);
-    check(critBonusAtHundred > 0.4999f && critBonusAtHundred < 0.5001f,
-          "critChanceBonus(100) == 0.50 (50%) -- deliberately uncapped, unlike dodge");
+    check(critBonusAtHundred > 0.2499f && critBonusAtHundred < 0.2501f, "critChanceBonus(100) == 0.25 (25%) -- deliberately uncapped");
 
     // --- critDamageMultiplier: a flat constant.
     check(critDamageMultiplier() > 1.499f && critDamageMultiplier() < 1.501f,

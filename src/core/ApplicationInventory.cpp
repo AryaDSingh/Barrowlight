@@ -26,11 +26,11 @@ void Application::openInventory() {
     inventorySelection_ = std::min(inventorySelection_, player_.inventory().items().size() + kEquipmentSlotCount - 1);
 }
 
-void Application::finishInventoryTurn() {
+void Application::finishInventoryTurn(bool keepOpen) {
     inventoryDragSource_.reset();
     inventoryEquipTarget_.reset();
     enforceMinionCap();
-    inventoryOpen_ = false; // reveal the enemies' response to the committed action
+    if (!keepOpen) inventoryOpen_ = false; // reveal the enemies' response to the committed action
     cancelTargeting();
     if (mode_==GameMode::Town) return;
     advanceEnemyIntents();
@@ -83,7 +83,7 @@ void Application::handleInventoryKey(sf::Keyboard::Key key) {
         if (!item) return;
         item->setPosition(player_.position());
         log("Dropped ",item->name(),"."); groundItems_.push_back(std::move(item));
-        finishInventoryTurn(); return;
+        finishInventoryTurn(true); return;
     }
     if (key == sf::Keyboard::Key::B) inventoryOpen_ = false;
     else if (key == sf::Keyboard::Key::F5) saveGame();
@@ -104,7 +104,7 @@ void Application::handleInventoryKey(sf::Keyboard::Key key) {
             const auto name = item->name();
             if (player_.unequip(slot)) {
                 log("Removed ", name, ".");
-                finishInventoryTurn();
+                finishInventoryTurn(true);
             } else log("Bag full (50). Make space before removing equipment.");
         } else {
             if (key == sf::Keyboard::Key::U) return;
@@ -113,7 +113,7 @@ void Application::handleInventoryKey(sf::Keyboard::Key key) {
             const auto name = player_.inventory().items()[index]->name();
             if (player_.equip(index, inventoryEquipTarget_)) {
                 log("Equipped ", name, ".");
-                finishInventoryTurn();
+                finishInventoryTurn(true);
             } else log("Remove your shield or two-handed/bow weapon before equipping this item.");
         }
     }
@@ -284,6 +284,19 @@ void Application::handleInventoryMouse(const sf::Event& event) {
             handleInventoryKey(sf::Keyboard::Key::E);
         } else if(source<kEquipmentSlotCount && inBag(release->position)) handleInventoryKey(sf::Keyboard::Key::U);
     }
+}
+
+// While you drag an item it rides on the cursor, so you can see what you're moving.
+void Application::renderDraggedItem() {
+    if (!inventoryOpen_ || !inventoryDragSource_ || !mousePixel_) return;
+    const auto source = *inventoryDragSource_;
+    const Item* item = source < kEquipmentSlotCount ? player_.inventory().equipped(static_cast<EquipmentSlot>(source))
+        : source - kEquipmentSlotCount < player_.inventory().items().size() ? player_.inventory().items()[source - kEquipmentSlotCount].get() : nullptr;
+    if (!item || !item->definition()) return;
+    const sf::Vector2f at(*mousePixel_);
+    const sf::FloatRect box{{at.x - 30, at.y - 30}, {60, 60}};
+    ui_.inset(window_, box, rarityColor(*item));
+    ui_.icon(window_, itemIcon(*item->definition()), {{box.position.x + 8, box.position.y + 8}, {44, 44}}, rarityColor(*item));
 }
 
 void Application::renderInventory() {

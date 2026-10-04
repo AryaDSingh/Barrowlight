@@ -1535,8 +1535,8 @@ struct ApplicationRewardsTestAccess {
 
         setup(PlayerClass::Mage); addItem("copper_ring"); addItem("silver_ring");
         app.openInventory(); click(598,138); release(354,360);
-        check(app.player_.inventory().equipped(EquipmentSlot::Ring2) && !app.inventoryOpen_ && app.player_.position().x==10,
-            "Dragging a ring to Ring 2 equips and closes without moving the player");
+        check(app.player_.inventory().equipped(EquipmentSlot::Ring2) && app.inventoryOpen_ && app.player_.position().x==10,
+            "Dragging a ring to Ring 2 equips it and keeps the inventory open, without moving the player");
         app.openInventory(); click(598,138,sf::Mouse::Button::Right);
         check(app.player_.inventory().equipped(EquipmentSlot::Ring1) && app.player_.inventory().items().empty(),"Right-click fills the other empty ring slot");
         roundTrip();
@@ -1581,6 +1581,29 @@ struct ApplicationRewardsTestAccess {
         clickOn(screen::kTownGateSpot); check(app.dungeonMenu_,"Clicking the gate opens the dungeon choice");
         app.handleTownKey(sf::Keyboard::Key::Escape); check(!app.dungeonMenu_ && app.window_.isOpen(),"Esc leaves the dungeon choice");
         clickOn(screen::kTownReturn); check(app.mode_==GameMode::Playing && app.player_.position().x==10,"Town return button resumes the same floor position");
+
+        // Playtest fixes: a dragged item rides the cursor; alerted enemies are
+        // glimpsed only on the turn they're alerted; aiming shows a banner, not a tooltip.
+        setup(PlayerClass::Mage); addItem("copper_ring");
+        app.openInventory(); click(598,138);
+        app.handleEvent(sf::Event::MouseMoved{{420,300}});
+        check(app.inventoryDragSource_.has_value(),"Pressing on an item picks it up");
+        snapshot("ui-inventory-drag.png");
+        release(900,650); app.inventoryOpen_=false;
+        {
+            auto* lurker=enemy({25,25}); lurker->tactics.alert=8;
+            app.updateGlimpses();
+            check(app.sensedMonster(*lurker),"A newly alerted enemy is glimpsed through the walls");
+            app.updateGlimpses();
+            check(!app.sensedMonster(*lurker),"...but only on the turn it is alerted");
+            app.monsters_.clear();
+            app.player_.talents().learnTalent(findTalentDefinition("fire.ember_bolt")->ranks[0]);
+            auto* target=enemy({13,10}); (void)target; app.updateFieldOfView();
+            app.requestTalent(app.player_.talents().knownTalents().size()-1);
+            check(app.aimingTalent_ && app.aimingSummary().find("Ember Bolt")!=std::string::npos,"Aiming shows a one-line banner");
+            snapshot("ui-aiming-banner.png");
+            app.cancelTargeting(); app.monsters_.clear();
+        }
 
         // Landmark shrine: kneel beside the altar, pick one blessing, then it's spent.
         setup(PlayerClass::Mage);
