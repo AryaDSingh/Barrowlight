@@ -448,7 +448,9 @@ void Application::tickSurfaces() {
         if (m->type() == MonsterType::DrownedOne) {
             if (surfaceAt(at) == SurfaceType::None) setSurface(at, SurfaceType::Water, 0);
             if (conducts(surfaceAt(at))) m->stats().hp = std::min(m->stats().maxHp, m->stats().hp + 2);
-        } else if (m->type() == MonsterType::Gloomstalker && tileLit(at)) {
+        } else if (m->type() == MonsterType::Gloomstalker && m->tactics.alert > 0 && tileLit(at)) {
+            // Only in the fight: asleep or wandering, a Gloomstalker (and the
+            // Vampire Lord) lurks in torchlight without burning to death.
             m->stats().hp -= 2;
             if (visibleTile(at)) log(m->name(), " shrinks from the light!");
             checkAndHandleDeath(*m);
@@ -767,7 +769,8 @@ void Application::seedSurfaces(unsigned seed) {
     const auto clearOf = [&](Position p, int dist) {
         const auto far = [&](Position q) { return std::abs(p.x - q.x) + std::abs(p.y - q.y) > dist; };
         return far(floorEntrance_) && (!map_.inBounds(floorExit_.x, floorExit_.y) || far(floorExit_)) &&
-               (landmark_ == LandmarkKind::None || far(landmarkAltar_)) && (!vaultExists_ || far(vaultCenter_));
+               (landmark_ == LandmarkKind::None || far(landmarkAltar_)) && (!vaultExists_ || far(vaultCenter_)) &&
+               std::all_of(extraLandmarks_.begin(), extraLandmarks_.end(), [&](const ExtraLandmark& e) { return far(e.altar); });
     };
     std::vector<Position> floor;
     for (int y = 1; y + 1 < map_.height(); ++y)
@@ -843,6 +846,33 @@ void Application::renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>
                 return sf::Color(static_cast<std::uint8_t>(col.r * dim), static_cast<std::uint8_t>(col.g * dim),
                                  static_cast<std::uint8_t>(col.b * dim), col.a);
             };
+            // Water and blood use real tiles (assets/sprites/dcss): a dimmed
+            // shallow-water texture with foam toward dry ground, and splatters.
+            if (type == SurfaceType::Water || type == SurfaceType::Electrified) {
+                const bool charged = type == SurfaceType::Electrified;
+                const auto wet = [&](int nx, int ny) { const auto t = surfaceAt({nx, ny}); return t == SurfaceType::Water || t == SurfaceType::Electrified || t == SurfaceType::Ice; };
+                const int frame = (static_cast<int>(now * 1.2f) + x * 7 + y * 3) % 2;
+                const sf::Color tint = shade(charged ? sf::Color(175, 205, 240, 225) : sf::Color(105, 135, 150, 215));
+                sprites_.draw(window_, {frame ? "dcss/dngn_shallow_water2.png" : "dcss/dngn_shallow_water.png", sf::IntRect({0, 0}, {32, 32})}, at, kTile, tint);
+                const sf::Color foam = shade(sf::Color(150, 170, 175, 170));
+                const auto edge = [&](const char* sheet) { sprites_.draw(window_, {sheet, sf::IntRect({0, 0}, {32, 32})}, at, kTile, foam); };
+                const bool n = wet(x, y - 1), sth = wet(x, y + 1), w = wet(x - 1, y), e = wet(x + 1, y);
+                if (!n) edge("dcss/shallow_water_wave_N.png");
+                if (!sth) edge("dcss/shallow_water_wave_S.png");
+                if (!w) edge("dcss/shallow_water_wave_W.png");
+                if (!e) edge("dcss/shallow_water_wave_E.png");
+                if (n && w && !wet(x - 1, y - 1)) edge("dcss/shallow_water_wave_corner_NW.png");
+                if (n && e && !wet(x + 1, y - 1)) edge("dcss/shallow_water_wave_corner_NE.png");
+                if (sth && w && !wet(x - 1, y + 1)) edge("dcss/shallow_water_wave_corner_SW.png");
+                if (sth && e && !wet(x + 1, y + 1)) edge("dcss/shallow_water_wave_corner_SE.png");
+                continue;
+            }
+            if (type == SurfaceType::Blood) {
+                static constexpr const char* kSplatters[]{"dcss/blood_red.png", "dcss/blood_red1.png", "dcss/blood_red2.png", "dcss/blood_red3.png", "dcss/blood_red4.png"};
+                const unsigned hsh = surfaceHash(x, y, 4);
+                sprites_.draw(window_, {kSplatters[hsh % 5], sf::IntRect({0, 0}, {32, 32})}, at, kTile, shade(sf::Color(170, 120, 120, 235)), (hsh >> 4) % 2 == 0);
+                continue;
+            }
             sf::Color body;
             switch (type) {
                 case SurfaceType::Water: case SurfaceType::Electrified: body = sf::Color(40, 90, 150, 150); break;

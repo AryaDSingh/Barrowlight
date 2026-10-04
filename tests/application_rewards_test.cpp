@@ -15,6 +15,7 @@
 #include "world/LineOfFire.hpp"
 #include "world/Pathfinder.hpp"
 #include "core/Application.hpp"
+#include "world/FloorTheme.hpp"
 #include "core/ScreenLayout.hpp"
 #include "entities/MonsterFactory.hpp"
 #include "entities/PlayerClassFactory.hpp"
@@ -58,7 +59,7 @@ struct ApplicationRewardsTestAccess {
             app.darknessEnabled_ = false; app.player_.lightSource = 1; app.player_.lightLit = true; // darkness has its own checks
             app.autoExploring_=false; app.restTurns_=0; app.quietTurns_=0; app.combatThisTurn_=false;
             app.vaultExists_=app.vaultOpened_=app.vaultClaimed_=false; app.vaultMenu_=0; app.exitMenu_=false; app.vaultRewards_.clear();
-            app.landmark_=LandmarkKind::None; app.landmarkUsed_=false; app.shrineMenu_=false;
+            app.landmark_=LandmarkKind::None; app.landmarkUsed_=false; app.shrineMenu_=false; app.extraLandmarks_.clear(); app.floorTurns_=0;
             app.player_.patron=app.player_.favor=0; app.player_.bloodMagicUnlocked=false; app.pendingFall_=false;
             app.player_.ascendancy.clear(); app.player_.ascendancyPoints=app.player_.trialKeys=app.player_.trialsCleared=0;
             app.lightOrbs_.clear();
@@ -374,6 +375,98 @@ struct ApplicationRewardsTestAccess {
                 app.updateCamera(); snapshot("ui-surfaces-floor.png"); app.darknessEnabled_=true;
             }
         }
+        // Water and blood art, and the floor's notice of its events.
+        setup(PlayerClass::Mage);
+        {
+            app.clearSurfaces();
+            for (int y=12;y<=15;++y) for (int x=12;x<=18;++x) if ((x+y)%7!=0 && !(y==15 && x>16)) app.setSurface({x,y},SurfaceType::Water,0);
+            for (int x=14;x<=15;++x) app.setSurface({x,13},SurfaceType::Electrified,4);
+            for (const Position p:{Position{6,12},Position{7,12},Position{6,13},Position{8,14},Position{5,15}}) app.setSurface(p,SurfaceType::Blood,0);
+            app.landmark_=LandmarkKind::Shrine; app.landmarkAltar_={0,0}; app.landmarkUsed_=false;
+            app.extraLandmarks_.push_back({LandmarkKind::HealingFountain,{0,1},false});
+            app.extraLandmarks_.push_back({LandmarkKind::TreasureHoard,{0,2},true});
+            app.announceFloor();
+            check(app.floorNotice_.rfind("On this floor: Shrine of ",0)==0 && app.floorNotice_.find(',')!=std::string::npos,
+                  "Arriving names every unused event on the floor");
+            check(app.floorNotice_.find(landmarkName(LandmarkKind::TreasureHoard,floorTheme(app.currentFloor_).region))==std::string::npos,
+                  "A used event isn't announced");
+            app.player_.setPosition({10,13}); app.updateFieldOfView(); app.updateCamera();
+            snapshot("ui-water-blood.png");
+            app.landmark_=LandmarkKind::None; app.extraLandmarks_.clear(); app.floorNotice_.clear(); app.clearSurfaces();
+        }
+        // Roaming threats: patrols, a wandering champion, hunters, and flanking.
+        setup(PlayerClass::Warrior);
+        {
+            // Blocked by an ally, a chaser goes round it instead of queuing.
+            auto* front=enemy({11,10}); auto* back=enemy({12,10});
+            (void)front;
+            const auto flank=app.enemyDecision(*back,&app.player_);
+            check(flank.type==AIActionType::Move && !app.isOccupied(flank.movePosition,back) &&
+                  std::abs(flank.movePosition.x-10)+std::abs(flank.movePosition.y-10)<=3,"A chaser blocked by an ally goes round it to surround you");
+            int patrols=0, champions=0;
+            Monster* champion=nullptr;
+            for (unsigned seed=1;seed<=24;++seed) {
+                app.currentFloor_=4; app.regenerateLevel(seed);
+                bool patrol=false;
+                for (auto& m:app.monsters_) {
+                    patrol|=m->roam==Roam::Patrol;
+                    if (m->roam==Roam::Champion) {
+                        ++champions; champion=m.get();
+                        check(m->name().size()>14 && m->name().substr(m->name().size()-14)==", the Wanderer" && m->name().rfind(namePrefixForTier(MonsterTier::Nightmare),0)!=0 &&
+                              m->tier()==MonsterTier::Nightmare,"The wandering champion is a Nightmare, named plainly: \"Ogre, the Wanderer\"");
+                        check(std::max(std::abs(m->position().x-app.player_.position().x),std::abs(m->position().y-app.player_.position().y))>15,
+                              "The wandering champion starts far from you");
+                        check(app.floorNotice_.find(m->name()+" roams these halls")!=std::string::npos,"The floor notice names the wandering champion");
+                    }
+                }
+                patrols+=patrol;
+                if (patrol) check(app.floorNotice_.find("a patrol walks the halls")!=std::string::npos,"The floor notice warns of the patrol");
+                if (champion && patrols>2) break;
+            }
+            std::cout << patrols << " patrols, " << champions << " champions on depth-4 floors\n";
+            check(patrols>0 && champions>0,"Floors get patrols and wandering champions");
+            if (champion) {
+                const auto points=app.roamWaypoints();
+                const auto before=champion->position();
+                const auto step=app.enemyDecision(*champion,nullptr);
+                const auto goal=points[static_cast<std::size_t>(champion->tactics.patrol)]; // the next room, chosen on arrival
+                check(step.type==AIActionType::Move && std::abs(step.movePosition.x-goal.x)+std::abs(step.movePosition.y-goal.y)<
+                      std::abs(before.x-goal.x)+std::abs(before.y-goal.y),"A roamer walks toward the next room");
+                const auto name=champion->name(); const int hp=champion->stats().maxHp;
+                app.floorTurns_=321; roundTrip();
+                bool kept=false;
+                for (auto& m:app.monsters_) kept|=m->roam==Roam::Champion && m->name()==name && m->stats().maxHp==hp;
+                check(kept && app.floorTurns_==321,"Save/load keeps the roamers, the champion's name and the hunt's count");
+            }
+            // The hunt: a warning, then two packs that know where you are.
+            app.floorTurns_=799; app.tickHunt();
+            check(app.floorNotice_.find("caught your scent")!=std::string::npos,"Lingering brings a warning first");
+            const auto before=app.monsters_.size();
+            app.floorTurns_=899; app.tickHunt();
+            std::vector<Monster*> hunters;
+            for (auto& m:app.monsters_) if (m->roam==Roam::Hunter) hunters.push_back(m.get());
+            check(app.monsters_.size()==before+hunters.size() && hunters.size()>=4,"Then the hunters come, two packs of them");
+            bool hidden=true, fair=true;
+            for (auto* h:hunters) {
+                hidden&=app.exploredMap_.at(h->position().x,h->position().y)!=Visibility::Visible;
+                fair&=!h->rewardsEligible() && h->tactics.alert>0;
+            }
+            check(hidden && fair,"Hunters arrive out of sight, alert, and carry nothing");
+            if (!hunters.empty()) {
+                // The one nearest you leads; the rest queue or go round it.
+                const auto me=app.player_.position();
+                auto* h=*std::min_element(hunters.begin(),hunters.end(),[&](Monster* a,Monster* b) {
+                    return findPath(app.map_,a->position(),me)->size()<findPath(app.map_,b->position(),me)->size(); });
+                h->tactics.alert=0;
+                const auto was=h->position();
+                const auto chase=app.enemyDecision(*h,nullptr);
+                const auto path=findPath(app.map_,was,me);
+                check(chase.type==AIActionType::Move && h->tactics.alert>0 && h->tactics.lastKnown.x==me.x && h->tactics.lastKnown.y==me.y &&
+                      path && findPath(app.map_,chase.movePosition,me)->size()<=path->size()+1,"Hunters always know where you are");
+            }
+            check(app.floorNotice_.find("hunt is on")!=std::string::npos,"The hunt is announced");
+            snapshot("ui-hunt.png");
+        }
         // Surfaces: the elements meet oil, water, ice and fire.
         setup(PlayerClass::Mage);
         {
@@ -547,8 +640,8 @@ struct ApplicationRewardsTestAccess {
             app.player_.lightLit=true; app.updateFieldOfView();
             for (int i=0;i<3;++i) { const int before=app.player_.stats().hp; app.executeAIDecision(*gloom,claw,0); lit=std::max(lit,before-app.player_.stats().hp); app.player_.stats().hp=app.player_.stats().maxHp; }
             check(dark>lit && lit>0,"Gloomstalkers hit far harder from the dark");
-            const int gloomHp=gloom->stats().hp; app.tickSurfaces();
-            check(gloom->stats().hp<gloomHp,"Light sears a Gloomstalker");
+            gloom->tactics.alert=8; const int gloomHp=gloom->stats().hp; app.tickSurfaces();
+            check(gloom->stats().hp<gloomHp,"Light sears a Gloomstalker in the fight");
             gloom->stats().hp=0; app.checkAndHandleDeath(*gloom); app.removeDeadMonsters();
 
             auto* firebrand=spawn(MonsterType::OrcFirebrand,{15,10});
@@ -703,7 +796,7 @@ struct ApplicationRewardsTestAccess {
             app.player_.setPosition({10,10}); goblin->setPosition({11,10}); app.updateFieldOfView();
             check(use(hurl,{11,10}) && goblin->position().x==8 && goblin->position().y==10,"Hurl throws a foe over your shoulder, two tiles behind you");
             auto* other=enemy({7,10}); other->stats().hp=other->stats().maxHp=60;
-            goblin->setPosition({11,10});
+            goblin->setPosition({11,10}); goblin->stats().hp=60; // a crit could otherwise finish it off
             app.player_.talents().setRank(hurl,5);
             check(use(hurl,{11,10}) && goblin->position().x==8 && other->position().x==6,
                   "Domino: a hurled foe knocks the one it hits a tile further");
@@ -1195,6 +1288,7 @@ struct ApplicationRewardsTestAccess {
             app.advanceTurnsUntilPlayerCanAct();
             check(app.currentFloor_==floor+1 && app.player_.stats().hp>=1 && !app.pendingFall_ && app.map_.isWalkable(app.player_.position().x,app.player_.position().y),
                   "...and land on the floor below, hurt but never killed by the fall");
+            check(!app.player_.statusEffects().has(StatusEffectType::Stun),"The fall shakes off the stun, so you act first below");
             app.trial_=0; app.pendingFall_=false;
         }
 
@@ -1336,6 +1430,13 @@ struct ApplicationRewardsTestAccess {
                 Monster* lord=nullptr;
                 for (auto& m:app.monsters_) if (m->eventChampion==kChampionVampire) lord=m.get();
                 check(lord && lord->tactics.alert==0 && app.vampireLordAlive(),"A Vampire Lord sleeps beside the altar");
+                if (lord) {
+                    const int asleep=lord->stats().hp;
+                    const bool dark=app.darknessEnabled_; app.darknessEnabled_=false; // every tile lit
+                    for (int i=0;i<20;++i) app.tickSurfaces();
+                    app.darknessEnabled_=dark;
+                    check(lord->stats().hp==asleep,"Asleep, the Vampire Lord doesn't burn in the light (found in playtest)");
+                }
                 bool pool=false;
                 for (int dy=-1;dy<=2;++dy) for (int dx=-2;dx<=2;++dx) pool=pool || app.surfaceAt({app.landmarkAltar_.x+dx,app.landmarkAltar_.y+dy})==SurfaceType::Blood;
                 check(pool,"The altar stands in a pool of blood");
@@ -1976,11 +2077,14 @@ struct ApplicationRewardsTestAccess {
         app.monsters_[0]->stats().hp=originalHp-1;
         const auto population=app.monsters_.size();
         const auto lootState=app.loot_.state();
+        const auto deepEvents=app.extraLandmarks_.size()+(app.landmark_!=LandmarkKind::None);
         app.mode_=GameMode::Town; app.travelFloor(1,true);
+        check(app.extraLandmarks_.empty(),"A floor's extra events stay on that floor (found in testing)");
         check(app.currentFloor_==1 && app.groundItems_.size()==1 && app.groundItems_[0]->instanceId()==homeItem,"Switching dungeons preserves existing ground loot");
         raiseLevel(18); app.mode_=GameMode::Town; app.travelFloor(12,true);
         check(app.monsters_.size()==population && app.monsters_[0]->stats().hp==originalHp-1,
             "Revisiting after level-ups preserves damaged enemy population");
+        check(app.extraLandmarks_.size()+(app.landmark_!=LandmarkKind::None)==deepEvents,"Returning keeps every event on the floor");
         check(app.monsters_[0]->stats().strength==originalStrength && app.monsters_[0]->xpReward()==originalXp && app.loot_.state()==lootState,
             "Revisiting does not rescale enemies or reroll loot");
         roundTrip();

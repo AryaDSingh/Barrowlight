@@ -5,6 +5,7 @@
 #include <optional>
 #include <cstdint>
 #include <string>
+#include <array>
 #include <vector>
 
 #include "core/Position.hpp"
@@ -48,6 +49,7 @@ struct SaveGameState {
     Position floorEntrance{}, floorExit{};
     bool inTown=false;
     int gold=0, quietTurns=0;
+    int floorTurns=0; // turns spent on this floor (the hunt); format 37
     bool bloodRelic=false, animationRelic=false;
     std::vector<int> deathlessSpentFloors;
     Map map;
@@ -99,6 +101,7 @@ struct SaveGameState {
     int lightSource=1; bool lightLit=true; // format 28
     bool bloodMagicUnlocked=false;         // format 33
     int patron=0, favor=0;                 // format 34
+    std::vector<std::array<int, 4>> extraLandmarks; // format 36: kind, altar x, altar y, used
     // Format 29: ground surfaces (x, y, type, turns) and wall torches lit or put out.
     std::vector<std::tuple<int,int,int,int>> surfaces;
     std::vector<Position> torchToggles;
@@ -131,6 +134,7 @@ struct SaveGameState {
         int summonRank=1, summonIntelligence=0, remainingLife=0;
         bool vaultGuard = false;
         int eventChampion = 0;
+        int roam = 0; // Roam; format 37
         int recoveryActions=0, summonsCommitted=0, announcedPhase=1;
         bool enraged=false;
         std::optional<EnemyIntent> intent;

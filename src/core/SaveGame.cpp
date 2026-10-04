@@ -45,7 +45,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 35;
+constexpr int kSaveFormatVersion = 37;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -329,6 +329,7 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
         writeTalentStates(out, m.talents);
         if (version>=12) out << m.vaultGuard << '\n';
         if (version>=25) out << m.eventChampion << '\n';
+        if (version>=37) out << m.roam << '\n';
         if (version>=13) out << m.recoveryActions << ' ' << m.summonsCommitted << ' ' << m.announcedPhase << ' ' << m.enraged << '\n';
         if (version>=11) {
             out << m.intent.has_value();
@@ -390,6 +391,12 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
     if (version>=28) out << state.lightSource << ' ' << state.lightLit << '\n';
     if (version>=33) out << state.bloodMagicUnlocked << '\n';
     if (version>=34) out << state.patron << ' ' << state.favor << '\n';
+    if (version>=36) {
+        out << state.extraLandmarks.size();
+        for (const auto& e : state.extraLandmarks) out << ' ' << e[0] << ' ' << e[1] << ' ' << e[2] << ' ' << e[3];
+        if (version>=37) out << ' ' << state.floorTurns;
+        out << '\n';
+    }
     if (version>=29) {
         out << state.surfaces.size();
         for (const auto& [x,y,type,turns] : state.surfaces) out << ' ' << x << ' ' << y << ' ' << type << ' ' << turns;
@@ -409,7 +416,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 34 && version != 33 && version != 32 && version != 31 && version != 30 && version != 29 && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
+    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 35 && version != 34 && version != 33 && version != 32 && version != 31 && version != 30 && version != 29 && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
         return std::nullopt;
     }
 
@@ -509,6 +516,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         for (const auto& t:m.talents) if (t.rank!=1) return std::nullopt;
         if (version>=12 && !(in>>m.vaultGuard)) return std::nullopt;
         if (version>=25 && (!(in>>m.eventChampion) || m.eventChampion<0 || m.eventChampion>kEventChampionKinds)) return std::nullopt;
+        if (version>=37 && (!(in>>m.roam) || m.roam<0 || m.roam>kRoamKinds)) return std::nullopt;
         if (version>=13) {
             if (!(in>>m.recoveryActions>>m.summonsCommitted>>m.announcedPhase>>m.enraged) ||
                 m.recoveryActions<0 || m.recoveryActions>1 || m.summonsCommitted<0 || m.summonsCommitted>3 ||
@@ -700,6 +708,17 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
     if (version>=33 && !(in>>state.bloodMagicUnlocked)) return std::nullopt;
     if (version>=34 && (!(in>>state.patron>>state.favor) || state.patron<0 || state.patron>kPatronCount ||
         state.favor<kFavorMin || state.favor>kFavorMax)) return std::nullopt;
+    if (version>=36) {
+        std::size_t count=0;
+        if (!(in>>count) || count>2) return std::nullopt;
+        for (std::size_t i=0;i<count;++i) {
+            std::array<int,4> e{};
+            if (!(in>>e[0]>>e[1]>>e[2]>>e[3]) || e[0]<1 || e[0]>=kLandmarkKindCount || !state.map.inBounds(e[1],e[2]) ||
+                state.map.isWalkable(e[1],e[2]) || e[3]<0 || e[3]>1) return std::nullopt;
+            state.extraLandmarks.push_back(e);
+        }
+        if (version>=37 && (!(in>>state.floorTurns) || state.floorTurns<0 || state.floorTurns>100000000)) return std::nullopt;
+    }
     if (version>=29) {
         std::size_t count=0;
         if (!(in>>count) || count>static_cast<std::size_t>(state.map.width()*state.map.height())) return std::nullopt;

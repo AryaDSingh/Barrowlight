@@ -44,6 +44,7 @@ public:
     // alerted (glimpseTurns), then only when you can actually see it.
     // Transient: not saved.
     bool wasAlerted=false;
+    Roam roam=Roam::None;
     int glimpseTurns=0;
     // Boss tricks with light and surfaces (Application::bossSurfaceAction).
     // Transient: a reload simply restarts the count.

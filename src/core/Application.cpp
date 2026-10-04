@@ -2059,6 +2059,7 @@ void Application::removeDeadMonsters() {
 }
 
 void Application::updateFieldOfView() {
+    focusNearestLandmark();
     computeLight();
     std::vector<Position> visible = computeFieldOfView(map_, player_.position(), kSightRadius);
     // In the dark only what's lit, or right beside you, can be seen. Umbral
@@ -2124,15 +2125,18 @@ void Application::computeLight() {
         }
     if (map_.inBounds(floorEntrance_.x, floorEntrance_.y)) light(floorEntrance_, 2);
     if (map_.inBounds(floorExit_.x, floorExit_.y)) light(floorExit_, 2);
-    if (landmark_ != LandmarkKind::None) {
+    const auto lightLandmark = [&](LandmarkKind kind, Position altar) {
+        if (kind == LandmarkKind::None) return;
         for (const Position d : {Position{0, 1}, Position{0, -1}, Position{1, 0}, Position{-1, 0}})
-            if (map_.isWalkable(landmarkAltar_.x + d.x, landmarkAltar_.y + d.y)) light({landmarkAltar_.x + d.x, landmarkAltar_.y + d.y}, 2);
-        if (landmark_ == LandmarkKind::Shrine)
+            if (map_.isWalkable(altar.x + d.x, altar.y + d.y)) light({altar.x + d.x, altar.y + d.y}, 2);
+        if (kind == LandmarkKind::Shrine)
             for (const Position o : {Position{-3, -1}, Position{3, -1}, Position{-3, 1}, Position{3, 1}})
                 for (const Position d : {Position{0, 1}, Position{0, -1}, Position{1, 0}, Position{-1, 0}})
-                    if (map_.isWalkable(landmarkAltar_.x + o.x + d.x, landmarkAltar_.y + o.y + d.y))
-                        light({landmarkAltar_.x + o.x + d.x, landmarkAltar_.y + o.y + d.y}, 2);
-    }
+                    if (map_.isWalkable(altar.x + o.x + d.x, altar.y + o.y + d.y))
+                        light({altar.x + o.x + d.x, altar.y + o.y + d.y}, 2);
+    };
+    lightLandmark(landmark_, landmarkAltar_);
+    for (const auto& e : extraLandmarks_) lightLandmark(e.kind, e.altar);
     if (vaultExists_ && map_.inBounds(vaultCenter_.x, vaultCenter_.y)) light(vaultCenter_, 1);
     for (const auto& orb : lightOrbs_) light(orb.at, 5, sf::Color(170, 199, 255), 5.4f);
     for (const auto& item : groundItems_)
@@ -2249,6 +2253,8 @@ void Application::regenerateLevel(unsigned int seed) {
     vaultCenter_=dungeon.vaultCenter; vaultEntrance_=dungeon.vaultEntrance;
     vaultRewards_.clear();
     landmark_=dungeon.landmark; landmarkAltar_=dungeon.landmarkAltar; landmarkUsed_=false; shrineMenu_=false;
+    extraLandmarks_.clear();
+    for (const auto& [kind,altar]:dungeon.extraLandmarks) extraLandmarks_.push_back({kind,altar,false});
 
     map_ = dungeon.map;
     actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN; vfx_.clear(); hitFlash_.clear();
@@ -2320,6 +2326,8 @@ void Application::regenerateLevel(unsigned int seed) {
     for (auto& m:monsters_) scaleDungeonMonster(*m,floorDepth(currentFloor_));
     seedSurfaces(seed);
     if (landmark_==LandmarkKind::BloodAltar) placeVampireLord();
+    floorTurns_=0;
+    if (!dungeon.hasBossRoom) planRoamers(seed);
     if (dungeon.hasBossRoom && boss_) {
         const Position centre=boss_->position();
         placeBraziers(centre,{{-3,-2},{3,-2},{-3,2},{3,2}});
@@ -2346,6 +2354,7 @@ void Application::regenerateLevel(unsigned int seed) {
     // Arrival is not a wait action: no healing, cooldown ticks or quiet turns.
     updateFieldOfView();
 
+    announceFloor();
     std::cout << "Generated dungeon (seed " << seed << ", floor " << currentFloor_
               << "): " << map_.width() << 'x' << map_.height() << ", " << dungeon.roomCount
               << " rooms, " << monsters_.size() << " monsters"
@@ -2392,6 +2401,7 @@ SaveGameState Application::captureState(bool includeFloors) {
     state.chestPosition = chestPosition_; state.chestExists = chestExists_; state.chestClaimed = chestClaimed_;
     state.ordinaryDrops = ordinaryDrops_;
     state.landmark=static_cast<int>(landmark_); state.landmarkAltar=landmarkAltar_; state.landmarkUsed=landmarkUsed_;
+    for (const auto& e:extraLandmarks_) state.extraLandmarks.push_back({static_cast<int>(e.kind),e.altar.x,e.altar.y,e.used?1:0});
     state.props=props_;
     state.vaultExists=vaultExists_; state.vaultOpened=vaultOpened_; state.vaultClaimed=vaultClaimed_;
     state.vaultCenter=vaultCenter_; state.vaultEntrance=vaultEntrance_;
@@ -2431,6 +2441,7 @@ SaveGameState Application::captureState(bool includeFloors) {
         data.intent = m->intent();
         data.vaultGuard = m->vaultGuard;
         data.eventChampion = m->eventChampion;
+        data.roam = static_cast<int>(m->roam);
         data.recoveryActions=m->recoveryActions; data.summonsCommitted=m->summonsCommitted;
         if (const auto* behavior=dynamic_cast<const BossBehavior*>(m->ai())) {
             data.announcedPhase=behavior->announcedPhase(); data.enraged=behavior->enraged();
@@ -2443,7 +2454,7 @@ SaveGameState Application::captureState(bool includeFloors) {
     }
 
     state.floorEntrance=floorEntrance_; state.floorExit=floorExit_;
-    state.gold=gold_; state.quietTurns=quietTurns_; state.inTown=mode_==GameMode::Town;
+    state.gold=gold_; state.quietTurns=quietTurns_; state.floorTurns=floorTurns_; state.inTown=mode_==GameMode::Town;
     // In a trial the current map is the arena, so every cached dungeon floor is kept.
     if (includeFloors) for (const auto& entry:floorCache_) if (entry.first!=currentFloor_ || trial_) state.savedFloors.push_back(entry.second);
     return state;
@@ -2498,6 +2509,8 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
         monster->vaultGuard = savedMonster.vaultGuard;
         monster->eventChampion = savedMonster.eventChampion;
         if (monster->eventChampion) monster->setName(championName(monster->eventChampion));
+        monster->roam = static_cast<Roam>(savedMonster.roam);
+        if (monster->roam == Roam::Champion) monster->setName(wandererName(*monster));
         monster->recoveryActions=savedMonster.recoveryActions; monster->summonsCommitted=savedMonster.summonsCommitted;
         if (auto* behavior=dynamic_cast<BossBehavior*>(monster->ai())) behavior->restoreState(savedMonster.announcedPhase,savedMonster.enraged);
         monster->stats().hp = savedMonster.hp;
@@ -2562,6 +2575,8 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     chestPosition_ = state.chestPosition; chestExists_ = state.chestExists; chestClaimed_ = state.chestClaimed;
     ordinaryDrops_ = state.ordinaryDrops;
     landmark_=static_cast<LandmarkKind>(state.landmark); landmarkAltar_=state.landmarkAltar; landmarkUsed_=state.landmarkUsed;
+    extraLandmarks_.clear();
+    for (const auto& e:state.extraLandmarks) extraLandmarks_.push_back({static_cast<LandmarkKind>(e[0]),{e[1],e[2]},e[3]!=0});
     {
         // Raised pillars are temporary: they crumble when the floor is reloaded.
         auto props=state.props;
@@ -2625,7 +2640,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
         (boss_ != nullptr ? " (boss present)" : ""), ", player at (", player_.position().x, ',',
         player_.position().y, "), ", player_.stats().hp, '/', player_.stats().maxHp, " hp.");
     floorEntrance_=state.floorEntrance; floorExit_=state.floorExit;
-    gold_=state.gold; quietTurns_=state.quietTurns; combatThisTurn_=false;
+    gold_=state.gold; quietTurns_=state.quietTurns; floorTurns_=state.floorTurns; combatThisTurn_=false;
     if (includeFloors) {
         floorCache_.clear();
         for (const auto& floor:state.savedFloors) floorCache_[floor.currentFloor]=floor;
@@ -2995,6 +3010,7 @@ void Application::render() {
     window_.draw(feet);
 
     renderLandmark();
+    for (std::size_t i = 0; i < extraLandmarks_.size(); ++i) { swapLandmark(i); renderLandmark(); swapLandmark(i); }
     if (landmark_ != LandmarkKind::None && !landmarkUsed_ &&
         exploredMap_.at(landmarkAltar_.x, landmarkAltar_.y) == Visibility::Visible) {
         const auto at = worldToScreen(landmarkAltar_.x, landmarkAltar_.y);

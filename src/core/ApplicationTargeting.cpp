@@ -192,6 +192,8 @@ void Application::renderMinimap(sf::FloatRect area) {
     }
     if (landmark_!=LandmarkKind::None && exploredMap_.at(landmarkAltar_.x,landmarkAltar_.y)!=Visibility::Hidden)
         cell(landmarkAltar_.x,landmarkAltar_.y,landmarkUsed_?sf::Color(150,140,120):sf::Color(255,190,90),1.f);
+    for (const auto& e:extraLandmarks_) if (exploredMap_.at(e.altar.x,e.altar.y)!=Visibility::Hidden)
+        cell(e.altar.x,e.altar.y,e.used?sf::Color(150,140,120):sf::Color(255,190,90),1.f);
     cell(player_.position().x,player_.position().y,sf::Color(255,214,90),1.f);
     window_.draw(cells);
     // The rectangle the main view currently shows.
@@ -564,6 +566,7 @@ void Application::handleTargetingMouse(const sf::Event& event) {
         if (inspecting_) return; // Explicit I/Tab inspection remains a free mode.
         const auto vision=exploredMap_.at(tile->x,tile->y);
         // The landmark altar: use it from beside it, or walk over first.
+        for (std::size_t i=0;i<extraLandmarks_.size();++i) if (same(*tile,extraLandmarks_[i].altar)) swapLandmark(i);
         if (landmark_!=LandmarkKind::None && vision!=Visibility::Hidden && same(*tile,landmarkAltar_)) {
             if (nearAltar()) { openShrine(); return; }
             std::optional<Position> best;
@@ -705,6 +708,18 @@ void Application::renderHudTooltips() {
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const sf::FloatRect screen{{0,0},{1280,720}};
     const sf::FloatRect aboveHotbar{{0,0},{1280,playLayout::hotbarY-8}};
+
+    // --- The floor's events, announced on arrival ----------------------------
+    if (!floorNotice_.empty() && floorNoticeClock_.getElapsedTime().asSeconds() < 8.f && mode_==GameMode::Playing) {
+        const float fade=std::clamp(8.f-floorNoticeClock_.getElapsedTime().asSeconds(),0.f,1.f);
+        const sf::FloatRect band{{kMapLeft+90.f,kMapTop+10.f+32.f*static_cast<float>(hintRows_)},{830,0}};
+        float y=band.position.y+10;
+        const float width=band.size.x-36;
+        float probe=y; ui_.paragraph(window_,floorNotice_,-10000,probe,width,16,sf::Color::Transparent); // measure only
+        const sf::FloatRect box{band.position,{band.size.x,probe-band.position.y+12}};
+        ui_.panel(window_,box,false,sf::Color(150,140,130,static_cast<std::uint8_t>(255*fade)));
+        ui_.paragraph(window_,floorNotice_,box.position.x+18,y,width,16,sf::Color(232,206,150,static_cast<std::uint8_t>(255*fade)));
+    }
 
     // --- Mode banner along the bottom of the map ----------------------------
     if (autoExploring_ || restTurns_>0 || aimingTalent_ || inspecting_) {
@@ -908,6 +923,7 @@ void Application::renderMapHints() {
         ui_.text(window_,text,{kMapLeft+20.f,y+4},15,color);
         y+=32.f;
     }
+    hintRows_=mapHints_.size();
     mapHints_.clear();
 }
 } // namespace engine

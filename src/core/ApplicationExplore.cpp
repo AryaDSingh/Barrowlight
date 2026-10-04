@@ -87,6 +87,7 @@ std::vector<std::string> Application::visibleExploreInterests() const {
     }
     add("stairs",floorEntrance_);
     if (landmark_!=LandmarkKind::None && !landmarkUsed_) add("landmark",landmarkAltar_);
+    for (const auto& e:extraLandmarks_) if (!e.used) add("landmark",e.altar);
     if (map_.isWalkable(floorExit_.x,floorExit_.y)) add("stairs",floorExit_);
     for (int y=0;y<map_.height();++y) for (int x=0;x<map_.width();++x)
         if (exploredMap_.at(x,y)==Visibility::Visible && map_.tileAt(x,y).type==TileType::Door)

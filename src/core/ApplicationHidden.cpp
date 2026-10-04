@@ -43,10 +43,15 @@ AIDecision Application::enemyDecision(Monster& m,Actor* opponent) {
             return {}; // reveal spends the ambusher's action
         }
     } else if(t.alert>0) --t.alert;
+    // Hunters follow your scent: they always know where you are.
+    if(!opponent && m.roam==Roam::Hunter) { t.alert=8; t.lastKnown=player_.position(); }
     auto moveToward=[&](Position goal) {
         AIDecision d;
         const auto path=findPath(map_,here,goal);
-        if(path && path->size()>1 && !isOccupied((*path)[1],&m)) { d.type=AIActionType::Move; d.movePosition=(*path)[1]; }
+        if(path && path->size()>1) {
+            if(!isOccupied((*path)[1],&m)) { d.type=AIActionType::Move; d.movePosition=(*path)[1]; }
+            else if(const auto around=flankStep(m,goal)) { d.type=AIActionType::Move; d.movePosition=*around; }
+        }
         return d;
     };
     if(!boss && !t.retreated && m.stats().hp*100<=m.stats().maxHp*30 && t.alert>0) {
@@ -76,6 +81,7 @@ AIDecision Application::enemyDecision(Monster& m,Actor* opponent) {
     }
     if(!opponent) {
         if(t.alert>0) return moveToward(t.lastKnown);
+        if(m.roam!=Roam::None) return roamStep(m);
         if(boss || m.vaultGuard) return {};
         // Short, deterministic local circuits; never a floor-wide random walk.
         t.patrol=(t.patrol+1)%24;
@@ -121,6 +127,9 @@ AIDecision Application::enemyDecision(Monster& m,Actor* opponent) {
         return ta!=tb?ta:a->stats().hp>b->stats().hp;
     });
     auto decision=m.ai()->decideAction(m,map_,*opponent,allies);
+    // Blocked by an ally: go round it, so a pack spreads out and surrounds you.
+    if(decision.type==AIActionType::Move && isOccupied(decision.movePosition,&m))
+        if(const auto around=flankStep(m,opponent->position())) decision.movePosition=*around;
     if(decision.type==AIActionType::Wait && enemyBackline(m.type()) && tank && distance(here,tank->position())>2) return moveToward(tank->position());
     return decision;
 }

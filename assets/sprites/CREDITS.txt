@@ -136,7 +136,8 @@ assets/sprites/dcss/
   Oct-5-2010, maintained by Chris Hamons; many artists, see the original pack's
   FilteredList.txt). CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)
   https://opengameart.org/content/dungeon-crawl-32x32-tiles
-  (kraken head and tentacles, electric eel, phantom, blue fountain; unmodified)
+  (kraken head and tentacles, electric eel, phantom, blue fountain, shallow water
+  and its wave edges, blood splatters; unmodified)
   Downloaded 2026-10-03 for the Drowned Cathedral.
 
 assets/sprites/stainedglass/

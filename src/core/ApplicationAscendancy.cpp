@@ -76,7 +76,7 @@ bool Application::enterTrial(int trial) {
     autoExploring_ = false; exploreSeenInterests_.clear(); cancelTargeting();
     inventoryOpen_ = false; trialMenu_ = false; merchantOpen_ = false; dungeonMenu_ = false;
     vaultExists_ = vaultOpened_ = vaultClaimed_ = false; vaultRewards_.clear();
-    landmark_ = LandmarkKind::None; landmarkUsed_ = false; shrineMenu_ = false; exitMenu_ = false;
+    landmark_ = LandmarkKind::None; landmarkUsed_ = false; shrineMenu_ = false; exitMenu_ = false; extraLandmarks_.clear();
     chestExists_ = chestClaimed_ = false;
     groundItems_.clear();
 

@@ -21,7 +21,10 @@ struct DungeonGenerationParams {
     // Chooses the procedural cell styles and the landmark's local name.
     FloorRegion region = FloorRegion::Barracks;
     // Chance that a non-boss floor is built around a landmark set piece.
-    float landmarkChance = 0.6f;
+    float landmarkChance = 0.9f;
+    // Once a floor has a landmark: the chance of a second, and (given a
+    // second) of a third, each in its own cell and of a different kind.
+    float secondLandmarkChance = 0.4f, thirdLandmarkChance = 0.1f;
     // Chance that the floor instead holds one of the very rare events
     // (deep floors only; 0 elsewhere, which draws nothing extra).
     float rareEventChance = 0.f;
@@ -46,6 +49,7 @@ struct GeneratedDungeon {
     std::vector<std::string> moduleNames;     // row-major, for debugging/printing
     LandmarkKind landmark = LandmarkKind::None;
     Position landmarkAltar{};                 // the solid altar tile; valid if landmark != None
+    std::vector<std::pair<LandmarkKind, Position>> extraLandmarks; // a second and third event, with their altars
     // Blocking furniture and statues, already marked in `map` as solid but
     // see-through tiles. Never placed where it would cut off any floor.
     std::vector<Prop> props;

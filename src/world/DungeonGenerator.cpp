@@ -57,6 +57,7 @@ void placeProps(GeneratedDungeon& d, FloorRegion region, std::mt19937& rng) {
         if (d.hasBossRoom && near(p, d.bossRoomCenter, 4)) return false;
         if (d.hasVault && near(p, d.vaultCenter, 4)) return false;
         if (d.landmark != LandmarkKind::None && near(p, d.landmarkAltar, 4)) return false;
+        for (const auto& extra : d.extraLandmarks) if (near(p, extra.second, 4)) return false;
         for (const Prop& prop : d.props)
             for (int i = 0; i < propWidth(prop.kind); ++i)
                 if (near(p, {prop.pos.x + i, prop.pos.y}, 1)) return false; // arrangements never touch
@@ -265,6 +266,34 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     if (!rareEvent && landmarkCell >= 0 && params.bloodAltarChance > 0.f &&
         std::uniform_real_distribution<float>(0.f, 1.f)(rng) < params.bloodAltarChance) landmarkKind = LandmarkKind::BloodAltar;
     if (rareEvent) landmarkKind = static_cast<LandmarkKind>(static_cast<int>(LandmarkKind::SealedTomb) + std::uniform_int_distribution<int>(0, 2)(rng));
+    // More events: a second (and then a third) ordinary landmark, each in a
+    // cell of its own and of a kind not already on the floor.
+    std::vector<std::pair<int, LandmarkKind>> extraCells;
+    if (landmarkCell >= 0) {
+        std::uniform_real_distribution<float> roll(0.f, 1.f);
+        for (const float chance : {params.secondLandmarkChance, params.thirdLandmarkChance}) {
+            if (roll(rng) >= chance) break;
+            std::vector<int> candidates;
+            for (int cell = 0; cell < kCells; ++cell) {
+                const bool taken = cell == startCell || cell == finalCell || cell == vaultCell || cell == landmarkCell ||
+                    std::any_of(extraCells.begin(), extraCells.end(), [&](const auto& e) { return e.first == cell; });
+                if (!taken) candidates.push_back(cell);
+            }
+            if (candidates.empty()) break;
+            LandmarkKind kind = landmarkKind;
+            for (int tries = 0; tries < 12; ++tries) {
+                kind = static_cast<LandmarkKind>(std::discrete_distribution<int>(landmarkWeights.begin(), landmarkWeights.end())(rng) + 1);
+                const bool repeated = kind == landmarkKind ||
+                    std::any_of(extraCells.begin(), extraCells.end(), [&](const auto& e) { return e.second == kind; });
+                if (!repeated) break;
+            }
+            extraCells.push_back({candidates[std::uniform_int_distribution<std::size_t>(0, candidates.size() - 1)(rng)], kind});
+        }
+    }
+    const auto extraKind = [&](int cell) -> LandmarkKind {
+        for (const auto& e : extraCells) if (e.first == cell) return e.second;
+        return LandmarkKind::None;
+    };
 
     // --- Pick and stamp modules -------------------------------------------
     const auto& pool = regularModules();
@@ -282,16 +311,19 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     std::uniform_real_distribution<float> share(0.f, 1.f);
     for (int cell = 0; cell < kCells; ++cell) {
         ModuleTemplate generated;
-        const bool special = cell == bossCell || cell == vaultCell || cell == landmarkCell;
+        const LandmarkKind extra = extraKind(cell);
+        const bool landmarkHere = cell == landmarkCell || extra != LandmarkKind::None;
+        const bool special = cell == bossCell || cell == vaultCell || landmarkHere;
         const bool procedural = !special && share(rng) < params.proceduralShare;
         if (procedural) generated = proceduralModule(pickProceduralStyle(params.region, rng), rng);
         const ModuleTemplate& module = cell == bossCell ? bossModule()
                                      : cell == vaultCell ? vaultModule()
                                      : cell == landmarkCell ? landmarkModules()[landmarkModuleIndex(landmarkKind)]
+                                     : extra != LandmarkKind::None ? landmarkModules()[landmarkModuleIndex(extra)]
                                      : procedural ? generated
                                      : pool[picks[nextPick++ % picks.size()]];
         result.moduleNames[cell] = module.name;
-        const bool flipX = coin(rng) == 1, flipY = coin(rng) == 1 && cell != landmarkCell;
+        const bool flipX = coin(rng) == 1, flipY = coin(rng) == 1 && !landmarkHere;
         const auto rows = mirrored(module.rows, flipX, flipY);
         const int originX = (cell % kModuleGrid) * kModuleWidth;
         const int originY = (cell / kModuleGrid) * kModuleHeight;
@@ -305,9 +337,12 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
                 if (c == 'A') anchors[cell].push_back(p);
                 if (c == 'C') result.vaultCenter = p;
                 if (c == 'V') result.vaultEntrance = p;
-                if (c == 'S') result.landmarkAltar = p;
+                if (c == 'S') {
+                    if (cell == landmarkCell) result.landmarkAltar = p;
+                    else result.extraLandmarks.push_back({extra, p});
+                }
             }
-        if (anchors[cell].empty() && cell != landmarkCell)
+        if (anchors[cell].empty() && !landmarkHere)
             anchors[cell].push_back({originX + kModuleWidth / 2, originY + kModuleHeight / 2});
 
         // Seal every socket that doesn't lead into an opened neighbor

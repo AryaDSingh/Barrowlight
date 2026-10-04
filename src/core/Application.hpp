@@ -322,6 +322,29 @@ private:
     // A rare event's champion: Nightmare tier, half again its life.
     void raiseChampion(MonsterType type, int champion);
     void placeVampireLord();
+    // A second and third event on a floor. The landmark nearest you is kept
+    // in landmark_/landmarkAltar_/landmarkUsed_ (so every interaction works
+    // as before); the others wait here and swap in as you approach.
+    struct ExtraLandmark { LandmarkKind kind; Position altar; bool used; };
+    std::vector<ExtraLandmark> extraLandmarks_;
+    void swapLandmark(std::size_t index);
+    void focusNearestLandmark();
+    // The floor's events, announced on arrival (a banner over the map).
+    std::string floorNotice_;
+    sf::Clock floorNoticeClock_;
+    std::size_t hintRows_ = 0; // map hints drawn this frame: the notice sits below them
+    void announceFloor();
+    // Roaming threats (ApplicationRoaming.cpp): patrols, a wandering
+    // champion, and hunters that come for you if you linger on a floor.
+    int floorTurns_ = 0;
+    std::vector<Position> roamWaypoints() const;
+    void planRoamers(unsigned seed);
+    AIDecision roamStep(Monster& monster);
+    std::optional<Position> flankStep(const Monster& monster, Position goal);
+    void tickHunt();
+    void spawnHunters();
+    static std::string wandererName(const Monster& monster); // "Ogre, the Wanderer": no tier prefix
+    std::string landmarkLabel(LandmarkKind kind, Position altar) const;
     // Patron gods (ApplicationPatrons.cpp).
     Patron patron() const { return static_cast<Patron>(player_.patron); }
     bool patronBoon(Patron god) const { return patron() == god && player_.favor >= kFavorBoon; }
@@ -330,6 +353,7 @@ private:
     void swearTo(Patron god);
     void pray();
     Patron shrineGod() const;           // whose shrine this floor's Shrine is
+    Patron godAt(Position altar) const; // whose shrine stands at this altar
     std::string landmarkTitle() const;  // the landmark's name, with its god for a shrine
     void judgeKill(const Monster& defeated);
     void judgeCast(const Talent& talent);            // the Blood Altar's sleeping guardian, and its blood pool

@@ -10,11 +10,65 @@ namespace engine {
 
 // Patron gods (entities/Patrons.hpp): favor, boons, prayers and wrath.
 
-Patron Application::shrineGod() const {
+Patron Application::shrineGod() const { return godAt(landmarkAltar_); }
+
+Patron Application::godAt(Position altar) const {
     // Fixed per shrine: from where it stands and how deep.
-    const unsigned h = static_cast<unsigned>(landmarkAltar_.x * 73856093) ^ static_cast<unsigned>(landmarkAltar_.y * 19349663) ^
+    const unsigned h = static_cast<unsigned>(altar.x * 73856093) ^ static_cast<unsigned>(altar.y * 19349663) ^
                        static_cast<unsigned>(currentFloor_ * 83492791);
     return static_cast<Patron>(1 + static_cast<int>(h % kPatronCount));
+}
+
+std::string Application::landmarkLabel(LandmarkKind kind, Position altar) const {
+    if (kind == LandmarkKind::Shrine) return std::string("Shrine of ") + patronInfo(godAt(altar)).name;
+    return landmarkName(kind, floorTheme(currentFloor_).region);
+}
+
+void Application::swapLandmark(std::size_t index) {
+    if (index >= extraLandmarks_.size()) return;
+    auto& e = extraLandmarks_[index];
+    std::swap(landmark_, e.kind);
+    std::swap(landmarkAltar_, e.altar);
+    std::swap(landmarkUsed_, e.used);
+}
+
+// The landmark you're nearest becomes the active one.
+void Application::focusNearestLandmark() {
+    const auto me = player_.position();
+    const auto distance = [&](Position p) { return std::max(std::abs(p.x - me.x), std::abs(p.y - me.y)); };
+    // An empty active slot is filled from the extras, never swapped into them.
+    if (landmark_ == LandmarkKind::None && !extraLandmarks_.empty()) {
+        const auto e = extraLandmarks_.front();
+        landmark_ = e.kind; landmarkAltar_ = e.altar; landmarkUsed_ = e.used;
+        extraLandmarks_.erase(extraLandmarks_.begin());
+    }
+    for (std::size_t i = 0; i < extraLandmarks_.size(); ++i)
+        if (extraLandmarks_[i].kind != LandmarkKind::None && distance(extraLandmarks_[i].altar) < distance(landmarkAltar_)) swapLandmark(i);
+}
+
+// On arrival: everything this floor holds that you'd want to know about.
+void Application::announceFloor() {
+    std::vector<std::string> events;
+    if (landmark_ != LandmarkKind::None && !landmarkUsed_) events.push_back(landmarkLabel(landmark_, landmarkAltar_));
+    for (const auto& e : extraLandmarks_) if (!e.used) events.push_back(landmarkLabel(e.kind, e.altar));
+    if (vaultExists_ && !vaultClaimed_) events.push_back("a sealed vault");
+    bool patrol = false, hunters = false;
+    for (const auto& m : monsters_) {
+        if (m->stats().hp <= 0 || m->allied) continue;
+        if (m.get() == boss_) events.push_back(m->name() + " awaits");
+        else if (isUniqueMonster(m->type()) || m->eventChampion) events.push_back(m->name() + " lurks here");
+        else if (m->roam == Roam::Champion) events.push_back(m->name() + " roams these halls");
+        patrol |= m->roam == Roam::Patrol;
+        hunters |= m->roam == Roam::Hunter;
+    }
+    if (patrol) events.push_back("a patrol walks the halls");
+    if (hunters) events.push_back("something is hunting you");
+    if (events.empty()) { floorNotice_.clear(); return; }
+    floorNotice_ = "On this floor: ";
+    for (std::size_t i = 0; i < events.size(); ++i) floorNotice_ += (i ? ", " : "") + events[i];
+    floorNotice_ += ".";
+    floorNoticeClock_.restart();
+    log(floorNotice_);
 }
 
 std::string Application::landmarkTitle() const {

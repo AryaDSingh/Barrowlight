@@ -16,7 +16,9 @@ std::vector<std::string> inspectMonster(const Monster& monster,
         "STR " + std::to_string(s.strength) + "  DEX " + std::to_string(s.dexterity) +
         "  INT " + std::to_string(s.intelligence)};
     if(monster.tactics.retreat>0) lines.push_back("Will retreat: seeking nearby cover.");
+    else if(monster.roam==Roam::Hunter) lines.push_back("Hunting you: it always knows where you are.");
     else if(monster.tactics.alert>0) lines.push_back("Alert: fighting or investigating the last sighting.");
+    else if(monster.roam!=Roam::None) lines.push_back("Roaming: walks the whole floor, room to room.");
     else if(!monster.vaultGuard) lines.push_back("Patrolling a short local route.");
     if(enemyHealer(monster.type())) lines.push_back("Healing casts left: "+std::to_string(monster.tactics.heals));
     if(enemyTank(monster.type())) lines.push_back("Frontline: advances while nearby ranged allies stay behind.");

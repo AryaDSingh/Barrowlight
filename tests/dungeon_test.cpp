@@ -109,6 +109,20 @@ void checkFloor(const GeneratedDungeon& d, const DungeonGenerationParams& params
         const int dx = a.x - d.playerStart.x, dy = a.y - d.playerStart.y;
         check(dx * dx + dy * dy > 64, "the landmark isn't in the starting cell" + where);
     }
+    check(d.extraLandmarks.size() <= 2 && (d.extraLandmarks.empty() || d.landmark != LandmarkKind::None),
+          "extra events only follow a first one, at most two" + where);
+    for (std::size_t i = 0; i < d.extraLandmarks.size(); ++i) {
+        const auto [kind, a] = d.extraLandmarks[i];
+        check(kind != LandmarkKind::None && !rareLandmark(kind) && kind != LandmarkKind::BloodAltar, "extra events are ordinary" + where);
+        check(!map.isWalkable(a.x, a.y), "an extra altar is solid" + where);
+        bool approachable = false;
+        for (const Position n : {Position{a.x + 1, a.y}, Position{a.x - 1, a.y}, Position{a.x, a.y + 1}, Position{a.x, a.y - 1}})
+            approachable |= map.isWalkable(n.x, n.y) && reached[static_cast<std::size_t>(n.y * map.width() + n.x)];
+        check(approachable, "an extra altar can be reached" + where);
+        const auto apart = [&](Position b) { return std::abs(a.x - b.x) + std::abs(a.y - b.y) > 8; };
+        check(apart(d.landmarkAltar) && apart(d.playerStart), "each extra event has a cell of its own" + where);
+        for (std::size_t j = 0; j < i; ++j) check(apart(d.extraLandmarks[j].second), "extra events don't share a cell" + where);
+    }
 
     check(!d.otherRoomCenters.empty(), "there are encounter anchors" + where);
     for (const Position& p : d.otherRoomCenters) {
@@ -175,12 +189,20 @@ int main() {
         }
     std::cout << procedural << " procedural cells checked, " << open << " at least half floor\n";
 
-    int landmarks = 0;
+    int landmarks = 0, twoEvents = 0, threeEvents = 0;
     for (unsigned seed = 1; seed <= 200; ++seed) {
         DungeonGenerationParams params;
         params.includeBossRoom = false;
-        landmarks += generateDungeon(params, seed).landmark != LandmarkKind::None;
+        const auto d = generateDungeon(params, seed);
+        landmarks += d.landmark != LandmarkKind::None;
+        twoEvents += d.extraLandmarks.size() >= 1;
+        threeEvents += d.extraLandmarks.size() == 2;
     }
+    // 90% one event; then 40% a second; then 10% a third.
+    check(landmarks >= 165 && landmarks <= 195, "about nine floors in ten have an event");
+    check(twoEvents >= 45 && twoEvents <= 100, "about a third of floors have two events");
+    check(threeEvents >= 1 && threeEvents <= 20, "a few floors have three events");
+    std::cout << twoEvents << " floors with two or more events, " << threeEvents << " with three\n";
     std::cout << landmarks << "/200 ordinary floors have a landmark\n";
 
     // Very rare events: forced on, every one is a valid floor with a rare landmark;

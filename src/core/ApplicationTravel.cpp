@@ -81,6 +81,7 @@ void Application::handleTownMouse(const sf::Event& event) {
 }
 
 void Application::recordQuietTurn() {
+    tickHunt();
     const bool danger=combatThisTurn_ || dangerNearby();
     if (danger) quietTurns_=0;
     else {
@@ -208,7 +209,7 @@ void Application::travelFloor(int destination,bool fromTown,bool falling) {
         candidates.push({p.x,p.y+1}); candidates.push({p.x,p.y-1});
     }
     if (!landed) { log("No free arrival tile on that floor."); return; }
-    if (restoreState(next,false)) log("Returned to preserved floor ",destination,".");
+    if (restoreState(next,false)) { floorTurns_=0; log("Returned to preserved floor ",destination,"."); announceFloor(); }
 }
 
 // Chasms drop you a floor, except in a trial arena or from the very bottom.
@@ -227,6 +228,8 @@ void Application::fallToNextFloor() {
     travelFloor(destination, false, true);
     if (currentFloor_ != destination) return;
     player_.stats().hp = std::max(1, player_.stats().hp - hurt);
+    // The jolt shakes off a stun: you never lose your first turn on a strange floor.
+    player_.statusEffects().remove(StatusEffectType::Stun);
     // Somewhere unfamiliar: any open tile clear of foes, the vault and the stairs.
     std::vector<Position> landing;
     for (int y = 0; y < map_.height(); ++y)
@@ -256,6 +259,7 @@ void Application::importFloor(SaveGameState& next, const SaveGameState& floor) {
     next.vaultExists=floor.vaultExists; next.vaultOpened=floor.vaultOpened; next.vaultClaimed=floor.vaultClaimed;
     next.vaultCenter=floor.vaultCenter; next.vaultEntrance=floor.vaultEntrance;
     next.landmark=floor.landmark; next.landmarkAltar=floor.landmarkAltar; next.landmarkUsed=floor.landmarkUsed;
+    next.extraLandmarks=floor.extraLandmarks;
     next.props=floor.props;
     next.surfaces=floor.surfaces; next.torchToggles=floor.torchToggles;
     next.items.erase(std::remove_if(next.items.begin(),next.items.end(),[](const auto& item){return item.location<=-2;}),next.items.end());
