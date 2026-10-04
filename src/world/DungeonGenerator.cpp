@@ -161,6 +161,8 @@ std::size_t landmarkModuleIndex(LandmarkKind kind) {
         case LandmarkKind::LamplighterRest: return 0; // a quiet room like the shrine's
         case LandmarkKind::BloodAltar: return 8;      // the demon's hall: room for a fight
         case LandmarkKind::Strongbox: return 5;       // the pit: room to be surrounded
+        case LandmarkKind::Essence: return 5;
+        case LandmarkKind::Breach: return 8;          // the demon's hall: room for the rift to spread
         default: return 1; // both fountains
     }
 }
@@ -257,13 +259,13 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     }
     // Which set piece: shrines are commonest near the surface, dark rites below.
     // Shrine, Healing Fountain, Blood Font, Ritual Circle, Treasure Hoard, Prisoner's Cage, Champion's Pit
-    // ..., and last the Strongbox.
-    std::array<int, 8> landmarkWeights{3, 2, 1, 1, 2, 2, 2, 3};
-    if (params.region == FloorRegion::Sanctum) landmarkWeights = {2, 2, 1, 2, 2, 2, 2, 3};
-    if (params.region == FloorRegion::Crypts) landmarkWeights = {1, 1, 2, 3, 2, 1, 2, 3};
+    // ..., and last the Strongbox, Breach and Essence.
+    std::array<int, 10> landmarkWeights{3, 2, 1, 1, 2, 2, 2, 3, 2, 2};
+    if (params.region == FloorRegion::Sanctum) landmarkWeights = {2, 2, 1, 2, 2, 2, 2, 3, 2, 2};
+    if (params.region == FloorRegion::Crypts) landmarkWeights = {1, 1, 2, 3, 2, 1, 2, 3, 2, 2};
     const auto weightedKind = [&] {
         const int i = std::discrete_distribution<int>(landmarkWeights.begin(), landmarkWeights.end())(rng);
-        return i == 7 ? LandmarkKind::Strongbox : static_cast<LandmarkKind>(i + 1);
+        return i == 7 ? LandmarkKind::Strongbox : i == 8 ? LandmarkKind::Breach : i == 9 ? LandmarkKind::Essence : static_cast<LandmarkKind>(i + 1);
     };
     auto landmarkKind = weightedKind();
     // About one ordinary landmark in eight is a lamplighter's rest instead.

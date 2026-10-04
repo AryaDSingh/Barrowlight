@@ -82,6 +82,7 @@ void Application::handleTownMouse(const sf::Event& event) {
 
 void Application::recordQuietTurn() {
     tickHunt();
+    tickBreach();
     const bool danger=combatThisTurn_ || dangerNearby();
     if (danger) quietTurns_=0;
     else {
@@ -179,6 +180,8 @@ void Application::travelFloor(int destination,bool fromTown,bool falling) {
     if (!fromTown && !down && found==floorCache_.end()) { log("That depth has no saved floor. Choose it from town to explore it."); return; }
     if (!fromTown && !falling && down && !sameTile(player_.position(),floorExit_)) return;
     dissolveMinions();
+    // A breach doesn't follow you: it closes behind you.
+    if (breachTurns_>0) { closeBreach(false); removeDeadMonsters(); }
     auto current=captureState(false);
     floorCache_[currentFloor_]=current;
     cancelTargeting(); exitMenu_=false; restTurns_=0;

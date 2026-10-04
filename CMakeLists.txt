@@ -148,6 +148,7 @@ add_executable(roguelike
     src/core/ApplicationLandmark.cpp
     src/core/ApplicationPatrons.cpp
     src/core/ApplicationRoaming.cpp
+    src/core/ApplicationRifts.cpp
     src/core/ApplicationAnimation.cpp
     src/core/ApplicationTown.cpp
     src/core/ApplicationAscendancy.cpp

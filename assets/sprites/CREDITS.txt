@@ -137,7 +137,8 @@ assets/sprites/dcss/
   FilteredList.txt). CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)
   https://opengameart.org/content/dungeon-crawl-32x32-tiles
   (kraken head and tentacles, electric eel, phantom, blue fountain, shallow water
-  and its wave edges, blood splatters, the strongbox from UNUSED/other/chest2;
+  and its wave edges, blood splatters, the strongbox from UNUSED/other/chest2,
+  the breach rift from dngn_enter_abyss;
   unmodified)
   Downloaded 2026-10-03 for the Drowned Cathedral.
 

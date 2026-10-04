@@ -59,7 +59,7 @@ struct ApplicationRewardsTestAccess {
             app.darknessEnabled_ = false; app.player_.lightSource = 1; app.player_.lightLit = true; // darkness has its own checks
             app.autoExploring_=false; app.restTurns_=0; app.quietTurns_=0; app.combatThisTurn_=false;
             app.vaultExists_=app.vaultOpened_=app.vaultClaimed_=false; app.vaultMenu_=0; app.exitMenu_=false; app.vaultRewards_.clear();
-            app.landmark_=LandmarkKind::None; app.landmarkUsed_=false; app.shrineMenu_=false; app.extraLandmarks_.clear(); app.floorTurns_=0;
+            app.landmark_=LandmarkKind::None; app.landmarkUsed_=false; app.shrineMenu_=false; app.extraLandmarks_.clear(); app.floorTurns_=0; app.breachTurns_=0; app.breachKills_=0;
             app.player_.patron=app.player_.favor=0; app.player_.bloodMagicUnlocked=false; app.pendingFall_=false;
             app.player_.ascendancy.clear(); app.player_.ascendancyPoints=app.player_.trialKeys=app.player_.trialsCleared=0;
             app.lightOrbs_.clear();
@@ -440,7 +440,7 @@ struct ApplicationRewardsTestAccess {
             }
             // The hunt: a warning, then two packs that know where you are.
             app.floorTurns_=799; app.tickHunt();
-            check(app.floorNotice_.find("caught your scent")!=std::string::npos,"Lingering brings a warning first");
+            check(app.logMessages_.back()=="You feel watched.","Lingering brings a quiet warning first");
             const auto before=app.monsters_.size();
             app.floorTurns_=899; app.tickHunt();
             std::vector<Monster*> hunters;
@@ -464,7 +464,7 @@ struct ApplicationRewardsTestAccess {
                 check(chase.type==AIActionType::Move && h->tactics.alert>0 && h->tactics.lastKnown.x==me.x && h->tactics.lastKnown.y==me.y &&
                       path && findPath(app.map_,chase.movePosition,me)->size()<=path->size()+1,"Hunters always know where you are");
             }
-            check(app.floorNotice_.find("hunt is on")!=std::string::npos,"The hunt is announced");
+            check(std::find(app.logMessages_.begin(),app.logMessages_.end(),"Footsteps, closing in.")!=app.logMessages_.end(),"The hunters are heard, not announced");
             snapshot("ui-hunt.png");
         }
         // Surfaces: the elements meet oil, water, ice and fire.
@@ -1826,11 +1826,11 @@ struct ApplicationRewardsTestAccess {
         placeAltar(LandmarkKind::Strongbox);
         check(app.landmarkTitle().find("Strongbox")!=std::string::npos,"A strongbox is named for its kind");
         snapshot("ui-strongbox-map.png");
-        app.pickupItem(); snapshot("ui-strongbox.png");
         {
             const auto groundBefore=app.groundItems_.size();
             const int hpBefore=app.player_.stats().hp;
-            clickOn(screen::shrineChoice(0));
+            app.pickupItem();
+            check(!app.shrineMenu_,"A strongbox opens at a touch, with no menu");
             const auto me=app.player_.position();
             std::set<std::pair<int,int>> sides;
             bool ringed=true;
@@ -1846,14 +1846,113 @@ struct ApplicationRewardsTestAccess {
             snapshot("ui-strongbox-ambush.png");
             roundTrip();
             check(app.landmark_==LandmarkKind::Strongbox && app.landmarkUsed_,"Save/load keeps the opened strongbox");
-            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
-            app.monsters_.clear(); app.landmarkUsed_=false;
-            app.pickupItem(); clickOn(screen::shrineChoice(2));
-            check(app.monsters_.size()==4 && std::count_if(app.monsters_.begin(),app.monsters_.end(),[](const auto& m){return m->tier()==MonsterTier::Nightmare;})==1,
-                  "Forcing it brings more guardians, one of them a nightmare");
+            const auto guardians=app.monsters_.size();
+            app.pickupItem();
+            check(app.monsters_.size()==guardians && !app.shrineMenu_,"An open strongbox does nothing more");
             std::set<int> kinds;
             for (int y=0;y<10;++y) for (int x=0;x<10;++x) kinds.insert(static_cast<int>(app.strongboxVariant({x,y})));
             check(kinds.size()==3,"Strongboxes come in three kinds: Armourer's, Arcanist's and Gilded");
+        }
+
+        // A crystal: strike it three times and its captive breaks free, bearing the
+        // crystal's power; slain, it leaves gear bearing that power at its strongest.
+        placeAltar(LandmarkKind::Essence);
+        {
+            const auto strike=[&](Position altar) {
+                app.landmark_=LandmarkKind::Essence; app.landmarkAltar_=altar; app.landmarkUsed_=false;
+                app.map_.setTile(altar.x,altar.y,Tile{TileType::Wall,false,true});
+                app.player_.setPosition({altar.x-1,altar.y}); app.updateFieldOfView();
+                app.pickupItem();
+            };
+            const auto freed=[&]() -> Monster* {
+                for (auto& m:app.monsters_) if (m->essence && m->stats().hp>0) return m.get();
+                return nullptr;
+            };
+            // One clear crystal and one weeping one, whichever this floor offers first.
+            for (const bool weeping:{false,true}) {
+                Position altar{0,10};
+                for (int y=8;y<=12 && !altar.x;++y) for (int x=7;x<=15 && !altar.x;++x) if (app.essenceAt({x,y}).corrupted==weeping) altar={x,y};
+                check(altar.x>0,"Some crystals weep, most don't");
+                const auto captive=app.essenceAt(altar);
+                const auto& info=essenceInfo(captive.essence);
+                app.landmarkAltar_=altar;
+                check(app.landmarkLabel(LandmarkKind::Essence,altar)==(weeping?std::string(kWeepingCrystal):std::string(info.crystal)),
+                      "A crystal is named only for how it looks");
+                strike(altar);
+                check(!app.shrineMenu_ && app.crystalHits(altar)==1 && !app.landmarkUsed_ && !freed(),"Striking the crystal cracks it; no menu");
+                if (!weeping) snapshot("ui-essence-map.png");
+                app.pickupItem();
+                check(app.crystalHits(altar)==2 && !freed(),"A second strike spreads the cracks");
+                if (!weeping) snapshot("ui-essence-cracked.png");
+                app.pickupItem();
+                Monster* m=freed();
+                check(app.landmarkUsed_ && m && m->type()==captive.type && m->tier()==(weeping?MonsterTier::Nightmare:MonsterTier::Elite) &&
+                      m->corrupted==weeping && m->name().find(info.look)==0 && m->tactics.alert>0,"The third strike shatters it and frees its captive");
+                if (!m) continue;
+                const auto baseline=createMonster(captive.type,m->position(),m->tier());
+                app.scaleDungeonMonster(*baseline,floorDepth(app.currentFloor_));
+                check(m->stats().maxHp>=baseline->stats().maxHp*2-1,"...with at least double life");
+                if (captive.essence==Essence::Haste || weeping) check(m->stats().speed>baseline->stats().speed,"...faster, if restless or weeping");
+                if (captive.essence!=Essence::Haste) {
+                    AIDecision blow; blow.type=AIActionType::Attack; blow.target=&app.player_;
+                    app.essenceStrike(*m,blow);
+                    const auto want=captive.essence==Essence::Flame?StatusEffectType::Burn:captive.essence==Essence::Frost?StatusEffectType::Chill:StatusEffectType::Shock;
+                    check(blow.effectToApply && blow.effectToApply->type==want,"...and its blows carry the crystal's power");
+                }
+                if (!weeping) {
+                    snapshot("ui-essence-freed.png");
+                    roundTrip();
+                    m=freed();
+                    check(m && m->name().find(info.look)==0 && static_cast<Essence>(m->essence)==captive.essence,"Save/load keeps the freed captive");
+                }
+                if (!m) continue;
+                const auto ground=app.groundItems_.size();
+                m->stats().hp=0; app.checkAndHandleDeath(*m); app.removeDeadMonsters();
+                bool perfect=false;
+                for (std::size_t i=ground;i<app.groundItems_.size();++i) {
+                    const auto& item=*app.groundItems_[i];
+                    for (const auto& roll:item.affixes()) {
+                        const auto* affix=findAffix(roll.id);
+                        perfect|=roll.value==affix->maximum+item.rollTier()*affix->perTier;
+                    }
+                }
+                check(app.groundItems_.size()>=ground+(weeping?2:1) && perfect,
+                      weeping?"A weeping crystal's captive leaves two such items":"Slain, it leaves a rare item with an affix at its highest roll");
+            }
+        }
+
+        // Breach: the rift pours out creatures until its keeper falls or it closes.
+        placeAltar(LandmarkKind::Breach);
+        {
+            app.pickupItem();
+            check(!app.shrineMenu_,"The rift tears open at a touch, with no menu");
+            const auto riftborn=[&]{ return std::count_if(app.monsters_.begin(),app.monsters_.end(),[](const auto& m){return m->rift && m->stats().hp>0;}); };
+            check(app.breachTurns_==kBreachTurns-1 && riftborn()>=1 && app.breachAt_.x==app.landmarkAltar_.x,"Touching the rift opens the breach");
+            const auto before=riftborn();
+            for (int i=0;i<4;++i) app.tickBreach();
+            check(riftborn()>before+3 && app.breachRadius()>2,"Each turn the rift widens and more pour out");
+            app.updateFieldOfView(); snapshot("ui-breach-open.png");
+            roundTrip();
+            check(app.breachTurns_==kBreachTurns-5 && riftborn()>before+3,"Save/load keeps the open breach and its creatures");
+            for (auto& m:app.monsters_) if (m->rift==1 && m->stats().hp>0) { m->stats().hp=0; app.checkAndHandleDeath(*m); }
+            app.removeDeadMonsters();
+            check(app.breachKills_>=5,"Riftborn kills are counted");
+            for (int i=0;i<3;++i) app.tickBreach();
+            Monster* keeper=nullptr;
+            for (auto& m:app.monsters_) if (m->rift==2) keeper=m.get();
+            check(keeper && keeper->name()=="Rift-keeper" && keeper->tier()==MonsterTier::Nightmare,"The Rift-keeper comes through");
+            const auto ground=app.groundItems_.size();
+            if (keeper) { keeper->stats().hp=0; app.checkAndHandleDeath(*keeper); }
+            app.removeDeadMonsters();
+            check(app.breachTurns_==0 && riftborn()==0,"Slaying the keeper seals the breach, and its creatures vanish");
+            check(app.groundItems_.size()>=ground+3,"...and spills two rare items, plus something for the kills");
+            // Left to run its course, it closes and takes its creatures back.
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.landmarkUsed_=false;
+            app.pickupItem();
+            for (int i=0;i<kBreachTurns;++i) app.tickBreach();
+            app.removeDeadMonsters();
+            check(app.breachTurns_==0 && riftborn()==0,"Left alone, the breach closes and drags its creatures back");
         }
 
         // Prisoner's cage: picking the lock needs Dexterity; breaking it is loud.

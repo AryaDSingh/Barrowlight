@@ -321,8 +321,16 @@ MonsterLook monsterLook(const Monster& monster) {
         return {idleFrame("calciumtrice/heroes/EvilCleric.png"), sf::Color(205, 175, 255), 1.6f};
     if (monster.eventChampion == kChampionVampire)
         return {idleFrame("calciumtrice/heroes/Psychopath.png"), sf::Color(235, 215, 225), 1.5f};
-    return monsterLook(monster.type());
+    auto look = monsterLook(monster.type());
+    const auto mix = [&](std::uint8_t r, std::uint8_t g, std::uint8_t b) {
+        look.tint = sf::Color(static_cast<std::uint8_t>(look.tint.r * r / 255), static_cast<std::uint8_t>(look.tint.g * g / 255),
+                              static_cast<std::uint8_t>(look.tint.b * b / 255), look.tint.a);
+    };
+    if (monster.rift) { mix(200, 140, 255); if (monster.rift == 2) look.scale *= 1.25f; }
+    if (monster.essence) { const auto& e = essenceInfo(static_cast<Essence>(monster.essence)); mix(e.r, e.g, e.b); look.scale *= 1.15f; }
+    return look;
 }
+
 
 MonsterLook monsterLook(MonsterType type) {
     constexpr const char* goblin = "calciumtrice/monsters/goblin_spritesheet_calciumtrice.png";
@@ -1496,7 +1504,8 @@ void Application::processMonsterTurns() {
                 }
                 if (monster) {
                     auto* opponent=nearestOpponent(*actor,hidden);
-                    const AIDecision decision=enemyDecision(*monster,opponent);
+                    AIDecision decision=enemyDecision(*monster,opponent);
+                    essenceStrike(*monster,decision);
                     const bool warlord=monster && monster->type()==MonsterType::GoblinWarlord;
                     const bool lich=monster && monster->type()==MonsterType::Lich;
                     const bool blast=monster && (monster->type()==MonsterType::Bomber || monster->type()==MonsterType::OssuaryWarden || warlord) && decision.type==AIActionType::UseAbility;
@@ -1904,6 +1913,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
         return;
     }
     if (defeated) rewardMonster(*defeated, &actor == boss_);
+    if (defeated) eventDeath(*defeated);
     if (defeated) judgeKill(*defeated);
     if (defeated && defeated->statusEffects().has(StatusEffectType::Plague)) {
         const auto plague=defeated->statusEffects().magnitudeOf(StatusEffectType::Plague);
@@ -2037,10 +2047,22 @@ std::vector<Actor*> Application::aliveAllies(const Actor* exclude) {
     return allies;
 }
 
+void Application::drawFrozenMonster(MonsterType type, sf::Vector2f at, float size, sf::Color tint) {
+    const auto look = monsterLook(type);
+    sprites_.draw(window_, lookFrame(look, 0, 0), at, size * static_cast<float>(std::max(look.frame.rect.size.x, look.frame.rect.size.y)) / 32.f, tint);
+}
+
 void Application::removeDeadMonsters() {
     for (const auto& m : monsters_)
         if (m->stats().hp <= 0) {
             const MonsterLook look = monsterLook(*m);
+            // Dragged back through a closing breach: no body, no blood.
+            if (m->rift && !m->rewardsEligible()) {
+                spawnVfx({Vfx::Kind::Puff, {m->position().x + .5f, m->position().y + .5f}, {m->position().x + .5f, m->position().y + .5f},
+                          sf::Color(170, 110, 255), 0, .5f, .9f});
+                forgetActor(*m);
+                continue;
+            }
             if (!m->allied && bleeds(m->type()) && surfaceAt(m->position()) == SurfaceType::None)
                 setSurface(m->position(), SurfaceType::Blood, 0);
             if (exploredMap_.at(m->position().x, m->position().y) == Visibility::Visible && !m->tactics.concealed)
@@ -2326,7 +2348,7 @@ void Application::regenerateLevel(unsigned int seed) {
     for (auto& m:monsters_) scaleDungeonMonster(*m,floorDepth(currentFloor_));
     seedSurfaces(seed);
     if (landmark_==LandmarkKind::BloodAltar) placeVampireLord();
-    floorTurns_=0;
+    floorTurns_=0; breachTurns_=0; breachKills_=0; crystalCracks_.clear();
     if (!dungeon.hasBossRoom) planRoamers(seed);
     if (dungeon.hasBossRoom && boss_) {
         const Position centre=boss_->position();
@@ -2442,6 +2464,7 @@ SaveGameState Application::captureState(bool includeFloors) {
         data.vaultGuard = m->vaultGuard;
         data.eventChampion = m->eventChampion;
         data.roam = static_cast<int>(m->roam);
+        data.essence = m->essence; data.corrupted = m->corrupted; data.rift = m->rift;
         data.recoveryActions=m->recoveryActions; data.summonsCommitted=m->summonsCommitted;
         if (const auto* behavior=dynamic_cast<const BossBehavior*>(m->ai())) {
             data.announcedPhase=behavior->announcedPhase(); data.enraged=behavior->enraged();
@@ -2454,7 +2477,8 @@ SaveGameState Application::captureState(bool includeFloors) {
     }
 
     state.floorEntrance=floorEntrance_; state.floorExit=floorExit_;
-    state.gold=gold_; state.quietTurns=quietTurns_; state.floorTurns=floorTurns_; state.inTown=mode_==GameMode::Town;
+    state.gold=gold_; state.quietTurns=quietTurns_; state.floorTurns=floorTurns_;
+    state.breachTurns=breachTurns_; state.breachAt=breachAt_; state.breachKills=breachKills_; state.inTown=mode_==GameMode::Town;
     // In a trial the current map is the arena, so every cached dungeon floor is kept.
     if (includeFloors) for (const auto& entry:floorCache_) if (entry.first!=currentFloor_ || trial_) state.savedFloors.push_back(entry.second);
     return state;
@@ -2510,6 +2534,8 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
         monster->eventChampion = savedMonster.eventChampion;
         if (monster->eventChampion) monster->setName(championName(monster->eventChampion));
         monster->roam = static_cast<Roam>(savedMonster.roam);
+        monster->essence = savedMonster.essence; monster->corrupted = savedMonster.corrupted; monster->rift = savedMonster.rift;
+        if (monster->essence || monster->rift) dressEventMonster(*monster);
         if (monster->roam == Roam::Champion) monster->setName(wandererName(*monster));
         monster->recoveryActions=savedMonster.recoveryActions; monster->summonsCommitted=savedMonster.summonsCommitted;
         if (auto* behavior=dynamic_cast<BossBehavior*>(monster->ai())) behavior->restoreState(savedMonster.announcedPhase,savedMonster.enraged);
@@ -2640,7 +2666,8 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
         (boss_ != nullptr ? " (boss present)" : ""), ", player at (", player_.position().x, ',',
         player_.position().y, "), ", player_.stats().hp, '/', player_.stats().maxHp, " hp.");
     floorEntrance_=state.floorEntrance; floorExit_=state.floorExit;
-    gold_=state.gold; quietTurns_=state.quietTurns; floorTurns_=state.floorTurns; combatThisTurn_=false;
+    gold_=state.gold; quietTurns_=state.quietTurns; floorTurns_=state.floorTurns;
+    breachTurns_=state.breachTurns; breachAt_=state.breachAt; breachKills_=state.breachKills; crystalCracks_.clear(); combatThisTurn_=false;
     if (includeFloors) {
         floorCache_.clear();
         for (const auto& floor:state.savedFloors) floorCache_[floor.currentFloor]=floor;
@@ -3011,6 +3038,7 @@ void Application::render() {
 
     renderLandmark();
     for (std::size_t i = 0; i < extraLandmarks_.size(); ++i) { swapLandmark(i); renderLandmark(); swapLandmark(i); }
+    renderBreach();
     if (landmark_ != LandmarkKind::None && !landmarkUsed_ &&
         exploredMap_.at(landmarkAltar_.x, landmarkAltar_.y) == Visibility::Visible) {
         const auto at = worldToScreen(landmarkAltar_.x, landmarkAltar_.y);

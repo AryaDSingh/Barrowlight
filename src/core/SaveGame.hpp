@@ -50,6 +50,7 @@ struct SaveGameState {
     bool inTown=false;
     int gold=0, quietTurns=0;
     int floorTurns=0; // turns spent on this floor (the hunt); format 37
+    int breachTurns=0, breachKills=0; Position breachAt{}; // an open breach; format 38
     bool bloodRelic=false, animationRelic=false;
     std::vector<int> deathlessSpentFloors;
     Map map;
@@ -135,6 +136,7 @@ struct SaveGameState {
         bool vaultGuard = false;
         int eventChampion = 0;
         int roam = 0; // Roam; format 37
+        int essence = 0, rift = 0; bool corrupted = false; // format 38
         int recoveryActions=0, summonsCommitted=0, announcedPhase=1;
         bool enraged=false;
         std::optional<EnemyIntent> intent;

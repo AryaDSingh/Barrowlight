@@ -189,12 +189,15 @@ int main() {
         }
     std::cout << procedural << " procedural cells checked, " << open << " at least half floor\n";
 
-    int landmarks = 0, twoEvents = 0, threeEvents = 0;
+    int landmarks = 0, twoEvents = 0, threeEvents = 0, poe = 0;
     for (unsigned seed = 1; seed <= 200; ++seed) {
         DungeonGenerationParams params;
         params.includeBossRoom = false;
         const auto d = generateDungeon(params, seed);
         landmarks += d.landmark != LandmarkKind::None;
+        const auto pathOfExile = [](LandmarkKind k) { return k == LandmarkKind::Strongbox || k == LandmarkKind::Breach || k == LandmarkKind::Essence; };
+        poe += pathOfExile(d.landmark);
+        for (const auto& e : d.extraLandmarks) poe += pathOfExile(e.first);
         twoEvents += d.extraLandmarks.size() >= 1;
         threeEvents += d.extraLandmarks.size() == 2;
     }
@@ -202,6 +205,8 @@ int main() {
     check(landmarks >= 165 && landmarks <= 195, "about nine floors in ten have an event");
     check(twoEvents >= 45 && twoEvents <= 100, "about a third of floors have two events");
     check(threeEvents >= 1 && threeEvents <= 20, "a few floors have three events");
+    check(poe >= 40, "strongboxes, breaches and essences are common");
+    std::cout << poe << " strongboxes, breaches and essences\n";
     std::cout << twoEvents << " floors with two or more events, " << threeEvents << " with three\n";
     std::cout << landmarks << "/200 ordinary floors have a landmark\n";
 

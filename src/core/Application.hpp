@@ -344,10 +344,33 @@ private:
     void tickHunt();
     void spawnHunters();
     static std::string wandererName(const Monster& monster); // "Ogre, the Wanderer": no tier prefix
+    // Breach and Essence (ApplicationRifts.cpp).
+    int breachTurns_ = 0;   // turns until the open breach closes; 0 = none open
+    Position breachAt_{};
+    int breachKills_ = 0;
+    static std::string plainName(const Monster& monster);
+    void dressEventMonster(Monster& monster);
+    Captive essenceAt(Position altar) const;
+    void releaseEssence();
+    void touchLandmark();          // strongbox, breach, crystal: no menu, just what happens
+    // How many times each crystal has been struck. Transient: a reload heals the cracks.
+    std::vector<std::pair<Position, int>> crystalCracks_;
+    int crystalHits(Position altar) const;
+    void essenceStrike(const Monster& monster, AIDecision& decision) const;
+    std::unique_ptr<Item> essenceItem(Essence essence, Position at);
+    int breachRadius() const;
+    void openBreach();
+    void spawnRiftborn(int count, bool keeper);
+    void tickBreach();
+    void closeBreach(bool keeperSlain);
+    void eventDeath(Monster& monster);
+    void renderBreach();
+    void drawBreachRift(sf::Vector2f at, float tile, sf::Color tint, bool active);
+    void drawFrozenMonster(MonsterType type, sf::Vector2f at, float size, sf::Color tint);
     std::string landmarkLabel(LandmarkKind kind, Position altar) const;
     StrongboxVariant strongboxVariant(Position altar) const;
     int spawnAmbush(int count, int nightmares);      // foes burst out in a ring around you
-    void spillLoot(ItemRarity rarity, int count);     // items scattered round the altar
+    void spillLoot(ItemRarity rarity, int count, Position centre); // items scattered round a spot
     // Patron gods (ApplicationPatrons.cpp).
     Patron patron() const { return static_cast<Patron>(player_.patron); }
     bool patronBoon(Patron god) const { return patron() == god && player_.favor >= kFavorBoon; }

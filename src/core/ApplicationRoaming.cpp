@@ -24,12 +24,7 @@ int chebyshev(Position a, Position b) { return std::max(std::abs(a.x - b.x), std
 int manhattan(Position a, Position b) { return std::abs(a.x - b.x) + std::abs(a.y - b.y); }
 } // namespace
 
-std::string Application::wandererName(const Monster& monster) {
-    std::string name = monster.name();
-    const std::string prefix = namePrefixForTier(monster.tier());
-    if (!prefix.empty() && name.rfind(prefix, 0) == 0) name.erase(0, prefix.size());
-    return name + ", the Wanderer";
-}
+std::string Application::wandererName(const Monster& monster) { return plainName(monster) + ", the Wanderer"; }
 
 // The walkable tile nearest the middle of each of the nine module cells:
 // the rooms a roamer walks between. Never inside the sealed vault.
@@ -158,11 +153,7 @@ void Application::tickHunt() {
     if (mode_ != GameMode::Playing || trial_ || player_.stats().hp <= 0) return;
     ++floorTurns_;
     const int warn = floorTurns_ - (kFirstHunt - kHuntWarning), hunt = floorTurns_ - kFirstHunt;
-    if (warn >= 0 && warn % kHuntEvery == 0) {
-        floorNotice_ = "Something has caught your scent. Leave this floor soon, or it will hunt you.";
-        floorNoticeClock_.restart();
-        log(floorNotice_);
-    }
+    if (warn >= 0 && warn % kHuntEvery == 0) log("You feel watched.");
     if (hunt >= 0 && hunt % kHuntEvery == 0) spawnHunters();
 }
 
@@ -212,10 +203,7 @@ void Application::spawnHunters() {
                     ++placed; ++spawned;
                 }
     }
-    if (!spawned) return;
-    floorNotice_ = "The hunt is on: they're coming from two sides, and they know where you are.";
-    floorNoticeClock_.restart();
-    log(floorNotice_);
+    if (spawned) log("Footsteps, closing in.");
 }
 
 } // namespace engine

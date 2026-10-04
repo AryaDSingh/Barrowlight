@@ -1,5 +1,10 @@
 #pragma once
 
+#include <algorithm>
+#include <cstdint>
+
+#include "entities/MonsterType.hpp"
+
 #include "world/FloorTheme.hpp"
 
 namespace engine {
@@ -18,8 +23,38 @@ enum class LandmarkKind { None = 0, Shrine = 1, HealingFountain = 2, BloodFont =
                           BloodAltar = 12,
                           // Path of Exile's strongbox: open it and foes burst out
                           // around you while it spills its loot.
-                          Strongbox = 13 };
-inline constexpr int kLandmarkKindCount = 14;
+                          Strongbox = 13,
+                          // Path of Exile's Breach: a rift that pours out creatures
+                          // until its keeper falls or it closes.
+                          Breach = 14,
+                          // Path of Exile's Essence: a monster sealed in a crystal you
+                          // strike three times to free it.
+                          Essence = 15 };
+// Events you simply touch, with no menu: what happens shows what they are.
+inline bool touchedLandmark(LandmarkKind kind) {
+    return kind == LandmarkKind::Strongbox || kind == LandmarkKind::Breach || kind == LandmarkKind::Essence;
+}
+inline constexpr int kCrystalStrikes = 3;
+inline constexpr int kLandmarkKindCount = 16;
+inline constexpr int kBreachTurns = 14;
+
+// The power sealed in a crystal: what its captive does, and the affix its loot
+// bears. Named only for how it looks.
+enum class Essence : int { None = 0, Flame = 1, Frost = 2, Storms = 3, Haste = 4 };
+inline constexpr int kEssenceKinds = 4;
+struct EssenceInfo { const char* crystal; const char* look; const char* affix; std::uint8_t r, g, b; };
+inline const EssenceInfo& essenceInfo(Essence essence) {
+    static const EssenceInfo kInfo[]{
+        {"Crystal", "", "", 255, 255, 255},
+        {"Smouldering Crystal", "Smouldering", "embers", 255, 130, 60},
+        {"Rimed Crystal", "Rimed", "frost", 130, 200, 255},
+        {"Crackling Crystal", "Crackling", "storms", 190, 180, 255},
+        {"Restless Crystal", "Restless", "nimble", 150, 255, 170}};
+    return kInfo[std::clamp(static_cast<int>(essence), 0, kEssenceKinds)];
+}
+// A dark, red-veined crystal: its captive comes out a nightmare.
+inline constexpr const char* kWeepingCrystal = "Weeping Crystal";
+struct Captive { Essence essence; MonsterType type; bool corrupted; };
 // A strongbox's kind, fixed by where it stands (Application::strongboxVariant).
 enum class StrongboxVariant { Armourer, Arcanist, Gilded };
 // Global floor from which the Blood Altar can appear.
@@ -69,6 +104,8 @@ inline const char* landmarkName(LandmarkKind kind, FloorRegion region) {
         case LandmarkKind::LamplighterRest: return "Lamplighter's Rest";
         case LandmarkKind::BloodAltar: return "The Blood Altar";
         case LandmarkKind::Strongbox: return "Strongbox";
+        case LandmarkKind::Breach: return "Breach";
+        case LandmarkKind::Essence: return "Essence";
         case LandmarkKind::None: break;
     }
     return "";

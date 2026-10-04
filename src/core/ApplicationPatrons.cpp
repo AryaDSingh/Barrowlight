@@ -27,6 +27,10 @@ StrongboxVariant Application::strongboxVariant(Position altar) const {
 
 std::string Application::landmarkLabel(LandmarkKind kind, Position altar) const {
     if (kind == LandmarkKind::Shrine) return std::string("Shrine of ") + patronInfo(godAt(altar)).name;
+    if (kind == LandmarkKind::Essence) {
+        const auto captive = essenceAt(altar);
+        return captive.corrupted ? kWeepingCrystal : essenceInfo(captive.essence).crystal;
+    }
     if (kind == LandmarkKind::Strongbox) {
         const auto v = strongboxVariant(altar);
         return v == StrongboxVariant::Armourer ? "Armourer's Strongbox" : v == StrongboxVariant::Arcanist ? "Arcanist's Strongbox" : "Gilded Strongbox";

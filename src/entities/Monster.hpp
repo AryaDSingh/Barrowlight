@@ -45,6 +45,10 @@ public:
     // Transient: not saved.
     bool wasAlerted=false;
     Roam roam=Roam::None;
+    // Path of Exile events (ApplicationRifts.cpp); saved, format 38.
+    int essence=0;         // Essence: 0 none, else its power
+    bool corrupted=false;  // an essence monster that was corrupted
+    int rift=0;            // 1 riftborn, 2 the Rift-keeper
     int glimpseTurns=0;
     // Boss tricks with light and surfaces (Application::bossSurfaceAction).
     // Transient: a reload simply restarts the count.
