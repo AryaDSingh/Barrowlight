@@ -118,10 +118,14 @@ struct ApplicationTargetingTestAccess {
         setup();
         const auto eastPixel=pixelAt({23,12});
         const auto tile=app.screenToWorld(eastPixel);
-        check(tile && tile->x==23 && tile->y==12 && app.cameraX_>0 && app.cameraY_>0,
-            "Mouse coordinates account for camera offsets and the map's top margin");
-        check(!app.screenToWorld({100,300}) && !app.screenToWorld({400,5}) &&
-            !app.screenToWorld({400,620}),"Character column, map frame and log cannot be clicked through");
+        check(tile && tile->x==23 && tile->y==12,"Mouse coordinates account for the camera");
+        // The HUD floats over the map: its parts can't be clicked through, the open map can.
+        const auto slot=app.hotbarSlotRect(0);
+        const sf::Vector2i orb{static_cast<int>(playLayout::orbMargin+playLayout::orbRadius),static_cast<int>(720-playLayout::orbMargin-playLayout::orbRadius)};
+        const sf::Vector2i minimap{static_cast<int>(playLayout::screenWidth-playLayout::hudMargin-playLayout::minimapWidth/2),static_cast<int>(playLayout::hudMargin+playLayout::minimapHeight/2)};
+        check(!app.screenToWorld({static_cast<int>(slot.position.x+10),static_cast<int>(slot.position.y+10)}) && !app.screenToWorld(orb) &&
+              !app.screenToWorld(minimap) && !app.screenToWorld({20,20}),"The hotbar, orbs, minimap and portrait cannot be clicked through");
+        check(app.screenToWorld({static_cast<int>(playLayout::screenWidth/2),300}).has_value(),"The open map can be clicked");
         app.requestTalent(0);
         app.handleTargetingMouse(sf::Event::MouseButtonPressed{sf::Mouse::Button::Left,{400,620}});
         check(app.aimingTalent_ && app.monsters_[0]->stats().hp==100,
@@ -151,8 +155,9 @@ struct ApplicationTargetingTestAccess {
         app.player_.talents()=TalentSet(fullKitForClass(PlayerClass::Warrior));
         for(const auto& talent:fullKitForClass(PlayerClass::Mage)) app.player_.talents().learnTalent(talent);
         app.handleTargetingKey(sf::Keyboard::Key::PageDown,false);
-        const auto slotPixel=[](int slot) {
-            return sf::Vector2i(static_cast<int>(playLayout::hotbarX+playLayout::hotbarStride*slot+20),static_cast<int>(playLayout::hotbarY+20));
+        const auto slotPixel=[&](int slot) {
+            const auto r=app.hotbarSlotRect(static_cast<std::size_t>(slot));
+            return sf::Vector2i(static_cast<int>(r.position.x+20),static_cast<int>(r.position.y+20));
         };
         check(app.talentPage_==1 && app.talentAtPixel(slotPixel(0))==std::optional<std::size_t>(9) &&
             app.talentAtPixel(slotPixel(2))==std::optional<std::size_t>(11),

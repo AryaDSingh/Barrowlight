@@ -22,6 +22,7 @@ struct DungeonGenerationParams {
     FloorRegion region = FloorRegion::Barracks;
     // Chance that a non-boss floor is built around a landmark set piece.
     float landmarkChance = 0.9f;
+    bool cathedral = false; // the Drowned Cathedral: its rooms stay as they are
     // Once a floor has a landmark: the chance of a second, and (given a
     // second) of a third, each in its own cell and of a different kind.
     float secondLandmarkChance = 0.4f, thirdLandmarkChance = 0.1f;
@@ -33,6 +34,10 @@ struct DungeonGenerationParams {
     // Share of ordinary cells built procedurally; the rest are hand-made.
     float proceduralShare = 0.5f;
 };
+
+// A lived-in room: the goblins' mess, armoury and bedding, a spider nest, a
+// shaman's idol, a library, an ossuary, or grave-robbers digging in the crypts.
+enum class Vignette { None, Mess, Armoury, Dormitory, Nest, Shrine, Library, Ossuary, GraveDig };
 
 struct GeneratedDungeon {
     Map map;
@@ -53,6 +58,11 @@ struct GeneratedDungeon {
     // Blocking furniture and statues, already marked in `map` as solid but
     // see-through tiles. Never placed where it would cut off any floor.
     std::vector<Prop> props;
+    // What each encounter room is for (aligned with otherRoomCenters), and
+    // the things left lying about in it. EncounterPlan fills a dressed room
+    // with the crowd that belongs there.
+    std::vector<Vignette> roomVignettes;
+    std::vector<Decal> decals;
 };
 
 // Builds a floor from a 3x3 grid of module-sized cells (see

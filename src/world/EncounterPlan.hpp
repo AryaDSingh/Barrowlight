@@ -27,13 +27,37 @@ inline std::vector<EncounterSpawn> planEncounters(const GeneratedDungeon& dungeo
     bool rarePlaced=false, uniquePlaced=false;
     if (dungeon.hasVault) { budget-=7; elitesLeft=std::max(0,elitesLeft-1); }
     const auto region=floorTheme(floorId).region;
-    for (std::size_t i=0;i<dungeon.otherRoomCenters.size();++i) {
+    // Dressed rooms are filled first: the mess has its diners, the dig its robbers.
+    std::vector<std::size_t> order;
+    for (std::size_t i=0;i<dungeon.otherRoomCenters.size();++i)
+        if (i<dungeon.roomVignettes.size() && dungeon.roomVignettes[i]!=Vignette::None) order.push_back(i);
+    for (std::size_t i=0;i<dungeon.otherRoomCenters.size();++i)
+        if (!(i<dungeon.roomVignettes.size() && dungeon.roomVignettes[i]!=Vignette::None)) order.push_back(i);
+    for (const std::size_t i:order) {
         const Position center=dungeon.otherRoomCenters[i];
         const bool crypt=region==FloorRegion::Crypts;
         std::vector<MonsterType> pack;
         int cost=0;
         bool dangerous=false;
-        if (cathedral) {
+        const Vignette vignette = i < dungeon.roomVignettes.size() ? dungeon.roomVignettes[i] : Vignette::None;
+        if (vignette == Vignette::Mess) {
+            pack={MonsterType::Goblin,MonsterType::GoblinRaider,floor>=2?MonsterType::GoblinSlinger:MonsterType::Goblin}; cost=8;
+        } else if (vignette == Vignette::Armoury) {
+            if (floor>=3) { pack={MonsterType::GoblinBulwark,MonsterType::GoblinRaider,MonsterType::GoblinSlinger}; cost=11; }
+            else { pack={MonsterType::Goblin,MonsterType::Goblin,MonsterType::Archer}; cost=7; }
+        } else if (vignette == Vignette::Dormitory) {
+            pack={MonsterType::Goblin,MonsterType::Goblin,floor>=2?MonsterType::GoblinStalker:MonsterType::Goblin}; cost=7;
+        } else if (vignette == Vignette::Nest) {
+            pack={MonsterType::Spider,MonsterType::Spider,MonsterType::Spider}; cost=7;
+        } else if (vignette == Vignette::Shrine) {
+            if (floor>=3) { pack={MonsterType::Shaman,MonsterType::GoblinMedic,MonsterType::GoblinBulwark}; cost=11; }
+            else { pack={MonsterType::Shaman,MonsterType::Goblin,MonsterType::Goblin}; cost=8; }
+        } else if (vignette == Vignette::Library) {
+            pack={MonsterType::Shaman,MonsterType::Goblin,MonsterType::Shaman}; cost=9;
+        } else if (vignette == Vignette::GraveDig) {
+            // Grave-robbers: goblins have come down to loot the dead.
+            pack={MonsterType::GoblinRaider,MonsterType::GoblinStalker,MonsterType::Goblin}; cost=10;
+        } else if (cathedral) {
             switch(i%5) {
                 case 0: pack={MonsterType::DrownedOne,MonsterType::DeepLurker,MonsterType::DrownedChorister}; cost=12; break;
                 case 1: pack={MonsterType::DeepLurker,MonsterType::DeepLurker,MonsterType::FrostAcolyte}; cost=11; break;

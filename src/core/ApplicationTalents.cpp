@@ -382,7 +382,7 @@ void Application::renderTalentTrees() {
 
     // --- Hotbar binding dialog -------------------------------------------------
     if(bindingTalent_) {
-        sf::RectangleShape dim({1280,720}); dim.setFillColor(sf::Color(0,0,0,140)); window_.draw(dim);
+        beginMenu(140);
         ui_.panel(window_,kBindingDialog,true,sf::Color(150,145,140));
         ui_.text(window_,"Assign to a hotbar slot",{kBindingDialog.position.x+24,kBindingDialog.position.y+16},20,ui::kGold,ui::Font::Title);
         ui_.text(window_,"Page one on top, page two below. The slot you pick is replaced.",

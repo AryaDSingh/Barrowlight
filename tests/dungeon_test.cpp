@@ -17,6 +17,7 @@
 #include "world/DungeonGenerator.hpp"
 #include "world/DungeonModules.hpp"
 #include "world/ProceduralModules.hpp"
+#include "world/EncounterPlan.hpp"
 
 using namespace engine;
 
@@ -255,6 +256,42 @@ int main() {
     check(furnished >= 135, "nearly every floor gets some arrangement");
     check(statues % 2 == 0, "statues come in pairs");
     check(landmarks >= 100, "at least half of ordinary floors have a landmark");
+
+    // Lived-in rooms: dressed for their occupants, who then live there.
+    {
+        int dressed = 0, digs = 0, robbers = 0, messes = 0, eaters = 0, furnitureNear = 0, decalsOnFloor = 0, decals = 0;
+        for (const auto region : {FloorRegion::Barracks, FloorRegion::Sanctum, FloorRegion::Crypts})
+            for (unsigned seed = 1; seed <= 60; ++seed) {
+                DungeonGenerationParams params;
+                params.region = region;
+                params.includeBossRoom = false;
+                const auto d = generateDungeon(params, seed);
+                check(d.roomVignettes.size() == d.otherRoomCenters.size(), "every encounter room has a (possibly empty) vignette");
+                const int floorId = region == FloorRegion::Barracks ? 2 : region == FloorRegion::Sanctum ? 5 : 8;
+                const auto spawns = planEncounters(d, floorId);
+                for (std::size_t i = 0; i < d.roomVignettes.size(); ++i) {
+                    const auto v = d.roomVignettes[i];
+                    if (v == Vignette::None) continue;
+                    ++dressed;
+                    const auto a = d.otherRoomCenters[i];
+                    const bool goblinsHere = std::any_of(spawns.begin(), spawns.end(), [&](const EncounterSpawn& e) {
+                        const bool goblin = e.type == MonsterType::Goblin || e.type == MonsterType::GoblinRaider || e.type == MonsterType::GoblinStalker ||
+                                            e.type == MonsterType::GoblinSlinger || e.type == MonsterType::GoblinCaptain;
+                        return goblin && std::abs(e.position.x - a.x) <= 1 && std::abs(e.position.y - a.y) <= 1; });
+                    if (v == Vignette::GraveDig) { ++digs; robbers += goblinsHere; check(region == FloorRegion::Crypts, "grave-robbers dig only in the crypts"); }
+                    if (v == Vignette::Mess) { ++messes; eaters += goblinsHere; }
+                    furnitureNear += v == Vignette::Nest || std::any_of(d.props.begin(), d.props.end(), [&](const Prop& p) {
+                        return std::abs(p.pos.x - a.x) <= 4 && std::abs(p.pos.y - a.y) <= 4; });
+                }
+                for (const auto& decal : d.decals) { ++decals; decalsOnFloor += d.map.isWalkable(decal.pos.x, decal.pos.y); }
+            }
+        std::cout << dressed << " dressed rooms (" << messes << " messes, " << digs << " grave digs), " << decals << " decals\n";
+        check(dressed > 100 && messes > 10 && digs > 5, "many encounter rooms are dressed, in every region");
+        check(furnitureNear == dressed, "a dressed room has its furniture beside it");
+        check(decalsOnFloor == decals, "litter lies on open floor");
+        check(robbers * 10 >= digs * 6, "goblins rob the graves they dug (some have moved on)");
+        check(eaters * 10 >= messes * 6, "goblins eat at their mess tables (some have moved on)");
+    }
 
     DungeonGenerationParams exampleParams;
     exampleParams.includeBossRoom = false;

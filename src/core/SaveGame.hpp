@@ -51,6 +51,7 @@ struct SaveGameState {
     int gold=0, quietTurns=0;
     int floorTurns=0; // turns spent on this floor (the hunt); format 37
     int breachTurns=0, breachKills=0; Position breachAt{}; // an open breach; format 38
+    std::vector<std::array<int,3>> decals; // kind, x, y; format 39
     bool bloodRelic=false, animationRelic=false;
     std::vector<int> deathlessSpentFloors;
     Map map;

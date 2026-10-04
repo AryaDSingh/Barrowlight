@@ -343,6 +343,17 @@ private:
     std::optional<Position> flankStep(const Monster& monster, Position goal);
     void tickHunt();
     void tickWard();
+    // The play screen (PlayLayout.hpp): as wide as the window's shape.
+    sf::View playView_;
+    float hudHintTop_ = 120.f;           // where map hints start, under the top-left cluster
+    std::deque<float> logTimes_;         // when each log line was written, so old ones fade
+    bool menuOpen() const;               // a 1280x720 menu is in front of the play screen
+    void beginMenu(std::uint8_t dim);    // dims the whole play screen, then draws in the menu's frame
+    sf::FloatRect hotbarSlotRect(std::size_t slot) const;
+    sf::FloatRect actionButtonRect(std::size_t index) const;
+    sf::FloatRect cancelButtonRect() const;
+    sf::FloatRect levelBadgeRect() const;
+    std::vector<Decal> decals_; // what's left lying about in lived-in rooms
     std::vector<const ItemDefinition*> shopStock() const;
     void spawnHunters();
     static std::string wandererName(const Monster& monster); // "Ogre, the Wanderer": no tier prefix

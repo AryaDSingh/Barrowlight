@@ -1,33 +1,35 @@
 #pragma once
 
 namespace engine::playLayout {
-// Play screen, ToME-style: a character column on the left, the map filling
-// the rest, and a bottom strip with the message log and the talent hotbar.
+// Full-screen menus are designed at 1280x720 and centred (letterboxed).
 inline constexpr unsigned int windowWidth = 1280;
 inline constexpr unsigned int windowHeight = 720;
 inline constexpr int tileSize = 28;
 
-inline constexpr int sidebarWidth = 256;
-inline constexpr int mapLeft = 266;
-inline constexpr int mapTop = 10;
-inline constexpr int mapWidth = 1008;  // 36 columns
-inline constexpr int mapHeight = 532;  // 19 rows: the complete radius-8 FOV fits.
+// The play screen is 720 units tall and as wide as the window's shape (at
+// least 1280), so an ultrawide monitor simply shows more dungeon. The map
+// fills all of it; the HUD floats over its edges (Application::fitView sets
+// these).
+inline float screenWidth = 1280.f;
+inline float mapLeft = 0.f, mapTop = 0.f, mapWidth = 1280.f, mapHeight = 720.f;
 
-inline constexpr float bottomTop = 552.f;
-inline constexpr float logX = 266.f, logY = 562.f, logWidth = 404.f, logLineHeight = 18.f;
-inline constexpr int logLines = 8;
-
-inline constexpr float hotbarX = 686.f, hotbarY = 590.f, hotbarStride = 56.f, hotbarWidth = 52.f, hotbarHeight = 52.f;
-inline constexpr float pageButtonX = 1192.f, pageButtonWidth = 38.f, pageButtonHeight = 26.f;
-
-// Status effect icons in the character column, five per row, two rows.
-inline constexpr float statusX = 14.f, statusY = 270.f, statusStride = 46.f, statusSize = 40.f;
-inline constexpr int statusColumns = 5, statusRows = 2;
-
-inline constexpr float minimapY = 392.f;
-
-// Action buttons (bag, trees, ...) at the foot of the character column.
-inline constexpr float actionX = 12.f, actionY = 616.f, actionStrideX = 39.f, actionStrideY = 50.f,
-                       actionWidth = 36.f, actionHeight = 44.f;
+// --- HUD: corners and orbs ---------------------------------------------------
+// Top left: portrait, class and level, then status icons and a few lines.
+inline constexpr float portraitSize = 52.f, hudMargin = 10.f;
+inline constexpr float statusX = 10.f, statusY = 70.f, statusStride = 34.f, statusSize = 30.f;
+inline constexpr int statusColumns = 8, statusRows = 2;
+// Bottom corners: the life and mana orbs.
+inline constexpr float orbRadius = 54.f, orbMargin = 14.f;
+// Bottom centre: one row of nine talent slots, an experience strip above it.
+inline constexpr float hotbarStride = 50.f, hotbarWidth = 46.f, hotbarHeight = 46.f, hotbarY = 662.f;
+inline constexpr float xpStripY = 653.f, xpStripHeight = 5.f;
+// Beside the hotbar: two rows of small action icons.
+inline constexpr float actionStride = 34.f, actionSize = 30.f, actionY = 646.f;
 inline constexpr int actionColumns = 6;
+// Top right: the minimap.
+inline constexpr float minimapWidth = 210.f, minimapHeight = 136.f;
+// Left, above the life orb: the log, which fades when nothing happens.
+inline constexpr float logX = 12.f, logBottom = 588.f, logWidth = 440.f, logLineHeight = 17.f;
+inline constexpr int logLines = 7;
+inline constexpr float logFadeSeconds = 10.f;
 } // namespace engine::playLayout

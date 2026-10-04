@@ -22,7 +22,7 @@ namespace {
 // "Back wall" means floor with a visible wall face directly behind it. Every
 // arrangement keeps clear of encounters, the start, sockets, set pieces and
 // other arrangements, and is kept only if every floor tile stays reachable.
-void placeProps(GeneratedDungeon& d, FloorRegion region, std::mt19937& rng) {
+void placeProps(GeneratedDungeon& d, FloorRegion region, bool cathedral, std::mt19937& rng) {
     Map& map = d.map;
     const int w = map.width(), h = map.height();
     const auto reachable = [&]() {
@@ -99,6 +99,72 @@ void placeProps(GeneratedDungeon& d, FloorRegion region, std::mt19937& rng) {
     std::shuffle(runs.begin(), runs.end(), rng);
     const auto depth = [&](int x, int y) { int n = 0; while (n < 6 && floorAt(x, y + n)) ++n; return n; };
 
+    // --- Lived-in rooms ------------------------------------------------------
+    // Most encounter rooms are dressed for what their occupants do there.
+    // Furniture sits three tiles out from the room's anchor (clear of where
+    // the encounter stands); decals scatter within four tiles of it.
+    d.roomVignettes.assign(d.otherRoomCenters.size(), Vignette::None);
+    {
+        struct Piece { PropKind kind; int dx, dy; };
+        struct Litter { DecalKind kind; int count; };
+        struct Template { std::vector<Piece> props; std::vector<Litter> litter; };
+        const auto layout = [](Vignette v) -> Template {
+            switch (v) {
+                case Vignette::Mess: return {{{PropKind::Chair, -2, -3}, {PropKind::Table, -1, -3}, {PropKind::Chair, 1, -3}},
+                                             {{DecalKind::Debris, 2}, {DecalKind::Bones, 2}}};
+                case Vignette::Armoury: return {{{PropKind::Crate, -3, -2}, {PropKind::Crate, -3, -1}, {PropKind::Barrel, -3, 1}},
+                                                {{DecalKind::Weapon, 3}}};
+                case Vignette::Dormitory: return {{{PropKind::Sacks, -3, -1}, {PropKind::Sacks, -3, 1}, {PropKind::Sacks, 3, 0}},
+                                                  {{DecalKind::Debris, 2}, {DecalKind::Coins, 1}}};
+                case Vignette::Nest: return {{}, {{DecalKind::Web, 5}, {DecalKind::Bones, 2}, {DecalKind::Skull, 1}}};
+                case Vignette::Shrine: return {{{PropKind::Idol, 0, -3}}, {{DecalKind::Candle, 3}, {DecalKind::Bones, 2}, {DecalKind::Skull, 1}}};
+                case Vignette::Library: return {{{PropKind::Bookcase, -2, -3}, {PropKind::Bookcase, -1, -3}, {PropKind::Bookcase, 1, -3}},
+                                                {{DecalKind::Book, 3}, {DecalKind::Candle, 1}}};
+                case Vignette::Ossuary: return {{{PropKind::Sarcophagus, -3, -2}, {PropKind::Sarcophagus, 3, -2}},
+                                                {{DecalKind::Skull, 2}, {DecalKind::Bones, 3}}};
+                case Vignette::GraveDig: return {{{PropKind::Sarcophagus, -3, -1}, {PropKind::Sacks, 3, 1}},
+                                                 {{DecalKind::Dirt, 4}, {DecalKind::Coins, 2}, {DecalKind::Pick, 1}, {DecalKind::Bones, 2}}};
+                case Vignette::None: break;
+            }
+            return {};
+        };
+        std::vector<Vignette> menu;
+        if (region == FloorRegion::Barracks) menu = {Vignette::Mess, Vignette::Mess, Vignette::Armoury, Vignette::Dormitory, Vignette::Nest};
+        else if (region == FloorRegion::Sanctum) menu = {Vignette::Shrine, Vignette::Shrine, Vignette::Library, Vignette::Mess};
+        else if (!cathedral) menu = {Vignette::Ossuary, Vignette::Ossuary, Vignette::GraveDig};
+        int digs = 0;
+        for (std::size_t i = 0; i < d.otherRoomCenters.size() && !menu.empty(); ++i) {
+            if (roll(0, 99) >= 45) continue;
+            Vignette v = menu[static_cast<std::size_t>(roll(0, static_cast<int>(menu.size()) - 1))];
+            if (v == Vignette::GraveDig && digs >= 1) v = Vignette::Ossuary;
+            const Position a = d.otherRoomCenters[i];
+            const auto plan = layout(v);
+            bool placed = plan.props.empty();
+            // Try the layout as drawn, then mirrored, then flipped.
+            for (int t = 0; t < 4 && !placed; ++t) {
+                const int sx = (t & 1) ? -1 : 1, sy = (t & 2) ? -1 : 1;
+                std::vector<Prop> group;
+                for (const auto& piece : plan.props) {
+                    int x = a.x + piece.dx * sx;
+                    if (sx < 0) x -= propWidth(piece.kind) - 1; // a mirrored table still starts at its left
+                    group.push_back({piece.kind, {x, a.y + piece.dy * sy}});
+                }
+                placed = tryGroup(group);
+            }
+            if (!placed) continue;
+            d.roomVignettes[i] = v;
+            digs += v == Vignette::GraveDig;
+            for (const auto& [kind, count] : plan.litter)
+                for (int n = 0, tries = 0; n < count && tries < 40; ++tries) {
+                    const Position p{a.x + roll(-4, 4), a.y + roll(-4, 4)};
+                    if (!floorAt(p.x, p.y)) continue;
+                    if (std::any_of(d.decals.begin(), d.decals.end(), [&](const Decal& e) { return e.pos.x == p.x && e.pos.y == p.y; })) continue;
+                    d.decals.push_back({kind, p});
+                    ++n;
+                }
+        }
+    }
+
     // --- Throne rooms and galleries ---------------------------------------
     const bool grand = region != FloorRegion::Barracks;
     int thrones = grand ? roll(1, 2) : roll(0, 1);
@@ -138,6 +204,7 @@ void placeProps(GeneratedDungeon& d, FloorRegion region, std::mt19937& rng) {
         if (extra >= 2) group.push_back({item(), {x + 2 * dir, run.y}});
         if (tryGroup(group)) --storage;
     }
+    d.decals.erase(std::remove_if(d.decals.begin(), d.decals.end(), [&](const Decal& e) { return !map.isWalkable(e.pos.x, e.pos.y); }), d.decals.end());
 }
 
 constexpr int kCells = kModuleGrid * kModuleGrid;
@@ -381,7 +448,7 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
                                  (bossCell / kModuleGrid) * kModuleHeight + kModuleHeight / 2};
     result.roomCount = kCells;
     if (landmarkCell >= 0) result.landmark = landmarkKind;
-    placeProps(result, params.region, rng);
+    placeProps(result, params.region, params.cathedral, rng);
     return result;
 }
 

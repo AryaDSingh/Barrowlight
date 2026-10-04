@@ -76,7 +76,7 @@ bool Application::enterTrial(int trial) {
     autoExploring_ = false; exploreSeenInterests_.clear(); cancelTargeting();
     inventoryOpen_ = false; trialMenu_ = false; merchantOpen_ = false; dungeonMenu_ = false;
     vaultExists_ = vaultOpened_ = vaultClaimed_ = false; vaultRewards_.clear();
-    landmark_ = LandmarkKind::None; landmarkUsed_ = false; shrineMenu_ = false; exitMenu_ = false; extraLandmarks_.clear();
+    landmark_ = LandmarkKind::None; landmarkUsed_ = false; shrineMenu_ = false; exitMenu_ = false; extraLandmarks_.clear(); decals_.clear();
     chestExists_ = chestClaimed_ = false;
     groundItems_.clear();
 
@@ -244,7 +244,7 @@ void Application::handleAscendancyMouse(const sf::Event& event) {
 void Application::renderAscendancyChoice() {
     const auto mouse = mousePixel_ ? std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)) : std::nullopt;
     const auto hovered = [&](const sf::FloatRect& r) { return mouse && r.contains(*mouse); };
-    sf::RectangleShape dim({1280, 720}); dim.setFillColor(sf::Color(0, 0, 0, 160)); window_.draw(dim);
+    beginMenu(160);
     ui_.panel(window_, kAscendDialog, true, sf::Color(150, 135, 150));
     const float x = kAscendDialog.position.x, w = kAscendDialog.size.x, top = kAscendDialog.position.y;
     ui_.textCentered(window_, "Choose your ascendancy", {{x, top + 22}, {w, 44}}, 34, ui::kUnique, ui::Font::Title);
@@ -294,7 +294,7 @@ void Application::renderAscendancy() {
     if (!ascendancyMenu_ || !a) return;
     const auto mouse = mousePixel_ ? std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)) : std::nullopt;
     const auto hovered = [&](const sf::FloatRect& r) { return mouse && r.contains(*mouse); };
-    sf::RectangleShape dim({1280, 720}); dim.setFillColor(sf::Color(0, 0, 0, 150)); window_.draw(dim);
+    beginMenu(150);
     ui_.panel(window_, kAscendDialog, true, sf::Color(150, 135, 150));
     const float x = kAscendDialog.position.x, w = kAscendDialog.size.x, top = kAscendDialog.position.y;
     const sf::FloatRect emblem{{x + 30, top + 22}, {72, 72}};
@@ -358,7 +358,7 @@ void Application::renderTrialMenu() {
     if (!trialMenu_) return;
     const auto mouse = mousePixel_ ? std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)) : std::nullopt;
     const auto hovered = [&](const sf::FloatRect& r) { return mouse && r.contains(*mouse); };
-    sf::RectangleShape dim({1280, 720}); dim.setFillColor(sf::Color(0, 0, 0, 140)); window_.draw(dim);
+    beginMenu(140);
     ui_.panel(window_, kTrialDialog, true, sf::Color(140, 130, 150));
     const float x = kTrialDialog.position.x, w = kTrialDialog.size.x, top = kTrialDialog.position.y;
     ui_.textCentered(window_, "The Trial Obelisk", {{x, top + 18}, {w, 44}}, 34, ui::kUnique, ui::Font::Title);

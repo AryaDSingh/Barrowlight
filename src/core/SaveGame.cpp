@@ -45,7 +45,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 38;
+constexpr int kSaveFormatVersion = 39;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -399,6 +399,11 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
         if (version>=38) out << ' ' << state.breachTurns << ' ' << state.breachAt.x << ' ' << state.breachAt.y << ' ' << state.breachKills;
         out << '\n';
     }
+    if (version>=39) {
+        out << state.decals.size();
+        for (const auto& d : state.decals) out << ' ' << d[0] << ' ' << d[1] << ' ' << d[2];
+        out << '\n';
+    }
     if (version>=29) {
         out << state.surfaces.size();
         for (const auto& [x,y,type,turns] : state.surfaces) out << ' ' << x << ' ' << y << ' ' << type << ' ' << turns;
@@ -724,6 +729,15 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         if (version>=38 && (!(in>>state.breachTurns>>state.breachAt.x>>state.breachAt.y>>state.breachKills) ||
             state.breachTurns<0 || state.breachTurns>kBreachTurns || state.breachKills<0 || state.breachKills>10000 ||
             !state.map.inBounds(state.breachAt.x,state.breachAt.y))) return std::nullopt;
+    }
+    if (version>=39) {
+        std::size_t count=0;
+        if (!(in>>count) || count>4000) return std::nullopt;
+        for (std::size_t i=0;i<count;++i) {
+            std::array<int,3> d{};
+            if (!(in>>d[0]>>d[1]>>d[2]) || d[0]<1 || d[0]>kDecalKindMax || !state.map.inBounds(d[1],d[2])) return std::nullopt;
+            state.decals.push_back(d);
+        }
     }
     if (version>=29) {
         std::size_t count=0;

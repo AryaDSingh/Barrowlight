@@ -22,6 +22,9 @@
 #include "entities/StatusEffectLogic.hpp"
 #include "entities/ArmourTalents.hpp"
 #include "entities/LootGenerator.hpp"
+#include "world/DungeonGenerator.hpp"
+#include <tuple>
+#include "core/PlayLayout.hpp"
 #include "entities/TalentEffects.hpp"
 
 namespace engine {
@@ -61,7 +64,7 @@ struct ApplicationRewardsTestAccess {
             app.darknessEnabled_ = false; app.player_.lightSource = 1; app.player_.lightLit = true; // darkness has its own checks
             app.autoExploring_=false; app.restTurns_=0; app.quietTurns_=0; app.combatThisTurn_=false;
             app.vaultExists_=app.vaultOpened_=app.vaultClaimed_=false; app.vaultMenu_=0; app.exitMenu_=false; app.vaultRewards_.clear();
-            app.landmark_=LandmarkKind::None; app.landmarkUsed_=false; app.shrineMenu_=false; app.extraLandmarks_.clear(); app.floorTurns_=0; app.breachTurns_=0; app.breachKills_=0;
+            app.landmark_=LandmarkKind::None; app.landmarkUsed_=false; app.shrineMenu_=false; app.extraLandmarks_.clear(); app.decals_.clear(); app.floorTurns_=0; app.breachTurns_=0; app.breachKills_=0;
             app.player_.patron=app.player_.favor=0; app.player_.bloodMagicUnlocked=false; app.pendingFall_=false;
             app.player_.ascendancy.clear(); app.player_.ascendancyPoints=app.player_.trialKeys=app.player_.trialsCleared=0;
             app.lightOrbs_.clear();
@@ -786,6 +789,52 @@ struct ApplicationRewardsTestAccess {
             check(w->stats().hp>0 && w->position().y==14 && w->stats().hp<bossHp,"Bosses teeter on the edge instead of falling");
             snapshot("ui-chasm.png");
             app.monsters_.clear(); app.boss_=nullptr;
+        }
+
+        // Lived-in rooms, seen in the dark: a goblin mess, and grave-robbers in the crypts.
+        setup(PlayerClass::Warrior); app.darknessEnabled_=true;
+        for (const auto& [floor,scene,shot]:{std::tuple{2,Vignette::Mess,"ui-room-mess.png"},std::tuple{8,Vignette::GraveDig,"ui-room-dig.png"}}) {
+            bool found=false;
+            for (unsigned seed=1;seed<=80 && !found;++seed) {
+                app.currentFloor_=floor; app.regenerateLevel(seed);
+                DungeonGenerationParams params; params.region=floorTheme(floor).region; params.includeBossRoom=false;
+                params.rareEventChance=floor>=kRareEventFloor?kRareEventChance:0.f;
+                params.bloodAltarChance=floor>=kBloodAltarFloor && !app.player_.bloodMagicUnlocked?0.3f:0.f;
+                params.includeVault=floor>=3;
+                const auto d=generateDungeon(params,seed);
+                for (std::size_t i=0;i<d.roomVignettes.size() && !found;++i) {
+                    if (d.roomVignettes[i]!=scene) continue;
+                    const auto a=d.otherRoomCenters[i];
+                    // Stand back from the room, torch lit, and look.
+                    for (const Position step:{Position{0,4},Position{0,-4},Position{4,0},Position{-4,0},Position{2,3},Position{-2,3}})
+                        if (app.map_.isWalkable(a.x+step.x,a.y+step.y) && !app.isOccupied({a.x+step.x,a.y+step.y},nullptr)) {
+                            for (auto& m:app.monsters_) m->tactics.alert=0;
+                            app.player_.setPosition({a.x+step.x,a.y+step.y}); app.player_.lightLit=true;
+                            app.updateFieldOfView(); app.updateCamera(); found=true; break;
+                        }
+                }
+            }
+            check(found,(std::string("A floor with a dressed room to look at: ")+shot).c_str());
+            if (!found) continue;
+            check(!app.decals_.empty(),"Lived-in rooms leave things lying about");
+            snapshot(shot);
+            if (scene==Vignette::Mess) {
+                // The same room on a 21:9 ultrawide: the map fills it, the HUD keeps to the edges.
+                app.log("Entering Barracks. Warm stone halls."); app.log("Goblin hits Player for 4 (96/100 hp left)");
+                app.player_.ward=6; app.player_.statusEffects().apply({StatusEffectType::Guard,3,2});
+                app.player_.statusEffects().apply({StatusEffectType::Poison,4,1});
+                app.window_.setSize({1680,720}); app.fitView(); app.updateCamera();
+                check(playLayout::screenWidth==1680.f && playLayout::mapWidth==1680.f,"An ultrawide window gets a wider play screen, all of it map");
+                snapshot("ui-hud-ultrawide.png");
+                app.window_.setSize({1280,720}); app.fitView(); app.updateCamera();
+                snapshot("ui-hud-16x9.png");
+                app.player_.statusEffects().active().clear();
+            }
+        }
+        {
+            const auto litter=app.decals_.size();
+            roundTrip();
+            check(app.decals_.size()==litter && litter>0,"Save/load keeps what lies on the floor");
         }
 
         // Gear: a base's own damage, defences, requirements, traits, curses and wards.
@@ -1663,6 +1712,8 @@ struct ApplicationRewardsTestAccess {
         auto click=[&](int x,int y,sf::Mouse::Button button=sf::Mouse::Button::Left) {
             app.handleEvent(sf::Event::MouseButtonPressed{button,{x,y}});
         };
+        // The middle of a HUD element (its place follows the play screen's width).
+        const auto clickRect=[&](sf::FloatRect r) { click(static_cast<int>(r.position.x+r.size.x/2),static_cast<int>(r.position.y+r.size.y/2)); };
         auto clickOn=[&](const sf::FloatRect& r,sf::Mouse::Button button=sf::Mouse::Button::Left) {
             const auto c=screen::center(r); click(c.x,c.y,button);
         };
@@ -1745,7 +1796,7 @@ struct ApplicationRewardsTestAccess {
         app.grantXpAndAnnounce(xpForNextLevel(1));
         check(app.player_.level()==2 && app.mode_==GameMode::Playing && app.pointsToSpend(),"Levelling up keeps playing, with points waiting");
         snapshot("ui-levelup-badge.png");
-        click(200,50); check(app.mode_==GameMode::AttributeAllocation,"The Level up badge opens the attribute choice");
+        clickRect(app.levelBadgeRect()); check(app.mode_==GameMode::AttributeAllocation,"The Level up badge opens the attribute choice");
         const int waiting=app.player_.unspentAttributePoints();
         clickOn(screen::kAttributeClose);
         check(app.mode_==GameMode::Playing && app.player_.unspentAttributePoints()==waiting,"Later closes the choice and keeps the points");
@@ -2295,13 +2346,13 @@ struct ApplicationRewardsTestAccess {
         check(app.mode_==GameMode::Town,"Town travel button succeeds after ten quiet turns");
 
         setup(PlayerClass::Mage); app.player_.statusEffects().apply({StatusEffectType::Poison,3,1});
-        click(30,638); check(app.inventoryOpen_ && app.player_.stats().hp==100,"Action-bar Bag is free");
-        click(1190,35); click(147,638);
+        clickRect(app.actionButtonRect(0)); check(app.inventoryOpen_ && app.player_.stats().hp==100,"Action-bar Bag is free");
+        click(1190,35); clickRect(app.actionButtonRect(3));
         check(app.player_.stats().hp==99 && app.player_.statusEffects().active()[0].turnsRemaining==2,"Action-bar Wait advances exactly one turn");
-        app.player_.statusEffects().active().clear(); click(186,638);
+        app.player_.statusEffects().active().clear(); clickRect(app.actionButtonRect(4));
         check(app.restTurns_>0,"Action-bar Rest starts resting");
-        click(30,638); check(app.restTurns_==0 && !app.inventoryOpen_,"First click during rest only stops resting");
-        app.requestTalent(1); click(1068,517);
+        clickRect(app.actionButtonRect(0)); check(app.restTurns_==0 && !app.inventoryOpen_,"First click during rest only stops resting");
+        app.requestTalent(1); clickRect(app.cancelButtonRect());
         check(!app.aimingTalent_ && !app.inspecting_,"Action-bar Cancel leaves targeting without casting");
         snapshot("ui-dungeon.png");
 

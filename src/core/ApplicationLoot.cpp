@@ -90,7 +90,7 @@ void Application::renderVault() {
     const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
     using namespace screen;
     if (vaultMenu_==1) {
-        sf::RectangleShape dim({1280,720}); dim.setFillColor(sf::Color(0,0,0,140)); window_.draw(dim);
+        beginMenu(140);
         ui_.panel(window_,kVaultWarning,true,sf::Color(150,140,150));
         const float x=kVaultWarning.position.x, w=kVaultWarning.size.x;
         ui_.icon(window_,"locked-chest",{{x+w/2-34,kVaultWarning.position.y+22},{68,68}},sf::Color(235,190,255));

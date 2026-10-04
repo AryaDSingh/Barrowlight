@@ -281,6 +281,7 @@ void Application::importFloor(SaveGameState& next, const SaveGameState& floor) {
     next.vaultCenter=floor.vaultCenter; next.vaultEntrance=floor.vaultEntrance;
     next.landmark=floor.landmark; next.landmarkAltar=floor.landmarkAltar; next.landmarkUsed=floor.landmarkUsed;
     next.extraLandmarks=floor.extraLandmarks;
+    next.decals=floor.decals;
     next.props=floor.props;
     next.surfaces=floor.surfaces; next.torchToggles=floor.torchToggles;
     next.items.erase(std::remove_if(next.items.begin(),next.items.end(),[](const auto& item){return item.location<=-2;}),next.items.end());
@@ -558,7 +559,7 @@ void Application::renderTravel() {
     if (!exitMenu_) return;
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
-    sf::RectangleShape dim({1280,720}); dim.setFillColor(sf::Color(0,0,0,120)); window_.draw(dim);
+    beginMenu(120);
     ui_.panel(window_,kTravelDialog,true,sf::Color(150,145,140));
     ui_.textCentered(window_,"Stairs down",{{kTravelDialog.position.x,kTravelDialog.position.y+22},{kTravelDialog.size.x,44}},32,ui::kGold,ui::Font::Title);
     ui_.textCentered(window_,"Floors persist, so you can come back for loot. Travel doesn't heal you.",

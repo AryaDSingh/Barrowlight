@@ -43,10 +43,11 @@ constexpr unsigned int kWindowWidth = playLayout::windowWidth;
 constexpr unsigned int kWindowHeight = playLayout::windowHeight;
 constexpr char kWindowTitle[] = "Roguelike Engine - Dev Window";
 constexpr float kTileSize = static_cast<float>(playLayout::tileSize);
-constexpr float kMapLeft = static_cast<float>(playLayout::mapLeft);
-constexpr unsigned int kMapWidth = playLayout::mapWidth;
-constexpr unsigned int kMapHeight = playLayout::mapHeight;
-constexpr float kMapTop = static_cast<float>(playLayout::mapTop);
+// The map fills the play screen, whose width follows the window (fitView).
+const float& kMapLeft = playLayout::mapLeft;
+const float& kMapWidth = playLayout::mapWidth;
+const float& kMapHeight = playLayout::mapHeight;
+const float& kMapTop = playLayout::mapTop;
 constexpr int kSightRadius = 8;
 constexpr unsigned int kInitialSeed = 1337;
 
@@ -79,9 +80,10 @@ constexpr const char* kSaveFilePath = "savegame.txt";
 
 // Remembered (explored, not currently seen) tiles: darker and cooler, so
 // they read as memory rather than as the lit present.
+// Remembered ground: grey, as if seen by memory rather than light.
 sf::Color dim(sf::Color c) {
-    return sf::Color(static_cast<std::uint8_t>(c.r * 0.30f), static_cast<std::uint8_t>(c.g * 0.33f),
-                     static_cast<std::uint8_t>(std::min(255.f, c.b * 0.46f)), c.a);
+    const float grey = (c.r * 0.30f + c.g * 0.59f + c.b * 0.11f) * 0.75f;
+    return sf::Color(static_cast<std::uint8_t>(grey), static_cast<std::uint8_t>(grey), static_cast<std::uint8_t>(std::min(255.f, grey * 1.08f)), c.a);
 }
 
 // Fallback when a monster's sprite sheet fails to load (see monsterLook())
@@ -214,6 +216,11 @@ std::pair<SpriteFrame, const char*> propFrame(PropKind kind) {
         case PropKind::OilBarrel: return {{kTileset, sf::IntRect({80, 304}, {16, 16})}, kTileset};
         case PropKind::Brazier: case PropKind::ColdBrazier: return {{kTileset, sf::IntRect({448, 304}, {16, 16})}, kTileset}; // blank: drawn by renderSurfaces
         case PropKind::StonePillar: return {{kEvilDungeon, sf::IntRect({224, 192}, {32, 96})}, kEvilDungeon};
+        case PropKind::Table: return {{kTileset, sf::IntRect({288, 240}, {32, 32})}, kTileset};
+        case PropKind::Chair: return {{kTileset, sf::IntRect({240, 240}, {16, 32})}, kTileset};
+        case PropKind::Bookcase: return {{kTileset, sf::IntRect({368, 240}, {16, 48})}, kTileset};
+        case PropKind::Sarcophagus: return {{kTileset, sf::IntRect({416, 304}, {32, 32})}, kTileset};
+        case PropKind::Idol: return {{kTileset, sf::IntRect({336, 288}, {16, 32})}, kTileset};
     }
     return {{kTileset, sf::IntRect({64, 304}, {16, 16})}, kTileset};
 }
@@ -435,9 +442,11 @@ void Application::updateMusic() {
 void Application::logImpl(const std::string& message) {
     std::cout << message << std::endl;
     logMessages_.push_back(message);
+    logTimes_.push_back(animationClock_.getElapsedTime().asSeconds());
     ++logTotal_;
     while (logMessages_.size() > kMaxLogMessages) {
         logMessages_.pop_front();
+        if (!logTimes_.empty()) logTimes_.pop_front();
     }
 }
 
@@ -497,10 +506,13 @@ bool Application::ensureLightBlob() {
 
 void Application::renderLighting(const std::vector<std::pair<sf::Vector2f, sf::Color>>& lights) {
     if (!ensureLightBlob()) return;
-    if (!lightMap_) lightMap_.emplace(sf::Vector2u{static_cast<unsigned>(kMapWidth), static_cast<unsigned>(kMapHeight)});
+    const sf::Vector2u lightSize{static_cast<unsigned>(kMapWidth), static_cast<unsigned>(kMapHeight)};
+    if (!lightMap_ || lightMap_->getSize() != lightSize) lightMap_.emplace(lightSize);
     auto& target = *lightMap_;
     // Darkness proper: unlit areas fall to a deep gloom; light comes from sources.
-    const sf::Color ambient = darknessEnabled_ ? sf::Color(92, 88, 112) : sf::Color(170, 160, 182);
+    // In the dark almost nothing shows by itself: seen ground gets a faint
+    // gloom, remembered ground a flat grey, and the unknown stays black.
+    const sf::Color ambient = darknessEnabled_ ? sf::Color(12, 11, 16) : sf::Color(170, 160, 182);
     target.clear(ambient);
     const float now = animationClock_.getElapsedTime().asSeconds();
     const auto addLight = [&](sf::Vector2f center, sf::Color color, float radiusTiles) {
@@ -521,6 +533,15 @@ void Application::renderLighting(const std::vector<std::pair<sf::Vector2f, sf::C
         const int cols = static_cast<int>(kMapWidth / kTileSize) + 3, rows = static_cast<int>(kMapHeight / kTileSize) + 3;
         const int x0 = cameraX_ - 1, y0 = cameraY_ - 1;
         std::vector<sf::Vector3f> grid(static_cast<std::size_t>(cols * rows), sf::Vector3f{});
+        if (darknessEnabled_)
+            for (int gy = 0; gy < rows; ++gy)
+                for (int gx = 0; gx < cols; ++gx) {
+                    const int x = gx + cameraX_ - 1, y = gy + cameraY_ - 1;
+                    if (!map_.inBounds(x, y)) continue;
+                    const auto seen = exploredMap_.at(x, y);
+                    grid[static_cast<std::size_t>(gy * cols + gx)] = seen == Visibility::Visible ? sf::Vector3f{52.f, 49.f, 64.f}
+                        : seen == Visibility::Remembered ? sf::Vector3f{62.f, 62.f, 68.f} : sf::Vector3f{};
+                }
         for (const auto& source : lightSources_) {
             const float flick = source.flicker ? 0.9f + 0.1f * std::sin(now * 9.f + source.radius * 3.1f + static_cast<float>(source.tiles.empty() ? 0 : source.tiles.front().first)) : 1.f;
             const float reach = source.radius * flick + .5f;
@@ -596,8 +617,8 @@ void Application::updateCamera() {
     // Viewport size in whole tiles -- derived from the window/tile
     // constants rather than hardcoded again, so this stays correct if
     // either ever changes.
-    constexpr int kViewportWidthTiles = static_cast<int>(kMapWidth / kTileSize);
-    constexpr int kViewportHeightTiles = static_cast<int>(kMapHeight / kTileSize);
+    const int kViewportWidthTiles = static_cast<int>(kMapWidth / kTileSize);
+    const int kViewportHeightTiles = static_cast<int>(kMapHeight / kTileSize);
 
     const int desiredX = player_.position().x - kViewportWidthTiles / 2;
     const int desiredY = player_.position().y - kViewportHeightTiles / 2;
@@ -611,8 +632,11 @@ void Application::updateCamera() {
     const int maxCameraX = std::max(0, map_.width() - kViewportWidthTiles);
     const int maxCameraY = std::max(0, map_.height() - kViewportHeightTiles);
 
-    cameraX_ = std::clamp(desiredX, 0, maxCameraX);
-    cameraY_ = std::clamp(desiredY, 0, maxCameraY);
+    // You stay in the middle of the screen, even at the map's edge (beyond
+    // it is only darkness), so a wide screen never leaves you in a corner.
+    (void)maxCameraX; (void)maxCameraY;
+    cameraX_ = desiredX;
+    cameraY_ = desiredY;
 }
 
 sf::Vector2f Application::worldToScreen(int tileX, int tileY) const {
@@ -636,7 +660,37 @@ sf::FloatRect Application::letterbox() const {
 void Application::fitView() {
     uiView_ = sf::View(sf::FloatRect({0, 0}, {static_cast<float>(kWindowWidth), static_cast<float>(kWindowHeight)}));
     uiView_.setViewport(letterbox());
+    // The play screen: 720 tall, as wide as the window's shape (never
+    // narrower than 1280; a narrower window letterboxes it top and bottom).
+    const auto size = window_.getSize();
+    const float aspect = size.x && size.y ? static_cast<float>(size.x) / static_cast<float>(size.y) : 16.f / 9.f;
+    const float width = std::max(static_cast<float>(kWindowWidth), std::round(static_cast<float>(kWindowHeight) * aspect));
+    playLayout::screenWidth = width;
+    playLayout::mapLeft = 0.f; playLayout::mapTop = 0.f;
+    playLayout::mapWidth = width; playLayout::mapHeight = static_cast<float>(kWindowHeight);
+    playView_ = sf::View(sf::FloatRect({0, 0}, {width, static_cast<float>(kWindowHeight)}));
+    if (width > static_cast<float>(kWindowWidth) || aspect >= static_cast<float>(kWindowWidth) / kWindowHeight)
+        playView_.setViewport(sf::FloatRect({0, 0}, {1, 1}));
+    else playView_.setViewport(letterbox());
     window_.setView(uiView_);
+}
+
+// A 1280x720 menu is in front: the mouse speaks its coordinates.
+bool Application::menuOpen() const {
+    return mode_ != GameMode::Playing || inventoryOpen_ || shrineMenu_ || vaultMenu_ || exitMenu_ || trialMenu_ || ascendancyMenu_;
+}
+
+void Application::beginMenu(std::uint8_t dim) {
+    if (mode_ == GameMode::Playing) {
+        window_.setView(playView_);
+        sf::RectangleShape shade({playLayout::screenWidth, static_cast<float>(kWindowHeight)});
+        shade.setFillColor(sf::Color(0, 0, 0, dim)); window_.draw(shade);
+        window_.setView(uiView_);
+        return;
+    }
+    window_.setView(uiView_);
+    sf::RectangleShape shade({static_cast<float>(kWindowWidth), static_cast<float>(kWindowHeight)});
+    shade.setFillColor(sf::Color(0, 0, 0, dim)); window_.draw(shade);
 }
 
 // F11: borderless fullscreen at the desktop's resolution, and back.
@@ -659,7 +713,7 @@ void Application::handleEvent(const sf::Event& input) {
     // Mouse positions arrive in window pixels; everything below works in the
     // 1280x720 layout, whatever the window's size and shape.
     const auto toLayout = [&](sf::Vector2i pixel) {
-        const auto p = window_.mapPixelToCoords(pixel, uiView_);
+        const auto p = window_.mapPixelToCoords(pixel, menuOpen() ? uiView_ : playView_);
         return sf::Vector2i{static_cast<int>(std::floor(p.x)), static_cast<int>(std::floor(p.y))};
     };
     sf::Event converted = input;
@@ -2182,6 +2236,7 @@ void Application::computeLight() {
             litTiles_[static_cast<std::size_t>(item->position().y * map_.width() + item->position().x)] = 1;
     // Braziers, and burning ground.
     for (const auto& prop : props_) if (prop.kind == PropKind::Brazier) light(prop.pos, 3, fire, 3.6f, true);
+    for (const auto& decal : decals_) if (decal.kind == DecalKind::Candle) light(decal.pos, 2, sf::Color(255, 185, 110), 2.2f, true);
     if (surfaces_.size() == litTiles_.size())
         for (int y = 0; y < map_.height(); ++y)
             for (int x = 0; x < map_.width(); ++x)
@@ -2285,6 +2340,7 @@ void Application::regenerateLevel(unsigned int seed) {
     // is a separate, later piece of work; this gets the full 10-floor
     // structure and victory gating correct end to end first.
     params.includeBossRoom = (currentFloor_ == kFirstBossFloor || currentFloor_ == 10 || currentFloor_ == kFinalFloor || currentFloor_ == kCathedralLast);
+    params.cathedral=cathedralFloor(currentFloor_);
     params.includeVault=currentFloor_>=3 && !params.includeBossRoom && nextItemId_<=std::numeric_limits<std::uint64_t>::max()-3;
     const GeneratedDungeon dungeon = generateDungeon(params, seed);
     vaultExists_=dungeon.hasVault; vaultOpened_=false; vaultClaimed_=false;
@@ -2293,6 +2349,7 @@ void Application::regenerateLevel(unsigned int seed) {
     landmark_=dungeon.landmark; landmarkAltar_=dungeon.landmarkAltar; landmarkUsed_=false; shrineMenu_=false;
     extraLandmarks_.clear();
     for (const auto& [kind,altar]:dungeon.extraLandmarks) extraLandmarks_.push_back({kind,altar,false});
+    decals_=dungeon.decals;
 
     map_ = dungeon.map;
     actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN; vfx_.clear(); hitFlash_.clear();
@@ -2440,6 +2497,7 @@ SaveGameState Application::captureState(bool includeFloors) {
     state.ordinaryDrops = ordinaryDrops_;
     state.landmark=static_cast<int>(landmark_); state.landmarkAltar=landmarkAltar_; state.landmarkUsed=landmarkUsed_;
     for (const auto& e:extraLandmarks_) state.extraLandmarks.push_back({static_cast<int>(e.kind),e.altar.x,e.altar.y,e.used?1:0});
+    for (const auto& decal:decals_) state.decals.push_back({static_cast<int>(decal.kind),decal.pos.x,decal.pos.y});
     state.props=props_;
     state.vaultExists=vaultExists_; state.vaultOpened=vaultOpened_; state.vaultClaimed=vaultClaimed_;
     state.vaultCenter=vaultCenter_; state.vaultEntrance=vaultEntrance_;
@@ -2619,6 +2677,8 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     landmark_=static_cast<LandmarkKind>(state.landmark); landmarkAltar_=state.landmarkAltar; landmarkUsed_=state.landmarkUsed;
     extraLandmarks_.clear();
     for (const auto& e:state.extraLandmarks) extraLandmarks_.push_back({static_cast<LandmarkKind>(e[0]),{e[1],e[2]},e[3]!=0});
+    decals_.clear();
+    for (const auto& decal:state.decals) decals_.push_back({static_cast<DecalKind>(decal[0]),{decal[1],decal[2]}});
     {
         // Raised pillars are temporary: they crumble when the floor is reloaded.
         auto props=state.props;
@@ -2832,9 +2892,10 @@ void Application::renderAttributeAllocation() {
 }
 
 void Application::render() {
-    window_.clear(sf::Color(10, 10, 14));
+    window_.clear(sf::Color(0, 0, 0));
     // Full-screen menus share a dim stone backdrop; screens that paint
     // their own background simply cover it.
+    window_.setView(uiView_);
     if (mode_ != GameMode::Playing) ui_.stone(window_, {{0, 0}, {1280, 720}}, sf::Color(120, 115, 112));
 
     if (mode_==GameMode::Town) { renderTown(); window_.display(); return; }
@@ -2880,11 +2941,8 @@ void Application::render() {
 
     // Everything on the map is drawn through a view clipped to the map
     // rectangle, so tall wall faces and light never spill onto the HUD.
-    sf::View mapView(sf::FloatRect({kMapLeft, kMapTop}, {static_cast<float>(kMapWidth), static_cast<float>(kMapHeight)}));
-    const auto box = letterbox();
-    mapView.setViewport(sf::FloatRect({box.position.x + box.size.x * kMapLeft / kWindowWidth, box.position.y + box.size.y * kMapTop / kWindowHeight},
-                                      {box.size.x * kMapWidth / static_cast<float>(kWindowWidth), box.size.y * kMapHeight / static_cast<float>(kWindowHeight)}));
-    window_.setView(mapView);
+    // The map fills the play screen, so its view is the play view.
+    window_.setView(playView_);
     // One extra row: a wall just below the view still shows its tall face.
     const int drawEndY = std::min(map_.height(), viewEndY + 1);
 
@@ -2979,6 +3037,10 @@ void Application::render() {
     const float now = animationClock_.getElapsedTime().asSeconds();
     struct LateDecor { SpriteFrame frame; sf::Vector2f at; float size; sf::Color tint; };
     std::vector<LateDecor> lateDecor;
+    std::vector<LateDecor> earth; // dug ground, drawn before the rest of the floor dressing
+    std::vector<std::uint8_t> decalGrid(static_cast<std::size_t>(std::max(0, map_.width() * map_.height())), 0);
+    for (const auto& decal : decals_)
+        if (map_.inBounds(decal.pos.x, decal.pos.y)) decalGrid[static_cast<std::size_t>(decal.pos.y * map_.width() + decal.pos.x)] = static_cast<std::uint8_t>(decal.kind);
     for (int y = viewStartY; y < drawEndY; ++y) {
         for (int x = viewStartX; x < viewEndX; ++x) {
             const Visibility vis = exploredMap_.at(x, y);
@@ -3006,9 +3068,38 @@ void Application::render() {
                 }
                 if (vis == Visibility::Visible) lights.push_back({{at.x + kTileSize / 2, at.y + kTileSize / 2}, sf::Color(120, 160, 255)});
             }
+            if (const auto decal = decalGrid[static_cast<std::size_t>(y * map_.width() + x)]) {
+                const unsigned h = decorHash(x, y, 31);
+                switch (static_cast<DecalKind>(decal)) {
+                    case DecalKind::Bones: SpriteAtlas::append(faces, {kEvilDungeon, sf::IntRect({0, 256}, {32, 16})}, {at.x, at.y + kTileSize * 0.3f}, kTileSize, shade(sf::Color(200, 190, 175))); break;
+                    case DecalKind::Skull: SpriteAtlas::append(details, kBonesFrame, at, kTileSize, shade(sf::Color(215, 205, 195))); break;
+                    case DecalKind::Web: SpriteAtlas::append(details, kCobwebFrame, at, kTileSize, shade(sf::Color(185, 185, 195, 170))); break;
+                    case DecalKind::Dirt: {
+                        static constexpr const char* kDirt[]{"dcss/dirt0.png", "dcss/dirt1.png", "dcss/dirt2.png"};
+                        earth.push_back({{kDirt[h % 3], sf::IntRect({0, 0}, {32, 32})}, at, kTileSize, shade(sf::Color(150, 125, 100, 210))});
+                        break;
+                    }
+                    case DecalKind::Coins: SpriteAtlas::append(details, {kTileset, sf::IntRect({h % 2 ? 0 : 16, 352}, {16, 16})}, at, kTileSize, shade(sf::Color::White)); break;
+                    case DecalKind::Weapon: SpriteAtlas::append(details, {kTileset, sf::IntRect({144 + static_cast<int>(h % 4) * 16, 384}, {16, 16})}, at, kTileSize, shade(sf::Color(210, 205, 200))); break;
+                    case DecalKind::Pick: SpriteAtlas::append(details, {kTileset, sf::IntRect({256, 384}, {16, 16})}, at, kTileSize, shade(sf::Color(220, 210, 200))); break;
+                    case DecalKind::Book: SpriteAtlas::append(details, {kTileset, sf::IntRect({336 + static_cast<int>(h % 3) * 16, 352}, {16, 16})}, at, kTileSize * 0.8f, shade(sf::Color(200, 190, 180))); break;
+                    case DecalKind::Debris: SpriteAtlas::append(details, kRubbleFrame, at, kTileSize, shade(sf::Color(190, 170, 150))); break;
+                    case DecalKind::Candle: {
+                        const int flame = static_cast<int>(now * 7.f + static_cast<float>(h % 5)) % 3;
+                        SpriteAtlas::append(details, {kTileset, sf::IntRect({176 + flame * 16, 304}, {16, 16})}, {at.x + kTileSize * 0.2f, at.y + kTileSize * 0.15f},
+                                            kTileSize * 0.6f, shade(sf::Color::White));
+                        break;
+                    }
+                }
+            }
             if (const int index = propIndexAt(x, y); index >= 0 && props_[static_cast<std::size_t>(index)].pos.x == x) {
                 const Prop& prop = props_[static_cast<std::size_t>(index)];
-                const auto [frame, sheet] = propFrame(prop.kind);
+                auto [frame, sheet] = propFrame(prop.kind);
+                if (prop.kind == PropKind::Chair) {
+                    const auto tableAt = [&](int tx) { const int t = propIndexAt(tx, y); return t >= 0 && props_[static_cast<std::size_t>(t)].kind == PropKind::Table; };
+                    if (tableAt(x + 1)) frame.rect.position.x = 208;      // faces right, toward the table
+                    else if (tableAt(x - 1)) frame.rect.position.x = 224; // faces left
+                }
                 const float width = kTileSize * propWidth(prop.kind);
                 const float scale = (sheet == kEvilDungeon ? kTileSize / 32.f : kTileSize / 16.f);
                 const float size = std::max(frame.rect.size.x, frame.rect.size.y) * scale;
@@ -3047,6 +3138,7 @@ void Application::render() {
             }
         }
     }
+    for (const auto& d : earth) sprites_.draw(window_, d.frame, d.at, d.size, d.tint);
     if (wallTexture) window_.draw(faces, sf::RenderStates(wallTexture));
     if (tileset) window_.draw(details, sf::RenderStates(tileset));
     // Decor from its own images, drawn over the walls they hang on.
@@ -3189,16 +3281,13 @@ void Application::render() {
     renderTelegraphs(viewStartX, viewStartY, viewEndX, viewEndY);
 
     renderTargetingOverlay();
-    window_.setView(uiView_);
+    window_.setView(playView_);
     renderBattleHud();
 
-    // Frame around the map, drawn over the tile edges.
-    ui_.frame(window_, {{kMapLeft - 4, kMapTop - 4}, {kMapWidth + 8.f, kMapHeight + 8.f}});
-
-    // Boss frame, top centre of the map, while the boss is alive and in sight.
+    // Boss frame, top centre, while the boss is alive and in sight.
     if (boss_ != nullptr && boss_->stats().hp > 0 &&
         exploredMap_.at(boss_->position().x, boss_->position().y) == Visibility::Visible) {
-        const sf::FloatRect box{{kMapLeft + kMapWidth / 2.f - 260, kMapTop + 8}, {520, 50}};
+        const sf::FloatRect box{{playLayout::screenWidth / 2.f - 260, 8}, {520, 50}};
         ui_.panel(window_, box, true, sf::Color(150, 140, 130));
         ui_.textCentered(window_, boss_->name(), {box.position, {box.size.x, 26}}, 18, ui::kRare, ui::Font::Title);
         ui_.bar(window_, {{box.position.x + 16, box.position.y + 28}, {box.size.x - 32, 14}},
@@ -3206,14 +3295,16 @@ void Application::render() {
                 std::to_string(boss_->stats().hp) + " / " + std::to_string(boss_->stats().maxHp), 12);
     }
 
-    renderTravel();
-    renderVault();
-    renderShrine();
-    renderAscendancy();
+    // Each may draw on the map first, then open its menu over everything.
+    window_.setView(playView_); renderTravel();
+    window_.setView(playView_); renderVault();
+    window_.setView(playView_); renderShrine();
+    window_.setView(playView_); renderAscendancy();
     if (vaultMenu_ || shrineMenu_ || exitMenu_) mapHints_.clear();
+    window_.setView(playView_);
     renderMapHints();
-    if (inventoryOpen_) { renderInventory(); renderDraggedItem(); }
-    else if (!vaultMenu_ && !shrineMenu_ && !exitMenu_) renderHudTooltips();
+    if (inventoryOpen_) { beginMenu(150); renderInventory(); renderDraggedItem(); }
+    else if (!vaultMenu_ && !shrineMenu_ && !exitMenu_) { window_.setView(playView_); renderHudTooltips(); }
     window_.display();
 }
 
