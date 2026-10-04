@@ -533,6 +533,19 @@ private:
     // the player's own death, which grants nothing).
     void checkAndHandleDeath(Actor& actor);
 
+    // The death recap: the last blows the player took, oldest first, shown
+    // on the death screen as plain facts. harmSource_ names whatever is
+    // acting right now; noteHarm() turns any life lost since the last note
+    // into an entry.
+    struct Harm { int clock=0; std::string source; int amount=0, hp=0, maxHp=0; std::string state; };
+    static constexpr std::size_t kRecapLength=8;
+    std::deque<Harm> harms_;
+    std::string harmSource_;
+    int harmHp_=0, harmClock_=0;
+    void noteHarm();
+    void resetHarms() { harms_.clear(); harmSource_.clear(); harmHp_=player_.stats().hp; }
+    std::string harmfulStates() const;
+
     // Applies `amount` XP to player_ via PlayerLeveling's grantXp(),
     // then logs it -- and, if it crossed a level threshold, a level-up
     // announcement too. The one place XP gain actually becomes visible;

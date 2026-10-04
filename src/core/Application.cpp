@@ -1168,7 +1168,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     cancelTargeting();
 
     player_.stats().mana -= talent.manaCost;
-    player_.stats().hp -= talent.hpCost;
+    if (talent.hpCost) { noteHarm(); player_.stats().hp -= talent.hpCost; harmSource_=talent.name; noteHarm(); harmSource_.clear(); }
     spawnTalentVfx(talent, beforeMovement, cursor, target);
     judgeCast(talent);
     if (talent.id=="basic.pray") pray();
@@ -1537,8 +1537,10 @@ void Application::advanceEnemyIntents() {
 }
 
 void Application::processMonsterTurns() {
+    noteHarm(); // whatever the player's own action cost them
     while (window_.isOpen() && currentActor_ != &player_ && mode_!=GameMode::GameOver) {
         Actor* actor = currentActor_;
+        harmSource_ = actor->name();
 
         auto* monster=dynamic_cast<Monster*>(actor);
         bool interrupted=false;
@@ -1691,8 +1693,11 @@ void Application::processMonsterTurns() {
             actor->talents().tickCooldowns();
         }
 
+        noteHarm();
+        harmSource_.clear();
         currentActor_ = &scheduler_.nextTurn();
     }
+    harmSource_.clear();
 
     removeDeadMonsters();
 }
@@ -1727,12 +1732,21 @@ void Application::advanceTurnsUntilPlayerCanAct() {
             if (effect.type==StatusEffectType::Doom && effect.turnsRemaining==1)
                 log("Doom erupts for ",effect.magnitude," damage!");
         }
+        ++harmClock_;
+        noteHarm();
+        {
+            std::string afflictions;
+            for (const auto type:{StatusEffectType::Poison,StatusEffectType::Burn,StatusEffectType::Bleed,StatusEffectType::Plague,StatusEffectType::Doom})
+                if (player_.statusEffects().has(type)) afflictions+=(afflictions.empty()?"":" and ")+std::string(statusName(type));
+            harmSource_=afflictions;
+        }
         const bool stunned = tickStatusEffects(player_);
         if (hadPoison && player_.stats().hp > 0) {
             log("Poison deals damage (", player_.stats().hp, "/", player_.stats().maxHp,
                 " hp left)");
         }
         checkAndHandleDeath(player_);
+        harmSource_.clear();
         if (!window_.isOpen() || mode_==GameMode::GameOver) {
             return;
         }
@@ -2031,6 +2045,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
         // short-circuit is gone, so this needs to be explicit.
         return;
     }
+    if (&actor == &player_) noteHarm();
 
     if (actor.stats().hp > 0) {
         if(auto* m=dynamic_cast<Monster*>(&actor); m && !m->allied) {
@@ -2377,6 +2392,7 @@ void Application::selectClass(PlayerClass cls) {
     player_.stats() = player_.baseStats();
     player_.unspentAttributePoints() = 0;
     player_.statusEffects().active().clear();
+    resetHarms();
     nextItemId_ = 1;
     player_.trees().clear();
     player_.bloodRelic=false; player_.animationRelic=false; player_.deathlessSpentFloors.clear();
@@ -2829,6 +2845,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     // handles it in ordinary play, not a special case for loading.
     currentActor_ = &scheduler_.nextTurn();
 
+    resetHarms();
     if (player_.stats().hp<=0) { mode_=GameMode::GameOver; wonGame_=false; }
     else resumeLevelUpSequence();
     log("Game loaded: ", monsters_.size(), " monsters",
@@ -2922,25 +2939,83 @@ void Application::allocateAttribute(unsigned int attribute) {
     if (player_.unspentAttributePoints()<=0) { mode_=GameMode::Playing; resumeLevelUpSequence(); }
 }
 
+// Life lost since the last note becomes one line of the recap.
+void Application::noteHarm() {
+    const int hp=player_.stats().hp;
+    if (hp<harmHp_) {
+        harms_.push_back({harmClock_, harmSource_, harmHp_-hp, std::max(0,hp), player_.stats().maxHp, harmfulStates()});
+        if (harms_.size()>kRecapLength) harms_.pop_front();
+    }
+    harmHp_=hp;
+}
+
+// The states that were working against the player, by name.
+std::string Application::harmfulStates() const {
+    std::string states;
+    for (const auto type:{StatusEffectType::Stun,StatusEffectType::Pinned,StatusEffectType::Grappled,StatusEffectType::Blinded,
+                          StatusEffectType::Smothered,StatusEffectType::Chill,StatusEffectType::Shock,StatusEffectType::Marked,
+                          StatusEffectType::Sundered,StatusEffectType::Burn,StatusEffectType::Poison,StatusEffectType::Bleed,
+                          StatusEffectType::Plague,StatusEffectType::Doom,StatusEffectType::ManaDrain,StatusEffectType::Wither})
+        if (player_.statusEffects().has(type)) states+=(states.empty()?"":", ")+std::string(statusName(type));
+    return states;
+}
+
 void Application::renderGameOver() {
     using namespace screen;
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
     ui_.glass(window_,kGameOverDialog,true);
-    const float cx=kGameOverDialog.position.x, w=kGameOverDialog.size.x;
-    ui_.icon(window_,wonGame_?"relic-blade":"skull-crossed-bones",{{cx+w/2-36,kGameOverDialog.position.y+24},{72,72}},
+    const float cx=kGameOverDialog.position.x, w=kGameOverDialog.size.x, top=kGameOverDialog.position.y;
+    const sf::Color blood(210,64,56);
+    ui_.icon(window_,wonGame_?"relic-blade":"skull-crossed-bones",{{cx+w/2-28,top+18},{56,56}},
         wonGame_?ui::kRare:sf::Color(200,60,52));
-    ui_.textCentered(window_,wonGame_?"Victory":"You died",{{cx,kGameOverDialog.position.y+104},{w,56}},46,
-        wonGame_?ui::kRare:sf::Color(210,64,56),ui::Font::Title);
-    ui_.textCentered(window_,wonGame_?"You have slain the "+defeatedBossName_+".":"The dungeon claims another.",
-        {{cx,kGameOverDialog.position.y+160},{w,26}},18,ui::kText);
+    ui_.textCentered(window_,wonGame_?"Victory":"You died",{{cx,top+76},{w,50}},46,wonGame_?ui::kRare:blood,ui::Font::Title);
+    // What killed you is the last thing that hurt you.
+    const bool known=!wonGame_ && !harms_.empty() && harms_.back().hp<=0 && !harms_.back().source.empty();
+    const std::string headline=wonGame_?"You have slain the "+defeatedBossName_+".":
+        known?"Slain by "+harms_.back().source+".":"The dungeon claims another.";
+    ui_.textCentered(window_,headline,{{cx,top+130},{w,26}},20,ui::kText);
+    if (!wonGame_) {
+        const std::string where=std::string(floorTheme(currentFloor_).name)+", floor "+std::to_string(currentFloor_);
+        ui_.textCentered(window_,where,{{cx,top+158},{w,22}},15,ui::kMuted);
+
+        // The last blows, oldest first: when, what, how much, and what was left.
+        const float left=cx+30, rowsTop=top+196, rowHeight=32;
+        float y=rowsTop;
+        const int now=harms_.empty()?harmClock_:harms_.back().clock;
+        int shownClock=INT_MIN;
+        for (const auto& harm:harms_) {
+            const int ago=now-harm.clock;
+            // Blows on the same turn share one label.
+            if (harm.clock!=shownClock) ui_.text(window_,ago==0?"last turn":std::to_string(ago)+(ago==1?" turn before":" turns before"),{left,y+6},14,ui::kMuted);
+            shownClock=harm.clock;
+            ui_.text(window_,harm.source.empty()?"unseen":harm.source,{left+120,y+4},17,harm.source.empty()?ui::kMuted:ui::kText);
+            ui_.text(window_,"-"+std::to_string(harm.amount),{left+330,y+4},17,blood);
+            const float barX=left+385, barW=100;
+            sf::RectangleShape rail({barW,8}); rail.setPosition({barX,y+12}); rail.setFillColor(sf::Color(40,30,30)); window_.draw(rail);
+            const float fill=harm.maxHp>0?barW*static_cast<float>(harm.hp)/static_cast<float>(harm.maxHp):0.f;
+            sf::RectangleShape life({std::clamp(fill,0.f,barW),8}); life.setPosition({barX,y+12}); life.setFillColor(sf::Color(170,40,36)); window_.draw(life);
+            ui_.text(window_,std::to_string(harm.hp)+"/"+std::to_string(harm.maxHp),{barX+barW+8,y+6},14,ui::kMuted);
+            if (!harm.state.empty()) {
+                std::string state=harm.state;
+                while (state.size()>24 && state.find(',')!=std::string::npos) state=state.substr(0,state.rfind(','));
+                if (state!=harm.state) state+=", ...";
+                ui_.text(window_,state,{left+560,y+6},14,sf::Color(200,170,110));
+            }
+            y+=rowHeight;
+        }
+        // What you still had.
+        const auto& stats=player_.stats();
+        std::string left_over="Mana "+std::to_string(stats.mana)+"/"+std::to_string(stats.maxMana);
+        if (player_.ward>0) left_over+="     Ward "+std::to_string(player_.ward);
+        ui_.textCentered(window_,left_over,{{cx,rowsTop+rowHeight*static_cast<float>(kRecapLength)+12},{w,22}},15,sf::Color(142,172,236));
+    }
     ui_.button(window_,kRestart,"New character (Enter)",hovered(kRestart),true,17);
     if(!wonGame_ && adventureMode_ && extraLives_>0) {
         ui_.button(window_,kRevive,"Revive in town (R), "+std::to_string(extraLives_)+" li"+(extraLives_==1?"fe":"ves")+" left",hovered(kRevive),true,17);
-        ui_.textCentered(window_,"Full recovery. You keep your gear and progress, and spend one extra life.",
-            {{cx,kRevive.position.y+56},{w,22}},15,ui::kMuted);
+        ui_.textCentered(window_,"You keep your gear and progress.",{{kRevive.position.x,kRevive.position.y+54},{kRevive.size.x,20}},14,ui::kMuted);
     } else if(!wonGame_) {
-        ui_.textCentered(window_,"No lives remain. This character's story has ended.",{{cx,kRevive.position.y+10},{w,24}},16,ui::kMuted);
+        ui_.textCentered(window_,"No lives remain.",{{kRevive.position.x,kRevive.position.y+12},{kRevive.size.x,24}},16,ui::kMuted);
     }
 }
 

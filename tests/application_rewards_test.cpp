@@ -1751,6 +1751,40 @@ struct ApplicationRewardsTestAccess {
         };
         auto release=[&](int x,int y) { app.handleEvent(sf::Event::MouseButtonReleased{sf::Mouse::Button::Left,{x,y}}); };
         auto addItem=[&](const char* id) { app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition(id),app.nextItemId_++)); };
+        // The death screen lists the blows that led there, with what dealt them.
+        setup(PlayerClass::Warrior);
+        {
+            app.resetHarms();
+            const Position at=app.player_.position();
+            auto made=createMonster(MonsterType::Ogre,{at.x+1,at.y}); auto* ogre=made.get();
+            app.scheduler_.add(*ogre); app.monsters_.push_back(std::move(made));
+            app.player_.stats().dexterity=0;
+            const auto slam=[&] {
+                ogre->setPosition({at.x+1,at.y}); app.player_.setPosition(at);
+                ogre->intent()=EnemyIntent{ogre->position(),at,0,0,4,IntentKind::StunStrike}; ogre->recoveryActions=0;
+                app.currentActor_=ogre; app.processMonsterTurns();
+            };
+            for (int attempt=0;attempt<20 && app.harms_.empty();++attempt) slam();
+            check(app.harms_.size()==1 && app.harms_.back().source==ogre->name() && app.harms_.back().amount>0 &&
+                  app.harms_.back().hp==app.player_.stats().hp,"A monster's blow is remembered with its name and the life left");
+            app.player_.statusEffects().active().clear();
+            app.player_.statusEffects().apply({StatusEffectType::Poison,3,2});
+            app.advanceTurnsUntilPlayerCanAct();
+            check(app.harms_.size()==2 && app.harms_.back().source=="Poison" && app.harms_.back().clock>app.harms_.front().clock,
+                  "Poison ticking on the player is remembered as poison");
+            app.player_.stats().hp=1; app.harmHp_=1;
+            for (int attempt=0;attempt<20 && app.mode_!=GameMode::GameOver;++attempt) slam();
+            check(app.mode_==GameMode::GameOver && app.harms_.back().hp==0 && app.harms_.back().source==ogre->name(),
+                  "The killing blow ends the recap");
+            for (int i=0;i<12;++i) { app.harmClock_+=i%3==0; app.harmSource_=i%2?"Goblin Archer":"Poison"; app.harmHp_=10; app.player_.stats().hp=9; app.noteHarm(); }
+            app.player_.stats().hp=0; app.harmHp_=9; app.harmSource_=ogre->name();
+            app.player_.statusEffects().apply({StatusEffectType::Stun,1,0}); app.noteHarm(); app.harmSource_.clear();
+            check(app.harms_.size()==Application::kRecapLength && app.harms_.back().state.find("Stun")!=std::string::npos,
+                  "The recap keeps only the last blows, and what was holding you");
+            snapshot("ui-death-recap.png");
+            app.selectClass(PlayerClass::Mage);
+            check(app.harms_.empty(),"A new character starts with no recap");
+        }
         setup(PlayerClass::Mage);
         app.mode_=GameMode::GameOver; snapshot("ui-game-over.png"); clickOn(screen::kRestart);
         check(app.mode_==GameMode::ClassSelection,"Restart click opens class selection");

@@ -18,9 +18,9 @@ inline const sf::FloatRect kStartLoad{{70, 600}, {260, 44}};
 inline const sf::FloatRect kModeToggle{{850, 600}, {360, 44}};
 
 // --- Game over: one centred dialog ------------------------------------------------
-inline const sf::FloatRect kGameOverDialog{{340, 150}, {600, 360}};
-inline const sf::FloatRect kRestart{{390, 350}, {500, 48}};
-inline const sf::FloatRect kRevive{{390, 408}, {500, 48}};
+inline const sf::FloatRect kGameOverDialog{{260, 60}, {760, 600}};
+inline const sf::FloatRect kRestart{{290, 580}, {340, 48}};
+inline const sf::FloatRect kRevive{{650, 580}, {340, 48}};
 
 // --- Level up: attribute choices in a centred dialog -------------------------------
 inline const sf::FloatRect kAttributeDialog{{290, 100}, {700, 470}};
