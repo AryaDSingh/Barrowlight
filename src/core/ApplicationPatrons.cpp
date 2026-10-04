@@ -19,8 +19,18 @@ Patron Application::godAt(Position altar) const {
     return static_cast<Patron>(1 + static_cast<int>(h % kPatronCount));
 }
 
+StrongboxVariant Application::strongboxVariant(Position altar) const {
+    const unsigned h = static_cast<unsigned>(altar.x * 19349663) ^ static_cast<unsigned>(altar.y * 83492791) ^
+                       static_cast<unsigned>(currentFloor_ * 73856093);
+    return static_cast<StrongboxVariant>(h % 3);
+}
+
 std::string Application::landmarkLabel(LandmarkKind kind, Position altar) const {
     if (kind == LandmarkKind::Shrine) return std::string("Shrine of ") + patronInfo(godAt(altar)).name;
+    if (kind == LandmarkKind::Strongbox) {
+        const auto v = strongboxVariant(altar);
+        return v == StrongboxVariant::Armourer ? "Armourer's Strongbox" : v == StrongboxVariant::Arcanist ? "Arcanist's Strongbox" : "Gilded Strongbox";
+    }
     return landmarkName(kind, floorTheme(currentFloor_).region);
 }
 
@@ -71,10 +81,7 @@ void Application::announceFloor() {
     log(floorNotice_);
 }
 
-std::string Application::landmarkTitle() const {
-    if (landmark_ == LandmarkKind::Shrine) return std::string("Shrine of ") + patronInfo(shrineGod()).name;
-    return landmarkName(landmark_, floorTheme(currentFloor_).region);
-}
+std::string Application::landmarkTitle() const { return landmarkLabel(landmark_, landmarkAltar_); }
 
 void Application::gainFavor(Patron god, int amount, const char* why) {
     if (patron() != god || god == Patron::None || !amount) return;

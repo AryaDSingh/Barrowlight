@@ -1822,6 +1822,40 @@ struct ApplicationRewardsTestAccess {
               "Seizing the hoard pays out a rare item and wakes three hunting guardians");
         snapshot("ui-hoard-guardians.png");
 
+        // Strongbox: open it and its guardians burst out around you as the loot spills.
+        placeAltar(LandmarkKind::Strongbox);
+        check(app.landmarkTitle().find("Strongbox")!=std::string::npos,"A strongbox is named for its kind");
+        snapshot("ui-strongbox-map.png");
+        app.pickupItem(); snapshot("ui-strongbox.png");
+        {
+            const auto groundBefore=app.groundItems_.size();
+            const int hpBefore=app.player_.stats().hp;
+            clickOn(screen::shrineChoice(0));
+            const auto me=app.player_.position();
+            std::set<std::pair<int,int>> sides;
+            bool ringed=true;
+            for (const auto& m:app.monsters_) {
+                const int d=std::max(std::abs(m->position().x-me.x),std::abs(m->position().y-me.y));
+                ringed&=d>=2 && d<=3 && m->tactics.alert>0;
+                sides.insert({(m->position().x>me.x)-(m->position().x<me.x),(m->position().y>me.y)-(m->position().y<me.y)});
+            }
+            check(app.landmarkUsed_ && app.monsters_.size()==3 && ringed,"Opening a strongbox: its guardians burst out in a ring around you");
+            check(app.player_.stats().hp==hpBefore,"...but none strikes before you can act");
+            check(sides.size()>=3,"...from every side, not in a clump");
+            check(app.groundItems_.size()>groundBefore,"...while its loot spills on the floor");
+            snapshot("ui-strongbox-ambush.png");
+            roundTrip();
+            check(app.landmark_==LandmarkKind::Strongbox && app.landmarkUsed_,"Save/load keeps the opened strongbox");
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.landmarkUsed_=false;
+            app.pickupItem(); clickOn(screen::shrineChoice(2));
+            check(app.monsters_.size()==4 && std::count_if(app.monsters_.begin(),app.monsters_.end(),[](const auto& m){return m->tier()==MonsterTier::Nightmare;})==1,
+                  "Forcing it brings more guardians, one of them a nightmare");
+            std::set<int> kinds;
+            for (int y=0;y<10;++y) for (int x=0;x<10;++x) kinds.insert(static_cast<int>(app.strongboxVariant({x,y})));
+            check(kinds.size()==3,"Strongboxes come in three kinds: Armourer's, Arcanist's and Gilded");
+        }
+
         // Prisoner's cage: picking the lock needs Dexterity; breaking it is loud.
         placeAltar(LandmarkKind::PrisonerCage);
         app.player_.baseStats().dexterity=app.player_.stats().dexterity=0;

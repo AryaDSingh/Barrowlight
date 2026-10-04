@@ -160,6 +160,7 @@ std::size_t landmarkModuleIndex(LandmarkKind kind) {
         case LandmarkKind::ChainedDemon: return 8;
         case LandmarkKind::LamplighterRest: return 0; // a quiet room like the shrine's
         case LandmarkKind::BloodAltar: return 8;      // the demon's hall: room for a fight
+        case LandmarkKind::Strongbox: return 5;       // the pit: room to be surrounded
         default: return 1; // both fountains
     }
 }
@@ -256,11 +257,15 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     }
     // Which set piece: shrines are commonest near the surface, dark rites below.
     // Shrine, Healing Fountain, Blood Font, Ritual Circle, Treasure Hoard, Prisoner's Cage, Champion's Pit
-    std::array<int, 7> landmarkWeights{3, 2, 1, 1, 2, 2, 2};
-    if (params.region == FloorRegion::Sanctum) landmarkWeights = {2, 2, 1, 2, 2, 2, 2};
-    if (params.region == FloorRegion::Crypts) landmarkWeights = {1, 1, 2, 3, 2, 1, 2};
-    auto landmarkKind = static_cast<LandmarkKind>(
-        std::discrete_distribution<int>(landmarkWeights.begin(), landmarkWeights.end())(rng) + 1);
+    // ..., and last the Strongbox.
+    std::array<int, 8> landmarkWeights{3, 2, 1, 1, 2, 2, 2, 3};
+    if (params.region == FloorRegion::Sanctum) landmarkWeights = {2, 2, 1, 2, 2, 2, 2, 3};
+    if (params.region == FloorRegion::Crypts) landmarkWeights = {1, 1, 2, 3, 2, 1, 2, 3};
+    const auto weightedKind = [&] {
+        const int i = std::discrete_distribution<int>(landmarkWeights.begin(), landmarkWeights.end())(rng);
+        return i == 7 ? LandmarkKind::Strongbox : static_cast<LandmarkKind>(i + 1);
+    };
+    auto landmarkKind = weightedKind();
     // About one ordinary landmark in eight is a lamplighter's rest instead.
     if (!rareEvent && landmarkCell >= 0 && std::uniform_int_distribution<int>(0, 7)(rng) == 0) landmarkKind = LandmarkKind::LamplighterRest;
     if (!rareEvent && landmarkCell >= 0 && params.bloodAltarChance > 0.f &&
@@ -282,7 +287,7 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
             if (candidates.empty()) break;
             LandmarkKind kind = landmarkKind;
             for (int tries = 0; tries < 12; ++tries) {
-                kind = static_cast<LandmarkKind>(std::discrete_distribution<int>(landmarkWeights.begin(), landmarkWeights.end())(rng) + 1);
+                kind = weightedKind();
                 const bool repeated = kind == landmarkKind ||
                     std::any_of(extraCells.begin(), extraCells.end(), [&](const auto& e) { return e.second == kind; });
                 if (!repeated) break;

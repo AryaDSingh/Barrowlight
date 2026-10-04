@@ -345,6 +345,9 @@ private:
     void spawnHunters();
     static std::string wandererName(const Monster& monster); // "Ogre, the Wanderer": no tier prefix
     std::string landmarkLabel(LandmarkKind kind, Position altar) const;
+    StrongboxVariant strongboxVariant(Position altar) const;
+    int spawnAmbush(int count, int nightmares);      // foes burst out in a ring around you
+    void spillLoot(ItemRarity rarity, int count);     // items scattered round the altar
     // Patron gods (ApplicationPatrons.cpp).
     Patron patron() const { return static_cast<Patron>(player_.patron); }
     bool patronBoon(Patron god) const { return patron() == god && player_.favor >= kFavorBoon; }

@@ -41,6 +41,9 @@ int peddlerGold(int floor) { return 150 + 10 * floor; }
 constexpr int kPeddlerLife = 10;
 constexpr int kDemonDoomPercent = 40, kDemonDoomTurns = 12, kDemonDrainTurns = 40, kDemonDrain = 2;
 int hoardGold(int floor) { return 40 + 12 * floor; }
+int strongboxGold(int floor) { return 60 + 18 * floor; }
+constexpr const char* kStrongboxClosed = "dcss/strongbox_closed.png";
+constexpr const char* kStrongboxOpen = "dcss/strongbox_open.png";
 
 const char* verb(LandmarkKind kind) {
     switch (kind) {
@@ -54,6 +57,7 @@ const char* verb(LandmarkKind kind) {
         case LandmarkKind::ChainedDemon: return "face it";
         case LandmarkKind::LamplighterRest: return "look around";
         case LandmarkKind::BloodAltar: return "offer your blood";
+        case LandmarkKind::Strongbox: return "open it";
         default: return "kneel";
     }
 }
@@ -129,6 +133,18 @@ std::vector<Application::LandmarkChoice> Application::landmarkChoices() const {
             if (player_.lightSource < 2)
                 return {{"Take the lantern", "campfire", "A lantern lights six tiles around you instead of a torch's four. L still shutters it.", "Free", true}};
             return {{"Trim the wick", "healing", "Rest a while in the lamplight: restore all life and mana.", "Free", true}};
+        case LandmarkKind::Strongbox: {
+            const auto v = strongboxVariant(landmarkAltar_);
+            const int depth = floorDepth(currentFloor_);
+            const std::string loot = v == StrongboxVariant::Armourer ? "three pieces of gear, one of them rare"
+                : v == StrongboxVariant::Arcanist ? "two rare items" : std::to_string(strongboxGold(depth)) + " gold and a magic item";
+            const std::string more = v == StrongboxVariant::Armourer ? "four pieces of gear, two of them rare"
+                : v == StrongboxVariant::Arcanist ? "three rare items" : std::to_string(strongboxGold(depth) * 2) + " gold and a rare item";
+            return {{"Open it", "locked-chest", "It spills " + loot + ". Its guardians burst out around you.",
+                     std::to_string(depth >= 4 ? 4 : 3) + " foes surround you", true},
+                    {"Force it", "hammer-drop", "Break it open for " + more + ". The guardians come in force.",
+                     std::to_string(depth >= 4 ? 5 : 4) + " foes, one a nightmare", true}};
+        }
         case LandmarkKind::BloodAltar: {
             if (player_.bloodMagicUnlocked)
                 return {{"Drink", "bleeding-heart", "The altar knows you. Restore all life.", "Free", true}};
@@ -262,6 +278,73 @@ void Application::placeVampireLord() {
     lord.recoveryActions = 0;
 }
 
+// Guardians burst out in a ring around you, spread so they surround you.
+int Application::spawnAmbush(int count, int nightmares) {
+    std::vector<MonsterType> roster;
+    for (const auto& m : monsters_)
+        if (!m->allied && !m->vaultGuard && m.get() != boss_ && !isUniqueMonster(m->type()) && m->rewardsEligible() && !m->eventChampion)
+            roster.push_back(m->type());
+    if (roster.empty()) roster.push_back(floorTheme(currentFloor_).region == FloorRegion::Crypts ? MonsterType::Skeleton : MonsterType::Goblin);
+    const Position me = player_.position();
+    std::vector<Position> ring;
+    for (int r = 2; r <= 3; ++r)
+        for (int dy = -r; dy <= r; ++dy)
+            for (int dx = -r; dx <= r; ++dx) {
+                const Position p{me.x + dx, me.y + dy};
+                if (std::max(std::abs(dx), std::abs(dy)) == r && map_.isWalkable(p.x, p.y) && !isOccupied(p, nullptr) &&
+                    (p.x != landmarkAltar_.x || p.y != landmarkAltar_.y))
+                    ring.push_back(p);
+            }
+    // Go round the ring, a different direction each time, from a random start.
+    std::sort(ring.begin(), ring.end(), [&](Position a, Position b) {
+        return std::atan2(static_cast<float>(a.y - me.y), static_cast<float>(a.x - me.x)) <
+               std::atan2(static_cast<float>(b.y - me.y), static_cast<float>(b.x - me.x));
+    });
+    int spawned = 0;
+    if (ring.empty()) return 0;
+    const std::size_t start = loot_.roll(static_cast<unsigned>(ring.size()));
+    std::vector<Position> chosen;
+    for (int lap = 0; lap < 2 && spawned < count; ++lap)
+        for (int k = 0; k < count && spawned < count; ++k) {
+            const auto i = (start + static_cast<std::size_t>(k) * ring.size() / static_cast<std::size_t>(count) + static_cast<std::size_t>(lap)) % ring.size();
+            const Position p = ring[i];
+            if (isOccupied(p, nullptr) || std::any_of(chosen.begin(), chosen.end(), [&](Position q) { return q.x == p.x && q.y == p.y; })) continue;
+            const MonsterTier tier = spawned < nightmares ? MonsterTier::Nightmare : MonsterTier::Base;
+            auto monster = createMonster(roster[loot_.roll(static_cast<unsigned>(roster.size()))], p, tier);
+            scaleDungeonMonster(*monster, floorDepth(currentFloor_));
+            monster->tactics.concealed = false;
+            monster->tactics.alert = 8;
+            monster->tactics.lastKnown = me;
+            monster->recoveryActions = 1; // no attack before you can respond
+            scheduler_.add(*monster);
+            monsters_.push_back(std::move(monster));
+            chosen.push_back(p);
+            ++spawned;
+        }
+    return spawned;
+}
+
+// Loot scattered on the floor round the altar, for you to fight your way to.
+void Application::spillLoot(ItemRarity rarity, int count) {
+    const auto theme = currentFloor_ <= 3 ? LootTheme::Barracks : currentFloor_ <= 6 ? LootTheme::Sanctum : LootTheme::Crypts;
+    for (int n = 0; n < count && nextItemId_ < std::numeric_limits<std::uint64_t>::max(); ++n) {
+        Position spot = player_.position();
+        for (int r = 1; r <= 3; ++r) {
+            bool found = false;
+            for (int dy = -r; dy <= r && !found; ++dy)
+                for (int dx = -r; dx <= r && !found; ++dx) {
+                    const Position p{landmarkAltar_.x + dx, landmarkAltar_.y + dy};
+                    if (std::max(std::abs(dx), std::abs(dy)) != r || !map_.isWalkable(p.x, p.y)) continue;
+                    if (std::any_of(groundItems_.begin(), groundItems_.end(), [&](const auto& item) {
+                            return item->position().x == p.x && item->position().y == p.y; })) continue;
+                    spot = p; found = true;
+                }
+            if (found) break;
+        }
+        groundItems_.push_back(loot_.generate(floorDepth(currentFloor_), rarity == ItemRarity::Rare ? 2 : 1, nextItemId_++, spot, rarity, theme));
+    }
+}
+
 void Application::landmarkReward(ItemRarity rarity) {
     if (nextItemId_ == std::numeric_limits<std::uint64_t>::max()) return;
     const auto theme = currentFloor_ <= 3 ? LootTheme::Barracks : currentFloor_ <= 6 ? LootTheme::Sanctum : LootTheme::Crypts;
@@ -372,6 +455,17 @@ void Application::chooseBlessing(int choice) {
                 raiseChampion(MonsterType::Ogre, kChampionDemon);
             }
             break;
+        case LandmarkKind::Strongbox: {
+            const auto v = strongboxVariant(landmarkAltar_);
+            const bool forced = choice == 1;
+            const int depth = floorDepth(currentFloor_);
+            const int foes = spawnAmbush((depth >= 4 ? 4 : 3) + (forced ? 1 : 0), forced ? 1 : 0);
+            if (v == StrongboxVariant::Armourer) { spillLoot(ItemRarity::Magic, 2); spillLoot(ItemRarity::Rare, forced ? 2 : 1); }
+            else if (v == StrongboxVariant::Arcanist) spillLoot(ItemRarity::Rare, forced ? 3 : 2);
+            else { gold_ += strongboxGold(depth) * (forced ? 2 : 1); spillLoot(forced ? ItemRarity::Rare : ItemRarity::Magic, 1); }
+            log(forced ? "You smash the lock. " : "The lid creaks open. ", "Loot spills out, and ", foes, " guardians burst out around you!");
+            break;
+        }
         case LandmarkKind::BloodAltar:
             if (player_.bloodMagicUnlocked) { stats.hp = stats.maxHp; break; }
             stats.hp -= std::max(1, stats.maxHp * kAltarCostPercent / 100);
@@ -384,8 +478,8 @@ void Application::chooseBlessing(int choice) {
     shrineMenu_ = false;
     soundManager_.play(SoundEffect::LevelUp);
     const std::string name = landmarkTitle();
-    log(name.rfind("The ", 0) == 0 ? "" : "The ", name, " grants you ",
-        choices[static_cast<std::size_t>(choice)].name, ".");
+    if (landmark_ != LandmarkKind::Strongbox)
+        log(name.rfind("The ", 0) == 0 ? "" : "The ", name, " grants you ", choices[static_cast<std::size_t>(choice)].name, ".");
     finishInventoryTurn(); // using a landmark takes a turn
     if (attributePoint && mode_ == GameMode::Playing) mode_ = GameMode::AttributeAllocation;
 }
@@ -555,6 +649,21 @@ void Application::renderLandmark() {
             sprites_.draw(window_, chain, {at.x + tile * 0.8f, at.y - tile * 0.6f}, tile * 1.1f, tint, true);
             break;
         }
+        case LandmarkKind::Strongbox: {
+            // A banded chest, glowing in its kind's colour until it's opened.
+            if (lit && !landmarkUsed_) {
+                const float pulse = 0.5f + 0.5f * std::sin(now * 2.4f);
+                const sf::Color c = landmarkLightColor();
+                sf::CircleShape glow(tile * 0.85f);
+                glow.setOrigin({tile * 0.85f, tile * 0.85f});
+                glow.setPosition({at.x + tile / 2, at.y + tile * 0.55f});
+                glow.setFillColor(sf::Color(c.r, c.g, c.b, static_cast<std::uint8_t>(35 + 45 * pulse)));
+                window_.draw(glow);
+            }
+            const SpriteFrame box{landmarkUsed_ ? kStrongboxOpen : kStrongboxClosed, sf::IntRect({0, 0}, {32, 32})};
+            sprites_.draw(window_, box, {at.x - tile * 0.15f, at.y - tile * 0.3f}, tile * 1.3f, tint);
+            break;
+        }
         case LandmarkKind::BloodAltar: {
             // The beast altar, stained dark, pulsing red until the offering is made.
             if (lit && !landmarkUsed_) {
@@ -574,7 +683,7 @@ void Application::renderLandmark() {
     }
     if (nearAltar())
         mapHints_.push_back({landmarkTitle() +
-            (landmarkUsed_ ? ". Its power is spent." : std::string(". G or click it to ") + verb(landmark_) + "."), ui::kRare});
+            (landmarkUsed_ ? (landmark_ == LandmarkKind::Strongbox ? ". Empty." : ". Its power is spent.") : std::string(". G or click it to ") + verb(landmark_) + "."), ui::kRare});
 }
 
 sf::Color Application::landmarkLightColor() const {
@@ -589,6 +698,11 @@ sf::Color Application::landmarkLightColor() const {
         case LandmarkKind::PalePeddler: return sf::Color(190, 220, 255);
         case LandmarkKind::ChainedDemon: return sf::Color(255, 70, 50);
         case LandmarkKind::BloodAltar: return sf::Color(220, 40, 50);
+        case LandmarkKind::Strongbox: {
+            const auto v = strongboxVariant(landmarkAltar_);
+            return v == StrongboxVariant::Armourer ? sf::Color(200, 210, 230) : v == StrongboxVariant::Arcanist ? sf::Color(120, 150, 255)
+                                                                                                               : sf::Color(255, 205, 80);
+        }
         case LandmarkKind::Shrine: {
             const auto& god = patronInfo(shrineGod());
             return sf::Color(static_cast<std::uint8_t>(god.r), static_cast<std::uint8_t>(god.g), static_cast<std::uint8_t>(god.b));
@@ -616,6 +730,7 @@ void Application::renderShrine() {
     if (landmark_ == LandmarkKind::TreasureHoard) subtitle = "Gold, heaped and unguarded. Surely unguarded.";
     if (landmark_ == LandmarkKind::PrisonerCage) subtitle = "\"Get me out of here! I'll make it worth your while.\"";
     if (landmark_ == LandmarkKind::ChampionPit) subtitle = "Light the brazier and the pit's champions will answer.";
+    if (landmark_ == LandmarkKind::Strongbox) subtitle = "Locked, warded, and far too heavy to carry. Something inside is waiting.";
     if (landmark_ == LandmarkKind::LamplighterRest) subtitle = "An old lamplighter's post. Someone left a lantern burning.";
     if (landmark_ == LandmarkKind::SealedTomb) subtitle = "A king was buried here with his treasure. He is not resting.";
     if (landmark_ == LandmarkKind::PalePeddler) subtitle = "\"Rare things, for rare prices. One sale, then I'm gone.\"";

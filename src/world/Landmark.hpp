@@ -15,8 +15,13 @@ enum class LandmarkKind { None = 0, Shrine = 1, HealingFountain = 2, BloodFont =
                           LamplighterRest = 11,
                           // From floor 4: a Vampire Lord sleeps beside it; slay him and
                           // offer your blood to learn Blood Magic.
-                          BloodAltar = 12 };
-inline constexpr int kLandmarkKindCount = 13;
+                          BloodAltar = 12,
+                          // Path of Exile's strongbox: open it and foes burst out
+                          // around you while it spills its loot.
+                          Strongbox = 13 };
+inline constexpr int kLandmarkKindCount = 14;
+// A strongbox's kind, fixed by where it stands (Application::strongboxVariant).
+enum class StrongboxVariant { Armourer, Arcanist, Gilded };
 // Global floor from which the Blood Altar can appear.
 inline constexpr int kBloodAltarFloor = 4;
 inline bool rareLandmark(LandmarkKind kind) {
@@ -63,6 +68,7 @@ inline const char* landmarkName(LandmarkKind kind, FloorRegion region) {
         case LandmarkKind::ChainedDemon: return "The Chained Demon";
         case LandmarkKind::LamplighterRest: return "Lamplighter's Rest";
         case LandmarkKind::BloodAltar: return "The Blood Altar";
+        case LandmarkKind::Strongbox: return "Strongbox";
         case LandmarkKind::None: break;
     }
     return "";
