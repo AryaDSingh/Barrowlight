@@ -79,6 +79,22 @@ int main() {
     };
     original.lastMoveDirection = Position{1, 0};
 
+    // Prompts 32-34: equipment in every location, loot stream, chest, runes.
+    original.nextItemId = 20;
+    original.items = {
+        {"iron_sword", 3, 0, Position{}, 1, {{"might", 4}, {"vigor", 5}}}, // equipped weapon, tier 1
+        {"chain_coat", 5, -1, Position{}, 0, {{"reservoir", 4}}},            // in the bag
+        {"focus_charm", 7, -2, Position{3, 2}, 0, {}},                       // on the ground
+    };
+    original.lootRngState = 0x9E3779B97F4A7C15ull;
+    original.ordinaryDrops = 2;
+    original.chestExists = true;
+    original.chestClaimed = true;
+    original.chestPosition = Position{1, 2};
+    original.runeChoiceAvailable = true;
+    original.runes = {{"chain", 11, "mage.arcane_bolt"}, {"widen", 12, ""}};
+    original.unspentAttributePoints = 3;
+
     SaveGameState::MonsterSaveData goblin;
     goblin.type = MonsterType::Goblin;
     goblin.position = Position{3, 1};
@@ -151,6 +167,31 @@ int main() {
     check(loaded.lastMoveDirection.x == 1 && loaded.lastMoveDirection.y == 0,
           "lastMoveDirection matches (needed for Blink to resume correctly)");
 
+    check(loaded.nextItemId == 20 && loaded.unspentAttributePoints == 3,
+          "next item ID and unspent attribute points match");
+    bool itemsMatch = loaded.items.size() == original.items.size();
+    for (std::size_t i = 0; itemsMatch && i < original.items.size(); ++i) {
+        const auto& a = original.items[i];
+        const auto& b = loaded.items[i];
+        itemsMatch = a.definitionId == b.definitionId && a.instanceId == b.instanceId &&
+                     a.location == b.location && a.position.x == b.position.x &&
+                     a.position.y == b.position.y && a.rollTier == b.rollTier &&
+                     a.affixes.size() == b.affixes.size();
+        for (std::size_t j = 0; itemsMatch && j < a.affixes.size(); ++j)
+            itemsMatch = a.affixes[j].id == b.affixes[j].id && a.affixes[j].value == b.affixes[j].value;
+    }
+    check(itemsMatch, "equipped, bagged and ground items match exactly, affixes never rerolled");
+    check(loaded.lootRngState == original.lootRngState && loaded.ordinaryDrops == 2,
+          "loot RNG state and the per-floor drop count match");
+    check(loaded.chestExists && loaded.chestClaimed && loaded.chestPosition.x == 1 &&
+              loaded.chestPosition.y == 2,
+          "chest position and claimed flag match");
+    check(loaded.runeChoiceAvailable && loaded.runes.size() == 2 &&
+              loaded.runes[0].definitionId == "chain" && loaded.runes[0].instanceId == 11 &&
+              loaded.runes[0].talentId == "mage.arcane_bolt" &&
+              loaded.runes[1].definitionId == "widen" && loaded.runes[1].talentId.empty(),
+          "rune ownership and attachments match, including an unattached rune");
+
     check(loaded.playerStatusEffects.size() == 1 &&
               loaded.playerStatusEffects[0].type == StatusEffectType::Poison &&
               loaded.playerStatusEffects[0].turnsRemaining == 2 &&
@@ -184,6 +225,34 @@ int main() {
     }
     const std::optional<SaveGameState> corrupt = loadGame("savegame_test_garbage.txt");
     check(!corrupt.has_value(), "loading a malformed file returns nullopt, not a crash");
+
+    // --- Item/rune validation: both saveGame() and loadGame() refuse states
+    // that could never arise in play, rather than restoring them.
+    {
+        SaveGameState bad = original;
+        bad.items[0].affixes[0].value = 99; // tier-1 "might" allows 3-5
+        check(!saveGame(bad, path), "an affix value outside its tier range is refused");
+
+        bad = original;
+        bad.items[1].location = 0; // chain coat into the weapon slot
+        check(!saveGame(bad, path), "an item equipped in the wrong slot is refused");
+
+        bad = original;
+        bad.items[1].instanceId = 3; // duplicates the sword's ID
+        check(!saveGame(bad, path), "duplicate item instance IDs are refused");
+
+        bad = original;
+        bad.runes[1].talentId = "mage.meteor"; // not a known talent in this save
+        check(!saveGame(bad, path), "a rune attached to a talent the player doesn't know is refused");
+
+        bad = original;
+        bad.runes[1].talentId = "mage.arcane_bolt"; // second rune on the same talent
+        check(!saveGame(bad, path), "two runes attached to one talent are refused");
+
+        bad = original;
+        bad.ordinaryDrops = 3;
+        check(!saveGame(bad, path), "an ordinary-drop count past the per-floor cap is refused");
+    }
 
     std::remove(path.c_str());
     std::remove("savegame_test_garbage.txt");

@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "core/GameRules.hpp"
 #include "core/SaveGame.hpp"
 #include "core/GameIcons.hpp"
 #include "core/ScreenLayout.hpp"
@@ -417,7 +418,6 @@ Application::Application()
     // possible; before that, defaulting straight into the Spellblade
     // (as this constructor did through Prompt 14) was the only option.
 }
-
 
 void Application::run() {
     while (window_.isOpen()) {
