@@ -414,6 +414,7 @@ struct ApplicationRewardsTestAccess {
             for (int y=12;y<=15;++y) for (int x=12;x<=18;++x) if ((x+y)%7!=0 && !(y==15 && x>16)) app.setSurface({x,y},SurfaceType::Water,0);
             for (int x=14;x<=15;++x) app.setSurface({x,13},SurfaceType::Electrified,4);
             for (const Position p:{Position{6,12},Position{7,12},Position{6,13},Position{8,14},Position{5,15}}) app.setSurface(p,SurfaceType::Blood,0);
+            for (const Position p:{Position{8,10},Position{9,10},Position{8,11},Position{10,9}}) app.setSurface(p,SurfaceType::Oil,0); // oil beside the blood
             app.landmark_=LandmarkKind::Shrine; app.landmarkAltar_={0,0}; app.landmarkUsed_=false;
             app.extraLandmarks_.push_back({LandmarkKind::HealingFountain,{0,1},false});
             app.extraLandmarks_.push_back({LandmarkKind::TreasureHoard,{0,2},true});
@@ -903,7 +904,9 @@ struct ApplicationRewardsTestAccess {
 
             // Armour, evasion and ward.
             check(hero.equip(give("chain_coat")) && hero.equip(give("wooden_shield")) && gearArmour(hero) == 12 &&
-                  armourReductionPercent(12) > 20 && armourReductionPercent(1000) == 60, "Heavy armour and shields add armour; it caps at 60%");
+                  armourReduction(8) == 2 && armourReduction(12) == 3, "Heavy armour and shields add armour: a quarter of it comes off every direct hit");
+            check(afterArmour(5, 8) == 3 && afterArmour(2, 100) == 1 && afterArmour(0, 8) == 0,
+                  "Armour's flat cut never takes a landed hit below 1");
             hero.unequip(EquipmentSlot::Armour); hero.unequip(EquipmentSlot::OffHand);
             const int dodgeBefore = armourDodgeBonus(hero);
             check(hero.equip(give("scout_leathers")) && armourDodgeBonus(hero) == dodgeBefore + 4, "Light armour is evasion: more dodge");
@@ -1960,6 +1963,11 @@ struct ApplicationRewardsTestAccess {
             snapshot("ui-death-recap.png");
             app.selectClass(PlayerClass::Mage);
             check(app.harms_.empty(),"A new character starts with no recap");
+            const auto* staff=app.player_.inventory().equipped(EquipmentSlot::Weapon);
+            const auto* robes=app.player_.inventory().equipped(EquipmentSlot::Armour);
+            check(staff && staff->definition()->id==std::string("ash_staff") && robes && robes->definition()->id==std::string("woven_robes") &&
+                  app.player_.inventory().equipped(EquipmentSlot::Charm) && app.groundItems_.empty(),
+                  "A new character starts wearing its class's gear, none of it left on the floor");
         }
         setup(PlayerClass::Mage);
         app.mode_=GameMode::GameOver; snapshot("ui-game-over.png"); clickOn(screen::kRestart);

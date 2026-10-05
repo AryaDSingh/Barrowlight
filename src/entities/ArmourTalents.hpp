@@ -39,7 +39,11 @@ inline int armourPassive(const Actor& actor, PassiveKind kind) {
 inline int gearArmour(const Actor& actor) { return std::max(0, actor.inventory().defence(ArmourKind::Heavy) + actor.inventory().affixTotal(BonusStat::Armour)); }
 inline int gearEvasion(const Actor& actor) { return actor.inventory().defence(ArmourKind::Light) + actor.inventory().affixTotal(BonusStat::Evasion); }
 inline int gearWard(const Actor& actor) { return std::max(0, actor.inventory().defence(ArmourKind::Cloth) + actor.inventory().affixTotal(BonusStat::Ward)); }
-inline int armourReductionPercent(int armour) { return armour <= 0 ? 0 : std::min(60, armour * 100 / (armour + 40)); }
+// Armour takes a flat amount off every direct hit, attack or spell: a quarter
+// of it, rounded up (a Chain Coat's 8 stops 2). A hit that lands always
+// deals at least 1; Guard and ward can still stop it entirely.
+inline int armourReduction(int armour) { return armour <= 0 ? 0 : (armour + 3) / 4; }
+inline int afterArmour(int damage, int armour) { return damage <= 0 ? damage : std::max(1, damage - armourReduction(armour)); }
 inline int armourDodgeBonus(const Actor& actor) {
     int bonus=actor.stats().maxMana>0 && actor.stats().mana*2>=actor.stats().maxMana ? armourPassive(actor,PassiveKind::ClothWard) : 0;
     if (actor.statusEffects().has(StatusEffectType::Opening)) bonus+=armourPassive(actor,PassiveKind::LightEvasion);

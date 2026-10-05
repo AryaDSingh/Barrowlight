@@ -102,6 +102,13 @@ int main() {
         check(decision.type == AIActionType::Move && decision.movePosition.x == 1 &&
                   decision.movePosition.y == 2,
               "Kiter retreats away from the target when too close");
+        decision = kiter.decideAction(self, map, closeTarget, {});
+        check(decision.type == AIActionType::Move, "...and gives ground a second time");
+        decision = kiter.decideAction(self, map, closeTarget, {});
+        check(decision.type == AIActionType::Attack, "After two steps back, it holds its ground and shoots");
+        decision = kiter.decideAction(self, map, midTarget, {});
+        decision = kiter.decideAction(self, map, closeTarget, {});
+        check(decision.type == AIActionType::Move, "Once you leave its personal space, it will give ground again");
     }
 
     // --- Support ---

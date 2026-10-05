@@ -127,35 +127,20 @@ void Application::handleInventoryKey(sf::Keyboard::Key key) {
 }
 
 void Application::spawnFixedItems() {
-    // Three fixed rewards per ordinary floor, near its entrance. BFS guarantees
-    // reachable placement and consumes no combat/generation random numbers.
+    // The class's starting set: a weapon, body armour and an amulet. It consumes
+    // no combat or generation random numbers.
     if (currentFloor_ != 1) return; // starter set only; later floors use paced randomized rewards
     const int startingVariant = playerClass_ == PlayerClass::Mage ? 1 :
                                 playerClass_ == PlayerClass::Thief ? 2 : 0;
     const int variant = (startingVariant + currentFloor_ - 1) % 3;
     const std::array<int, 3> armourDefinitions{3, 5, 4};
     const std::array<int, 3> definitions{variant, armourDefinitions[variant], 6 + variant};
-    std::queue<Position> frontier;
-    std::vector<bool> seen(static_cast<std::size_t>(map_.width()) * map_.height(), false);
-    const auto enqueue = [&](Position p) {
-        if (!map_.isWalkable(p.x, p.y)) return;
-        const auto index = static_cast<std::size_t>(p.y) * map_.width() + p.x;
-        if (seen[index]) return;
-        seen[index] = true; frontier.push(p);
-    };
-    enqueue(player_.position());
-    std::size_t placed = 0;
-    while (!frontier.empty() && placed < definitions.size()) {
-        const auto p = frontier.front(); frontier.pop();
-        if (map_.tileAt(p.x, p.y).type == TileType::Floor && !isOccupied(p, &player_) &&
-            nextItemId_ < std::numeric_limits<std::uint64_t>::max()) {
-            groundItems_.push_back(std::make_unique<Item>(kItemDefinitions[definitions[placed]], nextItemId_++, p));
-            ++placed;
-        }
-        enqueue({p.x + 1, p.y}); enqueue({p.x - 1, p.y});
-        enqueue({p.x, p.y + 1}); enqueue({p.x, p.y - 1});
+    // You start wearing them; anything you can't wear yet waits in your bag.
+    for (const int definition : definitions) {
+        if (player_.inventory().full()) break;
+        player_.inventory().add(std::make_unique<Item>(kItemDefinitions[definition], nextItemId_++));
+        player_.equip(player_.inventory().items().size() - 1);
     }
-    if (placed) log("Supplies near the entrance. G: pick up at your feet. B: inventory.");
 }
 
 void Application::renderGroundItems() {

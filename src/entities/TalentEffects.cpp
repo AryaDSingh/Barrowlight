@@ -98,9 +98,9 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
     const bool opportune=attacker.statusEffects().has(StatusEffectType::Concealed) || attacker.statusEffects().has(StatusEffectType::Opening);
     const float critBonus=talent.bonusCritDamageMultiplier+(opportune ? kit.passiveValue(PassiveKind::Opportunist)/100.f : 0.f)+
         attacker.inventory().affixTotal(BonusStat::CritDamage)/100.f;
-    const int armour=armourReductionPercent(gearArmour(target));
-    const int critical=std::max(0,static_cast<int>(damage*critDamageMultiplier(critBonus))*(100-armour)/100-guard);
-    damage=std::max(0,damage*(100-armour)/100-guard);
+    const int armour=gearArmour(target);
+    const int critical=std::max(0,afterArmour(static_cast<int>(damage*critDamageMultiplier(critBonus)),armour)-guard);
+    damage=std::max(0,afterArmour(damage,armour)-guard);
     return {damage,critical};
 }
 

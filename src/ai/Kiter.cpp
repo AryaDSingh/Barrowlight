@@ -52,7 +52,11 @@ AIDecision Kiter::decideAction(const Actor& self, const Map& map, Actor& player,
 
     const int distSq = distanceSquared(selfPos, playerPos);
 
-    if (distSq <= tooCloseRange_ * tooCloseRange_) {
+    if (distSq > tooCloseRange_ * tooCloseRange_) retreats_ = 0;
+    if (distSq <= tooCloseRange_ * tooCloseRange_ && retreats_ >= 2) {
+        // It has given ground twice: now it holds and shoots.
+        if (hasLineOfFire(map,selfPos,playerPos)) return makeAttack();
+    } else if (distSq <= tooCloseRange_ * tooCloseRange_) {
         // Too close -- retreat directly away from the player.
         Position retreat=selfPos;
         int best=distSq;
@@ -62,6 +66,7 @@ AIDecision Kiter::decideAction(const Actor& self, const Map& map, Actor& player,
             if(distance>best) { best=distance; retreat=p; }
         }
         if(best>distSq) {
+            ++retreats_;
             AIDecision decision; decision.type=AIActionType::Move;
             decision.movePosition=retreat; return decision;
         }

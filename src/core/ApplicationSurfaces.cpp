@@ -873,6 +873,17 @@ void Application::renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>
                 sprites_.draw(window_, {kSplatters[hsh % 5], sf::IntRect({0, 0}, {32, 32})}, at, kTile, shade(sf::Color(170, 120, 120, 235)), (hsh >> 4) % 2 == 0);
                 continue;
             }
+            // Oil: the same splatters in grey (dcss/oil*.png), tinted black-brown, with a slick sheen.
+            if (type == SurfaceType::Oil) {
+                static constexpr const char* kSlicks[]{"dcss/oil.png", "dcss/oil1.png", "dcss/oil2.png", "dcss/oil3.png", "dcss/oil4.png"};
+                const unsigned hsh = surfaceHash(x, y, 4);
+                sprites_.draw(window_, {kSlicks[hsh % 5], sf::IntRect({0, 0}, {32, 32})}, at, kTile, shade(sf::Color(34, 28, 24, 245)), (hsh >> 4) % 2 == 0);
+                if (vis == Visibility::Visible) {
+                    const float sheen = .5f + .5f * std::sin(now * 1.5f + x + y);
+                    blob(detail, {c.x + 3, c.y - 2}, 4.f, sf::Color(110, 80, 150, static_cast<std::uint8_t>(45 * sheen)), sf::Color(110, 80, 150, 0));
+                }
+                continue;
+            }
             sf::Color body;
             switch (type) {
                 case SurfaceType::Water: case SurfaceType::Electrified: body = sf::Color(40, 90, 150, 150); break;

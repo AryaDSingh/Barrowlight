@@ -139,7 +139,8 @@ assets/sprites/dcss/
   (kraken head and tentacles, electric eel, phantom, blue fountain, shallow water
   and its wave edges, blood splatters, the strongbox from UNUSED/other/chest2,
   the breach rift from dngn_enter_abyss, dug earth from dirt0-2;
-  unmodified)
+  unmodified; oil.png and oil1-4.png are the blood splatters turned grey for oil
+  slicks)
   Downloaded 2026-10-03 for the Drowned Cathedral.
 
 assets/sprites/stainedglass/

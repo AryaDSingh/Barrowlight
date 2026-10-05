@@ -2018,7 +2018,7 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     int guard=decision.target->statusEffects().magnitudeOf(StatusEffectType::Guard);
                     if (guard && decision.target->inventory().equipped(EquipmentSlot::OffHand)) guard+=decision.target->talents().passiveValue(PassiveKind::ShieldTraining);
                     guard+=armourGuardBonus(*decision.target)+ascendancyGuardBonus(*decision.target);
-                    damage=damage*(100-armourReductionPercent(gearArmour(*decision.target)))/100;
+                    damage=afterArmour(damage,gearArmour(*decision.target));
                     damage=std::max(0,damage-guard);
                     // Ward soaks the blow before your life does.
                     if (decision.target==&player_ && damage>0) {

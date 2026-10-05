@@ -24,6 +24,9 @@ private:
     int attackRange_;
     int tooCloseRange_;
     int sightRadius_;
+    // Steps backed off in a row while you were close. After two, it stands
+    // its ground and shoots until you leave its personal space.
+    int retreats_ = 0;
 };
 
 } // namespace engine

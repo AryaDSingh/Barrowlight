@@ -162,7 +162,7 @@ struct PlaytestBot {
         if (app.player_.treePoints() <= 0 && app.player_.abilityPoints() <= 0) return;
         app.openTalentTrees();
         const auto plan = treePlan(cls);
-        // Trees: specialise the main tree when allowed, else open the next one.
+        // Trees: open the next one in the plan.
         for (int guard = 0; guard < 10 && app.player_.treePoints() > 0; ++guard) {
             bool bought = false;
             for (const char* id : plan) {
@@ -180,8 +180,9 @@ struct PlaytestBot {
                 for (const char* id : plan) {
                     if (!treeAccess(app.player_, id)) continue;
                     const auto t = treeIndex(id);
-                    for (std::size_t a = 0; a < 4 && !bought; ++a) {
-                        const auto& d = talentCatalog()[t * 4 + a];
+                    const auto& nodes = treeNodes(t);
+                    for (std::size_t a = 0; a < nodes.size() && !bought; ++a) {
+                        const auto& d = *nodes[a];
                         const bool known = app.player_.talents().rankOf(d.id) > 0;
                         if ((pass == 0) == known) continue;
                         if (!abilityPurchaseReason(app.player_, d).empty()) continue;
@@ -323,8 +324,8 @@ struct PlaytestBot {
     std::string buildSummary() {
         std::ostringstream b;
         b << "    trees:";
-        for (const auto& t : app.player_.trees()) b << ' ' << t.id << (t.specialized ? "*" : "");
-        b << "   (* specialised)\n    abilities:";
+        for (const auto& t : app.player_.trees()) b << ' ' << t.id;
+        b << "\n    abilities:";
         int spent = 0;
         for (std::size_t i = 0; i < app.player_.talents().knownTalents().size(); ++i) {
             const auto& t = app.player_.talents().knownTalents()[i];
