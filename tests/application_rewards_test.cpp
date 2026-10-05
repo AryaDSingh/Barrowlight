@@ -1565,6 +1565,49 @@ struct ApplicationRewardsTestAccess {
                 check(estimateTalentDamage(strike,app.player_,*b).normal==plain+4,"Exploit: +2 for each ailment on the target");
                 clearFoes();
             }
+
+            // Resonances: hidden, then a dim shape, then awake at 4 + 4.
+            setup(PlayerClass::Warrior); // One-Handed, Quick Strike at rank 3: Steel 3
+            {
+                const auto* edge=findTalentDefinition("resonance.searing_edge");
+                const auto* sword=findTalentDefinition("resonance.spellsword");
+                check(edge && sword && affinityPoints(app.player_,Affinity::Steel)==3 && affinityPoints(app.player_,Affinity::Flame)==0,
+                      "Each rank adds a point of its node's colour");
+                check(resonanceGlimpsed(app.player_,*edge) && !resonanceAwake(app.player_,*edge) &&
+                      abilityPurchaseReason(app.player_,*edge)=="Not yet.","With one colour, a resonance is only a dim shape");
+                app.player_.level()=5; app.player_.trees().push_back({"fire",false});
+                app.player_.abilityPoints()=6;
+                for (const char* id:{"one_handed.pommel","fire.ember_bolt","fire.ember_bolt","fire.ember_bolt","fire.flame_wall"})
+                    purchaseAbility(app.player_,*findTalentDefinition(id));
+                check(affinityPoints(app.player_,Affinity::Steel)==4 && affinityPoints(app.player_,Affinity::Flame)==4 &&
+                      resonanceAwake(app.player_,*edge) && !resonanceAwake(app.player_,*sword),"Steel 4 and Flame 4 wake Searing Edge, not Spellsword");
+                check(purchaseAbility(app.player_,*edge) && app.player_.abilityPoints()==0 && app.player_.talents().rankOf(edge->id)==1,
+                      "An awake resonance costs one ability point");
+                app.player_.treePoints()=0; app.player_.abilityPoints()=earnedAbilityPoints(5)-9; // 3+1+3+1 in trees, 1 in the resonance
+                roundTrip();
+                check(app.player_.talents().rankOf("resonance.searing_edge")==1,"A learned resonance survives a save");
+                // The talent screen: colours beside the points, the resonance above the details.
+                app.mode_=GameMode::AbilityChoice; app.resonanceSelection_=0; app.treeScroll_={};
+                snapshot("ui-resonance.png");
+                app.resonanceSelection_.reset(); app.mode_=GameMode::Playing;
+
+                // Searing Edge in a fight: the burn flares and the ground behind catches.
+                for (int y=6;y<=16;++y) for (int x=6;x<=20;++x) app.map_.setTile(x,y,Tile{TileType::Floor,true,true});
+                app.clearSurfaces(); app.player_.setPosition({10,10});
+                app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition("iron_sword"),app.nextItemId_++));
+                app.player_.equip(app.player_.inventory().items().size()-1);
+                std::size_t pommel=0;
+                for (std::size_t i=0;i<app.player_.talents().knownTalents().size();++i) if (app.player_.talents().knownTalents()[i].id=="one_handed.pommel") pommel=i;
+                auto* a=foe({11,10}); a->statusEffects().apply({StatusEffectType::Burn,3,2}); app.updateFieldOfView();
+                cast(pommel,{11,10});
+                check(!a->statusEffects().has(StatusEffectType::Burn) && app.surfaceAt({12,10})==SurfaceType::Fire,
+                      "Searing Edge: a melee ability spends the burn and sets the ground behind alight");
+                clearFoes();
+
+                // Spellsword is Battle Rhythm, without the Spellblade tree.
+                app.player_.talents().learnTalent(sword->ranks[0]);
+                check(app.player_.talents().passiveValue(PassiveKind::BattleRhythm)==6,"Spellsword grants Battle Rhythm");
+            }
         }
 
         // Acid and blindness survive a save (a fresh Warrior: the fixture's

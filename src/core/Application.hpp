@@ -192,6 +192,12 @@ private:
     void handleVaultMouse(const sf::Event& event);
     void renderVault();
     std::size_t treeSelection_ = 0, abilitySelection_ = 0;
+    // A resonance picked from the strip above the details (an index into
+    // resonances()); picking a tree node clears it.
+    std::optional<std::size_t> resonanceSelection_;
+    sf::FloatRect resonanceRect(std::size_t visible) const;
+    std::vector<std::size_t> visibleResonances() const;
+    void renderResonanceDetails();
     std::string treeFeedback_;
     bool bindingTalent_=false;
     bool progressionReviewPending_ = false;

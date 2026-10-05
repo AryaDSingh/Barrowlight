@@ -80,7 +80,9 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // Traps, Skirmish and the second hybrids.
     Trapper, Lunge, PassStrike, RunningStart, LanternWard, StaticEdge, LingeringHex, DirtyTricks, GraniteFists,
     // The forked pilot trees (Fire, One-Handed, Arcane).
-    Kindling, Wildfire, Exploit, Afterimage };
+    Kindling, Wildfire, Exploit, Afterimage,
+    // Resonances.
+    SearingEdge };
 
 struct Talent {
     std::string name;

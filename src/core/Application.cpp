@@ -1302,9 +1302,21 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             if (target->statusEffects().has(StatusEffectType::Guard)) combo+="Guard reduces direct damage. ";
             const bool couldStun=target->statusEffects().canReceiveStun();
             const int hpBefore=target->stats().hp;
+            const int burning=target->statusEffects().magnitudeOf(StatusEffectType::Burn);
             if (applyTalentDamage(hitTalent, player_, *target)) {
                 landedAny=true; killedAny=killedAny || target->stats().hp<=0; ++hits;
                 if (talent.markOnHit && target->stats().hp>0) target->statusEffects().apply({StatusEffectType::Marked,3,1});
+                // Searing Edge: a melee ability spends the burn, and the ground behind catches fire.
+                if (const int flare=player_.talents().passiveValue(PassiveKind::SearingEdge);
+                    flare && burning && isMeleeAttack(talent) && talent.id!="basic.attack") {
+                    target->statusEffects().remove(StatusEffectType::Burn);
+                    if (target->stats().hp>0) { target->stats().hp-=flare; flashActor(*target); }
+                    const auto me=player_.position(), at=target->position();
+                    const Position behind{at.x+(at.x>me.x)-(at.x<me.x),at.y+(at.y>me.y)-(at.y<me.y)};
+                    if (map_.isWalkable(behind.x,behind.y)) setSurface(behind,SurfaceType::Fire,4);
+                    if (visibleTile(at)) spawnVfx({Vfx::Kind::Burst,{at.x+.5f,at.y+.5f},{behind.x+.5f,behind.y+.5f},sf::Color(255,150,50),0,.35f,1.f});
+                    log("The burn on ",target->name()," flares along your blade!");
+                }
                 if (target->stats().hp<hpBefore) flashActor(*target);
                 if (!combo.empty()) log(target->name(), ": ", combo, "Hit dealt ",hpBefore-target->stats().hp," damage.");
                 if (!couldStun && (talent.consumeChill || (talent.onHitEffect && talent.onHitEffect->type==StatusEffectType::Stun)))

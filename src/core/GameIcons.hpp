@@ -27,7 +27,7 @@ inline std::string talentIcon(const Talent& talent) {
         {"fire.meteor", "meteor-impact"}, {"mage.meteor", "meteor-impact"},
         {"fire.ember_bolt", "fire-dash"}, {"spellblade.ember_bolt", "fire-dash"},
         {"fire.fireball", "fireball"}, {"spellblade.fireball", "fireball"}, {"fire.kindle", "burning-embers"},
-        {"fire.flame_wall", "campfire"}, {"fire.kindling", "lantern-flame"}, {"fire.wildfire", "burning-embers"}, {"fire.firestorm", "flame-spin"},
+        {"fire.flame_wall", "campfire"}, {"resonance.searing_edge", "flaming-trident"}, {"resonance.spellsword", "relic-blade"}, {"fire.kindling", "lantern-flame"}, {"fire.wildfire", "burning-embers"}, {"fire.firestorm", "flame-spin"},
         {"one_handed.pommel", "sword-clash"}, {"one_handed.exploit", "bleeding-wound"}, {"one_handed.blade_dance", "spinning-blades"},
         {"arcane.repulse", "wind-slap"}, {"arcane.afterimage", "shadow-follower"}, {"arcane.kinetic", "impact-point"}, {"arcane.torrent", "crystal-wand"},
         {"ice.shard", "ice-bolt"}, {"ice.nova", "frozen-orb"}, {"ice.frostbite", "snowflake-1"},

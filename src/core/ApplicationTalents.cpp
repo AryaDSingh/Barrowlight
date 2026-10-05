@@ -181,16 +181,63 @@ void Application::handleTreeMouse(const sf::Event& event) {
     if(abilityButton.contains(p)) { handleTreeKey(sf::Keyboard::Key::A,false); return; }
     if(bindButton.contains(p)) { handleTreeKey(sf::Keyboard::Key::B,false); return; }
     if(variantButton.contains(p)) { handleTreeKey(sf::Keyboard::Key::V,false); return; }
+    const auto shown=visibleResonances();
+    for(std::size_t i=0;i<shown.size();++i) if(resonanceRect(i).contains(p)) { resonanceSelection_=shown[i]; treeFeedback_.clear(); return; }
     if(p.y<kTreeViewTop || p.y>treeViewBottom_) return; // scrolled out of view
     const auto layout=layoutTrees(player_,treeScroll_);
     for(std::size_t row=0;row<layout.trees.size();++row) {
         if(treeHeaderRect(layout.origins[row]).contains(p)) {
+            resonanceSelection_.reset();
             treeSelection_=layout.trees[row]; abilitySelection_=0; imbueSelection_=0; treeFeedback_.clear(); return;
         }
         for(std::size_t i=0;i<treeNodes(layout.trees[row]).size();++i) if(abilityRect(layout.origins[row],layout.trees[row],i).contains(p)) {
+            resonanceSelection_.reset();
             treeSelection_=layout.trees[row]; abilitySelection_=i; imbueSelection_=0; treeFeedback_.clear(); return;
         }
     }
+}
+
+// The resonance strip sits above the details panel, right to left from Continue.
+sf::FloatRect Application::resonanceRect(std::size_t visible) const {
+    return {{1088.f-46.f*static_cast<float>(visible+1),18.f},{38.f,38.f}};
+}
+std::vector<std::size_t> Application::visibleResonances() const {
+    std::vector<std::size_t> shown;
+    for (std::size_t i=0;i<resonances().size();++i) if (resonanceGlimpsed(player_,*resonances()[i])) shown.push_back(i);
+    return shown;
+}
+void Application::renderResonanceDetails() {
+    const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
+    const auto& d=*resonances().at(*resonanceSelection_);
+    const bool learned=player_.talents().rankOf(d.id)>0, awake=resonanceAwake(player_,d);
+    ui_.glass(window_,kDetails,false);
+    const float left=kDetails.position.x+18, width=kDetails.size.x-36;
+    float y=kDetails.position.y+14;
+    const sf::FloatRect bigIcon{{left,y},{56,56}};
+    ui_.inset(window_,bigIcon,awake||learned?ui::kGold:ui::kBronze);
+    ui_.icon(window_,talentIcon(d.ranks[0]),{{bigIcon.position.x+7,bigIcon.position.y+7},{42,42}},
+        learned?ui::kGold:awake?sf::Color(255,226,160):sf::Color(58,54,66));
+    const auto a=affinityInfo(d.resonance[0]), b=affinityInfo(d.resonance[1]);
+    ui_.text(window_,awake||learned?d.ranks[0].name:"???",{left+68,y},22,ui::kGold,ui::Font::Title);
+    ui_.text(window_,a.name,{left+68,y+30},14,sf::Color(a.r,a.g,a.b),ui::Font::Bold);
+    const float ax=left+68+ui_.textWidth(a.name,14,ui::Font::Bold);
+    ui_.text(window_," and ",{ax,y+30},14,ui::kMuted);
+    ui_.text(window_,b.name,{ax+ui_.textWidth(" and ",14),y+30},14,sf::Color(b.r,b.g,b.b),ui::Font::Bold);
+    y+=78;
+    if (awake || learned) ui_.paragraph(window_,d.ranks[0].description,left,y,width,15,ui::kText,ui::Font::Body,292);
+    else ui_.paragraph(window_,"Something stirs between "+std::string(a.name)+" and "+b.name+".",left,y,width,15,ui::kMuted,ui::Font::Body,292);
+    // Where each colour stands, as plain numbers.
+    y=300;
+    for (const auto colour:{d.resonance[0],d.resonance[1]}) {
+        const auto info=affinityInfo(colour);
+        const int points=affinityPoints(player_,colour);
+        ui_.text(window_,std::string(info.name)+" "+std::to_string(points)+(points>=kResonancePoints?"":" / "+std::to_string(kResonancePoints)),
+            {left,y},16,sf::Color(info.r,info.g,info.b),ui::Font::Bold);
+        y+=24;
+    }
+    const auto reason=abilityPurchaseReason(player_,d);
+    ui_.button(window_,abilityButton,learned?"Learned":"Learn (A)",mouse && abilityButton.contains(*mouse),reason.empty(),14);
+    y=656; ui_.paragraph(window_,treeFeedback_,left,y,width,14,sf::Color(255,226,150),ui::Font::Body,704);
 }
 
 void Application::requestHotbar(std::size_t slot) {
@@ -213,6 +260,8 @@ void Application::handleTreeKey(sf::Keyboard::Key key, bool shift) {
     if (key==sf::Keyboard::Key::Up || key==sf::Keyboard::Key::Down || key==sf::Keyboard::Key::Left || key==sf::Keyboard::Key::Right || key==sf::Keyboard::Key::A || key==sf::Keyboard::Key::Enter) bindingTalent_=false;
     if (key==sf::Keyboard::Key::F5) { saveGame(); return; }
     if (key==sf::Keyboard::Key::T || key==sf::Keyboard::Key::Escape) { closeTalentTrees(); return; }
+    if (key==sf::Keyboard::Key::Up || key==sf::Keyboard::Key::Down || key==sf::Keyboard::Key::Left || key==sf::Keyboard::Key::Right)
+        resonanceSelection_.reset();
     if (key==sf::Keyboard::Key::Up || key==sf::Keyboard::Key::Down) {
         // Browse in on-screen order, category by category.
         const auto order=layoutTrees(player_).trees;
@@ -229,8 +278,8 @@ void Application::handleTreeKey(sf::Keyboard::Key key, bool shift) {
     if (key==sf::Keyboard::Key::Right) abilitySelection_=(abilitySelection_+1)%nodes;
     abilitySelection_=std::min(abilitySelection_,nodes-1);
     const auto& tree=kTalentTrees[treeSelection_];
-    const auto& ability=*treeNodes(treeSelection_)[abilitySelection_];
-    if (key==sf::Keyboard::Key::Enter) {
+    const auto& ability=resonanceSelection_?*resonances().at(*resonanceSelection_):*treeNodes(treeSelection_)[abilitySelection_];
+    if (key==sf::Keyboard::Key::Enter && !resonanceSelection_) {
         treeFeedback_=treePurchaseReason(player_,playerClass_,tree);
         const bool first=player_.trees().empty();
         const bool opening=!treeAccess(player_,tree.id);
@@ -295,7 +344,34 @@ void Application::renderTalentTrees() {
         ui_.textCentered(window_,text,box,16,ui::kGold,ui::Font::Bold);
         x+=box.size.x+10;
     }
+    // Your colours: plain counts, in their own colour.
+    x+=6;
+    for (int a=1;a<=static_cast<int>(Affinity::Rot);++a) {
+        const auto affinity=static_cast<Affinity>(a);
+        const int points=affinityPoints(player_,affinity);
+        if (!points) continue;
+        const auto info=affinityInfo(affinity);
+        const std::string text=std::string(info.name)+" "+std::to_string(points);
+        if (x+ui_.textWidth(text,15,ui::Font::Bold)>832) break;
+        ui_.text(window_,text,{x,26},15,sf::Color(info.r,info.g,info.b),ui::Font::Bold);
+        x+=ui_.textWidth(text,15,ui::Font::Bold)+14;
+    }
     ui_.button(window_,playButton,"Continue (T)",hovered(playButton));
+    // Resonances: dim once you hold one of their colours, glowing once both are deep enough.
+    {
+        const auto shown=visibleResonances();
+        for (std::size_t i=0;i<shown.size();++i) {
+            const auto& d=*resonances()[shown[i]];
+            const auto r=resonanceRect(i);
+            const bool learned=player_.talents().rankOf(d.id)>0, awake=resonanceAwake(player_,d);
+            const bool chosen=resonanceSelection_==shown[i];
+            const float pulse=.5f+.5f*std::sin(static_cast<float>(animationClock_.getElapsedTime().asSeconds())*3.f);
+            const sf::Color glow=learned?ui::kRare:awake?sf::Color(255,214,120,static_cast<std::uint8_t>(140+100*pulse)):sf::Color::Transparent;
+            ui_.inset(window_,r,chosen?ui::kGold:hovered(r)?ui::kBronze:glow);
+            ui_.icon(window_,talentIcon(d.ranks[0]),{{r.position.x+5,r.position.y+5},{r.size.x-10,r.size.y-10}},
+                learned?sf::Color(240,230,206):awake?sf::Color(255,226,160):sf::Color(58,54,66));
+        }
+    }
 
     // --- Trees by category, three columns of icon rows ------------------------
     for (int c=0;c<3;++c) scrollTrees(c,0); // the tree list may have changed size
@@ -364,6 +440,7 @@ void Application::renderTalentTrees() {
     }
 
     // --- Details of the selected ability -------------------------------------
+    if (resonanceSelection_) renderResonanceDetails(); else {
     const auto& tree=kTalentTrees[treeSelection_];
     const auto* access=treeAccess(player_,tree.id);
     const auto& d=*treeNodes(treeSelection_)[std::min(abilitySelection_,treeNodes(treeSelection_).size()-1)];
@@ -426,6 +503,20 @@ void Application::renderTalentTrees() {
     y=656;
     ui_.paragraph(window_,treeFeedback_.empty()?"Arrows browse trees and abilities. Purchases take no turn.":treeFeedback_,
         left,y,width,14,treeFeedback_.empty()?ui::kMuted:sf::Color(255,226,150),ui::Font::Body,704);
+
+    }
+
+    // Hover tooltip for a resonance.
+    if (!bindingTalent_ && mouse) {
+        const auto shown=visibleResonances();
+        for (std::size_t i=0;i<shown.size();++i) if (resonanceRect(i).contains(*mouse)) {
+            const auto& d=*resonances()[shown[i]];
+            const bool known=resonanceAwake(player_,d) || player_.talents().rankOf(d.id);
+            ui_.tooltip(window_,{{known?d.ranks[0].name:"???",ui::kGold,17,ui::Font::Title},
+                {known?d.ranks[0].description:"Something stirs between "+std::string(affinityInfo(d.resonance[0]).name)+" and "+
+                    affinityInfo(d.resonance[1]).name+".",ui::kText,14}},*mouse,300);
+        }
+    }
 
     // Hover tooltip for an ability icon you're not already inspecting.
     if(!bindingTalent_ && mouse && mouse->y>=kTreeViewTop && mouse->y<=treeViewBottom_) for(std::size_t row=0;row<layout.trees.size();++row) for(std::size_t i=0;i<treeNodes(layout.trees[row]).size();++i) {

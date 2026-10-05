@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <algorithm>
 #include <functional>
 #include <stdexcept>
@@ -65,6 +66,35 @@ inline bool startingTreeAllowed(PlayerClass cls, TalentTree tree) {
     if (cls == PlayerClass::Thief) return tree == TalentTree::Stealth || tree == TalentTree::Bow || tree == TalentTree::Acrobatics || tree == TalentTree::Whip;
     return cls == PlayerClass::Mage && (tree == TalentTree::Fire || tree == TalentTree::Ice || tree == TalentTree::Lightning || tree == TalentTree::Arcane);
 }
+// The colours a talent carries. Each rank bought in a node adds one point of
+// its colour; two colours held deeply enough wake the resonance between them.
+enum class Affinity { None, Steel, Guard, Motion, Hunt, Guile, Flame, Frost, Storm, Earth, Water, Light, Dark, Arcane, Blood, Death, Rot };
+struct AffinityInfo { const char* name; std::uint8_t r, g, b; };
+inline AffinityInfo affinityInfo(Affinity a) {
+    switch (a) {
+        case Affinity::Steel: return {"Steel", 196, 200, 214};
+        case Affinity::Guard: return {"Guard", 214, 178, 110};
+        case Affinity::Motion: return {"Motion", 130, 214, 150};
+        case Affinity::Hunt: return {"Hunt", 170, 196, 90};
+        case Affinity::Guile: return {"Guile", 120, 150, 120};
+        case Affinity::Flame: return {"Flame", 244, 124, 52};
+        case Affinity::Frost: return {"Frost", 150, 210, 250};
+        case Affinity::Storm: return {"Storm", 120, 170, 255};
+        case Affinity::Earth: return {"Earth", 176, 140, 96};
+        case Affinity::Water: return {"Water", 80, 150, 210};
+        case Affinity::Light: return {"Light", 250, 230, 150};
+        case Affinity::Dark: return {"Dark", 130, 100, 170};
+        case Affinity::Arcane: return {"Arcane", 180, 130, 255};
+        case Affinity::Blood: return {"Blood", 210, 50, 60};
+        case Affinity::Death: return {"Death", 160, 170, 150};
+        case Affinity::Rot: return {"Rot", 140, 170, 70};
+        case Affinity::None: break;
+    }
+    return {"", 200, 200, 200};
+}
+// A resonance wakes once you hold this many points of each of its colours.
+inline constexpr int kResonancePoints = 4;
+
 // One node of a talent tree. A node has as many ranks as `ranks` holds (at
 // most kMaxTalentRank). `prerequisites` lists nodes of which at least one
 // must be learned first; nodes of one tree that share a `fork` exclude each
@@ -77,6 +107,8 @@ struct TalentDefinition {
     std::string mastery; // what the last rank adds beyond bigger numbers, if anything
     std::vector<std::string> prerequisites;
     std::string fork;
+    Affinity affinity = Affinity::None;           // the colour each rank adds
+    Affinity resonance[2]{Affinity::None, Affinity::None}; // a resonance: the two colours it lies between
     int maxRank() const { return static_cast<int>(ranks.size()); }
     // The talent at `rank` (1-based), clamped to the ranks this node has.
     const Talent& atRank(int rank) const { return ranks[static_cast<std::size_t>(std::clamp(rank, 1, maxRank()) - 1)]; }
@@ -684,6 +716,24 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         node("paragon","paragon.versatility",Dex,passive("Versatility","+5% dodge and +5% critical chance.",PassiveKind::Versatility,5));
         node("paragon","paragon.resilience",Str,passive("Resilience","Direct hits on you deal 2 less.",PassiveKind::Resilience,2));
         node("paragon","paragon.wellspring",Int,passive("Wellspring","+10% maximum life and maximum mana.",PassiveKind::Wellspring,10));
+
+        // The pilot trees' colours: Fire is Flame, Arcane is Arcane, and
+        // One-Handed is Steel except for its guard (Parry, Riposte).
+        for (auto& d:out) {
+            if (d.treeId=="fire") d.affinity=Affinity::Flame;
+            else if (d.treeId=="arcane") d.affinity=Affinity::Arcane;
+            else if (d.treeId=="one_handed") d.affinity=(d.id=="one_handed.parry" || d.id=="one_handed.riposte")?Affinity::Guard:Affinity::Steel;
+        }
+        // Resonances: one-rank passives that exist only between two colours.
+        const auto resonance=[&](const char* id,Affinity a,Affinity b,Talent t) {
+            t.id=id; t.tree=TalentTree::Blade; t.scalingCooldown=t.cooldownTurns;
+            TalentDefinition d; d.id=id; d.treeId="resonance"; d.ranks={t}; d.resonance[0]=a; d.resonance[1]=b;
+            out.push_back(d);
+        };
+        resonance("resonance.searing_edge",Affinity::Steel,Affinity::Flame,
+            passive("Searing Edge","When a melee ability strikes a burning foe, the burn flares: it is spent for 6 extra damage, and the ground behind the foe catches fire.",PassiveKind::SearingEdge,6));
+        resonance("resonance.spellsword",Affinity::Steel,Affinity::Arcane,
+            passive("Spellsword","Casting a spell readies +6 damage for your next melee attack, and a landed melee attack takes a turn off your longest spell cooldown.",PassiveKind::BattleRhythm,6));
         return out;
     }();
     return catalog;

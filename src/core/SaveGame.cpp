@@ -15,6 +15,7 @@
 #include "entities/Ascendancy.hpp"
 #include <bitset>
 #include "entities/HiddenTrees.hpp"
+#include "entities/TalentProgression.hpp"
 #include "entities/Patrons.hpp"
 
 namespace engine {
@@ -173,6 +174,13 @@ bool validProgression(const SaveGameState& s) {
         if (d && isAscendancyTree(d->treeId)) {
             if (d->treeId!=s.ascendancy || t.rank!=1 || (d->ranks[0].passive && t.cooldown)) return false;
             ++ascendancyNodes;
+            continue;
+        }
+        if (d && d->treeId=="resonance") {
+            const auto rankOf=[&](const std::string& id) { for (const auto& other:s.playerTalents) if (other.id==id) return other.rank; return 0; };
+            if (t.rank!=1 || t.cooldown || affinityPoints(rankOf,d->resonance[0])<kResonancePoints ||
+                affinityPoints(rankOf,d->resonance[1])<kResonancePoints) return false;
+            abilitySpent+=1;
             continue;
         }
         if (!d || !trees.count(d->treeId)) return false;
