@@ -18,17 +18,12 @@ inline int treeInvestment(const Player& p,const std::string& tree) {
 inline std::string treePurchaseReason(const Player& p, PlayerClass cls, const TreeDefinition& t) {
     if (!hiddenTreeAvailable(p,t.id)) { const auto need=hybridRequirement(t.id); return need.empty() ? "This tree is locked for now." : need; }
     if (p.treePoints()<=0) return "No tree points available.";
-    const auto* access=treeAccess(p,t.id);
-    if (access) {
-        if (access->specialized) return "Already specialized.";
-        if (p.level()<5) return "Specialization requires level 5.";
-        if (treeInvestment(p,t.id)<4) return "Specialization requires 4 ability points invested here.";
-    } else if ((p.trees().empty() || p.level()<5) && !startingTreeAllowed(cls,t.tree)) return "Outside your starting class pool. Available at level 5.";
+    if (treeAccess(p,t.id)) return "Already open.";
+    if ((p.trees().empty() || p.level()<5) && !startingTreeAllowed(cls,t.tree)) return "Outside your starting class pool. Available at level 5.";
     return {};
 }
 inline bool purchaseTree(Player& p,PlayerClass cls,const TreeDefinition& t) {
     if (!treePurchaseReason(p,cls,t).empty()) return false;
-    for (auto& access:p.trees()) if (access.id==t.id) { access.specialized=true; --p.treePoints(); synchronizeImbues(p); return true; }
     p.trees().push_back({t.id,false}); --p.treePoints(); synchronizeImbues(p); return true;
 }
 inline std::string abilityPurchaseReason(const Player& p,const TalentDefinition& d) {
@@ -37,7 +32,7 @@ inline std::string abilityPurchaseReason(const Player& p,const TalentDefinition&
     const int rank=p.talents().rankOf(d.id);
     if (rank>=d.maxRank()) return "Maximum rank ("+std::to_string(d.maxRank())+").";
     if (p.abilityPoints()<=0) return "No ability points available.";
-    if (!rank) return nodeRequirementReason(d,p.level(),access->specialized,[&](const std::string& id){ return p.talents().rankOf(id); });
+    if (!rank) return nodeRequirementReason(d,p.level(),[&](const std::string& id){ return p.talents().rankOf(id); });
     return {};
 }
 inline bool purchaseAbility(Player& p,const TalentDefinition& d) {

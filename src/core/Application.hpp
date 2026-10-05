@@ -533,6 +533,16 @@ private:
     // the player's own death, which grants nothing).
     void checkAndHandleDeath(Actor& actor);
 
+    // The forked trees' delayed effects. Afterimage: tiles you blinked from,
+    // bursting once the enemies have answered. Echo: a beam that fires again
+    // down the same line when your next turn begins. Neither is saved.
+    std::vector<Position> afterimages_;
+    struct EchoBeam { Talent talent; Position from, cursor; TalentTarget target; };
+    std::optional<EchoBeam> echo_;
+    void burstAfterimages();
+    void fireEcho();
+    void spreadWildfire(const Actor& dead);
+
     // The death recap: the last blows the player took, oldest first, shown
     // on the death screen as plain facts. harmSource_ names whatever is
     // acting right now; noteHarm() turns any life lost since the last note

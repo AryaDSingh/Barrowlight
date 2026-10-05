@@ -1179,6 +1179,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         summonMinions(talent);
     } else if (talent.shape == EffectShape::Movement) {
         player_.setPosition(blinkDestination);
+        if (talent.tree==TalentTree::Arcane && player_.talents().passiveValue(PassiveKind::Afterimage)) afterimages_.push_back(beforeMovement);
         log(player_.name(), " uses ", talent.name, ", blinks to (", blinkDestination.x, ',',
             blinkDestination.y, ")");
         if (talent.blitz || talent.landingBurst) {
@@ -1268,6 +1269,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             log("You charge!");
         }
         const bool grapple=talent.onHitEffect && talent.onHitEffect->type==StatusEffectType::Grappled;
+        int hits=0;
         if (grapple) for (auto& m:monsters_) m->statusEffects().remove(StatusEffectType::Grappled); // one at a time
         for (Actor* target : affected) {
             Talent hitTalent = talent;
@@ -1301,7 +1303,8 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             const bool couldStun=target->statusEffects().canReceiveStun();
             const int hpBefore=target->stats().hp;
             if (applyTalentDamage(hitTalent, player_, *target)) {
-                landedAny=true; killedAny=killedAny || target->stats().hp<=0;
+                landedAny=true; killedAny=killedAny || target->stats().hp<=0; ++hits;
+                if (talent.markOnHit && target->stats().hp>0) target->statusEffects().apply({StatusEffectType::Marked,3,1});
                 if (target->stats().hp<hpBefore) flashActor(*target);
                 if (!combo.empty()) log(target->name(), ": ", combo, "Hit dealt ",hpBefore-target->stats().hp," damage.");
                 if (!couldStun && (talent.consumeChill || (talent.onHitEffect && talent.onHitEffect->type==StatusEffectType::Stun)))
@@ -1315,6 +1318,13 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     const auto from=player_.position(), origin=target->position();
                     const Position direction{(origin.x>from.x)-(origin.x<from.x),(origin.y>from.y)-(origin.y<from.y)};
                     if (direction.x || direction.y) pushActor(*target,direction,talent.pushDistance,player_);
+                    const auto landed=target->position();
+                    const int moved=std::max(std::abs(landed.x-origin.x),std::abs(landed.y-origin.y));
+                    if (talent.stunOnImpact && target->stats().hp>0 && moved<talent.pushDistance && !pendingFall_ &&
+                        target->statusEffects().canReceiveStun()) {
+                        target->statusEffects().apply({StatusEffectType::Stun,1,0});
+                        log(target->name()," is stunned by the impact!");
+                    }
                 }
                 if (grapple && target->statusEffects().has(StatusEffectType::Grappled)) {
                     if (immovable(*target)) { target->statusEffects().remove(StatusEffectType::Grappled); log(target->name(), " is too massive to hold."); }
@@ -1375,6 +1385,16 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             }
         }
 
+        // Blade Dance: Guard for every foe struck.
+        if (talent.guardPerHit && hits) {
+            player_.statusEffects().apply({StatusEffectType::Guard,2,talent.guardPerHit*hits});
+            log("You weave a guard out of ",hits," blow",hits==1?"":"s",".");
+        }
+        if (talent.echoBeam) {
+            echo_=EchoBeam{talent,beforeMovement,cursor,target};
+            echo_->talent.echoBeam=false; echo_->target.affected.clear(); echo_->target.chainedTarget=nullptr;
+        }
+
         // Retreat follows the aimed direction even when the kick hits air.
         if (talent.retreatDistance > 0) {
             const Position targetPos = cursor;
@@ -1389,7 +1409,9 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     }
 
     if (talent.splashSurface) {
-        for (const auto& p:target.area) setSurface(p,static_cast<SurfaceType>(talent.splashSurface),talent.splashTurns);
+        const Position centre=target.area.empty()?cursor:target.area.front();
+        for (const auto& p:target.area)
+            if (!talent.scatterSplash || (p.x+p.y)%2==(centre.x+centre.y)%2) setSurface(p,static_cast<SurfaceType>(talent.splashSurface),talent.splashTurns);
         if (talent.splashPath) for (std::size_t i=1;i<target.path.size();++i)
             if (map_.isWalkable(target.path[i].x,target.path[i].y)) setSurface(target.path[i],static_cast<SurfaceType>(talent.splashSurface),talent.splashTurns);
     }
@@ -1698,8 +1720,66 @@ void Application::processMonsterTurns() {
         currentActor_ = &scheduler_.nextTurn();
     }
     harmSource_.clear();
+    if (mode_!=GameMode::GameOver) burstAfterimages();
 
     removeDeadMonsters();
+}
+
+// Afterimage: the tiles you blinked from burst, striking everything beside them.
+void Application::burstAfterimages() {
+    if (afterimages_.empty()) return;
+    const auto tiles=std::move(afterimages_);
+    afterimages_.clear();
+    Talent burst; burst.name="Afterimage"; burst.tree=TalentTree::Arcane; burst.scalingStat=ScalingStat::Intelligence;
+    burst.power=player_.talents().passiveValue(PassiveKind::Afterimage); burst.targeting=TargetingMode::Self;
+    for (const auto& at:tiles) {
+        if (visibleTile(at)) spawnVfx({Vfx::Kind::Ring,{at.x+.5f,at.y+.5f},{at.x+.5f,at.y+.5f},sf::Color(170,120,255),0,.5f,1.6f});
+        std::vector<Monster*> struck;
+        for (auto& m:monsters_)
+            if (!m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-at.x),std::abs(m->position().y-at.y))<=1) struck.push_back(m.get());
+        for (auto* m:struck) {
+            if (m->stats().hp<=0) continue;
+            if (applyTalentDamage(burst,player_,*m)) flashActor(*m);
+            checkAndHandleDeath(*m);
+        }
+    }
+}
+
+// Arcane Torrent's third rank: the beam fires again, down the same line.
+void Application::fireEcho() {
+    if (!echo_) return;
+    const auto beam=std::move(*echo_);
+    echo_.reset();
+    spawnTalentVfx(beam.talent,beam.from,beam.cursor,beam.target);
+    std::vector<Monster*> struck;
+    for (auto& m:monsters_) {
+        if (m->allied || m->stats().hp<=0) continue;
+        for (const auto& p:beam.target.path) if (p.x==m->position().x && p.y==m->position().y) { struck.push_back(m.get()); break; }
+    }
+    if (!struck.empty()) combatThisTurn_=true;
+    for (auto* m:struck) {
+        if (m->stats().hp<=0) continue;
+        if (applyTalentDamage(beam.talent,player_,*m)) { flashActor(*m); log("The torrent strikes ",m->name()," again."); }
+        checkAndHandleDeath(*m);
+    }
+    removeDeadMonsters();
+}
+
+// Wildfire: a burning foe's fire leaps to the nearest foe within four tiles.
+void Application::spreadWildfire(const Actor& dead) {
+    if (!player_.talents().passiveValue(PassiveKind::Wildfire) || !dead.statusEffects().has(StatusEffectType::Burn)) return;
+    Monster* next=nullptr; int best=5;
+    for (auto& m:monsters_) {
+        if (m.get()==&dead || m->allied || m->stats().hp<=0) continue;
+        const int d=std::max(std::abs(m->position().x-dead.position().x),std::abs(m->position().y-dead.position().y));
+        if (d<best) { best=d; next=m.get(); }
+    }
+    if (!next) return;
+    next->statusEffects().apply({StatusEffectType::Burn,3,std::max(2,dead.statusEffects().magnitudeOf(StatusEffectType::Burn))});
+    if (visibleTile(dead.position()) || visibleTile(next->position())) {
+        spawnVfx({Vfx::Kind::Bolt,{dead.position().x+.5f,dead.position().y+.5f},{next->position().x+.5f,next->position().y+.5f},sf::Color(255,140,40),0,.35f,1.f});
+        log("The flames leap to ",next->name(),"!");
+    }
 }
 
 // An enemy that has just been alerted is glimpsed through the walls for the
@@ -1752,6 +1832,7 @@ void Application::advanceTurnsUntilPlayerCanAct() {
         }
         if (!stunned) {
             recordQuietTurn();
+            fireEcho();
             return; // genuinely the player's turn now
         }
         log("You are stunned and lose a turn!");
@@ -2081,6 +2162,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
 
     auto* defeated = dynamic_cast<Monster*>(&actor);
     if (defeated && !defeated->claimDeath()) return;
+    if (defeated && !defeated->allied) spreadWildfire(*defeated);
     if (defeated && defeated->allied) {
         scheduler_.remove(actor);
         const int explosion=player_.talents().passiveValue(PassiveKind::GravePact);
@@ -2392,7 +2474,7 @@ void Application::selectClass(PlayerClass cls) {
     player_.stats() = player_.baseStats();
     player_.unspentAttributePoints() = 0;
     player_.statusEffects().active().clear();
-    resetHarms();
+    resetHarms(); afterimages_.clear(); echo_.reset();
     nextItemId_ = 1;
     player_.trees().clear();
     player_.bloodRelic=false; player_.animationRelic=false; player_.deathlessSpentFloors.clear();
@@ -2427,6 +2509,7 @@ void Application::selectClass(PlayerClass cls) {
 }
 
 void Application::regenerateLevel(unsigned int seed) {
+    afterimages_.clear(); echo_.reset(); // they belong to the floor you left
     autoExploring_=false; exploreSeenInterests_.clear();
     inventoryOpen_ = false;
     vaultMenu_=0;
@@ -2845,7 +2928,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     // handles it in ordinary play, not a special case for loading.
     currentActor_ = &scheduler_.nextTurn();
 
-    resetHarms();
+    resetHarms(); afterimages_.clear(); echo_.reset();
     if (player_.stats().hp<=0) { mode_=GameMode::GameOver; wonGame_=false; }
     else resumeLevelUpSequence();
     log("Game loaded: ", monsters_.size(), " monsters",

@@ -78,7 +78,9 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // Earth, Tide, Hexes, Venom.
     Stoneskin, Riptide, Malediction, ToxicRuin,
     // Traps, Skirmish and the second hybrids.
-    Trapper, Lunge, PassStrike, RunningStart, LanternWard, StaticEdge, LingeringHex, DirtyTricks, GraniteFists };
+    Trapper, Lunge, PassStrike, RunningStart, LanternWard, StaticEdge, LingeringHex, DirtyTricks, GraniteFists,
+    // The forked pilot trees (Fire, One-Handed, Arcane).
+    Kindling, Wildfire, Exploit, Afterimage };
 
 struct Talent {
     std::string name;
@@ -242,6 +244,13 @@ struct Talent {
     // blitz: a movement that strikes everything beside its path.
     int placeTrap=0, landingBurst=0;
     bool needsLight=false, hurlTorch=false, bonfire=false, curseBonus=false, pillarSlam=false, smokeBomb=false, blitz=false;
+    // The forked pilot trees. guardPerHit: Guard for each foe struck (Blade
+    // Dance). markOnHit: also marks what it hits. stunOnImpact: a shoved foe
+    // that slams into something is stunned. scatterSplash: the splash lands
+    // in patches, not everywhere. echoBeam: the beam fires again down the same
+    // line at the start of your next turn.
+    int guardPerHit=0;
+    bool markOnHit=false, stunOnImpact=false, scatterSplash=false, echoBeam=false;
 
 };
 

@@ -134,17 +134,26 @@ int main() {
     check(!talentUnlockedAtLevel(PlayerClass::Spellblade, 7).has_value(),
           "Spellblade has no talentUnlockedAtLevel unlock at level 7");
 
-    // --- The node model: today's trees are unchanged by it.
+    // --- The node model: the forked pilot trees, and every other tree as before.
     {
-        bool fourEach=true, fiveRanks=true;
+        bool othersUnchanged=true, pilotsForked=true;
         for (std::size_t tree=0;tree<kTalentTrees.size();++tree) {
+            const std::string id=kTalentTrees[tree].id;
             const auto& nodes=treeNodes(tree);
-            fourEach&=nodes.size()==4;
-            for (std::size_t i=0;i<nodes.size();++i) fiveRanks&=nodes[i]->maxRank()==kMaxTalentRank && nodes[i]->tier==static_cast<int>(i) &&
+            if (id=="fire" || id=="one_handed" || id=="arcane") {
+                // root, two actives, two passives, two capstones
+                pilotsForked&=nodes.size()==7;
+                for (const auto* d:nodes) pilotsForked&=d->maxRank()==(d->ranks[0].passive?1:3) && d->prerequisites.empty()==(d->tier==0 || d->tier==3);
+                int forks=0; for (const auto* d:nodes) forks+=!d->fork.empty();
+                pilotsForked&=forks==4;
+                continue;
+            }
+            othersUnchanged&=nodes.size()==4;
+            for (std::size_t i=0;i<nodes.size();++i) othersUnchanged&=nodes[i]->maxRank()==kMaxTalentRank && nodes[i]->tier==static_cast<int>(i) &&
                 nodes[i]->prerequisites.empty() && nodes[i]->fork.empty();
         }
-        check(fourEach,"Every tree still has its four nodes, in order");
-        check(fiveRanks,"Every tree node still has five ranks, one per tier, with no forks yet");
+        check(othersUnchanged,"Trees outside the pilot keep four five-rank nodes, one per tier");
+        check(pilotsForked,"Fire, One-Handed and Arcane fork: seven nodes, 3-rank actives, 1-rank passives, two forks");
         check(findTalentDefinition("juggernaut.iron_skin")->maxRank()==1,"Ascendancy nodes have a single rank");
         check(findTalentDefinition("juggernaut.iron_skin")->atRank(3).name=="Iron Skin","Asking past a node's last rank gives its last rank");
     }
@@ -160,7 +169,7 @@ int main() {
         const std::vector<const TalentDefinition*> tree{&root,&wall,&ball,&haze,&kindling};
         std::map<std::string,int> held;
         const auto rankOf=[&](const std::string& id){ const auto it=held.find(id); return it==held.end()?0:it->second; };
-        const auto reason=[&](const TalentDefinition& d){ return nodeRequirementReason(d,tree,10,true,rankOf); };
+        const auto reason=[&](const TalentDefinition& d){ return nodeRequirementReason(d,tree,10,rankOf); };
         check(reason(root).empty() && !reason(wall).empty(),"A fork waits for its root");
         held["Root"]=1;
         check(reason(wall).empty() && reason(ball).empty(),"With the root learned, both sides of a fork are open");

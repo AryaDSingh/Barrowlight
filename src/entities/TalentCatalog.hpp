@@ -3,6 +3,7 @@
 #include <array>
 #include <algorithm>
 #include <functional>
+#include <stdexcept>
 #include <map>
 #include <vector>
 #include "entities/Talent.hpp"
@@ -109,7 +110,13 @@ inline void applyMastery(TalentDefinition& d) {
     else if (id == "acrobatics.vault_kick") { stun(1); d.mastery = "The kick stuns for one enemy turn."; }
     else if (id == "acrobatics.leap") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 30; d.mastery = "+30% dodge instead of +20%."; }
     else if (id == "fire.ember_bolt") { if (m.onHitEffect) m.onHitEffect->magnitude = 2; d.mastery = "Burn deals 2 damage per turn."; }
-    else if (id == "fire.fireball") { m.areaRadius = 3; d.mastery = "The explosion covers three tiles."; }
+    else if (id == "fire.fireball") { m.splashSurface = 3; m.splashTurns = 4; m.scatterSplash = true; d.mastery = "Leaves fire burning on the ground where it bursts."; }
+    else if (id == "fire.flame_wall") { m.splashTurns = 6; if (m.onHitEffect) m.onHitEffect->magnitude = 2; d.mastery = "Burns for six turns, and hotter: 2 a turn."; }
+    else if (id == "fire.firestorm") { m.areaRadius = 3; d.mastery = "The storm covers three tiles."; }
+    else if (id == "one_handed.pommel") { m.markOnHit = true; d.mastery = "Also marks the target: its next direct hit taken deals +25%."; }
+    else if (id == "one_handed.blade_dance") { m.guardPerHit = 2; d.mastery = "Each hit gives Guard 2."; }
+    else if (id == "arcane.repulse") { m.stunOnImpact = true; d.mastery = "Foes that slam into something are stunned for a turn."; }
+    else if (id == "arcane.torrent") { m.echoBeam = true; d.mastery = "The beam fires again down the same line at the start of your next turn."; }
     else if (id == "fire.meteor") { m.statusBonusPercent = 100; d.mastery = "Consuming Burn doubles the hit (+100%)."; }
     else if (id == "ice.shard") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 4; d.mastery = "Chill lasts four turns."; }
     else if (id == "ice.nova") { m.areaRadius = 2; d.mastery = "Reaches enemies up to two tiles away."; }
@@ -118,7 +125,7 @@ inline void applyMastery(TalentDefinition& d) {
     else if (id == "lightning.chain") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
     else if (id == "lightning.discharge") { m.statusBonusPercent = 100; d.mastery = "Consuming Shock doubles the hit (+100%)."; }
     else if (id == "arcane.bolt") { m.manaCost = std::max(1, m.manaCost / 2); d.mastery = "Costs half as much mana."; }
-    else if (id == "arcane.blink") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    else if (id == "arcane.blink") { m.vault = true; d.mastery = "Passes through creatures in the way."; }
     else if (id == "arcane.mind_shatter") { stun(2); d.mastery = "Stuns for two enemy turns (bosses still resist repeats)."; }
     else if (id == "cloth.gather_mana") { m.restoreHpPercent = 10; d.mastery = "Also restores 10% of maximum life."; }
     else if (id == "cloth.pulse") { m.pushDistance = 3; d.mastery = "Pushes survivors three tiles."; }
@@ -316,10 +323,32 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             out.push_back(std::move(d));
         };
         Talent t;
+        // The forked trees: a root, a fork between two actives, the passive of
+        // the side you took, and a fork between two capstones. Actives have
+        // three ranks (the third changes how they play), passives one.
+        const auto shape=[&](const char* id,int ranks,const char* fork,std::vector<std::string> needs) {
+            auto& d=out.back();
+            if (d.id!=id) throw std::logic_error("shape() must follow its add()");
+            if (ranks==3) d.ranks={d.ranks[0],d.ranks[2],d.ranks[4]};
+            else if (ranks==1) d.ranks={d.ranks[0]};
+            d.fork=fork; d.prerequisites=std::move(needs);
+        };
         add(0,"one_handed.quick_strike",0,attack("Quick Strike","A free, efficient melee strike.",4,0,1));
+        shape("one_handed.quick_strike",3,"",{});
         add(0,"one_handed.parry",1,buff("Parry","Reduce incoming direct damage by 3 for two enemy responses.",StatusEffectType::Guard,2,3,2,5));
-        add(0,"one_handed.riposte",2,passive("Riposte","While using one-handed weapons, Guard enables +4/5/6/7/8 direct melee damage.",PassiveKind::Riposte,4));
+        shape("one_handed.parry",3,"path",{"one_handed.quick_strike"});
+        t=attack("Pommel Strike","A blow with the hilt that stuns for one enemy turn. Bosses resist repeated stuns.",5,3,7);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Stun,1,0}; add(0,"one_handed.pommel",1,t);
+        shape("one_handed.pommel",3,"path",{"one_handed.quick_strike"});
+        add(0,"one_handed.riposte",2,passive("Riposte","While you wield a one-handed weapon, Guard adds +6 to your melee hits.",PassiveKind::Riposte,6));
+        shape("one_handed.riposte",1,"",{"one_handed.parry"});
+        add(0,"one_handed.exploit",2,passive("Exploit","Your attacks deal +2 damage for each ailment on the target: stun, mark, burn, chill, shock, poison, bleed and the like.",PassiveKind::Exploit,2));
+        shape("one_handed.exploit",1,"",{"one_handed.pommel"});
+        t=attack("Blade Dance","Strike every adjacent foe; each hit gives you Guard 1 for two enemy responses.",6,5,7,false,1);
+        t.guardPerHit=1; add(0,"one_handed.blade_dance",3,t);
+        shape("one_handed.blade_dance",3,"capstone",{});
         t=attack("Execution","Double damage against an enemy at or below 30% HP.",8,4,5); t.conditionalHpFraction=.3f; t.conditionalMultiplier=2; add(0,"one_handed.execution",3,t);
+        shape("one_handed.execution",3,"capstone",{});
         add(1,"two_handed.cleave",0,attack("Cleave","A heavy swing hitting all four adjacent tiles.",5,3,3,false,1));
         t=attack("Berserker's Fury","A heavy blow paid for with 5 HP.",14,0,4); t.hpCost=5; add(1,"two_handed.fury",1,t);
         add(1,"two_handed.bloodlust",2,passive("Bloodlust","With a two-handed weapon, direct damage gains +4/5/6/7/8 while at or below half HP.",PassiveKind::Bloodlust,4));
@@ -342,9 +371,23 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         add(5,"acrobatics.footwork",2,passive("Footwork","Successful movement abilities grant +10/12/15/18/20% dodge for one enemy response.",PassiveKind::Footwork,10));
         t=move("Evasive Leap","Move up to four tiles and gain +20% dodge for two enemy responses.",4,4,6); t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Evasion,2,20}; add(5,"acrobatics.leap",3,t);
         t=attack("Ember Bolt","A flame projectile; successful hits Burn for 1 damage per turn over three enemy turns.",4,2,1,true); t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,1}; add(6,"fire.ember_bolt",0,t);
+        shape("fire.ember_bolt",3,"",{});
         t=attack("Fireball","Explode at first impact, burning enemies for 1 damage per turn over three enemy turns.",5,6,5,true,2); t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,1}; add(6,"fire.fireball",1,t);
-        add(6,"fire.kindle",2,passive("Kindle","Successful movement abilities Burn visible adjacent enemies for 4/5/6/7/8 damage per turn over two turns. Once per action; reveals you.",PassiveKind::Kindle,4));
+        shape("fire.fireball",3,"path",{"fire.ember_bolt"});
+        t=attack("Flame Wall","Fire runs out along a line toward your target and burns on the ground for four turns. Whatever it touches catches fire.",3,5,6,true);
+        t.pierceAll=true; t.splashSurface=3; t.splashTurns=4; t.splashPath=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,1};
+        add(6,"fire.flame_wall",1,t);
+        shape("fire.flame_wall",3,"path",{"fire.ember_bolt"});
+        add(6,"fire.kindling",2,passive("Kindling","Your attacks and spells deal +3 damage to burning foes.",PassiveKind::Kindling,3));
+        shape("fire.kindling",1,"",{"fire.fireball"});
+        add(6,"fire.wildfire",2,passive("Wildfire","When a burning foe dies, its fire leaps to the nearest foe within four tiles.",PassiveKind::Wildfire,1));
+        shape("fire.wildfire",1,"",{"fire.flame_wall"});
         t=attack("Meteor","Consume an existing Burn on a successful hit for +50% direct damage.",11,9,7,true); t.consumeBurn=true; t.statusBonusPercent=50; add(6,"fire.meteor",3,t);
+        shape("fire.meteor",3,"capstone",{});
+        t=attack("Firestorm","Fire rains on everything within two tiles of a spot, setting it burning and leaving patches of fire on the ground.",7,9,9,true,2);
+        t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,2};
+        t.splashSurface=3; t.splashTurns=4; t.scatterSplash=true; add(6,"fire.firestorm",3,t);
+        shape("fire.firestorm",3,"capstone",{});
         t=attack("Ice Shard","Chill on hit: -20% outgoing damage and movement on alternate turns for three enemy turns.",4,2,2,true); t.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,3,20}; add(7,"ice.shard",0,t);
         t=attack("Frost Nova","Chill adjacent enemies for three turns; helps create an escape.",4,4,5,false,1); t.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,3,20}; add(7,"ice.nova",1,t);
         add(7,"ice.frostbite",2,passive("Frostbite","Direct hits against Chilled enemies deal +4/5/6/7/8 damage, from any tree.",PassiveKind::Frostbite,4));
@@ -355,9 +398,21 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t=attack("Discharge","Consume Shock on a successful hit for +50% direct damage. Cannot reapply Shock.",11,6,7,true); t.consumeShock=true; t.statusBonusPercent=50; add(8,"lightning.discharge",3,t);
         t=attack("Arcane Bolt","Mark on a successful hit: next direct hit gains +25% damage, within 3 enemy turns.",3,2,1,true);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,3,1}; add(9,"arcane.bolt",0,t);
+        shape("arcane.bolt",3,"",{});
         add(9,"arcane.blink",1,move("Blink","Move up to three visible tiles; terrain and actors block travel.",3,4,4));
-        add(9,"arcane.efficiency",2,passive("Arcane Efficiency","Magic abilities cost 10/20/30/35/40% less mana (rounded down, minimum one).",PassiveKind::ArcaneEfficiency,10));
+        shape("arcane.blink",3,"path",{"arcane.bolt"});
+        t=attack("Repulse","A burst of force shoves every adjacent foe two tiles away: into walls, fire, each other or chasms.",3,4,6,false,1);
+        t.pushDistance=2; add(9,"arcane.repulse",1,t);
+        shape("arcane.repulse",3,"path",{"arcane.bolt"});
+        add(9,"arcane.afterimage",2,passive("Afterimage","When you Blink, the place you left bursts with force after the enemy's next turn, striking everything beside it.",PassiveKind::Afterimage,8));
+        shape("arcane.afterimage",1,"",{"arcane.blink"});
+        add(9,"arcane.kinetic",2,passive("Kinetic","Foes you shove or throw take +4 when they slam into something.",PassiveKind::HardLanding,4));
+        shape("arcane.kinetic",1,"",{"arcane.repulse"});
         t=attack("Mind Shatter","A direct force spell that stuns on a successful hit. Does not chain or travel as a projectile.",7,6,7,true); t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Stun,1,0}; add(9,"arcane.mind_shatter",3,t);
+        shape("arcane.mind_shatter",3,"capstone",{});
+        t=attack("Arcane Torrent","A beam of raw force that strikes every foe in its line.",9,8,8,true);
+        t.pierceAll=true; add(9,"arcane.torrent",3,t);
+        shape("arcane.torrent",3,"capstone",{});
         t=Talent{}; t.name="Gather Mana"; t.description="Spend a turn restoring 6/7/9/10/12 mana. Requires cloth or no armour.";
         t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.restoreMana=6; t.cooldownTurns=8;
         add(10,"cloth.gather_mana",0,t);
@@ -670,14 +725,12 @@ inline const std::vector<const TalentDefinition*>& treeNodes(std::size_t treeInd
 // purchases and save validation. `rankOf` reports the rank held in a node.
 // `nodes` is the node's tree (a test can pass one of its own).
 inline std::string nodeRequirementReason(const TalentDefinition& d, const std::vector<const TalentDefinition*>& nodes, int level,
-                                         bool specialized, const std::function<int(const std::string&)>& rankOf) {
-    constexpr int levels[]{1,1,4,5}, investments[]{0,1,3,4};
-    const auto tier = static_cast<std::size_t>(std::clamp(d.tier, 0, 3));
-    if (level < levels[tier]) return "Requires character level " + std::to_string(levels[tier]) + ".";
-    int invested = 0;
-    for (const auto* other : nodes) if (other->tier < d.tier) invested += rankOf(other->id);
-    if (invested < investments[tier]) return "Requires " + std::to_string(investments[tier]) + " ability points invested in this tree.";
-    if (tier == 3 && !specialized) return "Requires tree specialization.";
+                                         const std::function<int(const std::string&)>& rankOf) {
+    // What closes it outright first, then what it is waiting for.
+    if (!d.fork.empty())
+        for (const auto* other : nodes)
+            if (other != &d && other->fork == d.fork && rankOf(other->id) > 0)
+                return "You took " + other->ranks.front().name + " instead.";
     if (!d.prerequisites.empty() &&
         std::none_of(d.prerequisites.begin(), d.prerequisites.end(), [&](const std::string& id) { return rankOf(id) > 0; })) {
         std::string names;
@@ -687,15 +740,16 @@ inline std::string nodeRequirementReason(const TalentDefinition& d, const std::v
         }
         return "Requires " + names + ".";
     }
-    if (!d.fork.empty())
-        for (const auto* other : nodes)
-            if (other != &d && other->fork == d.fork && rankOf(other->id) > 0)
-                return "You took " + other->ranks.front().name + " instead.";
+    constexpr int levels[]{1,1,4,5}, investments[]{0,1,3,4};
+    const auto tier = static_cast<std::size_t>(std::clamp(d.tier, 0, 3));
+    if (level < levels[tier]) return "Requires character level " + std::to_string(levels[tier]) + ".";
+    int invested = 0;
+    for (const auto* other : nodes) if (other->tier < d.tier) invested += rankOf(other->id);
+    if (invested < investments[tier]) return "Requires " + std::to_string(investments[tier]) + " ability points invested in this tree.";
     return {};
 }
-inline std::string nodeRequirementReason(const TalentDefinition& d, int level, bool specialized,
-                                         const std::function<int(const std::string&)>& rankOf) {
-    return nodeRequirementReason(d, treeNodes(d.treeId), level, specialized, rankOf);
+inline std::string nodeRequirementReason(const TalentDefinition& d, int level, const std::function<int(const std::string&)>& rankOf) {
+    return nodeRequirementReason(d, treeNodes(d.treeId), level, rankOf);
 }
 
 inline Talent basicAttack() {

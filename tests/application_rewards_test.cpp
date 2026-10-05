@@ -1434,6 +1434,139 @@ struct ApplicationRewardsTestAccess {
             check(hiddenTreeAvailable(app.player_,"lamplighter"),"Lamplighter opens with 5 ranks in Radiance and in Fire");
         }
 
+        // The forked trees: Fire, One-Handed and Arcane.
+        {
+            const auto arena=[&](PlayerClass cls) {
+                setup(cls);
+                for (int y=6;y<=16;++y) for (int x=6;x<=20;++x) app.map_.setTile(x,y,Tile{TileType::Floor,true,true});
+                app.setProps({}); app.clearSurfaces();
+                app.player_.stats().hp=app.player_.stats().maxHp=500; app.player_.stats().maxMana=500;
+                app.player_.setPosition({10,10}); app.updateFieldOfView();
+            };
+            const auto foe=[&](Position p) { auto* g=enemy(p); g->stats().dexterity=0; g->stats().hp=g->stats().maxHp=90; return g; };
+            const auto clearFoes=[&] { for (auto& m:app.monsters_) app.scheduler_.remove(*m); app.monsters_.clear(); app.clearSurfaces(); app.boss_=nullptr; };
+            const auto ranked=[&](const char* id,int rank) { const auto i=learnTalent(id); app.player_.talents().setRank(i,rank); return i; };
+            const auto sawLog=[&](const char* text) {
+                for (const auto& line:app.logMessages_) if (line.find(text)!=std::string::npos) return true;
+                return false;
+            };
+
+            // Fire: the fork closes behind you.
+            arena(PlayerClass::Mage);
+            app.player_.trees()={{"fire",false}}; app.player_.abilityPoints()=10; app.player_.level()=6;
+            check(purchaseAbility(app.player_,*findTalentDefinition("fire.ember_bolt")) &&
+                  purchaseAbility(app.player_,*findTalentDefinition("fire.flame_wall")) &&
+                  !purchaseAbility(app.player_,*findTalentDefinition("fire.fireball")) &&
+                  abilityPurchaseReason(app.player_,*findTalentDefinition("fire.fireball"))=="You took Flame Wall instead.",
+                  "Taking Flame Wall closes Fireball");
+            check(abilityPurchaseReason(app.player_,*findTalentDefinition("fire.kindling"))=="Requires Fireball.",
+                  "Kindling follows the Fireball side");
+            app.player_.trees()={{"fire",false},{"one_handed",false},{"arcane",false}};
+            {
+                std::size_t fireTree=0; while (std::string(kTalentTrees[fireTree].id)!="fire") ++fireTree;
+                app.mode_=GameMode::AbilityChoice; app.treeSelection_=fireTree; app.abilitySelection_=1; app.treeScroll_={};
+                snapshot("ui-talent-forked.png");
+                app.mode_=GameMode::Playing;
+            }
+
+            // Flame Wall: fire along the line, and the foe set burning.
+            arena(PlayerClass::Mage);
+            {
+                const auto wall=ranked("fire.flame_wall",1);
+                auto* a=foe({14,10});
+                cast(wall,{14,10});
+                check(app.surfaceAt({12,10})==SurfaceType::Fire && app.surfaceAt({13,10})==SurfaceType::Fire && a->statusEffects().has(StatusEffectType::Burn),
+                      "Flame Wall lays fire along its line and sets the foe burning");
+                clearFoes();
+            }
+            // Firestorm: burning foes, fire left in patches.
+            {
+                const auto storm=ranked("fire.firestorm",1);
+                auto* a=foe({14,10}); app.updateFieldOfView();
+                cast(storm,{14,10});
+                check(a->statusEffects().has(StatusEffectType::Burn) && app.surfaceAt({14,10})==SurfaceType::Fire &&
+                      app.surfaceAt({15,10})!=SurfaceType::Fire && app.surfaceAt({15,11})==SurfaceType::Fire,
+                      "Firestorm burns what it hits and leaves fire in patches");
+                clearFoes();
+            }
+            // Wildfire: a burning foe's fire leaps on when it dies.
+            {
+                ranked("fire.wildfire",1);
+                auto* a=foe({14,10}); auto* b=foe({16,10});
+                a->statusEffects().apply({StatusEffectType::Burn,3,2});
+                a->stats().hp=0; app.checkAndHandleDeath(*a);
+                check(b->statusEffects().has(StatusEffectType::Burn),"Wildfire: a burning foe's fire leaps to the next one when it dies");
+                clearFoes();
+            }
+            // Kindling: more damage to the burning.
+            {
+                auto* a=foe({11,10});
+                const Talent bolt=findTalentDefinition("fire.ember_bolt")->ranks[0];
+                a->statusEffects().apply({StatusEffectType::Burn,3,1});
+                const int without=estimateTalentDamage(bolt,app.player_,*a).normal;
+                ranked("fire.kindling",1);
+                check(estimateTalentDamage(bolt,app.player_,*a).normal==without+3,"Kindling: +3 against burning foes");
+                clearFoes();
+            }
+
+            // Arcane: Repulse at rank 3 stuns what hits a wall; Kinetic adds to the impact.
+            arena(PlayerClass::Mage);
+            {
+                const auto repulse=ranked("arcane.repulse",3);
+                app.map_.setTile(12,10,Tile{TileType::Wall,false,false});
+                auto* a=foe({11,10}); auto* b=foe({9,10}); app.updateFieldOfView();
+                cast(repulse,app.player_.position());
+                check(a->position().x==11 && a->statusEffects().has(StatusEffectType::Stun) && b->position().x==7 && !b->statusEffects().has(StatusEffectType::Stun),
+                      "Repulse shoves foes two tiles; at rank 3 the one that hits a wall is stunned");
+                app.map_.setTile(12,10,Tile{TileType::Floor,true,true});
+                clearFoes();
+            }
+            // Afterimage: the tile you blinked from bursts once the enemies have answered.
+            {
+                const auto blink=ranked("arcane.blink",1); ranked("arcane.afterimage",1);
+                auto* a=foe({9,10}); app.updateFieldOfView();
+                cast(blink,{13,10});
+                check(app.player_.position().x==13 && a->stats().hp<90 && app.afterimages_.empty(),"Afterimage: the place you blinked from bursts");
+                clearFoes();
+            }
+            // Arcane Torrent at rank 3 fires again as your next turn begins.
+            {
+                app.player_.setPosition({10,10});
+                const auto torrent=ranked("arcane.torrent",3);
+                foe({13,10}); foe({15,10}); app.updateFieldOfView();
+                app.logMessages_.clear();
+                cast(torrent,{13,10});
+                check(sawLog("The torrent strikes") && !app.echo_,"Arcane Torrent's third rank fires down the same line again");
+                clearFoes();
+            }
+
+            // One-Handed.
+            arena(PlayerClass::Warrior);
+            {
+                app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition("iron_sword"),app.nextItemId_++));
+                app.player_.equip(app.player_.inventory().items().size()-1);
+                const auto pommel=ranked("one_handed.pommel",3);
+                auto* a=foe({11,10}); app.updateFieldOfView();
+                cast(pommel,{11,10});
+                check(a->statusEffects().has(StatusEffectType::Stun) && a->statusEffects().has(StatusEffectType::Marked),
+                      "Pommel Strike stuns; at rank 3 it also marks");
+                clearFoes();
+                const auto dance=ranked("one_handed.blade_dance",1);
+                foe({11,10}); foe({9,10}); foe({10,11}); app.updateFieldOfView();
+                app.player_.statusEffects().active().clear();
+                cast(dance,app.player_.position());
+                check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Guard)>=2,"Blade Dance gives Guard for each foe struck");
+                clearFoes();
+                auto* b=foe({11,10});
+                const Talent strike=findTalentDefinition("one_handed.quick_strike")->ranks[0];
+                b->statusEffects().apply({StatusEffectType::Burn,3,1}); b->statusEffects().apply({StatusEffectType::Poison,3,1});
+                const int plain=estimateTalentDamage(strike,app.player_,*b).normal;
+                ranked("one_handed.exploit",1);
+                check(estimateTalentDamage(strike,app.player_,*b).normal==plain+4,"Exploit: +2 for each ailment on the target");
+                clearFoes();
+            }
+        }
+
         // Acid and blindness survive a save (a fresh Warrior: the fixture's
         // One-Handed tree makes a level-1 Thief save invalid).
         setup(PlayerClass::Warrior);
@@ -1801,7 +1934,7 @@ struct ApplicationRewardsTestAccess {
         click(950,584);
         check(app.player_.treePoints()==0 && treeAccess(app.player_,"fire"),"Unlock button spends exactly one tree point");
         click(1140,584);
-        check(app.player_.abilityPoints()==earnedAbilityPoints(1)-1 && app.player_.talents().rankOf(talentCatalog()[fire*4].id)==1,"Learn button spends exactly one ability point");
+        check(app.player_.abilityPoints()==earnedAbilityPoints(1)-1 && app.player_.talents().rankOf((*treeNodes(fire)[0]).id)==1,"Learn button spends exactly one ability point");
         // More trees than fit: the columns scroll with the wheel and follow the keyboard.
         {
             check(app.treeScrollMax(0)>0 || app.treeScrollMax(1)>0 || app.treeScrollMax(2)>0,"With the new trees, the columns overflow and scroll");
@@ -1833,17 +1966,17 @@ struct ApplicationRewardsTestAccess {
             app.treeViewBottom_=712; app.treeScroll_={}; app.treeSelection_=fire;
         }
         {
-            // Five ranks: rank ups continue past 3 and rank 5 adds the mastery.
+            // Three ranks: the third changes how Fireball plays.
             const auto& fireball=*findTalentDefinition("fire.fireball");
-            check(fireball.ranks[4].areaRadius==3 && fireball.ranks[3].areaRadius==2 && !fireball.mastery.empty() &&
-                  fireball.ranks[4].damagePercent==200 && fireball.ranks[4].manaCost>fireball.ranks[0].manaCost,
-                  "Rank 5 Fireball has its mastery, double damage and a higher mana cost");
+            check(fireball.maxRank()==3 && fireball.ranks[2].splashSurface==3 && fireball.ranks[1].splashSurface==0 && !fireball.mastery.empty() &&
+                  fireball.ranks[2].damagePercent==200 && fireball.ranks[2].manaCost>fireball.ranks[0].manaCost,
+                  "Rank 3 Fireball leaves fire behind, at double damage and a higher mana cost");
             const int pointsBefore=app.player_.abilityPoints(), oldRank=app.player_.talents().rankOf(fireball.id);
             app.player_.abilityPoints()=10;
-            while (purchaseAbility(app.player_,*findTalentDefinition(talentCatalog()[fire*4].id))) {}
-            check(app.player_.talents().rankOf(talentCatalog()[fire*4].id)==kMaxTalentRank,"Abilities rank up to 5");
+            while (purchaseAbility(app.player_,*findTalentDefinition((*treeNodes(fire)[0]).id))) {}
+            check(app.player_.talents().rankOf((*treeNodes(fire)[0]).id)==3,"Abilities rank up to their last rank");
             for (std::size_t i=0;i<app.player_.talents().knownTalents().size();++i)
-                if (app.player_.talents().knownTalents()[i].id==talentCatalog()[fire*4].id) app.player_.talents().setRank(i,1);
+                if (app.player_.talents().knownTalents()[i].id==(*treeNodes(fire)[0]).id) app.player_.talents().setRank(i,1);
             app.player_.abilityPoints()=pointsBefore; (void)oldRank;
             Player probe({0,0},statsForClass(PlayerClass::Mage),TalentSet{});
             probe.abilityPoints()=0; grantXp(probe,xpForNextLevel(1));
@@ -1854,7 +1987,7 @@ struct ApplicationRewardsTestAccess {
         click(950,628); snapshot("ui-binding.png");
         check(app.bindingTalent_,"Assign button opens the binding picker");
         click(290,440);
-        check(!app.bindingTalent_ && app.player_.talents().hotbar()[9]==talentCatalog()[fire*4].id,"Picker binds the selected ability to page two");
+        check(!app.bindingTalent_ && app.player_.talents().hotbar()[9]==(*treeNodes(fire)[0]).id,"Picker binds the selected ability to page two");
         click(1140,40); check(app.mode_==GameMode::Playing,"Continue enters play after valid starting choices");
 
         setup(PlayerClass::Warrior); app.player_.unspentAttributePoints()=2; app.mode_=GameMode::AttributeAllocation;

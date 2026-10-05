@@ -45,7 +45,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 39;
+constexpr int kSaveFormatVersion = 40;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -120,6 +120,29 @@ bool validItems(const SaveGameState& state) {
 }
 
 // Validate progression against earned budgets before committing a loaded run.
+// Format 40 forked the Fire, One-Handed and Arcane trees and retired
+// specialisation. Older characters get those three trees' points back, keep
+// their trees open, and have their tree points recounted.
+void migrateForkedTrees(SaveGameState& s) {
+    const auto reset=[](const std::string& id) {
+        const auto* d=findTalentDefinition(id);
+        const auto dot=id.find('.');
+        const std::string tree=d ? d->treeId : dot==std::string::npos ? "" : id.substr(0,dot);
+        return tree=="fire" || tree=="one_handed" || tree=="arcane";
+    };
+    std::vector<SaveGameState::TalentSaveData> kept;
+    for (const auto& t:s.playerTalents) {
+        if (reset(t.id)) { s.abilityPoints+=t.rank; continue; }
+        kept.push_back(t);
+    }
+    s.playerTalents=std::move(kept);
+    for (auto& id:s.hotbar) if (!id.empty() && reset(id)) id.clear();
+    int specialised=0;
+    for (auto& tree:s.trees) { specialised+=tree.specialized; tree.specialized=false; }
+    (void)specialised;
+    s.treePoints=std::max(0,earnedTreePoints(s.playerLevel)-static_cast<int>(s.trees.size()));
+}
+
 bool validProgression(const SaveGameState& s) {
     if (s.playerLevel<1 || s.playerLevel>kRunMaxLevel || s.treePoints<0 || s.abilityPoints<0 || s.trees.size()>kTalentTrees.size() || s.hotbar.size()>18) return false;
     if (s.playerClass==PlayerClass::Spellblade) return false;
@@ -136,10 +159,11 @@ bool validProgression(const SaveGameState& s) {
     for (std::size_t i=0;i<s.trees.size();++i) {
         const auto& access=s.trees[i]; const auto* d=findTree(access.id);
         if (!d || !trees.insert(access.id).second || (i==0 && !startingTreeAllowed(s.playerClass,d->tree))) return false;
-        if ((i>0 || access.specialized) && s.playerLevel<5) return false;
-        treeSpent+=access.specialized?2:1;
+        if (access.specialized || (i>0 && s.playerLevel<5)) return false;
+        ++treeSpent;
     }
-    if (treeSpent+s.treePoints != earnedTreePoints(s.playerLevel)) return false;
+    // Characters from before format 40 may hold more trees than they would earn now.
+    if (s.treePoints != std::max(0,earnedTreePoints(s.playerLevel)-treeSpent)) return false;
     // Hidden trees are locked to new purchases, but saves that already own
     // one keep it.
     for (const auto& t:s.playerTalents) {
@@ -161,22 +185,16 @@ bool validProgression(const SaveGameState& s) {
         }
         if (t.rank>d->maxRank() || (d->ranks[0].passive && t.cooldown)) return false;
         // Only earlier nodes establish a learned node's requirements (the shared purchase rule).
-        const auto access=std::find_if(s.trees.begin(),s.trees.end(),[&](const auto& a){return a.id==d->treeId;});
         const auto rankOf=[&](const std::string& id) {
             for (const auto& other:s.playerTalents) if (other.id==id) return other.rank;
             return 0;
         };
-        if (!nodeRequirementReason(*d,s.playerLevel,access->specialized,rankOf).empty()) return false;
+        if (!nodeRequirementReason(*d,s.playerLevel,rankOf).empty()) return false;
         abilitySpent+=t.rank;
     }
     if (ascendancyNodes+s.ascendancyPoints!=static_cast<int>(std::bitset<8>(static_cast<unsigned>(s.trialsCleared)).count())) return false;
     if (s.trees.empty() && !s.progressionReviewPending) return false;
     if (!known.count("basic.attack") || !known.count("basic.cleanse") || abilitySpent+s.abilityPoints!=earnedAbilityPoints(s.playerLevel)) return false;
-    for (const auto& tree:s.trees) if (tree.specialized) {
-        int investment=0;
-        for (const auto& t:s.playerTalents) { const auto* d=findTalentDefinition(t.id); if (d && !isImbueVariant(d->id) && d->treeId==tree.id && d->tier<3) investment+=t.rank; }
-        if (investment<4) return false;
-    }
     for (const auto& id:s.hotbar) if (!id.empty()) {
         const auto* d=findTalentDefinition(id);
         if (!known.count(id) || !bound.insert(id).second || (d && d->ranks[0].passive)) return false;
@@ -761,6 +779,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
     if (state.landmark && (!state.map.inBounds(state.landmarkAltar.x,state.landmarkAltar.y) ||
         state.map.isWalkable(state.landmarkAltar.x,state.landmarkAltar.y))) return std::nullopt;
     if (version>=15 && !state.trial && state.currentFloor<kRunFinalFloor && !state.map.isWalkable(state.floorExit.x,state.floorExit.y)) return std::nullopt;
+    if (version<40) migrateForkedTrees(state);
     if (!validProgression(state)) return std::nullopt;
     if (!validItems(state)) return std::nullopt;
     const auto& stats = state.playerStats;

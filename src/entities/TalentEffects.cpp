@@ -45,6 +45,19 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
         damage += weapon->definition()->damage;
     if (attacker.statusEffects().has(StatusEffectType::Concealed)) damage+=kit.passiveValue(PassiveKind::Ambush);
     if (target.statusEffects().has(StatusEffectType::Chill)) damage+=kit.passiveValue(PassiveKind::Frostbite);
+    if (target.statusEffects().has(StatusEffectType::Burn)) damage+=kit.passiveValue(PassiveKind::Kindling);
+    if (const int exploit=kit.passiveValue(PassiveKind::Exploit)) {
+        int ailments=0;
+        for (const auto& e:target.statusEffects().active())
+            switch (e.type) {
+                case StatusEffectType::Stun: case StatusEffectType::Marked: case StatusEffectType::Burn: case StatusEffectType::Chill:
+                case StatusEffectType::Shock: case StatusEffectType::Poison: case StatusEffectType::Bleed: case StatusEffectType::Blinded:
+                case StatusEffectType::Pinned: case StatusEffectType::Sundered: case StatusEffectType::Plague: case StatusEffectType::Doom:
+                case StatusEffectType::Wither: case StatusEffectType::Misfortune: case StatusEffectType::Grappled: ++ailments; break;
+                default: break;
+            }
+        damage+=exploit*ailments;
+    }
     if (kind==WeaponKind::OneHanded && attacker.statusEffects().has(StatusEffectType::Guard) && talent.targeting==TargetingMode::AdjacentEnemy)
         damage+=kit.passiveValue(PassiveKind::Riposte);
     // Ascendancy passives.
@@ -135,7 +148,7 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
         effects.erase(std::remove_if(effects.begin(),effects.end(),[](const auto& e){return releasableAilment(e.type);}),effects.end());
     }
     if (talent.spellstrike && target.stats().hp>0) {
-        const int burn=attacker.talents().passiveValue(PassiveKind::Kindle);
+        const int burn=attacker.talents().passiveValue(PassiveKind::Kindle)+attacker.talents().passiveValue(PassiveKind::Kindling);
         const int shock=attacker.talents().passiveValue(PassiveKind::StaticCharge);
         if (burn) target.statusEffects().apply({StatusEffectType::Burn,2,burn});
         if (shock) target.statusEffects().apply({StatusEffectType::Shock,shock,0});

@@ -57,7 +57,7 @@ int main() {
     original.playerXp = 37;   // deliberately not the default (0)
     original.floorEntrance={1,1}; original.floorExit={3,2};
     original.currentFloor = 6; // deliberately not the default (1)
-    original.trees={{"one_handed",false}}; original.treePoints=0; original.abilityPoints=3; // level 4 earns 9; 6 are spent below
+    original.trees={{"one_handed",false}}; original.treePoints=0; original.abilityPoints=4; // level 4 earns 9; 5 are spent below
     original.playerStats.hp = 17;
     original.playerStats.maxHp = 30;
     original.playerStats.mana = 9;
@@ -72,7 +72,7 @@ int main() {
                                               // value here either
     original.playerStats.speed = 100;
     original.playerTalents={{"basic.attack",0,1},{"one_handed.quick_strike",0,2},
-        {"one_handed.parry",3,2},{"one_handed.riposte",0,2},{"basic.cleanse",0,1}};
+        {"one_handed.parry",3,2},{"one_handed.riposte",0,1},{"basic.cleanse",0,1}};
     original.hotbar={"basic.attack","one_handed.quick_strike","one_handed.parry"};
     original.playerStatusEffects = {
         StatusEffectInstance{StatusEffectType::Poison, 2, 3},
