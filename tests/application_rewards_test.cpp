@@ -1873,6 +1873,100 @@ struct ApplicationRewardsTestAccess {
                 check(!b->statusEffects().has(StatusEffectType::Bleed) && b->stats().hp<=90-24,"Eviscerate: the whole bleed comes due at once, doubled");
                 clearFoes();
             }
+
+            // The fifth batch: Earth.
+            arena(PlayerClass::Mage);
+            {
+                const auto spike=ranked("earth.spike",3);
+                auto* a=foe({14,10}); auto* b=foe({15,10}); app.updateFieldOfView();
+                cast(spike,{14,10});
+                check(a->statusEffects().has(StatusEffectType::Pinned) && b->statusEffects().has(StatusEffectType::Pinned),"Stone Spike at rank 3 pins the foes beside the target too");
+                clearFoes();
+                ranked("earth.aftershock",1);
+                for (std::size_t i=0;i<app.player_.talents().knownTalents().size();++i)
+                    if (app.player_.talents().knownTalents()[i].id=="earth.spike") app.player_.talents().setRank(i,1);
+                auto* c=foe({14,10}); auto* d=foe({15,10}); app.updateFieldOfView();
+                cast(spike,{14,10});
+                check(c->statusEffects().has(StatusEffectType::Pinned) && d->stats().hp==87,"Aftershock: pinning a foe shakes the ground beside it");
+                clearFoes();
+                const auto grasp=ranked("earth.grasp",1);
+                auto* e=foe({14,10}); auto* f=foe({14,11}); app.updateFieldOfView();
+                cast(grasp,{14,10});
+                check(e->statusEffects().has(StatusEffectType::Pinned) && f->statusEffects().has(StatusEffectType::Pinned),"Grasping Earth pins everything around a spot");
+                clearFoes();
+                const auto pillar=ranked("earth.pillar",3);
+                auto* g=foe({12,11}); app.updateFieldOfView();
+                cast(pillar,{12,12});
+                check(app.propIndexAt(12,12)>=0 && g->position().y==10,"Raise Pillar at rank 3 shoves the foes beside it");
+                clearFoes(); app.pillarTurns_.clear(); app.setProps({}); app.map_.setTile(12,12,Tile{TileType::Floor,true,true});
+                const auto boulder=ranked("earth.boulder",1);
+                auto* h=foe({13,10}); auto* k=foe({15,10}); app.updateFieldOfView();
+                cast(boulder,{15,10});
+                check(h->stats().hp<90 && k->stats().hp<90 && k->position().x==16,"Boulder rolls through everything in its line, shoving it");
+                clearFoes();
+            }
+            // Tide.
+            arena(PlayerClass::Mage);
+            {
+                const auto undertow=ranked("tide.undertow",3);
+                auto* a=foe({14,10}); app.updateFieldOfView();
+                cast(undertow,{14,10});
+                check(a->position().x==11 && a->statusEffects().has(StatusEffectType::Pinned),"Undertow drags a foe in; at rank 3 it comes up pinned");
+                clearFoes();
+                ranked("tide.tidecaller",1);
+                app.setSurface(app.player_.position(),SurfaceType::Water,0); app.player_.stats().hp=100;
+                app.tickSurfaces();
+                check(app.player_.stats().hp==102,"Tidecaller: standing in water heals you");
+                app.clearSurfaces();
+                const auto flood=ranked("tide.flood",1);
+                cast(flood,app.player_.position());
+                check(app.surfaceAt({13,10})==SurfaceType::Water && app.surfaceAt({10,10})==SurfaceType::Water,"Flood fills everything around you with water");
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.foul_water")->ranks[0]);
+                auto* b=foe({12,10});
+                app.tickSurfaces();
+                check(b->statusEffects().has(StatusEffectType::Poison),"Foul Water: foes standing in water are poisoned");
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.mire")->ranks[0]);
+                const auto bolt=ranked("tide.bolt",1);
+                app.updateFieldOfView();
+                cast(bolt,{12,10});
+                check(b->statusEffects().has(StatusEffectType::Pinned),"Mire: your hits pin foes standing in water");
+                clearFoes();
+            }
+            // Venom.
+            arena(PlayerClass::Mage);
+            {
+                const auto fester=ranked("venom.fester",3);
+                auto* a=foe({14,10}); auto* b=foe({15,10}); a->statusEffects().apply({StatusEffectType::Poison,4,2}); app.updateFieldOfView();
+                cast(fester,{14,10});
+                check(a->statusEffects().magnitudeOf(StatusEffectType::Poison)==4 && b->statusEffects().has(StatusEffectType::Poison),
+                      "Fester doubles a foe's poison, and at rank 3 spreads it");
+                clearFoes();
+                ranked("venom.virulence",1);
+                const auto bolt=ranked("venom.bolt",1);
+                auto* c=foe({14,10}); app.updateFieldOfView();
+                cast(bolt,{14,10});
+                int turns=0;
+                for (const auto& e:c->statusEffects().active()) if (e.type==StatusEffectType::Poison) turns=e.turnsRemaining;
+                check(turns>=5,"Virulence: your poisons last longer");
+                clearFoes();
+                const auto blight=ranked("venom.blight",1);
+                auto* d=foe({14,10}); app.updateFieldOfView();
+                cast(blight,{14,10});
+                check(d->statusEffects().magnitudeOf(StatusEffectType::Sundered)==3,"Blight: every hit the foe takes deals 3 more");
+                clearFoes();
+            }
+            arena(PlayerClass::Warrior);
+            {
+                app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition("iron_sword"),app.nextItemId_++));
+                app.player_.equip(app.player_.inventory().items().size()-1);
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.envenomed_blades")->ranks[0]);
+                std::size_t strike=0;
+                for (std::size_t i=0;i<app.player_.talents().knownTalents().size();++i) if (app.player_.talents().knownTalents()[i].id=="one_handed.quick_strike") strike=i;
+                auto* a=foe({11,10}); app.updateFieldOfView();
+                cast(strike,{11,10});
+                check(a->statusEffects().has(StatusEffectType::Poison),"Envenomed Blades: your melee abilities poison");
+                clearFoes();
+            }
         }
 
         // Acid and blindness survive a save (a fresh Warrior: the fixture's

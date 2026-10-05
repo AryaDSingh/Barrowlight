@@ -1286,7 +1286,16 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             log("Smoke billows out around you.");
         }
         if (talent.raisePillar) {
-            if (raisePillarAt(cursor)) log("A stone pillar heaves up out of the ground.");
+            if (raisePillarAt(cursor)) {
+                log("A stone pillar heaves up out of the ground.");
+                if (talent.pillarShove)
+                    for (auto& m:monsters_) {
+                        if (m->allied || m->stats().hp<=0) continue;
+                        const auto at=m->position();
+                        const Position away{(at.x>cursor.x)-(at.x<cursor.x),(at.y>cursor.y)-(at.y<cursor.y)};
+                        if ((away.x || away.y) && std::max(std::abs(at.x-cursor.x),std::abs(at.y-cursor.y))<=1) pushActor(*m,away,1,player_);
+                    }
+            }
             else log("The ground heaves, but nothing can rise there.");
             updateFieldOfView();
         }
@@ -1364,6 +1373,33 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 if (player_.talents().passiveValue(PassiveKind::TemplarsEdge) && isMeleeAttack(talent) && talent.id!="basic.attack" &&
                     target->stats().hp>0 && tileLit(target->position()))
                     target->statusEffects().apply({StatusEffectType::Blinded,2,0});
+                // Fester: the poison doubles and lingers (and at rank 3 spreads).
+                if (talent.festerPoison && target->stats().hp>0) {
+                    for (auto& e:target->statusEffects().active()) if (e.type==StatusEffectType::Poison) { e.magnitude*=2; e.turnsRemaining+=2; }
+                    if (talent.festerSpread) if (const int sick=target->statusEffects().magnitudeOf(StatusEffectType::Poison)) {
+                        const auto at=target->position();
+                        for (auto& m:monsters_)
+                            if (m.get()!=target && !m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-at.x),std::abs(m->position().y-at.y))<=1)
+                                m->statusEffects().apply({StatusEffectType::Poison,4,sick});
+                    }
+                }
+                // Mire: a foe standing in water is pinned.
+                if (player_.talents().passiveValue(PassiveKind::Mire) && target->stats().hp>0 &&
+                    (surfaceAt(target->position())==SurfaceType::Water || surfaceAt(target->position())==SurfaceType::Electrified))
+                    target->statusEffects().apply({StatusEffectType::Pinned,2,0});
+                // Envenomed Blades: melee abilities poison.
+                if (const int venom=player_.talents().passiveValue(PassiveKind::EnvenomedBlades);
+                    venom && isMeleeAttack(talent) && talent.id!="basic.attack" && target->stats().hp>0)
+                    target->statusEffects().apply({StatusEffectType::Poison,3,venom});
+                // Aftershock: pinning a foe shakes the ground beside it.
+                if (const int shock=player_.talents().passiveValue(PassiveKind::Aftershock);
+                    shock && talent.onHitEffect && talent.onHitEffect->type==StatusEffectType::Pinned && target->statusEffects().has(StatusEffectType::Pinned)) {
+                    const auto at=target->position();
+                    for (auto& m:monsters_)
+                        if (m.get()!=target && !m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-at.x),std::abs(m->position().y-at.y))<=1) {
+                            m->stats().hp-=shock; flashActor(*m); checkAndHandleDeath(*m);
+                        }
+                }
                 // Eviscerate: the whole bleed comes due at once.
                 if (talent.consumeBleed && target->stats().hp>0) {
                     int owed=0;
@@ -1521,7 +1557,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     if (talent.splashSurface) {
         const Position centre=target.area.empty()?cursor:target.area.front();
         for (const auto& p:target.area) {
-            if (talent.shape==EffectShape::AreaAroundSelf && p.x==player_.position().x && p.y==player_.position().y) continue;
+            if (talent.shape==EffectShape::AreaAroundSelf && talent.splashSurface!=2 && p.x==player_.position().x && p.y==player_.position().y) continue;
             if (!talent.scatterSplash || (p.x+p.y)%2==(centre.x+centre.y)%2) setSurface(p,static_cast<SurfaceType>(talent.splashSurface),talent.splashTurns);
         }
         if (talent.splashPath) for (std::size_t i=1;i<target.path.size();++i)

@@ -124,122 +124,128 @@ inline void applyMastery(TalentDefinition& d) {
     const auto stun = [&](int turns) { m.onHitEffect = StatusEffectInstance{StatusEffectType::Stun, turns, 0}; m.onHitChance = 1.f; };
     const std::string& id = d.id;
     if (id == "one_handed.quick_strike") { mark(); d.mastery = "Marks the target: its next direct hit taken deals +25%."; }
-    else if (id == "one_handed.parry") { longer(); d.mastery = "Guard lasts one enemy response longer."; }
-    else if (id == "one_handed.execution") { m.conditionalHpFraction = .4f; d.mastery = "Double damage from 40% HP instead of 30%."; }
-    else if (id == "two_handed.cleave") { m.pushDistance = 1; d.mastery = "Pushes surviving targets one tile away."; }
-    else if (id == "two_handed.fury") { m.hpCost = 0; d.mastery = "Costs no life."; }
-    else if (id == "two_handed.whirlwind") { m.pushDistance = 2; d.mastery = "Pushes surviving targets two tiles away."; }
-    else if (id == "two_handed.leap_slam") { m.slamStun = true; d.mastery = "Stuns what the landing strikes."; }
-    else if (id == "two_handed.blood_frenzy") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 40; d.mastery = "Heals for 40% of the damage dealt."; }
-    else if (id == "shield.bash") { m.pushDistance = 2; d.mastery = "Pushes two tiles."; }
-    else if (id == "shield.guard") { longer(); d.mastery = "Guard lasts one enemy response longer."; }
-    else if (id == "shield.rush") { stun(1); d.mastery = "The impact stuns for one enemy turn."; }
-    else if (id == "shield.bastion") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 12; d.mastery = "Guard 12."; }
-    else if (id == "shield.shockwave") { m.areaRadius = 2; d.mastery = "Reaches enemies up to two tiles away."; }
-    else if (id == "bow.quick_shot") { mark(); d.mastery = "Marks the target: its next direct hit taken deals +25%."; }
-    else if (id == "bow.volley") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Pinned, 2, 0}; m.markOnHit = true; d.mastery = "Also pins what it hits for a turn."; }
-    else if (id == "bow.point_blank") { m.pushDistance = 1; d.mastery = "Knocks the foe back a tile too."; }
-    else if (id == "bow.rain") { m.lingerTurns = 4; d.mastery = "The arrows fall two turns longer."; }
-    else if (id == "bow.piercing_shot") { m.bonusCritChance += .2f; d.mastery = "A further +20% critical chance."; }
-    else if (id == "stealth.conceal") { longer(); d.mastery = "Hide for four responses."; }
-    else if (id == "stealth.strike") { m.retreatDistance = 2; d.mastery = "Slip up to two tiles away after striking."; }
-    else if (id == "stealth.vanish_strike") { longer(); d.mastery = "Stay concealed for three responses."; }
-    else if (id == "stealth.feign") { m.restoreHpPercent = 10; d.mastery = "You also recover 10% of your life."; }
-    else if (id == "stealth.assassinate") { m.conditionalHpFraction = .6f; d.mastery = "Triple damage below 60% life instead of half."; }
-    else if (id == "acrobatics.tumble") { dodge(15); d.mastery = "+15% dodge for one enemy response after tumbling."; }
-    else if (id == "acrobatics.vault_kick") { stun(1); d.mastery = "The kick stuns for one enemy turn."; }
-    else if (id == "acrobatics.leap") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 30; d.mastery = "+30% dodge instead of +20%."; }
-    else if (id == "fire.ember_bolt") { if (m.onHitEffect) m.onHitEffect->magnitude = 2; d.mastery = "Burn deals 2 damage per turn."; }
-    else if (id == "fire.fireball") { m.splashSurface = 3; m.splashTurns = 4; m.scatterSplash = true; d.mastery = "Leaves fire burning on the ground where it bursts."; }
-    else if (id == "fire.flame_wall") { m.splashTurns = 6; if (m.onHitEffect) m.onHitEffect->magnitude = 2; d.mastery = "Burns for six turns, and hotter: 2 a turn."; }
-    else if (id == "fire.firestorm") { m.areaRadius = 3; d.mastery = "The storm covers three tiles."; }
-    else if (id == "one_handed.pommel") { m.markOnHit = true; d.mastery = "Also marks the target: its next direct hit taken deals +25%."; }
-    else if (id == "one_handed.blade_dance") { m.guardPerHit = 2; d.mastery = "Each hit gives Guard 2."; }
-    else if (id == "arcane.repulse") { m.stunOnImpact = true; d.mastery = "Foes that slam into something are stunned for a turn."; }
-    else if (id == "arcane.torrent") { m.echoBeam = true; d.mastery = "The beam fires again down the same line at the start of your next turn."; }
-    else if (id == "fire.meteor") { m.statusBonusPercent = 100; d.mastery = "Consuming Burn doubles the hit (+100%)."; }
-    else if (id == "ice.shard") { m.splashSurface = 4; m.splashTurns = 4; d.mastery = "Freezes the ground under the target."; }
-    else if (id == "ice.nova") { m.splashSurface = 4; m.splashTurns = 4; d.mastery = "Leaves a ring of ice around you."; }
-    else if (id == "ice.rime_field") { m.areaRadius = 2; d.mastery = "The field reaches two tiles out."; }
-    else if (id == "ice.blizzard") { m.lingerTurns = 4; d.mastery = "The storm lasts two turns longer."; }
-    else if (id == "ice.shatter") { m.statusBonusPercent = 100; d.mastery = "Consuming Chill doubles the hit (+100%)."; }
-    else if (id == "lightning.bolt") { m.pierceBehind = true; d.mastery = "Also strikes whoever stands right behind the target."; }
-    else if (id == "lightning.chain") { m.chainJumps = 2; d.mastery = "Jumps twice."; }
-    else if (id == "lightning.thunderclap") { m.pushDistance = 2; d.mastery = "Shoves them two tiles."; }
-    else if (id == "lightning.tempest") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Shock, 3, 0}; m.onHitChance = 1.f; d.mastery = "Shocks everything it strikes."; }
-    else if (id == "lightning.discharge") { m.statusBonusPercent = 100; d.mastery = "Consuming Shock doubles the hit (+100%)."; }
-    else if (id == "arcane.bolt") { m.manaCost = std::max(1, m.manaCost / 2); d.mastery = "Costs half as much mana."; }
-    else if (id == "arcane.blink") { m.vault = true; d.mastery = "Passes through creatures in the way."; }
-    else if (id == "arcane.mind_shatter") { stun(2); d.mastery = "Stuns for two enemy turns (bosses still resist repeats)."; }
-    else if (id == "cloth.gather_mana") { m.restoreHpPercent = 10; d.mastery = "Also restores 10% of maximum life."; }
-    else if (id == "cloth.pulse") { m.pushDistance = 3; d.mastery = "Pushes survivors three tiles."; }
-    else if (id == "light_armour.sidestep") { dodge(15); d.mastery = "+15% dodge for one enemy response after the step."; }
-    else if (id == "light_armour.parting_strike") { m.retreatDistance = 3; d.mastery = "Retreat three tiles instead of two."; }
-    else if (id == "heavy_armour.shoulder_check") { stun(1); d.mastery = "The check stuns for one enemy turn."; }
-    else if (id == "heavy_armour.second_wind") { m.cleanse = true; d.mastery = "Also removes Poison, Burn, Chill, Marked and curses."; }
-    else if (id == "brawling.tackle") { m.pushDistance = 2; d.mastery = "Knocks the target two tiles."; }
-    else if (id == "brawling.grapple") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Guard, 2, 2}; d.mastery = "Bracing against your catch grants Guard 2 for two enemy responses."; }
-    else if (id == "brawling.hurl") { m.domino = true; d.mastery = "Domino: a hurled enemy knocks whatever it hits one tile further."; }
-    else if (id == "whip.lash") { m.pullDistance = 2; d.mastery = "Pulls two tiles."; }
-    else if (id == "whip.trip") { stun(2); d.mastery = "The fall stuns for two enemy turns (bosses still resist repeats)."; }
-    else if (id == "whip.snare") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 4; d.mastery = "Holds the snared enemy for four turns."; }
-    else if (id == "shadow.bolt") { m.blindInDark = true; d.mastery = "A target standing in darkness is blinded too."; }
-    else if (id == "shadow.step") { m.arrivalBlind = true; d.mastery = "The foe nearest where you arrive is blinded."; }
-    else if (id == "shadow.devour") { m.drainPercent = 100; d.mastery = "Drains all the damage it deals."; }
-    else if (id == "shadow.snuff") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Concealed, 2, 2}; d.mastery = "You vanish into the new dark: Concealed for two responses."; }
-    else if (id == "shadow.veil") { m.areaRadius = 2; d.mastery = "Blinds everything within two tiles."; }
-    else if (id == "radiance.sear") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Burn, 3, 2}; m.onHitChance = 1.f; d.mastery = "Sets the target burning (2 per turn)."; }
-    else if (id == "radiance.flare") { m.areaRadius = 2; d.mastery = "The flare covers two tiles."; }
-    else if (id == "radiance.holy_light") { m.cleanse = true; d.mastery = "Also removes Poison, Burn, Chill, Marked and curses."; }
-    else if (id == "radiance.judgement") { m.areaRadius = 1; d.mastery = "The pillar strikes everything beside the target too."; }
-    else if (id == "radiance.dawn") { m.areaRadius = 4; d.mastery = "Reaches enemies up to four tiles away."; }
-    else if (id == "alchemy.oil") { m.areaRadius = 2; d.mastery = "The flask splashes two tiles."; }
-    else if (id == "alchemy.firebomb") { if (m.onHitEffect) m.onHitEffect->magnitude = 2; d.mastery = "Burn deals 2 damage per turn."; }
-    else if (id == "alchemy.acid") { m.areaRadius = 2; d.mastery = "The flask splashes two tiles."; }
-    else if (id == "spear.thrust") { mark(); d.mastery = "Marks the target: its next direct hit taken deals +25%."; }
-    else if (id == "spear.brace") { longer(); d.mastery = "Braced for one enemy response longer."; }
-    else if (id == "spear.vault") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
-    else if (id == "daggers.lacerate") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Bleed deals 3 damage per turn."; }
-    else if (id == "daggers.backstab") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Concealed, 1, 2}; d.mastery = "You melt back into the shadows: Concealed for one response."; }
-    else if (id == "daggers.whirl") { if (m.onHitEffect) m.onHitEffect->turnsRemaining += 2; d.mastery = "Bleed lasts two turns longer."; }
-    else if (id == "daggers.throw") { m.pierceBehind = true; d.mastery = "Also hits whoever stands right behind the target."; }
-    else if (id == "daggers.eviscerate") { m.statusBonusPercent = 1; d.mastery = "Triple the bleed, not double."; }
-    else if (id == "mace.crush") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 6; d.mastery = "Sundered for six enemy turns."; }
-    else if (id == "mace.stagger") { m.stagger = 3; d.mastery = "Delays a warned attack by three actions."; }
-    else if (id == "mace.shatter") { stun(1); d.mastery = "The blow also stuns for one enemy turn."; }
-    else if (id == "crossbow.heavy") { m.pushDistance = 2; d.mastery = "Knocks the target back two tiles."; }
-    else if (id == "crossbow.pierce") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
-    else if (id == "earth.spike") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 3; d.mastery = "Pinned for three enemy turns."; }
-    else if (id == "earth.pillar") { m.cooldownTurns = std::max(1, m.cooldownTurns - 3); d.mastery = "Cooldown three turns shorter."; }
-    else if (id == "earth.quake") { m.areaRadius = 3; d.mastery = "Reaches enemies up to three tiles away."; }
-    else if (id == "tide.bolt") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Chill, 2, 20}; m.onHitChance = 1.f; d.mastery = "Also chills the target."; }
-    else if (id == "tide.wave") { m.pushDistance = 3; d.mastery = "Shoves enemies three tiles."; }
-    else if (id == "tide.maelstrom") { m.areaRadius = 3; d.mastery = "Covers three tiles."; }
-    else if (id == "hexes.misfortune") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 40; d.mastery = "Its attacks miss 40% more often."; }
-    else if (id == "hexes.link") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 100; d.mastery = "All of the damage jumps, not half."; }
-    else if (id == "hexes.puppet") { if (m.selfBuffEffect) m.selfBuffEffect->turnsRemaining = 5; d.mastery = "The puppet serves for five turns."; }
-    else if (id == "venom.bolt") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Poison deals 3 damage per turn."; }
-    else if (id == "venom.miasma") { m.areaRadius = 2; d.mastery = "The cloud spreads two tiles."; }
-    else if (id == "venom.plague") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 7; d.mastery = "The plague lasts seven turns."; }
-    else if (id == "traps.snare" || id == "traps.tripwire") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
-    else if (id == "traps.rigged") { m.areaRadius = 2; d.mastery = "The charge blasts two tiles."; }
-    else if (id == "skirmish.blitz") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
-    else if (id == "lamplighter.swing") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Burn deals 3 damage per turn."; }
-    else if (id == "lamplighter.hurl") { m.areaRadius = 2; d.mastery = "The torch's fire spreads two tiles."; }
-    else if (id == "lamplighter.bonfire") { m.areaRadius = 3; d.mastery = "Reaches enemies up to three tiles away."; }
-    else if (id == "stormlance.thrust") { m.pierceBehind = true; d.mastery = "The charge runs on into the foe behind."; }
-    else if (id == "stormlance.javelin") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
-    else if (id == "stormlance.vault") { m.landingBurst = 10; d.mastery = "The landing burst hits for 10."; }
-    else if (id == "hexblade.edge") { if (m.onHitEffect) m.onHitEffect->magnitude = 40; d.mastery = "Misfortune of 40%."; }
-    else if (id == "hexblade.rend") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
-    else if (id == "hexblade.doom") { if (m.onHitEffect) m.onHitEffect->magnitude = 25; d.mastery = "Doom erupts for 25."; }
-    else if (id == "saboteur.caltrops") { m.areaRadius = 2; d.mastery = "Scatters caltrops two tiles wide."; }
-    else if (id == "saboteur.smoke") { longer(); longer(); d.mastery = "Hidden for two responses longer."; }
-    else if (id == "saboteur.booby") { m.cooldownTurns = std::max(1, m.cooldownTurns - 3); d.mastery = "Cooldown three turns shorter."; }
-    else if (id == "stonefist.fist") { m.pushDistance = 2; d.mastery = "Knocks the target two tiles."; }
-    else if (id == "stonefist.slam") { stun(1); d.mastery = "The slam also stuns for one enemy turn."; }
-    else if (id == "stonefist.landslide") { ++m.chargeDistance; d.mastery = "Charges one tile further."; }
-    else if (id == "crossbow.pin") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 5; d.mastery = "Pinned for five enemy turns."; }
+    if (id == "one_handed.parry") { longer(); d.mastery = "Guard lasts one enemy response longer."; }
+    if (id == "one_handed.execution") { m.conditionalHpFraction = .4f; d.mastery = "Double damage from 40% HP instead of 30%."; }
+    if (id == "two_handed.cleave") { m.pushDistance = 1; d.mastery = "Pushes surviving targets one tile away."; }
+    if (id == "two_handed.fury") { m.hpCost = 0; d.mastery = "Costs no life."; }
+    if (id == "two_handed.whirlwind") { m.pushDistance = 2; d.mastery = "Pushes surviving targets two tiles away."; }
+    if (id == "two_handed.leap_slam") { m.slamStun = true; d.mastery = "Stuns what the landing strikes."; }
+    if (id == "two_handed.blood_frenzy") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 40; d.mastery = "Heals for 40% of the damage dealt."; }
+    if (id == "shield.bash") { m.pushDistance = 2; d.mastery = "Pushes two tiles."; }
+    if (id == "shield.guard") { longer(); d.mastery = "Guard lasts one enemy response longer."; }
+    if (id == "shield.rush") { stun(1); d.mastery = "The impact stuns for one enemy turn."; }
+    if (id == "shield.bastion") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 12; d.mastery = "Guard 12."; }
+    if (id == "shield.shockwave") { m.areaRadius = 2; d.mastery = "Reaches enemies up to two tiles away."; }
+    if (id == "bow.quick_shot") { mark(); d.mastery = "Marks the target: its next direct hit taken deals +25%."; }
+    if (id == "bow.volley") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Pinned, 2, 0}; m.markOnHit = true; d.mastery = "Also pins what it hits for a turn."; }
+    if (id == "bow.point_blank") { m.pushDistance = 1; d.mastery = "Knocks the foe back a tile too."; }
+    if (id == "bow.rain") { m.lingerTurns = 4; d.mastery = "The arrows fall two turns longer."; }
+    if (id == "bow.piercing_shot") { m.bonusCritChance += .2f; d.mastery = "A further +20% critical chance."; }
+    if (id == "stealth.conceal") { longer(); d.mastery = "Hide for four responses."; }
+    if (id == "stealth.strike") { m.retreatDistance = 2; d.mastery = "Slip up to two tiles away after striking."; }
+    if (id == "stealth.vanish_strike") { longer(); d.mastery = "Stay concealed for three responses."; }
+    if (id == "stealth.feign") { m.restoreHpPercent = 10; d.mastery = "You also recover 10% of your life."; }
+    if (id == "stealth.assassinate") { m.conditionalHpFraction = .6f; d.mastery = "Triple damage below 60% life instead of half."; }
+    if (id == "acrobatics.tumble") { dodge(15); d.mastery = "+15% dodge for one enemy response after tumbling."; }
+    if (id == "acrobatics.vault_kick") { stun(1); d.mastery = "The kick stuns for one enemy turn."; }
+    if (id == "acrobatics.leap") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 30; d.mastery = "+30% dodge instead of +20%."; }
+    if (id == "fire.ember_bolt") { if (m.onHitEffect) m.onHitEffect->magnitude = 2; d.mastery = "Burn deals 2 damage per turn."; }
+    if (id == "fire.fireball") { m.splashSurface = 3; m.splashTurns = 4; m.scatterSplash = true; d.mastery = "Leaves fire burning on the ground where it bursts."; }
+    if (id == "fire.flame_wall") { m.splashTurns = 6; if (m.onHitEffect) m.onHitEffect->magnitude = 2; d.mastery = "Burns for six turns, and hotter: 2 a turn."; }
+    if (id == "fire.firestorm") { m.areaRadius = 3; d.mastery = "The storm covers three tiles."; }
+    if (id == "one_handed.pommel") { m.markOnHit = true; d.mastery = "Also marks the target: its next direct hit taken deals +25%."; }
+    if (id == "one_handed.blade_dance") { m.guardPerHit = 2; d.mastery = "Each hit gives Guard 2."; }
+    if (id == "arcane.repulse") { m.stunOnImpact = true; d.mastery = "Foes that slam into something are stunned for a turn."; }
+    if (id == "arcane.torrent") { m.echoBeam = true; d.mastery = "The beam fires again down the same line at the start of your next turn."; }
+    if (id == "fire.meteor") { m.statusBonusPercent = 100; d.mastery = "Consuming Burn doubles the hit (+100%)."; }
+    if (id == "ice.shard") { m.splashSurface = 4; m.splashTurns = 4; d.mastery = "Freezes the ground under the target."; }
+    if (id == "ice.nova") { m.splashSurface = 4; m.splashTurns = 4; d.mastery = "Leaves a ring of ice around you."; }
+    if (id == "ice.rime_field") { m.areaRadius = 2; d.mastery = "The field reaches two tiles out."; }
+    if (id == "ice.blizzard") { m.lingerTurns = 4; d.mastery = "The storm lasts two turns longer."; }
+    if (id == "ice.shatter") { m.statusBonusPercent = 100; d.mastery = "Consuming Chill doubles the hit (+100%)."; }
+    if (id == "lightning.bolt") { m.pierceBehind = true; d.mastery = "Also strikes whoever stands right behind the target."; }
+    if (id == "lightning.chain") { m.chainJumps = 2; d.mastery = "Jumps twice."; }
+    if (id == "lightning.thunderclap") { m.pushDistance = 2; d.mastery = "Shoves them two tiles."; }
+    if (id == "lightning.tempest") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Shock, 3, 0}; m.onHitChance = 1.f; d.mastery = "Shocks everything it strikes."; }
+    if (id == "lightning.discharge") { m.statusBonusPercent = 100; d.mastery = "Consuming Shock doubles the hit (+100%)."; }
+    if (id == "arcane.bolt") { m.manaCost = std::max(1, m.manaCost / 2); d.mastery = "Costs half as much mana."; }
+    if (id == "arcane.blink") { m.vault = true; d.mastery = "Passes through creatures in the way."; }
+    if (id == "arcane.mind_shatter") { stun(2); d.mastery = "Stuns for two enemy turns (bosses still resist repeats)."; }
+    if (id == "cloth.gather_mana") { m.restoreHpPercent = 10; d.mastery = "Also restores 10% of maximum life."; }
+    if (id == "cloth.pulse") { m.pushDistance = 3; d.mastery = "Pushes survivors three tiles."; }
+    if (id == "light_armour.sidestep") { dodge(15); d.mastery = "+15% dodge for one enemy response after the step."; }
+    if (id == "light_armour.parting_strike") { m.retreatDistance = 3; d.mastery = "Retreat three tiles instead of two."; }
+    if (id == "heavy_armour.shoulder_check") { stun(1); d.mastery = "The check stuns for one enemy turn."; }
+    if (id == "heavy_armour.second_wind") { m.cleanse = true; d.mastery = "Also removes Poison, Burn, Chill, Marked and curses."; }
+    if (id == "brawling.tackle") { m.pushDistance = 2; d.mastery = "Knocks the target two tiles."; }
+    if (id == "brawling.grapple") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Guard, 2, 2}; d.mastery = "Bracing against your catch grants Guard 2 for two enemy responses."; }
+    if (id == "brawling.hurl") { m.domino = true; d.mastery = "Domino: a hurled enemy knocks whatever it hits one tile further."; }
+    if (id == "whip.lash") { m.pullDistance = 2; d.mastery = "Pulls two tiles."; }
+    if (id == "whip.trip") { stun(2); d.mastery = "The fall stuns for two enemy turns (bosses still resist repeats)."; }
+    if (id == "whip.snare") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 4; d.mastery = "Holds the snared enemy for four turns."; }
+    if (id == "shadow.bolt") { m.blindInDark = true; d.mastery = "A target standing in darkness is blinded too."; }
+    if (id == "shadow.step") { m.arrivalBlind = true; d.mastery = "The foe nearest where you arrive is blinded."; }
+    if (id == "shadow.devour") { m.drainPercent = 100; d.mastery = "Drains all the damage it deals."; }
+    if (id == "shadow.snuff") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Concealed, 2, 2}; d.mastery = "You vanish into the new dark: Concealed for two responses."; }
+    if (id == "shadow.veil") { m.areaRadius = 2; d.mastery = "Blinds everything within two tiles."; }
+    if (id == "radiance.sear") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Burn, 3, 2}; m.onHitChance = 1.f; d.mastery = "Sets the target burning (2 per turn)."; }
+    if (id == "radiance.flare") { m.areaRadius = 2; d.mastery = "The flare covers two tiles."; }
+    if (id == "radiance.holy_light") { m.cleanse = true; d.mastery = "Also removes Poison, Burn, Chill, Marked and curses."; }
+    if (id == "radiance.judgement") { m.areaRadius = 1; d.mastery = "The pillar strikes everything beside the target too."; }
+    if (id == "radiance.dawn") { m.areaRadius = 4; d.mastery = "Reaches enemies up to four tiles away."; }
+    if (id == "alchemy.oil") { m.areaRadius = 2; d.mastery = "The flask splashes two tiles."; }
+    if (id == "alchemy.firebomb") { if (m.onHitEffect) m.onHitEffect->magnitude = 2; d.mastery = "Burn deals 2 damage per turn."; }
+    if (id == "alchemy.acid") { m.areaRadius = 2; d.mastery = "The flask splashes two tiles."; }
+    if (id == "spear.thrust") { mark(); d.mastery = "Marks the target: its next direct hit taken deals +25%."; }
+    if (id == "spear.brace") { longer(); d.mastery = "Braced for one enemy response longer."; }
+    if (id == "spear.vault") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    if (id == "daggers.lacerate") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Bleed deals 3 damage per turn."; }
+    if (id == "daggers.backstab") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Concealed, 1, 2}; d.mastery = "You melt back into the shadows: Concealed for one response."; }
+    if (id == "daggers.whirl") { if (m.onHitEffect) m.onHitEffect->turnsRemaining += 2; d.mastery = "Bleed lasts two turns longer."; }
+    if (id == "daggers.throw") { m.pierceBehind = true; d.mastery = "Also hits whoever stands right behind the target."; }
+    if (id == "daggers.eviscerate") { m.statusBonusPercent = 1; d.mastery = "Triple the bleed, not double."; }
+    if (id == "mace.crush") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 6; d.mastery = "Sundered for six enemy turns."; }
+    if (id == "mace.stagger") { m.stagger = 3; d.mastery = "Delays a warned attack by three actions."; }
+    if (id == "mace.shatter") { stun(1); d.mastery = "The blow also stuns for one enemy turn."; }
+    if (id == "crossbow.heavy") { m.pushDistance = 2; d.mastery = "Knocks the target back two tiles."; }
+    if (id == "crossbow.pierce") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    if (id == "earth.spike") { m.areaRadius = 1; m.shape = EffectShape::AreaAroundTarget; d.mastery = "Also strikes and pins the foes beside the target."; }
+    if (id == "earth.pillar") { m.pillarShove = true; d.mastery = "The pillar bursts up and shoves the foes beside it a tile."; }
+    if (id == "earth.grasp") { m.areaRadius = 2; d.mastery = "Seizes everything within two tiles."; }
+    if (id == "earth.boulder") { stun(1); d.mastery = "Stuns what it hits."; }
+    if (id == "earth.quake") { m.areaRadius = 3; d.mastery = "Reaches enemies up to three tiles away."; }
+    if (id == "tide.bolt") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Chill, 2, 20}; m.onHitChance = 1.f; d.mastery = "Also chills the target."; }
+    if (id == "tide.wave") { m.pushDistance = 3; d.mastery = "Shoves enemies three tiles."; }
+    if (id == "tide.maelstrom") { m.areaRadius = 3; d.mastery = "Covers three tiles."; }
+    if (id == "tide.undertow") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Pinned, 2, 0}; m.onHitChance = 1.f; d.mastery = "It comes up gasping: pinned for a turn."; }
+    if (id == "tide.flood") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Chill, 3, 20}; m.onHitChance = 1.f; d.mastery = "Chills everything it floods."; }
+    if (id == "hexes.misfortune") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 40; d.mastery = "Its attacks miss 40% more often."; }
+    if (id == "hexes.link") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 100; d.mastery = "All of the damage jumps, not half."; }
+    if (id == "hexes.puppet") { if (m.selfBuffEffect) m.selfBuffEffect->turnsRemaining = 5; d.mastery = "The puppet serves for five turns."; }
+    if (id == "venom.bolt") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Poison deals 3 damage per turn."; }
+    if (id == "venom.miasma") { m.areaRadius = 2; d.mastery = "The cloud spreads two tiles."; }
+    if (id == "venom.plague") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 7; d.mastery = "The plague lasts seven turns."; }
+    if (id == "venom.fester") { m.festerSpread = true; d.mastery = "The festering poison spreads to the foes beside it."; }
+    if (id == "venom.blight") { if (m.onHitEffect) m.onHitEffect->magnitude = 5; d.mastery = "Every hit it takes deals 5 more."; }
+    if (id == "traps.snare" || id == "traps.tripwire") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    if (id == "traps.rigged") { m.areaRadius = 2; d.mastery = "The charge blasts two tiles."; }
+    if (id == "skirmish.blitz") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    if (id == "lamplighter.swing") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Burn deals 3 damage per turn."; }
+    if (id == "lamplighter.hurl") { m.areaRadius = 2; d.mastery = "The torch's fire spreads two tiles."; }
+    if (id == "lamplighter.bonfire") { m.areaRadius = 3; d.mastery = "Reaches enemies up to three tiles away."; }
+    if (id == "stormlance.thrust") { m.pierceBehind = true; d.mastery = "The charge runs on into the foe behind."; }
+    if (id == "stormlance.javelin") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    if (id == "stormlance.vault") { m.landingBurst = 10; d.mastery = "The landing burst hits for 10."; }
+    if (id == "hexblade.edge") { if (m.onHitEffect) m.onHitEffect->magnitude = 40; d.mastery = "Misfortune of 40%."; }
+    if (id == "hexblade.rend") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    if (id == "hexblade.doom") { if (m.onHitEffect) m.onHitEffect->magnitude = 25; d.mastery = "Doom erupts for 25."; }
+    if (id == "saboteur.caltrops") { m.areaRadius = 2; d.mastery = "Scatters caltrops two tiles wide."; }
+    if (id == "saboteur.smoke") { longer(); longer(); d.mastery = "Hidden for two responses longer."; }
+    if (id == "saboteur.booby") { m.cooldownTurns = std::max(1, m.cooldownTurns - 3); d.mastery = "Cooldown three turns shorter."; }
+    if (id == "stonefist.fist") { m.pushDistance = 2; d.mastery = "Knocks the target two tiles."; }
+    if (id == "stonefist.slam") { stun(1); d.mastery = "The slam also stuns for one enemy turn."; }
+    if (id == "stonefist.landslide") { ++m.chargeDistance; d.mastery = "Charges one tile further."; }
+    if (id == "crossbow.pin") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 5; d.mastery = "Pinned for five enemy turns."; }
 }
 
 // Explicit rank profiles share existing targeting/effect data. No runtime content loader.
@@ -695,20 +701,44 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         // Earth (INT spells): shape the ground.
         t=attack("Stone Spike","A spike of rock erupts under a visible foe and pins it in place for two enemy turns.",6,2,3,true);
         t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Pinned,2,0}; add(26,"earth.spike",0,t);
+        shape("earth.spike",3,"",{});
         t=Talent{}; t.name="Raise Pillar"; t.description="A stone pillar rises on empty visible ground for 12 turns: block a corridor, break a line of fire, or shove foes into it.";
         t.targeting=TargetingMode::RangedEnemyInSight; t.effectKind=TalentEffectKind::SelfBuff; t.raisePillar=true; t.manaCost=3; t.cooldownTurns=10;
         add(26,"earth.pillar",1,t);
-        add(26,"earth.stoneskin",2,passive("Stoneskin","Direct hits on you deal 1/1/2/2/3 less damage.",PassiveKind::Stoneskin,1));
+        shape("earth.pillar",3,"path",{"earth.spike"});
+        t=attack("Grasping Earth","The ground seizes everything within a tile of a spot: pinned for two enemy turns.",3,4,7,true,1);
+        t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Pinned,2,0}; add(26,"earth.grasp",1,t);
+        shape("earth.grasp",3,"path",{"earth.spike"});
+        add(26,"earth.stoneskin",2,passive("Stoneskin","Direct hits on you deal 2 less damage.",PassiveKind::Stoneskin,2));
+        shape("earth.stoneskin",1,"",{"earth.pillar"});
+        add(26,"earth.aftershock",2,passive("Aftershock","Whenever you pin a foe, the foes beside it take 3.",PassiveKind::Aftershock,3));
+        shape("earth.aftershock",1,"",{"earth.grasp"});
         t=attack("Quake","The ground bucks: everything within two tiles is struck and thrown back a tile.",7,6,8,false,2);
         t.pushDistance=1; add(26,"earth.quake",3,t);
+        shape("earth.quake",3,"capstone",{});
+        t=attack("Boulder","A boulder rolls down a line, striking and shoving everything in its path.",8,7,9,true);
+        t.pierceAll=true; t.pushDistance=1; add(26,"earth.boulder",3,t);
+        shape("earth.boulder",3,"capstone",{});
         // Tide (INT spells): water as a weapon.
         t=attack("Water Bolt","A bolt of water that floods the tile it strikes.",4,2,1,true);
         t.splashSurface=2; add(27,"tide.bolt",0,t);
+        shape("tide.bolt",3,"",{});
         t=attack("Wave","A wave rolls down a line, shoving every enemy in it back two tiles and leaving water behind.",4,4,6,true);
         t.pierceAll=true; t.pushDistance=2; t.splashSurface=2; t.splashPath=true; add(27,"tide.wave",1,t);
-        add(27,"tide.riptide",2,passive("Riptide","Your spells deal +2/3/4/5/6 damage to enemies standing in water or blood.",PassiveKind::Riptide,2));
+        shape("tide.wave",3,"path",{"tide.bolt"});
+        t=attack("Undertow","The water drags a foe in a straight line up to three tiles toward you.",4,3,6);
+        t.reach=4; t.pullDistance=3; add(27,"tide.undertow",1,t);
+        shape("tide.undertow",3,"path",{"tide.bolt"});
+        add(27,"tide.riptide",2,passive("Riptide","Your spells deal +4 damage to enemies standing in water or blood.",PassiveKind::Riptide,4));
+        shape("tide.riptide",1,"",{"tide.wave"});
+        add(27,"tide.tidecaller",2,passive("Tidecaller","Standing in water heals you 2 each turn.",PassiveKind::Tidecaller,2));
+        shape("tide.tidecaller",1,"",{"tide.undertow"});
         t=attack("Maelstrom","Floods everything within two tiles of a spot, chills it, and drags every enemy there a tile toward the centre.",5,7,9,true,2);
         t.projectile=false; t.splashSurface=2; t.vortex=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,3,30}; add(27,"tide.maelstrom",3,t);
+        shape("tide.maelstrom",3,"capstone",{});
+        t=attack("Flood","Water floods out from you over everything within three tiles.",3,8,10,false,3);
+        t.splashSurface=2; add(27,"tide.flood",3,t);
+        shape("tide.flood",3,"capstone",{});
         // Hexes (INT spells): curses.
         t=buff("Misfortune","Curse a visible foe for four enemy turns: its attacks miss 25% more often.",StatusEffectType::Misfortune,4,25,2,6);
         t.targeting=TargetingMode::RangedEnemyInSight; add(28,"hexes.misfortune",0,t);
@@ -720,11 +750,23 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         // Venom (INT spells): poison and plague.
         t=attack("Venom Bolt","A bolt of venom: poisons for 2 per turn over four enemy turns.",3,2,1,true);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Poison,4,2}; add(29,"venom.bolt",0,t);
+        shape("venom.bolt",3,"",{});
         t=attack("Miasma","A cloud of poison gas fills a tile and its neighbours for six turns. Fire makes it explode.",2,4,6,true,1);
         t.projectile=false; t.splashSurface=8; t.splashTurns=6; add(29,"venom.miasma",1,t);
-        add(29,"venom.ruin",2,passive("Toxic Ruin","Your attacks deal +2/3/4/5/6 damage to poisoned or plagued enemies.",PassiveKind::ToxicRuin,2));
+        shape("venom.miasma",3,"path",{"venom.bolt"});
+        t=attack("Fester","Make a poisoned foe's poison fester: it doubles in strength and lasts two turns longer.",3,3,6,true);
+        t.projectile=false; t.festerPoison=true; add(29,"venom.fester",1,t);
+        shape("venom.fester",3,"path",{"venom.bolt"});
+        add(29,"venom.ruin",2,passive("Toxic Ruin","Your attacks deal +4 damage to poisoned or plagued enemies.",PassiveKind::ToxicRuin,4));
+        shape("venom.ruin",1,"",{"venom.miasma"});
+        add(29,"venom.virulence",2,passive("Virulence","Poison you cause lasts two turns longer.",PassiveKind::Virulence,2));
+        shape("venom.virulence",1,"",{"venom.fester"});
         t=attack("Plague","Infect a visible foe: 3 damage a turn for five enemy turns, and when it dies the plague spreads to everything beside it.",4,6,9,true);
         t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Plague,5,3}; add(29,"venom.plague",3,t);
+        shape("venom.plague",3,"capstone",{});
+        t=attack("Blight","Rot takes a foe's flesh: for five enemy turns, every hit it takes deals 3 more.",5,6,9,true);
+        t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Sundered,5,3}; add(29,"venom.blight",3,t);
+        shape("venom.blight",3,"capstone",{});
         // Traps (DEX): set where your foes will walk. Up to eight at once; each lasts 40 turns.
         const auto trap=[&](const char* name,const char* desc,int kind,int mana,int cd,int radius=0,bool spread=false) {
             Talent tr; tr.name=name; tr.description=desc; tr.targeting=TargetingMode::RangedEnemyInSight; tr.effectKind=TalentEffectKind::SelfBuff;
@@ -858,6 +900,9 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="bow") d.affinity=Affinity::Hunt;
             else if (d.treeId=="stealth") d.affinity=Affinity::Guile;
             else if (d.treeId=="daggers") d.affinity=Affinity::Steel;
+            else if (d.treeId=="earth") d.affinity=Affinity::Earth;
+            else if (d.treeId=="tide") d.affinity=Affinity::Water;
+            else if (d.treeId=="venom") d.affinity=Affinity::Rot;
             else if (d.treeId=="one_handed") d.affinity=(d.id=="one_handed.parry" || d.id=="one_handed.riposte")?Affinity::Guard:Affinity::Steel;
         }
         // Resonances: one-rank passives that exist only between two colours.
@@ -886,6 +931,12 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             passive("Unseen Hand","Attacks you make from an unlit tile don't break your concealment.",PassiveKind::UnseenHand,1));
         resonance("resonance.assassins_edge",Affinity::Steel,Affinity::Guile,
             passive("Assassin's Edge","Your melee hits from concealment deal +50% damage.",PassiveKind::AssassinsEdge,50));
+        resonance("resonance.mire",Affinity::Earth,Affinity::Water,
+            passive("Mire","Your hits pin foes standing in water.",PassiveKind::Mire,1));
+        resonance("resonance.foul_water",Affinity::Rot,Affinity::Water,
+            passive("Foul Water","Foes standing in water are poisoned each turn.",PassiveKind::FoulWater,2));
+        resonance("resonance.envenomed_blades",Affinity::Steel,Affinity::Rot,
+            passive("Envenomed Blades","Your melee abilities poison what they strike.",PassiveKind::EnvenomedBlades,2));
         return out;
     }();
     return catalog;

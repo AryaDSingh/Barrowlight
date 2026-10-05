@@ -88,7 +88,9 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The third batch (Shadow, Radiance, Shield) and its resonances.
     Dread, Bulwark, Twilight, TemplarsEdge, HallowedGuard,
     // The fourth batch (Bow, Stealth, Daggers) and its resonances.
-    CutDeep, FireArrows, UnseenHand, AssassinsEdge };
+    CutDeep, FireArrows, UnseenHand, AssassinsEdge,
+    // The fifth batch (Earth, Tide, Venom) and its resonances.
+    Aftershock, Tidecaller, Virulence, Mire, FoulWater, EnvenomedBlades };
 
 struct Talent {
     std::string name;
@@ -273,6 +275,10 @@ struct Talent {
     // shakeOff: foes within five tiles lose track of you (Feign Death).
     // consumeBleed: tears out the target's whole bleed at once, double.
     bool shakeOff=false, consumeBleed=false;
+    // pillarShove: a raised pillar shoves the foes beside it. festerPoison: a
+    // poisoned target's poison doubles and lasts longer; festerSpread: and
+    // spreads to the foes beside it.
+    bool pillarShove=false, festerPoison=false, festerSpread=false;
 
 };
 

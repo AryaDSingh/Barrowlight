@@ -397,6 +397,16 @@ void Application::tickSurfaces() {
 
     std::vector<Position> shocked;
     const auto suffer = [&](Actor& a) {
+        if (surfaceAt(a.position()) == SurfaceType::Water) {
+            // Tidecaller: the water mends you. Foul Water: it poisons your foes.
+            if (&a == &player_) {
+                if (const int mend = player_.talents().passiveValue(PassiveKind::Tidecaller))
+                    player_.stats().hp = std::min(player_.stats().maxHp, player_.stats().hp + mend);
+            } else if (const int foul = player_.talents().passiveValue(PassiveKind::FoulWater)) {
+                const auto* m = dynamic_cast<const Monster*>(&a);
+                if (m && !m->allied) a.statusEffects().apply({StatusEffectType::Poison, 2, foul});
+            }
+        }
         switch (surfaceAt(a.position())) {
             case SurfaceType::Fire:
                 if (&a == &player_ && patronBoon(Patron::AshSaint)) break; // the Ash Saint's own walk through fire
