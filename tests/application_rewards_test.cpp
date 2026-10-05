@@ -420,6 +420,8 @@ struct ApplicationRewardsTestAccess {
             for (int x=14;x<=15;++x) app.setSurface({x,13},SurfaceType::Electrified,4);
             for (const Position p:{Position{6,12},Position{7,12},Position{6,13},Position{8,14},Position{5,15}}) app.setSurface(p,SurfaceType::Blood,0);
             for (const Position p:{Position{8,10},Position{9,10},Position{8,11},Position{10,9}}) app.setSurface(p,SurfaceType::Oil,0); // oil beside the blood
+            for (const Position p:{Position{12,9},Position{13,9},Position{12,10}}) app.setSurface(p,SurfaceType::Ice,0); // and ice
+            for (const Position p:{Position{5,11},Position{4,12},Position{5,12}}) app.setSurface(p,SurfaceType::Acid,0); // and acid
             app.landmark_=LandmarkKind::Shrine; app.landmarkAltar_={0,0}; app.landmarkUsed_=false;
             app.extraLandmarks_.push_back({LandmarkKind::HealingFountain,{0,1},false});
             app.extraLandmarks_.push_back({LandmarkKind::TreasureHoard,{0,2},true});

@@ -896,6 +896,15 @@ void Application::renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>
                 case SurfaceType::Gas: body = sf::Color(120, 190, 60, 95); break;
                 default: break;
             }
+            // Ice, acid and scorched ground: the grey splatters (dcss/oil*.png), tinted.
+            if (type == SurfaceType::Ice || type == SurfaceType::Acid || type == SurfaceType::Fire) {
+                static constexpr const char* kSplats[]{"dcss/oil.png", "dcss/oil1.png", "dcss/oil2.png", "dcss/oil3.png", "dcss/oil4.png"};
+                const unsigned hsh = surfaceHash(x, y, 4);
+                const sf::Color tint = type == SurfaceType::Ice ? sf::Color(205, 236, 255, 235)
+                                     : type == SurfaceType::Acid ? sf::Color(150, 225, 60, 235)
+                                                                 : sf::Color(46, 34, 26, 230); // char under the flames
+                sprites_.draw(window_, {kSplats[hsh % 5], sf::IntRect({0, 0}, {32, 32})}, at, kTile, shade(tint), (hsh >> 4) % 2 == 0);
+            } else
             // Three overlapping blobs per tile merge with the neighbours into a puddle.
             for (unsigned i = 0; i < 3; ++i) {
                 const unsigned hsh = surfaceHash(x, y, i);
