@@ -1796,6 +1796,83 @@ struct ApplicationRewardsTestAccess {
                 check(b->statusEffects().has(StatusEffectType::Blinded),"Templar's Edge: melee abilities blind foes standing in light");
                 clearFoes();
             }
+
+            // The fourth batch: Bow.
+            arena(PlayerClass::Thief);
+            {
+                app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition("hunting_bow"),app.nextItemId_++));
+                check(app.player_.equip(app.player_.inventory().items().size()-1),"Take up a bow");
+                const auto blank=ranked("bow.point_blank",1);
+                auto* a=foe({11,10}); app.updateFieldOfView();
+                cast(blank,{11,10});
+                check(app.player_.position().x==8 && a->stats().hp<90,"Point Blank: shoot the foe beside you and spring back");
+                clearFoes(); app.player_.setPosition({10,10});
+                const auto volley=ranked("bow.volley",3);
+                auto* b=foe({14,10}); app.updateFieldOfView();
+                cast(volley,{14,10});
+                check(b->statusEffects().has(StatusEffectType::Pinned) && b->statusEffects().has(StatusEffectType::Marked),"Volley at rank 3 marks and pins");
+                clearFoes();
+                const auto rain=ranked("bow.rain",1);
+                auto* c=foe({14,10}); app.updateFieldOfView();
+                cast(rain,{14,10});
+                const int afterRain=c->stats().hp;
+                check(c->stats().hp<90 && app.storms_.size()==1,"Rain of Arrows strikes and keeps falling");
+                app.tickStorms();
+                check(c->stats().hp<afterRain,"...striking again as your turn begins");
+                clearFoes();
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.fire_arrows")->ranks[0]);
+                const auto quick=ranked("bow.quick_shot",1);
+                auto* d=foe({14,10}); app.updateFieldOfView();
+                cast(quick,{14,10});
+                check(d->statusEffects().has(StatusEffectType::Burn),"Fire Arrows: your bow attacks set foes burning");
+                clearFoes();
+            }
+            // Stealth.
+            arena(PlayerClass::Thief);
+            {
+                const auto feign=ranked("stealth.feign",1);
+                auto* a=foe({13,10}); a->tactics.alert=8; app.updateFieldOfView();
+                cast(feign,app.player_.position());
+                check(a->tactics.alert==0 && app.player_.statusEffects().has(StatusEffectType::Concealed),"Feign Death: you hide and they lose track of you");
+                clearFoes();
+                const auto& killer=findTalentDefinition("stealth.assassinate")->ranks[0];
+                auto* b=foe({11,10});
+                const int healthy=estimateTalentDamage(killer,app.player_,*b).normal;
+                b->stats().hp=40;
+                check(estimateTalentDamage(killer,app.player_,*b).normal>=healthy*2,"Assassinate: triple damage on a foe below half its life");
+                clearFoes();
+                // Unseen Hand: attacking from the dark keeps you hidden. Assassin's Edge: +50% from hiding.
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.unseen_hand")->ranks[0]);
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.assassins_edge")->ranks[0]);
+                const auto ambush=ranked("stealth.strike",1);
+                app.darknessEnabled_=true; app.player_.lightLit=false;
+                foe({11,10}); app.updateFieldOfView();
+                app.player_.statusEffects().apply({StatusEffectType::Concealed,3,3});
+                app.logMessages_.clear();
+                cast(ambush,{11,10});
+                check(sawLog("From hiding: +50%"),"Assassin's Edge: melee hits from hiding deal +50%");
+                check(app.player_.statusEffects().has(StatusEffectType::Concealed),"Unseen Hand: striking from an unlit tile keeps you hidden");
+                app.darknessEnabled_=false; app.player_.lightLit=true; app.player_.statusEffects().active().clear(); clearFoes();
+            }
+            // Daggers.
+            arena(PlayerClass::Thief);
+            {
+                app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition("steel_dagger"),app.nextItemId_++));
+                check(app.player_.equip(app.player_.inventory().items().size()-1),"Take up a dagger");
+                ranked("daggers.cut_deep",1);
+                const auto knife=ranked("daggers.throw",1);
+                auto* a=foe({14,10}); app.updateFieldOfView();
+                cast(knife,{14,10});
+                int bleedTurns=0;
+                for (const auto& e:a->statusEffects().active()) if (e.type==StatusEffectType::Bleed) bleedTurns=e.turnsRemaining;
+                check(a->stats().hp<90 && bleedTurns>=4,"Throwing Knife bleeds, and Cut Deep makes it last longer");
+                clearFoes();
+                const auto rip=ranked("daggers.eviscerate",1);
+                auto* b=foe({11,10}); b->statusEffects().apply({StatusEffectType::Bleed,4,3}); app.updateFieldOfView();
+                cast(rip,{11,10});
+                check(!b->statusEffects().has(StatusEffectType::Bleed) && b->stats().hp<=90-24,"Eviscerate: the whole bleed comes due at once, doubled");
+                clearFoes();
+            }
         }
 
         // Acid and blindness survive a save (a fresh Warrior: the fixture's

@@ -86,7 +86,9 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The second forked batch (Ice, Lightning, Two-Handed) and its resonances.
     Hoarfrost, ArcFlash, FollowThrough, ThermalShock, ColdSteel,
     // The third batch (Shadow, Radiance, Shield) and its resonances.
-    Dread, Bulwark, Twilight, TemplarsEdge, HallowedGuard };
+    Dread, Bulwark, Twilight, TemplarsEdge, HallowedGuard,
+    // The fourth batch (Bow, Stealth, Daggers) and its resonances.
+    CutDeep, FireArrows, UnseenHand, AssassinsEdge };
 
 struct Talent {
     std::string name;
@@ -268,6 +270,9 @@ struct Talent {
     // the foe nearest where it lands. rootSelf: you can't walk while its
     // effect lasts (Bastion).
     bool blindInDark=false, darkLanding=false, arrivalBlind=false, rootSelf=false;
+    // shakeOff: foes within five tiles lose track of you (Feign Death).
+    // consumeBleed: tears out the target's whole bleed at once, double.
+    bool shakeOff=false, consumeBleed=false;
 
 };
 

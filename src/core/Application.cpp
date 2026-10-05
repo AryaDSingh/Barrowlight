@@ -1267,6 +1267,16 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             while (traps_.size()>8) traps_.erase(traps_.begin());
             log(set?"You set your trap.":"There's no room to set a trap there.");
         }
+        if (talent.shakeOff) {
+            const auto me=player_.position();
+            int lost=0;
+            for (auto& m:monsters_)
+                if (!m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-me.x),std::abs(m->position().y-me.y))<=5) {
+                    if (m->tactics.alert>0) ++lost;
+                    m->tactics.alert=0; m->tactics.lastKnown=m->tactics.home;
+                }
+            log(lost?"You go limp. They lose track of you.":"You go limp and lie still.");
+        }
         if (talent.smokeBomb) {
             const auto me=player_.position();
             for (auto& m:monsters_)
@@ -1329,6 +1339,9 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 if (wasConcealed || fx.has(StatusEffectType::Blinded) || fx.has(StatusEffectType::Stun) ||
                     fx.has(StatusEffectType::Grappled) || fx.has(StatusEffectType::Pinned)) { hitTalent.damagePercent+=100; combo+="Backstab: double damage. "; }
             }
+            if (const int edge=player_.talents().passiveValue(PassiveKind::AssassinsEdge); edge && wasConcealed && isMeleeAttack(talent)) {
+                hitTalent.damagePercent+=edge; combo+="From hiding: +"+std::to_string(edge)+"%. ";
+            }
             if (talent.darkBonusPercent && !tileLit(target->position())) { hitTalent.damagePercent+=talent.darkBonusPercent; combo+="In darkness: +"+std::to_string(talent.darkBonusPercent)+"%. "; }
             if (const auto* m=dynamic_cast<const Monster*>(target); talent.searing && m && (seesInDark(m->type()) || !bleeds(m->type()))) {
                 hitTalent.damagePercent+=50; combo+="Searing: +50%. ";
@@ -1351,6 +1364,21 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 if (player_.talents().passiveValue(PassiveKind::TemplarsEdge) && isMeleeAttack(talent) && talent.id!="basic.attack" &&
                     target->stats().hp>0 && tileLit(target->position()))
                     target->statusEffects().apply({StatusEffectType::Blinded,2,0});
+                // Eviscerate: the whole bleed comes due at once.
+                if (talent.consumeBleed && target->stats().hp>0) {
+                    int owed=0;
+                    for (const auto& e:target->statusEffects().active()) if (e.type==StatusEffectType::Bleed) owed+=e.magnitude*e.turnsRemaining;
+                    if (owed) {
+                        owed*=2+talent.statusBonusPercent;
+                        target->statusEffects().remove(StatusEffectType::Bleed);
+                        target->stats().hp-=owed; flashActor(*target);
+                        log("The wound tears open: ",owed," more!");
+                    }
+                }
+                // Fire Arrows: bow attacks set what they hit burning.
+                if (const int burn=player_.talents().passiveValue(PassiveKind::FireArrows);
+                    burn && talent.tree==TalentTree::Bow && target->stats().hp>0)
+                    target->statusEffects().apply({StatusEffectType::Burn,3,burn});
                 // Cold Steel: melee abilities chill.
                 if (player_.talents().passiveValue(PassiveKind::ColdSteel) && isMeleeAttack(talent) && talent.id!="basic.attack" && target->stats().hp>0)
                     target->statusEffects().apply({StatusEffectType::Chill,3,20});

@@ -137,11 +137,15 @@ inline void applyMastery(TalentDefinition& d) {
     else if (id == "shield.bastion") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 12; d.mastery = "Guard 12."; }
     else if (id == "shield.shockwave") { m.areaRadius = 2; d.mastery = "Reaches enemies up to two tiles away."; }
     else if (id == "bow.quick_shot") { mark(); d.mastery = "Marks the target: its next direct hit taken deals +25%."; }
-    else if (id == "bow.volley") { m.areaRadius = 3; d.mastery = "The burst covers three tiles."; }
+    else if (id == "bow.volley") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Pinned, 2, 0}; m.markOnHit = true; d.mastery = "Also pins what it hits for a turn."; }
+    else if (id == "bow.point_blank") { m.pushDistance = 1; d.mastery = "Knocks the foe back a tile too."; }
+    else if (id == "bow.rain") { m.lingerTurns = 4; d.mastery = "The arrows fall two turns longer."; }
     else if (id == "bow.piercing_shot") { m.bonusCritChance += .2f; d.mastery = "A further +20% critical chance."; }
     else if (id == "stealth.conceal") { longer(); d.mastery = "Hide for four responses."; }
     else if (id == "stealth.strike") { m.retreatDistance = 2; d.mastery = "Slip up to two tiles away after striking."; }
     else if (id == "stealth.vanish_strike") { longer(); d.mastery = "Stay concealed for three responses."; }
+    else if (id == "stealth.feign") { m.restoreHpPercent = 10; d.mastery = "You also recover 10% of your life."; }
+    else if (id == "stealth.assassinate") { m.conditionalHpFraction = .6f; d.mastery = "Triple damage below 60% life instead of half."; }
     else if (id == "acrobatics.tumble") { dodge(15); d.mastery = "+15% dodge for one enemy response after tumbling."; }
     else if (id == "acrobatics.vault_kick") { stun(1); d.mastery = "The kick stuns for one enemy turn."; }
     else if (id == "acrobatics.leap") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 30; d.mastery = "+30% dodge instead of +20%."; }
@@ -198,6 +202,8 @@ inline void applyMastery(TalentDefinition& d) {
     else if (id == "daggers.lacerate") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Bleed deals 3 damage per turn."; }
     else if (id == "daggers.backstab") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Concealed, 1, 2}; d.mastery = "You melt back into the shadows: Concealed for one response."; }
     else if (id == "daggers.whirl") { if (m.onHitEffect) m.onHitEffect->turnsRemaining += 2; d.mastery = "Bleed lasts two turns longer."; }
+    else if (id == "daggers.throw") { m.pierceBehind = true; d.mastery = "Also hits whoever stands right behind the target."; }
+    else if (id == "daggers.eviscerate") { m.statusBonusPercent = 1; d.mastery = "Triple the bleed, not double."; }
     else if (id == "mace.crush") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 6; d.mastery = "Sundered for six enemy turns."; }
     else if (id == "mace.stagger") { m.stagger = 3; d.mastery = "Delays a warned attack by three actions."; }
     else if (id == "mace.shatter") { stun(1); d.mastery = "The blow also stuns for one enemy turn."; }
@@ -426,14 +432,38 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t.rootSelf=true; add(2,"shield.bastion",3,t);
         shape("shield.bastion",3,"capstone",{});
         add(3,"bow.quick_shot",0,attack("Quick Shot","An efficient projectile intercepted by the first enemy.",5,2,1,true));
+        shape("bow.quick_shot",3,"",{});
         t=attack("Volley","Burst in a two-tile circle and Mark survivors for the next direct hit (+25%, 3 enemy turns).",5,6,4,true,2);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,3,1}; add(3,"bow.volley",1,t);
-        add(3,"bow.marksmanship",2,passive("Marksmanship","Bow attacks gain 10/12/15/18/20% critical chance while you have Opening from waiting or movement abilities.",PassiveKind::Marksmanship,10));
+        shape("bow.volley",3,"path",{"bow.quick_shot"});
+        t=attack("Point Blank","Loose an arrow into a foe beside you and spring two tiles back from it.",6,2,5); t.retreatDistance=2;
+        add(3,"bow.point_blank",1,t);
+        shape("bow.point_blank",3,"path",{"bow.quick_shot"});
+        add(3,"bow.marksmanship",2,passive("Marksmanship","Bow attacks gain 15% critical chance while you have Opening from waiting or movement abilities.",PassiveKind::Marksmanship,15));
+        shape("bow.marksmanship",1,"",{"bow.volley"});
+        add(3,"bow.focus",2,passive("Hunter's Focus","Each hit you land in a row on the same foe deals +2 more, up to +6. Switching targets starts over.",PassiveKind::Momentum,2));
+        shape("bow.focus",1,"",{"bow.point_blank"});
         t=attack("Piercing Shot","A precision shot with +20% critical chance and 2x critical damage; stops at first enemy.",10,5,7,true); t.bonusCritChance=.2f; t.bonusCritDamageMultiplier=.5f; add(3,"bow.piercing_shot",3,t);
+        shape("bow.piercing_shot",3,"capstone",{});
+        t=attack("Rain of Arrows","Arrows fall on everything within a tile of a spot for three turns, striking what stands there as each of your turns begins.",6,6,10,true,1);
+        t.projectile=false; t.lingerTurns=2; add(3,"bow.rain",3,t);
+        shape("bow.rain",3,"capstone",{});
         add(4,"stealth.conceal",0,buff("Conceal","Hide for three responses. Nearby enemies roll to detect you: rank, your DEX and distance help; enemy DEX increases risk. Detection, attacks and damage reveal you.",StatusEffectType::Concealed,3,1,3,7));
+        shape("stealth.conceal",3,"",{});
         t=attack("Ambush Strike","A melee strike requiring Concealment; attacking reveals you.",9,2,4); t.requiresStealth=true; add(4,"stealth.strike",1,t);
-        add(4,"stealth.ambush",2,passive("Ambush","Direct damage from Concealment gains +4/5/6/7/8 damage, including spells and ranged attacks.",PassiveKind::Ambush,4));
+        shape("stealth.strike",3,"path",{"stealth.conceal"});
+        t=buff("Feign Death","Drop as if dead and hide: Concealed for three responses, and every foe within five tiles loses track of you.",StatusEffectType::Concealed,3,2,3,12);
+        t.shakeOff=true; add(4,"stealth.feign",1,t);
+        shape("stealth.feign",3,"path",{"stealth.conceal"});
+        add(4,"stealth.ambush",2,passive("Ambush","Direct damage from Concealment gains +6 damage, including spells and ranged attacks.",PassiveKind::Ambush,6));
+        shape("stealth.ambush",1,"",{"stealth.strike"});
+        add(4,"stealth.phantom",2,passive("Phantom","Attacking from concealment has a 35% chance not to reveal you.",PassiveKind::LingeringShadow,35));
+        shape("stealth.phantom",1,"",{"stealth.feign"});
         t=attack("Vanish Strike","Strike, then retreat up to three tiles and gain Concealment for two enemy responses, using this ability's rank for detection.",8,5,7); t.retreatDistance=3; t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Concealed,2,1}; add(4,"stealth.vanish_strike",3,t);
+        shape("stealth.vanish_strike",3,"capstone",{});
+        t=attack("Assassinate","A strike from hiding: triple damage against a foe below half its life.",9,5,9); t.requiresStealth=true;
+        t.conditionalHpFraction=.5f; t.conditionalMultiplier=3; add(4,"stealth.assassinate",3,t);
+        shape("stealth.assassinate",3,"capstone",{});
         add(5,"acrobatics.tumble",0,move("Tumble","Move up to three visible tiles, stopping before obstacles and actors.",3,2,4));
         t=attack("Vault Kick","Kick, then retreat up to three tiles even if the hit is dodged.",4,3,4); t.retreatDistance=3; add(5,"acrobatics.vault_kick",1,t);
         add(5,"acrobatics.footwork",2,passive("Footwork","Successful movement abilities grant +10/12/15/18/20% dodge for one enemy response.",PassiveKind::Footwork,10));
@@ -629,11 +659,23 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         // Daggers (DEX): wounds and the helpless.
         t=attack("Lacerate","A quick cut that bleeds: 2 damage per turn for three enemy turns, and the living leave a trail of blood.",4,1,2);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Bleed,3,2}; add(23,"daggers.lacerate",0,t);
+        shape("daggers.lacerate",3,"",{});
         t=attack("Backstab","Double damage against a foe that can't fight back properly: you are hidden, or it is blinded, stunned, held or pinned.",8,3,5);
         t.backstab=true; add(23,"daggers.backstab",1,t);
-        add(23,"daggers.hemorrhage",2,passive("Hemorrhage","Your attacks deal +2/3/4/5/6 damage to bleeding enemies.",PassiveKind::Hemorrhage,2));
+        shape("daggers.backstab",3,"path",{"daggers.lacerate"});
+        t=attack("Throwing Knife","Throw a dagger at a foe in sight: it bleeds for 2 a turn over three turns.",5,2,3,true);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Bleed,3,2}; add(23,"daggers.throw",1,t);
+        shape("daggers.throw",3,"path",{"daggers.lacerate"});
+        add(23,"daggers.hemorrhage",2,passive("Hemorrhage","Your attacks deal +4 damage to bleeding enemies.",PassiveKind::Hemorrhage,4));
+        shape("daggers.hemorrhage",1,"",{"daggers.backstab"});
+        add(23,"daggers.cut_deep",2,passive("Cut Deep","Bleeding you cause lasts two turns longer.",PassiveKind::CutDeep,2));
+        shape("daggers.cut_deep",1,"",{"daggers.throw"});
         t=attack("Whirling Blades","Spin through everything within two tiles, leaving each one bleeding for three enemy turns.",5,5,7,false,2);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Bleed,3,2}; add(23,"daggers.whirl",3,t);
+        shape("daggers.whirl",3,"capstone",{});
+        t=attack("Eviscerate","Tear the wound open: the target's whole bleed comes due at once, doubled.",6,4,8); t.consumeBleed=true;
+        add(23,"daggers.eviscerate",3,t);
+        shape("daggers.eviscerate",3,"capstone",{});
         // Mace (STR, one hand): guards and bones.
         t=attack("Crush","A heavy blow that sunders: the target takes +2 damage from every hit for four enemy turns.",6,2,4);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Sundered,4,2}; add(24,"mace.crush",0,t);
@@ -813,6 +855,9 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="shadow") d.affinity=Affinity::Dark;
             else if (d.treeId=="radiance") d.affinity=Affinity::Light;
             else if (d.treeId=="shield") d.affinity=Affinity::Guard;
+            else if (d.treeId=="bow") d.affinity=Affinity::Hunt;
+            else if (d.treeId=="stealth") d.affinity=Affinity::Guile;
+            else if (d.treeId=="daggers") d.affinity=Affinity::Steel;
             else if (d.treeId=="one_handed") d.affinity=(d.id=="one_handed.parry" || d.id=="one_handed.riposte")?Affinity::Guard:Affinity::Steel;
         }
         // Resonances: one-rank passives that exist only between two colours.
@@ -835,6 +880,12 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             passive("Templar's Edge","Your melee abilities blind foes standing in light.",PassiveKind::TemplarsEdge,1));
         resonance("resonance.hallowed_guard",Affinity::Guard,Affinity::Light,
             passive("Hallowed Guard","Whenever you take up Guard, you also heal 3.",PassiveKind::HallowedGuard,3));
+        resonance("resonance.fire_arrows",Affinity::Hunt,Affinity::Flame,
+            passive("Fire Arrows","Your bow attacks set what they hit burning.",PassiveKind::FireArrows,2));
+        resonance("resonance.unseen_hand",Affinity::Guile,Affinity::Dark,
+            passive("Unseen Hand","Attacks you make from an unlit tile don't break your concealment.",PassiveKind::UnseenHand,1));
+        resonance("resonance.assassins_edge",Affinity::Steel,Affinity::Guile,
+            passive("Assassin's Edge","Your melee hits from concealment deal +50% damage.",PassiveKind::AssassinsEdge,50));
         return out;
     }();
     return catalog;

@@ -187,6 +187,7 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
             for (const auto& e:target.statusEffects().active()) other=other || (ailment(e.type) && e.type!=effect.type);
             if (burst && other) target.stats().hp-=burst;
         }
+        if (effect.type==StatusEffectType::Bleed) effect.turnsRemaining+=attacker.talents().passiveValue(PassiveKind::CutDeep);
         if (effect.type!=StatusEffectType::Stun || !armourResistsStun(target))
             target.statusEffects().apply(effect);
     }
