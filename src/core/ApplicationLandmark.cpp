@@ -146,7 +146,7 @@ std::vector<Application::LandmarkChoice> Application::landmarkChoices() const {
                      "A piece of you, forever", player_.baseStats().maxHp > 3 * kPeddlerLife}};
         case LandmarkKind::LamplighterRest:
             if (player_.lightSource < 2)
-                return {{"Take the lantern", "campfire", "A lantern lights six tiles around you instead of a torch's four. L still shutters it.", "Free", true}};
+                return {{"Take the lantern", "campfire", "A lantern lights five tiles around you instead of a torch's three. L still shutters it.", "Free", true}};
             return {{"Trim the wick", "healing", "Rest a while in the lamplight: restore all life and mana.", "Free", true}};
         case LandmarkKind::BloodAltar: {
             if (player_.bloodMagicUnlocked)

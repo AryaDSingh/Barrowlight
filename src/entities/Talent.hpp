@@ -82,7 +82,11 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The forked pilot trees (Fire, One-Handed, Arcane).
     Kindling, Wildfire, Exploit, Afterimage,
     // Resonances.
-    SearingEdge };
+    SearingEdge,
+    // The second forked batch (Ice, Lightning, Two-Handed) and its resonances.
+    Hoarfrost, ArcFlash, FollowThrough, ThermalShock, ColdSteel,
+    // The third batch (Shadow, Radiance, Shield) and its resonances.
+    Dread, Bulwark, Twilight, TemplarsEdge, HallowedGuard };
 
 struct Talent {
     std::string name;
@@ -253,6 +257,17 @@ struct Talent {
     // line at the start of your next turn.
     int guardPerHit=0;
     bool markOnHit=false, stunOnImpact=false, scatterSplash=false, echoBeam=false;
+    // lingerTurns: the area keeps striking as your next turns begin (Blizzard).
+    // chainJumps: how many foes a chain leaps to. landingSlam: a movement that
+    // strikes everything beside where it lands, for this power; slamStun: and
+    // stuns it.
+    int lingerTurns=0, chainJumps=1, landingSlam=0;
+    bool slamStun=false;
+    // blindInDark: a target standing in darkness is blinded too. darkLanding:
+    // a movement that may only end on an unlit tile; arrivalBlind: and blinds
+    // the foe nearest where it lands. rootSelf: you can't walk while its
+    // effect lasts (Bastion).
+    bool blindInDark=false, darkLanding=false, arrivalBlind=false, rootSelf=false;
 
 };
 

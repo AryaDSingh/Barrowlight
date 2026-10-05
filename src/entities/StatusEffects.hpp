@@ -21,6 +21,7 @@ enum class StatusEffectType {
     Linked,          // magnitude% of the damage it takes jumps to a nearby foe (Hexes)
     Puppeted,        // fights for the player until it ends (Hexes)
     Plague,          // poison that spreads to its neighbours when it dies (Venom)
+    Frenzy,          // your hits heal you for magnitude% of the damage they deal (Two-Handed)
 };
 
 struct StatusEffectInstance {
@@ -103,6 +104,7 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::Linked: return "Soul Link";
     case StatusEffectType::Puppeted: return "Puppet";
     case StatusEffectType::Plague: return "Plague";
+    case StatusEffectType::Frenzy: return "Frenzy";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

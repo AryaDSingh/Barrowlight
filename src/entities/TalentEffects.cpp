@@ -46,6 +46,7 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
     if (attacker.statusEffects().has(StatusEffectType::Concealed)) damage+=kit.passiveValue(PassiveKind::Ambush);
     if (target.statusEffects().has(StatusEffectType::Chill)) damage+=kit.passiveValue(PassiveKind::Frostbite);
     if (target.statusEffects().has(StatusEffectType::Burn)) damage+=kit.passiveValue(PassiveKind::Kindling);
+    if (target.statusEffects().has(StatusEffectType::Blinded)) damage+=kit.passiveValue(PassiveKind::Dread);
     if (const int exploit=kit.passiveValue(PassiveKind::Exploit)) {
         int ailments=0;
         for (const auto& e:target.statusEffects().active())
@@ -142,7 +143,7 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
     const int wither=target.statusEffects().magnitudeOf(StatusEffectType::Wither);
     target.stats().hp -= damage;
     if (actualDamage>0) attacker.stats().hp=std::min(attacker.stats().maxHp,attacker.stats().hp+
-        actualDamage*talent.drainPercent/100+std::min(actualDamage,wither));
+        actualDamage*(talent.drainPercent+attacker.statusEffects().magnitudeOf(StatusEffectType::Frenzy))/100+std::min(actualDamage,wither));
     if (talent.releaseAilments) {
         auto& effects=target.statusEffects().active();
         effects.erase(std::remove_if(effects.begin(),effects.end(),[](const auto& e){return releasableAilment(e.type);}),effects.end());

@@ -99,6 +99,7 @@ std::string statusTooltip(const StatusEffectInstance& e) {
     case StatusEffectType::Linked: return n+"% of each hit it takes from you jumps to the nearest other foe within three tiles.";
     case StatusEffectType::Puppeted: return "Its will is not its own: it fights its own side until this ends.";
     case StatusEffectType::Plague: return "Loses "+n+" HP each turn; when it dies, the plague spreads to everything beside it.";
+    case StatusEffectType::Frenzy: return "Its hits heal it for "+n+"% of the damage they deal.";
     case StatusEffectType::Bleed: return "Loses "+n+" HP each turn, and leaves a trail of blood.";
     case StatusEffectType::Sundered: return "Its guard is broken: every hit it takes deals "+n+" more damage.";
     case StatusEffectType::Pinned: return "Pinned in place: it can't move, though it can still fight.";
@@ -759,7 +760,7 @@ std::string Application::aimingSummary() {
         int low = 0, high = 0; bool first = true;
         for (const auto* actor : preview.affected) {
             auto hit = talent;
-            if (actor == preview.chainedTarget) hit.damagePercent /= 2;
+            if (preview.chained(actor)) hit.damagePercent /= 2;
             const auto damage = estimateTalentDamage(hit, player_, *actor);
             low = first ? damage.normal : std::min(low, damage.normal);
             high = std::max(high, damage.critical); first = false;
@@ -835,7 +836,7 @@ void Application::renderHudTooltips() {
                 bool first = true;
                 for (const auto* actor : preview.affected) {
                     auto hitTalent = talent;
-                    if (actor == preview.chainedTarget) hitTalent.damagePercent /= 2;
+                    if (preview.chained(actor)) hitTalent.damagePercent /= 2;
                     const auto damage = estimateTalentDamage(hitTalent, player_, *actor);
                     low = first ? damage.normal : std::min(low, damage.normal);
                     high = std::max(high, damage.critical); first = false;

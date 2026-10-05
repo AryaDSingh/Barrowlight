@@ -374,11 +374,16 @@ struct ApplicationRewardsTestAccess {
             auto* far=enemy({16,10}); auto* near=enemy({13,10});
             app.updateFieldOfView();
             check(app.exploredMap_.at(13,10)==Visibility::Visible && app.exploredMap_.at(16,10)!=Visibility::Visible,
-                  "A torch shows four tiles; beyond it the dark hides enemies");
+                  "A torch shows three tiles; beyond it the dark hides enemies");
+            app.setSurface({15,9},SurfaceType::Fire,20); app.updateFieldOfView();
+            check(app.exploredMap_.at(15,9)==Visibility::Visible,"With your torch lit, you see other lights in the distance");
             snapshot("ui-darkness-torch.png");
             app.toggleLight();
             check(!app.player_.lightLit && app.exploredMap_.at(13,10)!=Visibility::Visible && app.exploredMap_.at(11,10)==Visibility::Visible,
                   "Doused, you only see what is beside you");
+            check(app.exploredMap_.at(15,9)!=Visibility::Visible && app.exploredMap_.at(9,9)==Visibility::Visible,
+                  "...only the 8 tiles around you: even distant fire is lost to you");
+            app.clearSurfaces();
             snapshot("ui-darkness-doused.png");
             app.monsters_.clear();
             auto archer=createMonster(MonsterType::Archer,{13,10}); auto* human=archer.get(); app.monsters_.push_back(std::move(archer));
@@ -588,7 +593,7 @@ struct ApplicationRewardsTestAccess {
             app.landmark_=LandmarkKind::LamplighterRest; app.landmarkAltar_={11,10};
             app.map_.setTile(11,10,Tile{TileType::Wall,false,true}); app.player_.setPosition({10,10}); app.updateFieldOfView();
             app.pickupItem(); snapshot("ui-lamplighter.png"); app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Enter});
-            check(app.player_.lightSource==2 && app.playerLightRadius()==6,"The Lamplighter's Rest gives a lantern that lights six tiles");
+            check(app.player_.lightSource==2 && app.playerLightRadius()==5,"The Lamplighter's Rest gives a lantern that lights five tiles");
 
             auto* victim=enemy({14,14}); victim->stats().hp=0; app.checkAndHandleDeath(*victim); app.removeDeadMonsters();
             check(app.surfaceAt({14,14})==SurfaceType::Blood,"The living leave blood where they fall");
@@ -638,7 +643,7 @@ struct ApplicationRewardsTestAccess {
             app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition("iron_helm"),app.nextItemId_++,Position{},
                 std::vector<RolledAffix>{{"radiant",1}},0));
             app.player_.equip(app.player_.inventory().items().size()-1);
-            check(app.playerLightRadius()==5,"Radiant gear widens your light");
+            check(app.playerLightRadius()==4,"Radiant gear widens your light");
             app.monsters_.clear();
             app.groundItems_.push_back(std::make_unique<Item>(*findItemDefinition("ash_staff"),app.nextItemId_++,Position{12,9},std::vector<RolledAffix>{{"frost",20}},1));
             app.groundItems_.push_back(std::make_unique<Item>(*findItemDefinition("hunting_bow"),app.nextItemId_++,Position{14,11},
@@ -743,7 +748,7 @@ struct ApplicationRewardsTestAccess {
             app.toggleLight(); app.toggleLight();
             check(app.playerLightRadius()==0,"Smothered, your light can't be relit");
             app.player_.statusEffects().remove(StatusEffectType::Smothered);
-            check(app.playerLightRadius()==4,"When Smothered ends, your light returns by itself");
+            check(app.playerLightRadius()==3,"When Smothered ends, your light returns by itself");
             l->stats().hp=l->stats().maxHp/2; app.bossSurfaceAction(*l);
             check(l->flooded && app.surfaceAt({14,12})==SurfaceType::Water,"Badly hurt, the Lich floods its sanctum");
             app.setSurface(app.player_.position(),SurfaceType::Water,0);
@@ -1072,14 +1077,15 @@ struct ApplicationRewardsTestAccess {
             app.player_.setPosition({10,10}); app.player_.lightLit=true; app.updateFieldOfView();
             cast(snuff,{10,10});
             check(!app.player_.lightLit && app.playerLightRadius()==0,"Snuff puts out your own light along with the rest");
-            check(app.exploredMap_.at(13,10)==Visibility::Visible,"Umbral Shroud: with your light out you see three tiles into the dark");
+            check(app.exploredMap_.at(12,10)!=Visibility::Visible && app.exploredMap_.at(11,10)==Visibility::Visible,
+                  "With your light out, even Umbral Shroud sees only the 8 tiles around you");
             app.advanceEnemyIntents(); // as the enemies take their turn
             check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Evasion)>=6,"Umbral Shroud: harder to hit in the dark");
-            auto* goblin=enemy({12,10}); goblin->stats().dexterity=0; goblin->stats().hp=goblin->stats().maxHp=80;
+            auto* goblin=enemy({11,10}); goblin->stats().dexterity=0; goblin->stats().hp=goblin->stats().maxHp=80;
             app.updateFieldOfView();
-            check(cast(veil,{12,10}) && goblin->statusEffects().has(StatusEffectType::Blinded),"Veil of Night blinds");
+            check(cast(veil,{11,10}) && goblin->statusEffects().has(StatusEffectType::Blinded),"Veil of Night blinds");
             app.player_.setPosition({10,10});
-            check(!app.canSee(*goblin,{10,10}) && app.canSee(*goblin,{12,11}),"A blinded foe sees only what is beside it");
+            check(!app.canSee(*goblin,{13,10}) && app.canSee(*goblin,{11,11}),"A blinded foe sees only what is beside it");
             app.monsters_.clear();
         }
         setup(PlayerClass::Mage); app.darknessEnabled_=true;
@@ -1087,7 +1093,7 @@ struct ApplicationRewardsTestAccess {
             const auto flare=learnTalent("radiance.flare"), dawn=learnTalent("radiance.dawn");
             learnTalent("radiance.inner_light");
             app.player_.lightLit=true;
-            check(app.playerLightRadius()==5,"Inner Light: your light reaches a tile further");
+            check(app.playerLightRadius()==4,"Inner Light: your light reaches a tile further");
             app.player_.setPosition({10,10}); app.updateFieldOfView();
             auto* goblin=enemy({12,10}); goblin->stats().dexterity=0; goblin->stats().hp=goblin->stats().maxHp=80; goblin->tactics.concealed=true;
             app.lightOrbs_.clear();
@@ -1610,6 +1616,183 @@ struct ApplicationRewardsTestAccess {
                 // Spellsword is Battle Rhythm, without the Spellblade tree.
                 app.player_.talents().learnTalent(sword->ranks[0]);
                 check(app.player_.talents().passiveValue(PassiveKind::BattleRhythm)==6,"Spellsword grants Battle Rhythm");
+            }
+
+            // The second batch: Ice.
+            arena(PlayerClass::Mage);
+            {
+                const auto field=ranked("ice.rime_field",1);
+                auto* a=foe({14,10}); app.updateFieldOfView();
+                cast(field,{14,10});
+                check(app.surfaceAt({14,10})==SurfaceType::Ice && app.surfaceAt({15,10})==SurfaceType::Ice && app.surfaceAt({14,11})==SurfaceType::Ice && a->statusEffects().has(StatusEffectType::Chill),
+                      "Rime Field ices a spot and its neighbours and chills what stands there");
+                clearFoes();
+                const auto nova=ranked("ice.nova",3);
+                foe({11,10}); app.updateFieldOfView();
+                cast(nova,app.player_.position());
+                check(app.surfaceAt({11,10})==SurfaceType::Ice && app.surfaceAt({9,10})==SurfaceType::Ice && app.surfaceAt({10,11})==SurfaceType::Ice && app.surfaceAt({10,10})!=SurfaceType::Ice,
+                      "Frost Nova at rank 3 leaves a ring of ice, not under your own feet");
+                clearFoes();
+                ranked("ice.hoarfrost",1);
+                auto* b=foe({14,10}); auto* c=foe({15,10});
+                b->statusEffects().apply({StatusEffectType::Chill,3,20}); b->stats().hp=0; app.checkAndHandleDeath(*b);
+                check(c->statusEffects().has(StatusEffectType::Chill),"Hoarfrost: a chilled foe shatters and chills its neighbours");
+                clearFoes();
+                const auto blizzard=ranked("ice.blizzard",1);
+                auto* d=foe({14,10}); app.updateFieldOfView();
+                cast(blizzard,{14,10});
+                const int afterCast=d->stats().hp;
+                check(d->stats().hp<90 && d->statusEffects().has(StatusEffectType::Chill) && app.storms_.size()==1,"Blizzard strikes, chills and stays");
+                app.tickStorms();
+                check(d->stats().hp<afterCast && app.storms_.empty(),"...striking again as your turns begin, then dies away");
+                clearFoes();
+            }
+            // Lightning.
+            arena(PlayerClass::Mage);
+            {
+                const auto chain=ranked("lightning.chain",3);
+                auto* a=foe({13,10}); auto* b=foe({15,10}); auto* c=foe({17,10}); app.updateFieldOfView();
+                cast(chain,{13,10});
+                check(a->stats().hp<90 && b->stats().hp<90 && c->stats().hp<90,"Chain Lightning at rank 3 jumps twice");
+                clearFoes();
+                const auto clap=ranked("lightning.thunderclap",1);
+                auto* d=foe({11,10}); app.updateFieldOfView();
+                cast(clap,app.player_.position());
+                check(d->statusEffects().has(StatusEffectType::Shock) && d->position().x==12,"Thunderclap shocks and shoves");
+                clearFoes();
+                ranked("lightning.arc_flash",1);
+                const auto bolt=ranked("lightning.bolt",1);
+                auto* e=foe({13,10}); auto* f=foe({13,12}); e->statusEffects().apply({StatusEffectType::Shock,3,0}); app.updateFieldOfView();
+                cast(bolt,{13,10});
+                check(f->stats().hp<90,"Arc Flash: a hit on a shocked foe arcs to the next");
+                clearFoes();
+                const auto tempest=ranked("lightning.tempest",1);
+                auto* g=foe({13,10}); auto* h=foe({10,7}); auto* far=foe({17,10}); app.updateFieldOfView();
+                cast(tempest,app.player_.position());
+                check(g->stats().hp<90 && h->stats().hp<90 && far->stats().hp==90,"Tempest strikes every foe within three tiles");
+                clearFoes();
+                // Thermal Shock: chilled and shocked at once, it locks up.
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.thermal_shock")->ranks[0]);
+                auto* k=foe({13,10}); k->statusEffects().apply({StatusEffectType::Chill,3,20}); k->statusEffects().apply({StatusEffectType::Shock,3,0});
+                app.updateFieldOfView();
+                cast(bolt,{13,10});
+                check(k->statusEffects().has(StatusEffectType::Stun),"Thermal Shock: a chilled, shocked foe is stunned by your hit");
+                clearFoes();
+            }
+            // Two-Handed.
+            arena(PlayerClass::Warrior);
+            {
+                app.player_.baseStats().strength=app.player_.stats().strength=30;
+                app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition("greatsword"),app.nextItemId_++));
+                check(app.player_.equip(app.player_.inventory().items().size()-1),"Wield a greatsword");
+                const auto leap=ranked("two_handed.leap_slam",3); ranked("two_handed.follow_through",1);
+                auto* a=foe({14,10}); app.updateFieldOfView();
+                cast(leap,{13,10});
+                check(app.player_.position().x==13 && a->stats().hp<90 && a->statusEffects().has(StatusEffectType::Stun) &&
+                      app.player_.statusEffects().has(StatusEffectType::Empowered),
+                      "Leap Slam lands, strikes and at rank 3 stuns; Follow Through empowers the next blow");
+                clearFoes();
+                app.player_.setPosition({10,10});
+                const auto frenzy=ranked("two_handed.blood_frenzy",1);
+                cast(frenzy,app.player_.position());
+                auto* b=foe({11,10}); app.updateFieldOfView();
+                app.player_.stats().hp=50; // below the greatsword-wielder's maximum, so healing shows
+                Talent strike=findTalentDefinition("two_handed.cleave")->ranks[0]; strike.id="probe";
+                for (int tries=0;tries<10 && app.player_.stats().hp<=50;++tries) applyTalentDamage(strike,app.player_,*b);
+                check(app.player_.statusEffects().has(StatusEffectType::Frenzy) && app.player_.stats().hp>50,"Blood Frenzy: your hits heal you");
+                clearFoes();
+                // Cold Steel: melee abilities chill.
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.cold_steel")->ranks[0]);
+                const auto cleave=ranked("two_handed.cleave",1);
+                auto* c=foe({11,10}); app.updateFieldOfView();
+                cast(cleave,app.player_.position());
+                check(c->statusEffects().has(StatusEffectType::Chill),"Cold Steel: melee abilities chill what they strike");
+                clearFoes();
+            }
+
+            // The third batch: Shadow.
+            arena(PlayerClass::Mage);
+            {
+                const auto step=ranked("shadow.step",3);
+                app.darknessEnabled_=false; app.updateFieldOfView();
+                auto* a=foe({15,10}); app.updateFieldOfView();
+                app.player_.talents().resetCooldowns();
+                check(!app.tryUseTalent(step,{14,10}) && app.player_.position().x==10,"Shadow Step won't land in the light");
+                app.darknessEnabled_=true; app.player_.lightLit=false; app.updateFieldOfView();
+                cast(step,{14,10});
+                check(app.player_.position().x==14 && a->statusEffects().has(StatusEffectType::Blinded),
+                      "Shadow Step lands in the dark; at rank 3 the nearest foe loses you");
+                app.darknessEnabled_=false; app.player_.lightLit=true; app.player_.setPosition({10,10}); clearFoes();
+                ranked("shadow.dread",1);
+                auto* b=foe({11,10});
+                const Talent bolt=findTalentDefinition("shadow.bolt")->ranks[0];
+                const int plain=estimateTalentDamage(bolt,app.player_,*b).normal;
+                b->statusEffects().apply({StatusEffectType::Blinded,3,0});
+                check(estimateTalentDamage(bolt,app.player_,*b).normal==plain+3,"Dread: blinded foes take +3 from your hits");
+                clearFoes();
+                const auto devour=ranked("shadow.devour",1);
+                foe({13,10}); app.updateFieldOfView();
+                app.player_.talents().resetCooldowns(); app.player_.stats().mana=app.player_.stats().maxMana; app.player_.stats().hp=100;
+                app.tryUseTalent(devour,{13,10});
+                check(app.player_.stats().hp>100,"Devour returns half its damage as life");
+                clearFoes();
+            }
+            // Radiance.
+            arena(PlayerClass::Mage);
+            {
+                const auto holy=ranked("radiance.holy_light",1);
+                app.player_.talents().resetCooldowns(); app.player_.stats().hp=100;
+                app.tryUseTalent(holy,app.player_.position());
+                check(app.player_.stats().hp>=200,"Holy Light restores a fifth of your life");
+                const auto judgement=ranked("radiance.judgement",1);
+                auto* a=foe({14,10}); app.updateFieldOfView();
+                cast(judgement,{14,10});
+                check(a->stats().hp<90 && a->statusEffects().has(StatusEffectType::Blinded),"Judgement strikes and blinds");
+                clearFoes();
+                ranked("radiance.halo",1);
+                auto* b=foe({11,10}); app.player_.lightLit=true;
+                app.tickSurfaces();
+                check(b->stats().hp<90,"Halo sears foes beside you while your light burns");
+                clearFoes();
+                // Twilight: Radiance bites harder in the dark.
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.twilight")->ranks[0]);
+                const auto sear=ranked("radiance.sear",1);
+                app.darknessEnabled_=true; app.player_.lightLit=false;
+                foe({11,10}); app.updateFieldOfView();
+                app.logMessages_.clear();
+                cast(sear,{11,10});
+                check(sawLog("In darkness: +50%"),"Twilight: Radiance spells strike harder at foes in darkness");
+                app.darknessEnabled_=false; app.player_.lightLit=true; clearFoes();
+            }
+            // Shield.
+            arena(PlayerClass::Warrior);
+            {
+                for (const char* id:{"iron_sword","wooden_shield"}) {
+                    app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition(id),app.nextItemId_++));
+                    app.player_.equip(app.player_.inventory().items().size()-1);
+                }
+                const auto rush=ranked("shield.rush",1); ranked("shield.bulwark",1);
+                auto* a=foe({13,10}); app.updateFieldOfView();
+                cast(rush,{13,10});
+                check(app.player_.position().x==12 && a->position().x==15 && app.player_.statusEffects().magnitudeOf(StatusEffectType::Guard)>=3,
+                      "Shield Rush charges and knocks back; Bulwark guards you after");
+                clearFoes(); app.player_.setPosition({10,10}); app.player_.statusEffects().active().clear();
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.hallowed_guard")->ranks[0]);
+                const auto bastion=ranked("shield.bastion",1);
+                app.player_.talents().resetCooldowns(); app.player_.stats().hp=50;
+                app.tryUseTalent(bastion,app.player_.position());
+                check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Guard)==8 && app.player_.statusEffects().has(StatusEffectType::Pinned) &&
+                      !app.tryMovePlayer(0,1) && app.player_.position().y==10,"Bastion: Guard 8, and your feet stay planted");
+                check(app.player_.stats().hp>50,"Hallowed Guard: taking up Guard heals you");
+                app.player_.statusEffects().active().clear();
+                // Templar's Edge: melee abilities blind foes standing in light.
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.templars_edge")->ranks[0]);
+                std::size_t strike=0;
+                for (std::size_t i=0;i<app.player_.talents().knownTalents().size();++i) if (app.player_.talents().knownTalents()[i].id=="one_handed.quick_strike") strike=i;
+                auto* b=foe({11,10}); app.updateFieldOfView();
+                cast(strike,{11,10});
+                check(b->statusEffects().has(StatusEffectType::Blinded),"Templar's Edge: melee abilities blind foes standing in light");
+                clearFoes();
             }
         }
 
@@ -2179,7 +2362,7 @@ struct ApplicationRewardsTestAccess {
             app.judgeCast(forbidden);
             check(app.player_.favor==8,"...and frowns on Shadow magic");
             app.gainFavor(Patron::Seraph,30,"test");
-            check(app.playerLightRadius()==5,"At 30 favor its boon is yours: your light burns further");
+            check(app.playerLightRadius()==4,"At 30 favor its boon is yours: your light burns further");
             app.gainFavor(Patron::Seraph,30,"test");
             app.player_.stats().hp=10;
             app.player_.talents().resetCooldowns();

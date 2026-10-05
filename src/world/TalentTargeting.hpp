@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <vector>
@@ -22,6 +23,8 @@ struct TalentTarget {
     std::vector<Position> movementPath;
     std::vector<Position> chainPath;
     Actor* chainedTarget = nullptr;
+    std::vector<Actor*> chainedMore; // further jumps (rank 3 Chain Lightning)
+    bool chained(const Actor* a) const { return a && (a == chainedTarget || std::find(chainedMore.begin(), chainedMore.end(), a) != chainedMore.end()); }
     std::vector<Actor*> affected;
     Position destination;
     std::optional<Position> blockedAt;

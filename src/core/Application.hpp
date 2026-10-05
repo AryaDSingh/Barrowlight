@@ -546,6 +546,11 @@ private:
     struct EchoBeam { Talent talent; Position from, cursor; TalentTarget target; };
     std::optional<EchoBeam> echo_;
     void burstAfterimages();
+    // Blizzard: areas that keep striking as your turns begin.
+    struct Storm { Talent talent; std::vector<Position> area; int turns = 0; };
+    std::vector<Storm> storms_;
+    void tickStorms();
+    void shatterHoarfrost(const Actor& dead);
     void fireEcho();
     void spreadWildfire(const Actor& dead);
 

@@ -27,7 +27,15 @@ inline std::string talentIcon(const Talent& talent) {
         {"fire.meteor", "meteor-impact"}, {"mage.meteor", "meteor-impact"},
         {"fire.ember_bolt", "fire-dash"}, {"spellblade.ember_bolt", "fire-dash"},
         {"fire.fireball", "fireball"}, {"spellblade.fireball", "fireball"}, {"fire.kindle", "burning-embers"},
-        {"fire.flame_wall", "campfire"}, {"resonance.searing_edge", "flaming-trident"}, {"resonance.spellsword", "relic-blade"}, {"fire.kindling", "lantern-flame"}, {"fire.wildfire", "burning-embers"}, {"fire.firestorm", "flame-spin"},
+        {"fire.flame_wall", "campfire"},
+        {"shield.rush", "charging-bull"}, {"shield.bulwark", "checked-shield"}, {"shield.bastion", "stone-tower"},
+        {"shadow.step", "shadow-follower"}, {"shadow.dread", "blindfold"}, {"shadow.devour", "evil-book"},
+        {"radiance.holy_light", "healing"}, {"radiance.halo", "sun-radiations"}, {"radiance.judgement", "sunbeams"},
+        {"resonance.twilight", "eclipse"}, {"resonance.templars_edge", "relic-blade"}, {"resonance.hallowed_guard", "magic-shield"},
+        {"ice.rime_field", "snowflake-1"}, {"ice.hoarfrost", "shatter"}, {"ice.blizzard", "frozen-orb"},
+        {"lightning.thunderclap", "lightning-shout"}, {"lightning.arc_flash", "static"}, {"lightning.tempest", "lightning-storm"},
+        {"two_handed.leap_slam", "jump-across"}, {"two_handed.follow_through", "sprint"}, {"two_handed.blood_frenzy", "bloody-sword"},
+        {"resonance.thermal_shock", "lightning-saber"}, {"resonance.cold_steel", "ice-spear"}, {"resonance.searing_edge", "flaming-trident"}, {"resonance.spellsword", "relic-blade"}, {"fire.kindling", "lantern-flame"}, {"fire.wildfire", "burning-embers"}, {"fire.firestorm", "flame-spin"},
         {"one_handed.pommel", "sword-clash"}, {"one_handed.exploit", "bleeding-wound"}, {"one_handed.blade_dance", "spinning-blades"},
         {"arcane.repulse", "wind-slap"}, {"arcane.afterimage", "shadow-follower"}, {"arcane.kinetic", "impact-point"}, {"arcane.torrent", "crystal-wand"},
         {"ice.shard", "ice-bolt"}, {"ice.nova", "frozen-orb"}, {"ice.frostbite", "snowflake-1"},
@@ -184,6 +192,7 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::Linked: return "linked-rings";
         case StatusEffectType::Puppeted: return "puppet";
         case StatusEffectType::Plague: return "virus";
+        case StatusEffectType::Frenzy: return "bloody-sword";
     }
     return "aura";
 }

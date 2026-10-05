@@ -96,7 +96,9 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
         return result;
     }
 
-    if (talent.shape != EffectShape::AreaAroundSelf && !visible(cursor)) {
+    // Shadow Step aims into the dark: any tile you have explored will do.
+    const bool known = talent.darkLanding && vision.at(cursor.x, cursor.y) != Visibility::Hidden;
+    if (talent.shape != EffectShape::AreaAroundSelf && !visible(cursor) && !known) {
         result.message = "Choose a currently visible tile.";
         return result;
     }
@@ -212,13 +214,16 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
     result.valid = true;
     if (result.affected.empty()) result.message = "Empty ground: cast will still spend its turn, cost and cooldown.";
 
-    if (talent.chain && anchor && result.valid) {
+    Position from = center;
+    for (int jump = 0; talent.chain && anchor && result.valid && jump < std::max(1, talent.chainJumps); ++jump) {
         // Nearest visible secondary target, stable coordinate tie-break. No RNG.
         std::vector<Actor*> candidates;
+        const auto taken = [&](const Actor* a) { return a == anchor || result.chained(a); };
         for (Actor* enemy : enemies) {
-            if (enemy != anchor && enemy != &caster && enemy->stats().hp > 0 && visible(enemy->position()) &&
-                distanceSquared(center, enemy->position()) <= 9) candidates.push_back(enemy);
+            if (!taken(enemy) && enemy != &caster && enemy->stats().hp > 0 && visible(enemy->position()) &&
+                distanceSquared(from, enemy->position()) <= 9) candidates.push_back(enemy);
         }
+        const Position center = from;
         std::sort(candidates.begin(), candidates.end(), [&](const Actor* a, const Actor* b) {
             const int da = distanceSquared(center, a->position()), db = distanceSquared(center, b->position());
             if (da != db) return da < db;
@@ -232,10 +237,13 @@ TalentTarget resolveTalentTarget(const Map& map, const ExploredMap& vision,
                     (i + 1 < ray.size() && enemyAt(ray[i]))) { clear = false; break; }
             }
             if (!clear) continue;
-            result.chainedTarget = enemy; result.chainPath = ray;
+            if (!result.chainedTarget) { result.chainedTarget = enemy; result.chainPath = ray; }
+            else { result.chainedMore.push_back(enemy); result.chainPath.insert(result.chainPath.end(), ray.begin() + 1, ray.end()); }
             result.affected.push_back(enemy); result.area.push_back(enemy->position());
+            from = enemy->position();
             break;
         }
+        if (from.x == center.x && from.y == center.y) break; // nowhere further to jump
     }
 
     if (talent.retreatDistance > 0) {

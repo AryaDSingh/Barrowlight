@@ -140,7 +140,7 @@ int main() {
         for (std::size_t tree=0;tree<kTalentTrees.size();++tree) {
             const std::string id=kTalentTrees[tree].id;
             const auto& nodes=treeNodes(tree);
-            if (id=="fire" || id=="one_handed" || id=="arcane") {
+            if (id=="fire" || id=="one_handed" || id=="arcane" || id=="ice" || id=="lightning" || id=="two_handed" || id=="shadow" || id=="radiance" || id=="shield") {
                 // root, two actives, two passives, two capstones
                 pilotsForked&=nodes.size()==7;
                 for (const auto* d:nodes) pilotsForked&=d->maxRank()==(d->ranks[0].passive?1:3) && d->prerequisites.empty()==(d->tier==0 || d->tier==3);
@@ -153,7 +153,7 @@ int main() {
                 nodes[i]->prerequisites.empty() && nodes[i]->fork.empty();
         }
         check(othersUnchanged,"Trees outside the pilot keep four five-rank nodes, one per tier");
-        check(pilotsForked,"Fire, One-Handed and Arcane fork: seven nodes, 3-rank actives, 1-rank passives, two forks");
+        check(pilotsForked,"The forked trees: seven nodes, 3-rank actives, 1-rank passives, two forks");
         check(findTalentDefinition("juggernaut.iron_skin")->maxRank()==1,"Ascendancy nodes have a single rank");
         check(findTalentDefinition("juggernaut.iron_skin")->atRank(3).name=="Iron Skin","Asking past a node's last rank gives its last rank");
     }

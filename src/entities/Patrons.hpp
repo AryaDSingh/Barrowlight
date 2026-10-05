@@ -50,7 +50,7 @@ inline const PatronInfo& patronInfo(Patron p) {
         {"The Whisperer in the Walls", "the Whisperer", "Eldritch",
          "Kills made from hiding or from the dark.",
          "Light magic; being spotted.",
-         "You see three tiles into the dark, and dodge 10% more while standing in it.",
+         "You dodge 10% more while standing in the dark.",
          "Unseeing: you vanish, and everything within six tiles is blinded.",
          "It tells them where you are: every enemy nearby is alerted, and you are Marked.",
          160, 110, 230},

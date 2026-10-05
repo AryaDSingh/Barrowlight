@@ -366,6 +366,7 @@ void Application::tickSurfaces() {
         else if (s.type == SurfaceType::Electrified && --s.turns <= 0) s = {SurfaceType::Water, 0};
         else if (s.type == SurfaceType::Acid && --s.turns <= 0) s = {};
         else if (s.type == SurfaceType::Gas && --s.turns <= 0) s = {};
+        else if (s.type == SurfaceType::Ice && s.turns > 0 && --s.turns <= 0) s = {}; // a spell's ice melts; frozen water stays
     }
     for (const auto& p : spreadTo) {
         if (surfaceAt(p) == SurfaceType::Gas) explodeGas(p);

@@ -129,8 +129,12 @@ inline void applyMastery(TalentDefinition& d) {
     else if (id == "two_handed.cleave") { m.pushDistance = 1; d.mastery = "Pushes surviving targets one tile away."; }
     else if (id == "two_handed.fury") { m.hpCost = 0; d.mastery = "Costs no life."; }
     else if (id == "two_handed.whirlwind") { m.pushDistance = 2; d.mastery = "Pushes surviving targets two tiles away."; }
+    else if (id == "two_handed.leap_slam") { m.slamStun = true; d.mastery = "Stuns what the landing strikes."; }
+    else if (id == "two_handed.blood_frenzy") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 40; d.mastery = "Heals for 40% of the damage dealt."; }
     else if (id == "shield.bash") { m.pushDistance = 2; d.mastery = "Pushes two tiles."; }
     else if (id == "shield.guard") { longer(); d.mastery = "Guard lasts one enemy response longer."; }
+    else if (id == "shield.rush") { stun(1); d.mastery = "The impact stuns for one enemy turn."; }
+    else if (id == "shield.bastion") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 12; d.mastery = "Guard 12."; }
     else if (id == "shield.shockwave") { m.areaRadius = 2; d.mastery = "Reaches enemies up to two tiles away."; }
     else if (id == "bow.quick_shot") { mark(); d.mastery = "Marks the target: its next direct hit taken deals +25%."; }
     else if (id == "bow.volley") { m.areaRadius = 3; d.mastery = "The burst covers three tiles."; }
@@ -150,11 +154,15 @@ inline void applyMastery(TalentDefinition& d) {
     else if (id == "arcane.repulse") { m.stunOnImpact = true; d.mastery = "Foes that slam into something are stunned for a turn."; }
     else if (id == "arcane.torrent") { m.echoBeam = true; d.mastery = "The beam fires again down the same line at the start of your next turn."; }
     else if (id == "fire.meteor") { m.statusBonusPercent = 100; d.mastery = "Consuming Burn doubles the hit (+100%)."; }
-    else if (id == "ice.shard") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 4; d.mastery = "Chill lasts four turns."; }
-    else if (id == "ice.nova") { m.areaRadius = 2; d.mastery = "Reaches enemies up to two tiles away."; }
+    else if (id == "ice.shard") { m.splashSurface = 4; m.splashTurns = 4; d.mastery = "Freezes the ground under the target."; }
+    else if (id == "ice.nova") { m.splashSurface = 4; m.splashTurns = 4; d.mastery = "Leaves a ring of ice around you."; }
+    else if (id == "ice.rime_field") { m.areaRadius = 2; d.mastery = "The field reaches two tiles out."; }
+    else if (id == "ice.blizzard") { m.lingerTurns = 4; d.mastery = "The storm lasts two turns longer."; }
     else if (id == "ice.shatter") { m.statusBonusPercent = 100; d.mastery = "Consuming Chill doubles the hit (+100%)."; }
-    else if (id == "lightning.bolt") { m.cooldownTurns = 1; d.mastery = "Cooldown 1."; }
-    else if (id == "lightning.chain") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    else if (id == "lightning.bolt") { m.pierceBehind = true; d.mastery = "Also strikes whoever stands right behind the target."; }
+    else if (id == "lightning.chain") { m.chainJumps = 2; d.mastery = "Jumps twice."; }
+    else if (id == "lightning.thunderclap") { m.pushDistance = 2; d.mastery = "Shoves them two tiles."; }
+    else if (id == "lightning.tempest") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Shock, 3, 0}; m.onHitChance = 1.f; d.mastery = "Shocks everything it strikes."; }
     else if (id == "lightning.discharge") { m.statusBonusPercent = 100; d.mastery = "Consuming Shock doubles the hit (+100%)."; }
     else if (id == "arcane.bolt") { m.manaCost = std::max(1, m.manaCost / 2); d.mastery = "Costs half as much mana."; }
     else if (id == "arcane.blink") { m.vault = true; d.mastery = "Passes through creatures in the way."; }
@@ -171,11 +179,15 @@ inline void applyMastery(TalentDefinition& d) {
     else if (id == "whip.lash") { m.pullDistance = 2; d.mastery = "Pulls two tiles."; }
     else if (id == "whip.trip") { stun(2); d.mastery = "The fall stuns for two enemy turns (bosses still resist repeats)."; }
     else if (id == "whip.snare") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 4; d.mastery = "Holds the snared enemy for four turns."; }
-    else if (id == "shadow.bolt") { m.darkBonusPercent = 100; d.mastery = "+100% against a target in darkness."; }
+    else if (id == "shadow.bolt") { m.blindInDark = true; d.mastery = "A target standing in darkness is blinded too."; }
+    else if (id == "shadow.step") { m.arrivalBlind = true; d.mastery = "The foe nearest where you arrive is blinded."; }
+    else if (id == "shadow.devour") { m.drainPercent = 100; d.mastery = "Drains all the damage it deals."; }
     else if (id == "shadow.snuff") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Concealed, 2, 2}; d.mastery = "You vanish into the new dark: Concealed for two responses."; }
     else if (id == "shadow.veil") { m.areaRadius = 2; d.mastery = "Blinds everything within two tiles."; }
     else if (id == "radiance.sear") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Burn, 3, 2}; m.onHitChance = 1.f; d.mastery = "Sets the target burning (2 per turn)."; }
     else if (id == "radiance.flare") { m.areaRadius = 2; d.mastery = "The flare covers two tiles."; }
+    else if (id == "radiance.holy_light") { m.cleanse = true; d.mastery = "Also removes Poison, Burn, Chill, Marked and curses."; }
+    else if (id == "radiance.judgement") { m.areaRadius = 1; d.mastery = "The pillar strikes everything beside the target too."; }
     else if (id == "radiance.dawn") { m.areaRadius = 4; d.mastery = "Reaches enemies up to four tiles away."; }
     else if (id == "alchemy.oil") { m.areaRadius = 2; d.mastery = "The flask splashes two tiles."; }
     else if (id == "alchemy.firebomb") { if (m.onHitEffect) m.onHitEffect->magnitude = 2; d.mastery = "Burn deals 2 damage per turn."; }
@@ -382,13 +394,37 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t=attack("Execution","Double damage against an enemy at or below 30% HP.",8,4,5); t.conditionalHpFraction=.3f; t.conditionalMultiplier=2; add(0,"one_handed.execution",3,t);
         shape("one_handed.execution",3,"capstone",{});
         add(1,"two_handed.cleave",0,attack("Cleave","A heavy swing hitting all four adjacent tiles.",5,3,3,false,1));
+        shape("two_handed.cleave",3,"",{});
         t=attack("Berserker's Fury","A heavy blow paid for with 5 HP.",14,0,4); t.hpCost=5; add(1,"two_handed.fury",1,t);
-        add(1,"two_handed.bloodlust",2,passive("Bloodlust","With a two-handed weapon, direct damage gains +4/5/6/7/8 while at or below half HP.",PassiveKind::Bloodlust,4));
+        shape("two_handed.fury",3,"path",{"two_handed.cleave"});
+        t=move("Leap Slam","Leap up to three tiles, over anything in the way, and slam down: everything beside where you land is struck.",3,4,7);
+        t.vault=true; t.landingSlam=8; add(1,"two_handed.leap_slam",1,t);
+        shape("two_handed.leap_slam",3,"path",{"two_handed.cleave"});
+        add(1,"two_handed.bloodlust",2,passive("Bloodlust","With a two-handed weapon, your hits deal +6 while you are at or below half life.",PassiveKind::Bloodlust,6));
+        shape("two_handed.bloodlust",1,"",{"two_handed.fury"});
+        add(1,"two_handed.follow_through",2,passive("Follow Through","After a movement ability, your blows land harder: Empowered +6 for a turn.",PassiveKind::FollowThrough,6));
+        shape("two_handed.follow_through",1,"",{"two_handed.leap_slam"});
         t=attack("Whirlwind","Strike in a two-tile circle and push surviving targets one tile away.",8,6,6,false,2); t.pushDistance=1; add(1,"two_handed.whirlwind",3,t);
+        shape("two_handed.whirlwind",3,"capstone",{});
+        t=buff("Blood Frenzy","For four turns, your hits heal you for a quarter of the damage they deal.",StatusEffectType::Frenzy,4,25,4,12);
+        add(1,"two_handed.blood_frenzy",3,t);
+        shape("two_handed.blood_frenzy",3,"capstone",{});
         t=attack("Shield Bash","Strike, push one tile and Mark for the next direct hit (+25%, 3 enemy turns).",4,1,3); t.pushDistance=1; t.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,3,1}; add(2,"shield.bash",0,t);
+        shape("shield.bash",3,"",{});
         add(2,"shield.guard",1,buff("Guard","Reduce incoming direct damage by 4 for two enemy responses.",StatusEffectType::Guard,2,4,3,6));
-        add(2,"shield.training",2,passive("Shield Training","While a shield is equipped, Guard blocks 4/5/6/7/8 extra damage per direct hit.",PassiveKind::ShieldTraining,4));
+        shape("shield.guard",3,"path",{"shield.bash"});
+        t=attack("Shield Rush","Charge up to three tiles into a foe in a straight line and knock it back two tiles.",5,3,7);
+        t.chargeDistance=3; t.pushDistance=2; add(2,"shield.rush",1,t);
+        shape("shield.rush",3,"path",{"shield.bash"});
+        add(2,"shield.training",2,passive("Shield Training","While a shield is equipped, Guard blocks 6 extra damage per direct hit.",PassiveKind::ShieldTraining,6));
+        shape("shield.training",1,"",{"shield.guard"});
+        add(2,"shield.bulwark",2,passive("Bulwark","After you charge, you are guarded: Guard 3 for two enemy responses.",PassiveKind::Bulwark,3));
+        shape("shield.bulwark",1,"",{"shield.rush"});
         t=attack("Shield Shockwave","Strike adjacent enemies and stun successful hits for one enemy turn.",5,5,7,false,1); t.onHitEffect=StatusEffectInstance{StatusEffectType::Stun,1,0}; add(2,"shield.shockwave",3,t);
+        shape("shield.shockwave",3,"capstone",{});
+        t=buff("Bastion","Plant your shield: Guard 8 for three enemy responses, but you can't walk while it holds.",StatusEffectType::Guard,3,8,4,12);
+        t.rootSelf=true; add(2,"shield.bastion",3,t);
+        shape("shield.bastion",3,"capstone",{});
         add(3,"bow.quick_shot",0,attack("Quick Shot","An efficient projectile intercepted by the first enemy.",5,2,1,true));
         t=attack("Volley","Burst in a two-tile circle and Mark survivors for the next direct hit (+25%, 3 enemy turns).",5,6,4,true,2);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,3,1}; add(3,"bow.volley",1,t);
@@ -421,13 +457,37 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t.splashSurface=3; t.splashTurns=4; t.scatterSplash=true; add(6,"fire.firestorm",3,t);
         shape("fire.firestorm",3,"capstone",{});
         t=attack("Ice Shard","Chill on hit: -20% outgoing damage and movement on alternate turns for three enemy turns.",4,2,2,true); t.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,3,20}; add(7,"ice.shard",0,t);
+        shape("ice.shard",3,"",{});
         t=attack("Frost Nova","Chill adjacent enemies for three turns; helps create an escape.",4,4,5,false,1); t.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,3,20}; add(7,"ice.nova",1,t);
-        add(7,"ice.frostbite",2,passive("Frostbite","Direct hits against Chilled enemies deal +4/5/6/7/8 damage, from any tree.",PassiveKind::Frostbite,4));
+        shape("ice.nova",3,"path",{"ice.shard"});
+        t=attack("Rime Field","Cover a spot and the tiles around it in ice for six turns. Whatever stands in it is chilled.",3,4,6,true,1);
+        t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,3,20}; t.splashSurface=4; t.splashTurns=6;
+        add(7,"ice.rime_field",1,t);
+        shape("ice.rime_field",3,"path",{"ice.shard"});
+        add(7,"ice.frostbite",2,passive("Frostbite","Direct hits against chilled enemies deal +6 damage, from any tree.",PassiveKind::Frostbite,6));
+        shape("ice.frostbite",1,"",{"ice.nova"});
+        add(7,"ice.hoarfrost",2,passive("Hoarfrost","When a chilled foe dies, it shatters and chills everything beside it.",PassiveKind::Hoarfrost,1));
+        shape("ice.hoarfrost",1,"",{"ice.rime_field"});
         t=attack("Shatter","Consume Chill on hit for +50% direct damage and a one-turn Stun.",9,6,7,true); t.consumeChill=true; t.statusBonusPercent=50; add(7,"ice.shatter",3,t);
+        shape("ice.shatter",3,"capstone",{});
+        t=attack("Blizzard","A storm settles over everything within two tiles of a spot for three turns, striking and chilling what stands inside as each of your turns begins.",5,9,10,true,2);
+        t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,3,20}; t.lingerTurns=2; add(7,"ice.blizzard",3,t);
+        shape("ice.blizzard",3,"capstone",{});
         add(8,"lightning.bolt",0,attack("Lightning Bolt","A direct lightning projectile.",5,2,2,true));
+        shape("lightning.bolt",3,"",{});
         t=attack("Chain Lightning","Jump to one visible enemy within three tiles of impact, for half damage. Terrain blocks the jump.",6,5,5,true); t.chain=true; add(8,"lightning.chain",1,t);
-        add(8,"lightning.static_charge",2,passive("Static Charge","Direct Lightning hits apply Shock for 4/5/6/7/8 turns. Shock does not stack and empowers Discharge.",PassiveKind::StaticCharge,4));
+        shape("lightning.chain",3,"path",{"lightning.bolt"});
+        t=attack("Thunderclap","A blast of thunder around you: shocks every adjacent foe and shoves it back a tile.",4,4,6,false,1);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Shock,3,0}; t.pushDistance=1; add(8,"lightning.thunderclap",1,t);
+        shape("lightning.thunderclap",3,"path",{"lightning.bolt"});
+        add(8,"lightning.static_charge",2,passive("Static Charge","Direct Lightning hits apply Shock for 5 turns. Shock does not stack and empowers Discharge.",PassiveKind::StaticCharge,5));
+        shape("lightning.static_charge",1,"",{"lightning.chain"});
+        add(8,"lightning.arc_flash",2,passive("Arc Flash","Any hit you land on a shocked foe arcs 4 damage to the nearest other foe within three tiles.",PassiveKind::ArcFlash,4));
+        shape("lightning.arc_flash",1,"",{"lightning.thunderclap"});
         t=attack("Discharge","Consume Shock on a successful hit for +50% direct damage. Cannot reapply Shock.",11,6,7,true); t.consumeShock=true; t.statusBonusPercent=50; add(8,"lightning.discharge",3,t);
+        shape("lightning.discharge",3,"capstone",{});
+        t=attack("Tempest","Lightning strikes every foe within three tiles of you.",8,10,10,false,3); add(8,"lightning.tempest",3,t);
+        shape("lightning.tempest",3,"capstone",{});
         t=attack("Arcane Bolt","Mark on a successful hit: next direct hit gains +25% damage, within 3 enemy turns.",3,2,1,true);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,3,1}; add(9,"arcane.bolt",0,t);
         shape("arcane.bolt",3,"",{});
@@ -510,20 +570,45 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         // Shadow (INT spells): darkness as a weapon.
         t=attack("Shadow Bolt","A bolt of darkness: +50% damage against a target standing in darkness.",5,2,1,true);
         t.darkBonusPercent=50; add(19,"shadow.bolt",0,t);
+        shape("shadow.bolt",3,"",{});
         t=Talent{}; t.name="Snuff"; t.description="Every torch, brazier, wisp and burning tile within four tiles goes out, your own light too (L relights it). Creatures that need light lose sight of you.";
         t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.snuffRadius=4; t.manaCost=2; t.cooldownTurns=6;
         add(19,"shadow.snuff",1,t);
-        add(19,"shadow.umbral",2,passive("Umbral Shroud","While your own light is out, you see three tiles into the dark, your spells deal +2/3/4/5/6 damage and you gain three times that much dodge (%).",PassiveKind::Umbral,2));
+        shape("shadow.snuff",3,"path",{"shadow.bolt"});
+        t=move("Shadow Step","Step through the dark to any unlit tile up to five tiles away, past anything in the way.",5,4,6);
+        t.vault=true; t.darkLanding=true; add(19,"shadow.step",1,t);
+        shape("shadow.step",3,"path",{"shadow.bolt"});
+        add(19,"shadow.umbral",2,passive("Umbral Shroud","While your own light is out, your spells deal +4 damage and you gain 12% dodge.",PassiveKind::Umbral,4));
+        shape("shadow.umbral",1,"",{"shadow.snuff"});
+        add(19,"shadow.dread",2,passive("Dread","Blinded foes take +3 damage from all your hits.",PassiveKind::Dread,3));
+        shape("shadow.dread",1,"",{"shadow.step"});
         t=attack("Veil of Night","Darkness swallows an enemy and those beside it: blinded for three enemy turns, they see only what is next to them.",4,5,8,true,1);
         t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Blinded,3,0}; add(19,"shadow.veil",3,t);
+        shape("shadow.veil",3,"capstone",{});
+        t=attack("Devour","A bolt of hunger: half the damage it deals returns to you as life, and it bites harder at a foe in darkness (+50%).",9,7,8,true);
+        t.drainPercent=50; t.darkBonusPercent=50; add(19,"shadow.devour",3,t);
+        shape("shadow.devour",3,"capstone",{});
         // Radiance (INT spells): light as a weapon.
         t=attack("Sear","A ray of light: +50% damage against undead and creatures that see in the dark.",5,2,1,true);
         t.searing=true; add(20,"radiance.sear",0,t);
+        shape("radiance.sear",3,"",{});
         t=attack("Flare","A blinding burst: enemies within a tile are blinded for two enemy turns, hidden ones are revealed, and the spot stays lit for a while.",3,4,6,true,1);
         t.projectile=false; t.flare=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Blinded,2,0}; add(20,"radiance.flare",1,t);
-        add(20,"radiance.inner_light",2,passive("Inner Light","Your light reaches one tile further, and your spells deal +2/3/4/5/6 damage to enemies standing in light.",PassiveKind::InnerLight,2));
+        shape("radiance.flare",3,"path",{"radiance.sear"});
+        t=Talent{}; t.name="Holy Light"; t.description="A warm light washes over you, restoring 20% of your maximum life.";
+        t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.restoreHpPercent=20; t.manaCost=5; t.cooldownTurns=10;
+        add(20,"radiance.holy_light",1,t);
+        shape("radiance.holy_light",3,"path",{"radiance.sear"});
+        add(20,"radiance.inner_light",2,passive("Inner Light","Your light reaches one tile further, and your spells deal +4 damage to enemies standing in light.",PassiveKind::InnerLight,4));
+        shape("radiance.inner_light",1,"",{"radiance.flare"});
+        add(20,"radiance.halo",2,passive("Halo","While your light burns, foes beside you are seared for 3 each turn.",PassiveKind::LanternWard,3));
+        shape("radiance.halo",1,"",{"radiance.holy_light"});
         t=attack("Dawn","Light floods out three tiles, searing enemies (+50% against undead and darkvision), relighting every torch and brazier within six tiles and breaking any smothering darkness on you.",7,8,12,false,3);
         t.searing=true; t.dawn=true; add(20,"radiance.dawn",3,t);
+        shape("radiance.dawn",3,"capstone",{});
+        t=attack("Judgement","A pillar of light falls on one foe: a heavy, searing blow (+50% against undead and darkvision) that blinds it.",14,9,9,true);
+        t.projectile=false; t.searing=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Blinded,2,0}; add(20,"radiance.judgement",3,t);
+        shape("radiance.judgement",3,"capstone",{});
         // Alchemy (DEX): flasks that leave something on the ground.
         t=attack("Oil Flask","Lob a flask that splashes oil over a tile and its neighbours. Oil burns long once lit.",2,2,4,false,1);
         t.targeting=TargetingMode::RangedEnemyInSight; t.shape=EffectShape::AreaAroundTarget; t.splashSurface=1; add(21,"alchemy.oil",0,t);
@@ -722,6 +807,12 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         for (auto& d:out) {
             if (d.treeId=="fire") d.affinity=Affinity::Flame;
             else if (d.treeId=="arcane") d.affinity=Affinity::Arcane;
+            else if (d.treeId=="ice") d.affinity=Affinity::Frost;
+            else if (d.treeId=="lightning") d.affinity=Affinity::Storm;
+            else if (d.treeId=="two_handed") d.affinity=Affinity::Steel;
+            else if (d.treeId=="shadow") d.affinity=Affinity::Dark;
+            else if (d.treeId=="radiance") d.affinity=Affinity::Light;
+            else if (d.treeId=="shield") d.affinity=Affinity::Guard;
             else if (d.treeId=="one_handed") d.affinity=(d.id=="one_handed.parry" || d.id=="one_handed.riposte")?Affinity::Guard:Affinity::Steel;
         }
         // Resonances: one-rank passives that exist only between two colours.
@@ -734,6 +825,16 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             passive("Searing Edge","When a melee ability strikes a burning foe, the burn flares: it is spent for 6 extra damage, and the ground behind the foe catches fire.",PassiveKind::SearingEdge,6));
         resonance("resonance.spellsword",Affinity::Steel,Affinity::Arcane,
             passive("Spellsword","Casting a spell readies +6 damage for your next melee attack, and a landed melee attack takes a turn off your longest spell cooldown.",PassiveKind::BattleRhythm,6));
+        resonance("resonance.thermal_shock",Affinity::Frost,Affinity::Storm,
+            passive("Thermal Shock","A foe that is chilled and shocked at once locks up: your hit stuns it for a turn.",PassiveKind::ThermalShock,1));
+        resonance("resonance.cold_steel",Affinity::Steel,Affinity::Frost,
+            passive("Cold Steel","Your melee abilities chill what they strike.",PassiveKind::ColdSteel,1));
+        resonance("resonance.twilight",Affinity::Light,Affinity::Dark,
+            passive("Twilight","Each school takes the other's edge: your Shadow spells sear undead and darkvision creatures (+50%), and your Radiance spells strike +50% harder at foes standing in darkness.",PassiveKind::Twilight,1));
+        resonance("resonance.templars_edge",Affinity::Steel,Affinity::Light,
+            passive("Templar's Edge","Your melee abilities blind foes standing in light.",PassiveKind::TemplarsEdge,1));
+        resonance("resonance.hallowed_guard",Affinity::Guard,Affinity::Light,
+            passive("Hallowed Guard","Whenever you take up Guard, you also heal 3.",PassiveKind::HallowedGuard,3));
         return out;
     }();
     return catalog;

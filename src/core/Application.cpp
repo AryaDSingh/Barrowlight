@@ -1088,6 +1088,7 @@ bool Application::tryMovePlayer(int dx, int dy) {
     }
 
     Actor* blocker = actorAt(target, &player_);
+    if (!blocker && player_.statusEffects().has(StatusEffectType::Pinned)) { log("Your feet are planted."); return false; }
     if (auto* ally=dynamic_cast<Monster*>(blocker); ally && ally->allied) {
         ally->setPosition(current); player_.setPosition(target); finishInventoryTurn(); return true;
     }
@@ -1141,6 +1142,10 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     }
     // Own a copy: killing a target can grant a talent and reallocate the kit.
     Talent talent = combatTalent(player_,player_.talents().effectiveTalent(talentIndex));
+    if (player_.talents().passiveValue(PassiveKind::Twilight)) {
+        if (talent.tree==TalentTree::Shadow && talent.effectKind==TalentEffectKind::Damage) talent.searing=true;
+        if (talent.tree==TalentTree::Radiance && talent.effectKind==TalentEffectKind::Damage) talent.darkBonusPercent+=50;
+    }
 
     const auto unavailable = talentUnavailableReason(player_, talentIndex);
     if (!unavailable.empty()) {
@@ -1153,8 +1158,10 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         log(target.message);
         return false;
     }
+    if (talent.darkLanding && tileLit(target.destination)) { log("The light there is too bright to step into."); return false; }
+    if (talent.darkLanding && isOccupied(target.destination,&player_)) { log("Something is already standing in that dark."); return false; }
     const auto& affected = target.affected;
-    const Actor* chainedTarget = target.chainedTarget;
+    const TalentTarget& aimed = target; // the loops below name each victim `target`
     const Position blinkDestination = target.destination;
 
     const auto* equippedWeapon=player_.inventory().equipped(EquipmentSlot::Weapon);
@@ -1163,6 +1170,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     const Position beforeMovement=player_.position();
     const int wasConcealed=player_.statusEffects().magnitudeOf(StatusEffectType::Concealed);
     bool landedAny=false, killedAny=false;
+    const int guardBefore=player_.statusEffects().magnitudeOf(StatusEffectType::Guard);
     // Commit point: validation and preview above are side-effect free.
     if (talent.effectKind==TalentEffectKind::Damage) { combatThisTurn_=true; notifyAttack(player_,cursor); }
     cancelTargeting();
@@ -1180,6 +1188,34 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     } else if (talent.shape == EffectShape::Movement) {
         player_.setPosition(blinkDestination);
         if (talent.tree==TalentTree::Arcane && player_.talents().passiveValue(PassiveKind::Afterimage)) afterimages_.push_back(beforeMovement);
+        if (talent.landingSlam) {
+            // Leap Slam: everything beside where you land is struck.
+            combatThisTurn_=true;
+            Talent slam=talent; slam.effectKind=TalentEffectKind::Damage; slam.shape=EffectShape::SingleTarget; slam.power=talent.landingSlam;
+            std::vector<Monster*> struck;
+            for (auto& m:monsters_)
+                if (!m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-blinkDestination.x),std::abs(m->position().y-blinkDestination.y))<=1) struck.push_back(m.get());
+            for (auto* m:struck) {
+                if (applyTalentDamage(slam,player_,*m)) {
+                    flashActor(*m);
+                    if (talent.slamStun && m->stats().hp>0 && m->statusEffects().canReceiveStun()) m->statusEffects().apply({StatusEffectType::Stun,1,0});
+                }
+                checkAndHandleDeath(*m);
+            }
+            spawnVfx({Vfx::Kind::Ring,{blinkDestination.x+.5f,blinkDestination.y+.5f},{blinkDestination.x+.5f,blinkDestination.y+.5f},sf::Color(190,150,100),0,.4f,1.6f});
+            if (!struck.empty()) log("You slam down among ",struck.size()," foe",struck.size()==1?"":"s","!");
+        }
+        if (talent.arrivalBlind) {
+            Monster* nearest=nullptr; int best=3;
+            for (auto& m:monsters_) {
+                if (m->allied || m->stats().hp<=0) continue;
+                const int d=std::max(std::abs(m->position().x-blinkDestination.x),std::abs(m->position().y-blinkDestination.y));
+                if (d<best) { best=d; nearest=m.get(); }
+            }
+            if (nearest) { nearest->statusEffects().apply({StatusEffectType::Blinded,2,0}); log(nearest->name()," loses you in the dark!"); }
+        }
+        if (const int follow=player_.talents().passiveValue(PassiveKind::FollowThrough))
+            player_.statusEffects().apply({StatusEffectType::Empowered,2,follow});
         log(player_.name(), " uses ", talent.name, ", blinks to (", blinkDestination.x, ',',
             blinkDestination.y, ")");
         if (talent.blitz || talent.landingBurst) {
@@ -1267,13 +1303,15 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         if (talent.chargeDistance>0 && (blinkDestination.x!=beforeMovement.x || blinkDestination.y!=beforeMovement.y)) {
             player_.setPosition(blinkDestination);
             log("You charge!");
+            if (const int bulwark=player_.talents().passiveValue(PassiveKind::Bulwark))
+                player_.statusEffects().apply({StatusEffectType::Guard,2,std::max(bulwark,player_.statusEffects().magnitudeOf(StatusEffectType::Guard))});
         }
         const bool grapple=talent.onHitEffect && talent.onHitEffect->type==StatusEffectType::Grappled;
         int hits=0;
         if (grapple) for (auto& m:monsters_) m->statusEffects().remove(StatusEffectType::Grappled); // one at a time
         for (Actor* target : affected) {
             Talent hitTalent = talent;
-            if (target == chainedTarget) hitTalent.damagePercent /= 2;
+            if (aimed.chained(target)) hitTalent.damagePercent /= 2;
             if (const int momentum=player_.talents().passiveValue(PassiveKind::Momentum)) {
                 momentumStreak_=target==momentumTarget_ ? std::min(momentumStreak_+1,3) : 0;
                 momentumTarget_=target;
@@ -1306,6 +1344,38 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             if (applyTalentDamage(hitTalent, player_, *target)) {
                 landedAny=true; killedAny=killedAny || target->stats().hp<=0; ++hits;
                 if (talent.markOnHit && target->stats().hp>0) target->statusEffects().apply({StatusEffectType::Marked,3,1});
+                // Shadow Bolt at rank 3: a target in darkness is blinded too.
+                if (talent.blindInDark && target->stats().hp>0 && !tileLit(target->position()))
+                    target->statusEffects().apply({StatusEffectType::Blinded,2,0});
+                // Templar's Edge: melee abilities blind foes standing in light.
+                if (player_.talents().passiveValue(PassiveKind::TemplarsEdge) && isMeleeAttack(talent) && talent.id!="basic.attack" &&
+                    target->stats().hp>0 && tileLit(target->position()))
+                    target->statusEffects().apply({StatusEffectType::Blinded,2,0});
+                // Cold Steel: melee abilities chill.
+                if (player_.talents().passiveValue(PassiveKind::ColdSteel) && isMeleeAttack(talent) && talent.id!="basic.attack" && target->stats().hp>0)
+                    target->statusEffects().apply({StatusEffectType::Chill,3,20});
+                // Thermal Shock: chilled and shocked at once, it locks up.
+                if (player_.talents().passiveValue(PassiveKind::ThermalShock) && target->stats().hp>0 &&
+                    target->statusEffects().has(StatusEffectType::Chill) && target->statusEffects().has(StatusEffectType::Shock) &&
+                    target->statusEffects().canReceiveStun() && !armourResistsStun(*target)) {
+                    target->statusEffects().apply({StatusEffectType::Stun,1,0});
+                    log(target->name()," locks up, frozen and crackling!");
+                }
+                // Arc Flash: a hit on a shocked foe arcs to the nearest other.
+                if (const int arc=player_.talents().passiveValue(PassiveKind::ArcFlash); arc && target->statusEffects().has(StatusEffectType::Shock)) {
+                    Monster* next=nullptr; int best=4;
+                    for (auto& m:monsters_) {
+                        if (m.get()==target || m->allied || m->stats().hp<=0) continue;
+                        const int d=std::max(std::abs(m->position().x-target->position().x),std::abs(m->position().y-target->position().y));
+                        if (d<best) { best=d; next=m.get(); }
+                    }
+                    if (next) {
+                        next->stats().hp-=arc; flashActor(*next);
+                        spawnVfx({Vfx::Kind::Lightning,{target->position().x+.5f,target->position().y+.5f},{next->position().x+.5f,next->position().y+.5f},sf::Color(170,210,255),0,.25f,1.f});
+                        log("Lightning arcs to ",next->name(),"!");
+                        checkAndHandleDeath(*next);
+                    }
+                }
                 // Searing Edge: a melee ability spends the burn, and the ground behind catches fire.
                 if (const int flare=player_.talents().passiveValue(PassiveKind::SearingEdge);
                     flare && burning && isMeleeAttack(talent) && talent.id!="basic.attack") {
@@ -1422,10 +1492,16 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
 
     if (talent.splashSurface) {
         const Position centre=target.area.empty()?cursor:target.area.front();
-        for (const auto& p:target.area)
+        for (const auto& p:target.area) {
+            if (talent.shape==EffectShape::AreaAroundSelf && p.x==player_.position().x && p.y==player_.position().y) continue;
             if (!talent.scatterSplash || (p.x+p.y)%2==(centre.x+centre.y)%2) setSurface(p,static_cast<SurfaceType>(talent.splashSurface),talent.splashTurns);
+        }
         if (talent.splashPath) for (std::size_t i=1;i<target.path.size();++i)
             if (map_.isWalkable(target.path[i].x,target.path[i].y)) setSurface(target.path[i],static_cast<SurfaceType>(talent.splashSurface),talent.splashTurns);
+    }
+    if (talent.lingerTurns && !target.area.empty()) {
+        Talent storm=talent; storm.lingerTurns=0;
+        storms_.push_back({storm,target.area,talent.lingerTurns});
     }
     if (talent.vortex && !target.area.empty()) {
         const Position centre=cursor;
@@ -1470,6 +1546,12 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         log("Dawn breaks: torches and braziers flare back to life.");
     }
     afterHiddenCast(talent,landedAny,killedAny,wasConcealed);
+    if (talent.rootSelf && talent.selfBuffEffect) player_.statusEffects().apply({StatusEffectType::Pinned,talent.selfBuffEffect->turnsRemaining,0});
+    if (const int hallowed=player_.talents().passiveValue(PassiveKind::HallowedGuard);
+        hallowed && player_.statusEffects().magnitudeOf(StatusEffectType::Guard)>guardBefore) {
+        player_.stats().hp=std::min(player_.stats().maxHp,player_.stats().hp+hallowed);
+        log("A warm light steadies you.");
+    }
     if (const Element element=talentElement(talent); element!=Element::None) {
         std::vector<Position> touched=target.area;
         if (!target.path.empty()) touched.push_back(target.path.back());
@@ -1777,6 +1859,43 @@ void Application::fireEcho() {
     removeDeadMonsters();
 }
 
+// Blizzard: each storm strikes what stands in it, then wears down.
+void Application::tickStorms() {
+    if (storms_.empty()) return;
+    auto storms=std::move(storms_);
+    storms_.clear();
+    for (auto& storm:storms) {
+        std::vector<Monster*> struck;
+        for (auto& m:monsters_) {
+            if (m->allied || m->stats().hp<=0) continue;
+            for (const auto& p:storm.area) if (p.x==m->position().x && p.y==m->position().y) { struck.push_back(m.get()); break; }
+        }
+        if (!struck.empty()) combatThisTurn_=true;
+        for (const auto& p:storm.area)
+            if (visibleTile(p) && (p.x+p.y)%2==0) spawnVfx({Vfx::Kind::Puff,{p.x+.5f,p.y+.2f},{p.x+.5f,p.y+.8f},sf::Color(200,230,255),0,.5f,.6f});
+        for (auto* m:struck) {
+            if (m->stats().hp<=0) continue;
+            if (applyTalentDamage(storm.talent,player_,*m)) flashActor(*m);
+            checkAndHandleDeath(*m);
+        }
+        if (--storm.turns>0) storms_.push_back(std::move(storm));
+    }
+    removeDeadMonsters();
+}
+
+// Hoarfrost: a chilled foe shatters when it dies, chilling everything beside it.
+void Application::shatterHoarfrost(const Actor& dead) {
+    if (!player_.talents().passiveValue(PassiveKind::Hoarfrost) || !dead.statusEffects().has(StatusEffectType::Chill)) return;
+    const auto at=dead.position();
+    for (auto& m:monsters_)
+        if (m.get()!=&dead && !m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-at.x),std::abs(m->position().y-at.y))<=1)
+            m->statusEffects().apply({StatusEffectType::Chill,3,20});
+    if (visibleTile(at)) {
+        spawnVfx({Vfx::Kind::Burst,{at.x+.5f,at.y+.5f},{at.x+.5f,at.y+.5f},sf::Color(190,230,255),0,.35f,1.4f});
+        log(dead.name()," shatters into shards of ice!");
+    }
+}
+
 // Wildfire: a burning foe's fire leaps to the nearest foe within four tiles.
 void Application::spreadWildfire(const Actor& dead) {
     if (!player_.talents().passiveValue(PassiveKind::Wildfire) || !dead.statusEffects().has(StatusEffectType::Burn)) return;
@@ -1845,6 +1964,7 @@ void Application::advanceTurnsUntilPlayerCanAct() {
         if (!stunned) {
             recordQuietTurn();
             fireEcho();
+            tickStorms();
             return; // genuinely the player's turn now
         }
         log("You are stunned and lose a turn!");
@@ -2174,7 +2294,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
 
     auto* defeated = dynamic_cast<Monster*>(&actor);
     if (defeated && !defeated->claimDeath()) return;
-    if (defeated && !defeated->allied) spreadWildfire(*defeated);
+    if (defeated && !defeated->allied) { spreadWildfire(*defeated); shatterHoarfrost(*defeated); }
     if (defeated && defeated->allied) {
         scheduler_.remove(actor);
         const int explosion=player_.talents().passiveValue(PassiveKind::GravePact);
@@ -2356,19 +2476,21 @@ void Application::updateFieldOfView() {
     focusNearestLandmark();
     computeLight();
     std::vector<Position> visible = computeFieldOfView(map_, player_.position(), kSightRadius);
-    // In the dark only what's lit, or right beside you, can be seen. Umbral
-    // Shroud (Shadow) sees three tiles into the dark while your light is out.
+    // In the dark only what's lit, or right beside you, can be seen. With your
+    // torch put out you see only the 8 tiles around you, lit or not. (A Lich's
+    // smothering keeps the lit tiles in view: that is its darkness, not yours.)
     const auto here = player_.position();
-    const int darkSight = (player_.talents().passiveValue(PassiveKind::Umbral) && playerLightRadius() == 0) || patronBoon(Patron::Whisperer) ? 3 : 1;
+    const bool doused = darknessEnabled_ && !player_.lightLit;
     visible.erase(std::remove_if(visible.begin(), visible.end(), [&](Position p) {
-        return !tileLit(p) && std::max(std::abs(p.x - here.x), std::abs(p.y - here.y)) > darkSight;
+        const bool beside = std::max(std::abs(p.x - here.x), std::abs(p.y - here.y)) <= 1;
+        return doused ? !beside : !tileLit(p) && !beside;
     }), visible.end());
     exploredMap_.update(visible);
 }
 
 int Application::playerLightRadius() const {
     if (!player_.lightLit || player_.statusEffects().has(StatusEffectType::Smothered)) return 0;
-    const int base = player_.lightSource == 2 ? 6 : player_.lightSource == 1 ? 4 : 0;
+    const int base = player_.lightSource == 2 ? 5 : player_.lightSource == 1 ? 3 : 0; // a torch lights 3 tiles, a lantern 5
     return base ? base + player_.inventory().affixTotal(BonusStat::LightRadius) + (player_.talents().passiveValue(PassiveKind::InnerLight) ? 1 : 0) +
         (patronBoon(Patron::Seraph) ? 1 : 0) : 0;
 }
@@ -2521,7 +2643,7 @@ void Application::selectClass(PlayerClass cls) {
 }
 
 void Application::regenerateLevel(unsigned int seed) {
-    afterimages_.clear(); echo_.reset(); // they belong to the floor you left
+    afterimages_.clear(); echo_.reset(); storms_.clear(); // they belong to the floor you left
     autoExploring_=false; exploreSeenInterests_.clear();
     inventoryOpen_ = false;
     vaultMenu_=0;
@@ -2940,7 +3062,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     // handles it in ordinary play, not a special case for loading.
     currentActor_ = &scheduler_.nextTurn();
 
-    resetHarms(); afterimages_.clear(); echo_.reset();
+    resetHarms(); afterimages_.clear(); echo_.reset(); storms_.clear();
     if (player_.stats().hp<=0) { mode_=GameMode::GameOver; wonGame_=false; }
     else resumeLevelUpSequence();
     log("Game loaded: ", monsters_.size(), " monsters",
