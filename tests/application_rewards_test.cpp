@@ -1967,6 +1967,90 @@ struct ApplicationRewardsTestAccess {
                 check(a->statusEffects().has(StatusEffectType::Poison),"Envenomed Blades: your melee abilities poison");
                 clearFoes();
             }
+
+            // The sixth batch: Spear, Mace and Crossbow.
+            const auto wield=[&](const char* id) {
+                app.player_.baseStats().strength=app.player_.stats().strength=30;
+                app.player_.baseStats().dexterity=app.player_.stats().dexterity=30;
+                app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition(id),app.nextItemId_++));
+                return app.player_.equip(app.player_.inventory().items().size()-1);
+            };
+            arena(PlayerClass::Warrior);
+            {
+                check(wield("iron_spear"),"Take up a spear");
+                const auto impale=ranked("spear.impale",1);
+                auto* a=foe({12,10}); app.updateFieldOfView();
+                cast(impale,{12,10});
+                check(a->stats().hp<90 && a->statusEffects().has(StatusEffectType::Pinned),"Impale reaches two tiles and pins");
+                const Talent thrust=findTalentDefinition("spear.thrust")->ranks[0];
+                const int pinned=estimateTalentDamage(thrust,app.player_,*a).normal;
+                a->statusEffects().remove(StatusEffectType::Pinned);
+                const int loose=estimateTalentDamage(thrust,app.player_,*a).normal;
+                ranked("spear.skewer",1); a->statusEffects().apply({StatusEffectType::Pinned,2,0});
+                check(estimateTalentDamage(thrust,app.player_,*a).normal==pinned+4 && pinned==loose,"Skewer: +4 against pinned foes");
+                clearFoes();
+                const auto toss=ranked("spear.throw",1);
+                auto* b=foe({13,10}); auto* c=foe({15,10}); app.updateFieldOfView();
+                cast(toss,{15,10});
+                check(b->stats().hp<90 && c->stats().hp<90,"Spear Throw runs through every foe in its line");
+                clearFoes();
+                const auto vault=ranked("spear.vault",3);
+                auto* d=foe({14,10}); app.updateFieldOfView();
+                cast(vault,{13,10});
+                check(app.player_.position().x==13 && d->stats().hp<90,"Pole Vault at rank 3 lands with a strike");
+                clearFoes(); app.player_.setPosition({10,10});
+            }
+            arena(PlayerClass::Warrior);
+            {
+                check(wield("iron_mace"),"Take up a mace");
+                const auto slam=ranked("mace.slam",1);
+                auto* a=foe({11,10}); auto* b=foe({10,11}); app.updateFieldOfView();
+                cast(slam,app.player_.position());
+                check(a->statusEffects().has(StatusEffectType::Sundered) && b->statusEffects().has(StatusEffectType::Sundered),"Ground Slam sunders everything beside you");
+                clearFoes();
+                const auto skull=ranked("mace.skullcracker",1);
+                auto* c=foe({11,10}); app.updateFieldOfView();
+                cast(skull,{11,10});
+                check(c->statusEffects().has(StatusEffectType::Stun),"Skullcracker stuns");
+                const Talent crush=findTalentDefinition("mace.crush")->ranks[0];
+                const int dazed=estimateTalentDamage(crush,app.player_,*c).normal;
+                ranked("mace.concussion",1);
+                check(estimateTalentDamage(crush,app.player_,*c).normal>dazed,"Concussion: more damage to stunned foes");
+                clearFoes();
+                // Bonecrusher: melee abilities knock foes back. Bedrock: guarded, you can't be moved.
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.bonecrusher")->ranks[0]);
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.bedrock")->ranks[0]);
+                const auto crushIndex=ranked("mace.crush",1);
+                auto* d=foe({11,10}); app.updateFieldOfView();
+                cast(crushIndex,{11,10});
+                check(d->position().x==12,"Bonecrusher: your melee abilities knock foes back a tile");
+                app.player_.statusEffects().apply({StatusEffectType::Guard,2,3});
+                app.pushActor(app.player_,{-1,0},2,*d);
+                check(app.player_.position().x==10,"Bedrock: while guarded, nothing moves you");
+                clearFoes();
+            }
+            arena(PlayerClass::Thief);
+            {
+                check(wield("light_crossbow"),"Take up a crossbow");
+                const auto boom=ranked("crossbow.explosive",1);
+                auto* a=foe({14,10}); auto* b=foe({14,11}); app.updateFieldOfView();
+                cast(boom,{14,10});
+                check(a->stats().hp<90 && b->stats().hp<90 && a->statusEffects().has(StatusEffectType::Burn),"Explosive Bolt bursts and scorches");
+                clearFoes();
+                ranked("crossbow.heavy_draw",1);
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.storm_bolts")->ranks[0]);
+                const auto heavy=ranked("crossbow.heavy",1);
+                auto* c=foe({13,10}); app.updateFieldOfView();
+                cast(heavy,{13,10});
+                check(c->position().x==15,"Heavy Draw: your bolts knock foes a tile further");
+                check(c->statusEffects().has(StatusEffectType::Shock),"Storm Bolts: your crossbow attacks shock");
+                clearFoes();
+                const auto ballista=ranked("crossbow.ballista",1);
+                auto* d=foe({13,10}); auto* e=foe({15,10}); app.updateFieldOfView();
+                cast(ballista,{15,10});
+                check(d->stats().hp<90 && e->stats().hp<90 && e->position().x>=17,"Ballista Bolt tears through the line and knocks them back");
+                clearFoes();
+            }
         }
 
         // Acid and blindness survive a save (a fresh Warrior: the fixture's

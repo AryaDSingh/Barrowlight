@@ -47,6 +47,7 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
     if (target.statusEffects().has(StatusEffectType::Chill)) damage+=kit.passiveValue(PassiveKind::Frostbite);
     if (target.statusEffects().has(StatusEffectType::Burn)) damage+=kit.passiveValue(PassiveKind::Kindling);
     if (target.statusEffects().has(StatusEffectType::Blinded)) damage+=kit.passiveValue(PassiveKind::Dread);
+    if (target.statusEffects().has(StatusEffectType::Pinned)) damage+=kit.passiveValue(PassiveKind::Skewer);
     if (const int exploit=kit.passiveValue(PassiveKind::Exploit)) {
         int ailments=0;
         for (const auto& e:target.statusEffects().active())

@@ -1142,6 +1142,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     }
     // Own a copy: killing a target can grant a talent and reallocate the kit.
     Talent talent = combatTalent(player_,player_.talents().effectiveTalent(talentIndex));
+    if (talent.tree==TalentTree::Crossbow && talent.pushDistance>0) talent.pushDistance+=player_.talents().passiveValue(PassiveKind::HeavyDraw);
     if (player_.talents().passiveValue(PassiveKind::Twilight)) {
         if (talent.tree==TalentTree::Shadow && talent.effectKind==TalentEffectKind::Damage) talent.searing=true;
         if (talent.tree==TalentTree::Radiance && talent.effectKind==TalentEffectKind::Damage) talent.darkBonusPercent+=50;
@@ -1373,6 +1374,17 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 if (player_.talents().passiveValue(PassiveKind::TemplarsEdge) && isMeleeAttack(talent) && talent.id!="basic.attack" &&
                     target->stats().hp>0 && tileLit(target->position()))
                     target->statusEffects().apply({StatusEffectType::Blinded,2,0});
+                // Storm Bolts: bow and crossbow attacks shock.
+                if (player_.talents().passiveValue(PassiveKind::StormBolts) && target->stats().hp>0 &&
+                    (talent.tree==TalentTree::Bow || talent.tree==TalentTree::Crossbow))
+                    target->statusEffects().apply({StatusEffectType::Shock,3,0});
+                // Bonecrusher: melee abilities knock foes back a tile.
+                if (player_.talents().passiveValue(PassiveKind::Bonecrusher) && isMeleeAttack(talent) && talent.id!="basic.attack" &&
+                    target->stats().hp>0 && talent.pushDistance==0) {
+                    const auto from=player_.position(), at=target->position();
+                    const Position away{(at.x>from.x)-(at.x<from.x),(at.y>from.y)-(at.y<from.y)};
+                    if (away.x || away.y) pushActor(*target,away,1,player_);
+                }
                 // Fester: the poison doubles and lingers (and at rank 3 spreads).
                 if (talent.festerPoison && target->stats().hp>0) {
                     for (auto& e:target->statusEffects().active()) if (e.type==StatusEffectType::Poison) { e.magnitude*=2; e.turnsRemaining+=2; }

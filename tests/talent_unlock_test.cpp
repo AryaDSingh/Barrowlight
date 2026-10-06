@@ -140,7 +140,7 @@ int main() {
         for (std::size_t tree=0;tree<kTalentTrees.size();++tree) {
             const std::string id=kTalentTrees[tree].id;
             const auto& nodes=treeNodes(tree);
-            if (id=="fire" || id=="one_handed" || id=="arcane" || id=="ice" || id=="lightning" || id=="two_handed" || id=="shadow" || id=="radiance" || id=="shield" || id=="bow" || id=="stealth" || id=="daggers" || id=="earth" || id=="tide" || id=="venom") {
+            if (id=="fire" || id=="one_handed" || id=="arcane" || id=="ice" || id=="lightning" || id=="two_handed" || id=="shadow" || id=="radiance" || id=="shield" || id=="bow" || id=="stealth" || id=="daggers" || id=="earth" || id=="tide" || id=="venom" || id=="spear" || id=="mace" || id=="crossbow") {
                 // root, two actives, two passives, two capstones
                 pilotsForked&=nodes.size()==7;
                 for (const auto* d:nodes) pilotsForked&=d->maxRank()==(d->ranks[0].passive?1:3) && d->prerequisites.empty()==(d->tier==0 || d->tier==3);

@@ -198,17 +198,23 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "alchemy.acid") { m.areaRadius = 2; d.mastery = "The flask splashes two tiles."; }
     if (id == "spear.thrust") { mark(); d.mastery = "Marks the target: its next direct hit taken deals +25%."; }
     if (id == "spear.brace") { longer(); d.mastery = "Braced for one enemy response longer."; }
-    if (id == "spear.vault") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    if (id == "spear.vault") { m.landingSlam = 6; d.mastery = "You land with a strike on the foes beside you."; }
+    if (id == "spear.impale") { stun(1); d.mastery = "Stuns the foe instead of pinning it."; }
+    if (id == "spear.throw") { m.pushDistance = 1; d.mastery = "Knocks everything it hits back a tile."; }
     if (id == "daggers.lacerate") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Bleed deals 3 damage per turn."; }
     if (id == "daggers.backstab") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Concealed, 1, 2}; d.mastery = "You melt back into the shadows: Concealed for one response."; }
     if (id == "daggers.whirl") { if (m.onHitEffect) m.onHitEffect->turnsRemaining += 2; d.mastery = "Bleed lasts two turns longer."; }
     if (id == "daggers.throw") { m.pierceBehind = true; d.mastery = "Also hits whoever stands right behind the target."; }
     if (id == "daggers.eviscerate") { m.statusBonusPercent = 1; d.mastery = "Triple the bleed, not double."; }
-    if (id == "mace.crush") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 6; d.mastery = "Sundered for six enemy turns."; }
-    if (id == "mace.stagger") { m.stagger = 3; d.mastery = "Delays a warned attack by three actions."; }
+    if (id == "mace.crush") { m.pushDistance = 1; d.mastery = "Also knocks the foe back a tile."; }
+    if (id == "mace.stagger") { m.markOnHit = true; d.mastery = "Also marks the foe: its next direct hit taken deals +25%."; }
+    if (id == "mace.slam") { m.areaRadius = 2; d.mastery = "Reaches foes two tiles out."; }
+    if (id == "mace.skullcracker") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 3; d.mastery = "Stuns for three turns."; }
     if (id == "mace.shatter") { stun(1); d.mastery = "The blow also stuns for one enemy turn."; }
     if (id == "crossbow.heavy") { m.pushDistance = 2; d.mastery = "Knocks the target back two tiles."; }
-    if (id == "crossbow.pierce") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    if (id == "crossbow.pierce") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Bleed, 3, 2}; m.onHitChance = 1.f; d.mastery = "Leaves everything it passes through bleeding."; }
+    if (id == "crossbow.explosive") { m.areaRadius = 2; d.mastery = "The burst covers two tiles."; }
+    if (id == "crossbow.ballista") { stun(1); d.mastery = "Stuns what it hits."; }
     if (id == "earth.spike") { m.areaRadius = 1; m.shape = EffectShape::AreaAroundTarget; d.mastery = "Also strikes and pins the foes beside the target."; }
     if (id == "earth.pillar") { m.pillarShove = true; d.mastery = "The pillar bursts up and shoves the foes beside it a tile."; }
     if (id == "earth.grasp") { m.areaRadius = 2; d.mastery = "Seizes everything within two tiles."; }
@@ -657,11 +663,23 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         // Spear (STR, two hands): reach and footing.
         t=attack("Thrust","Strike an enemy up to two tiles away in a straight line; the point runs on into anyone standing right behind it.",5,1,2);
         t.reach=2; t.pierceBehind=true; add(22,"spear.thrust",0,t);
+        shape("spear.thrust",3,"",{});
         t=buff("Brace","Plant the spear for two enemy responses: anything that steps up beside you is struck first, for 6 damage.",StatusEffectType::Braced,2,6,2,6);
         add(22,"spear.brace",1,t);
-        add(22,"spear.long_reach",2,passive("Long Reach","Spear attacks deal +2/3/4/5/6 damage to enemies two tiles away.",PassiveKind::LongReach,2));
-        t=move("Pole Vault","Vault up to 3/3/4/4/5 tiles in a line, over enemies, chasms and burning ground. Walls still stop you.",3,3,7);
+        shape("spear.brace",3,"path",{"spear.thrust"});
+        t=attack("Impale","A reaching thrust, up to two tiles, that pins the foe for two enemy turns.",6,3,6);
+        t.reach=2; t.onHitEffect=StatusEffectInstance{StatusEffectType::Pinned,2,0}; add(22,"spear.impale",1,t);
+        shape("spear.impale",3,"path",{"spear.thrust"});
+        add(22,"spear.long_reach",2,passive("Long Reach","Spear attacks deal +4 damage to enemies two tiles away.",PassiveKind::LongReach,4));
+        shape("spear.long_reach",1,"",{"spear.brace"});
+        add(22,"spear.skewer",2,passive("Skewer","Your attacks deal +4 damage to pinned foes.",PassiveKind::Skewer,4));
+        shape("spear.skewer",1,"",{"spear.impale"});
+        t=move("Pole Vault","Vault up to three tiles in a line, over enemies, chasms and burning ground. Walls still stop you.",3,3,7);
         t.vault=true; add(22,"spear.vault",3,t);
+        shape("spear.vault",3,"capstone",{});
+        t=attack("Spear Throw","Hurl your spear through every foe in a line.",9,4,8,true);
+        t.pierceAll=true; add(22,"spear.throw",3,t);
+        shape("spear.throw",3,"capstone",{});
         // Daggers (DEX): wounds and the helpless.
         t=attack("Lacerate","A quick cut that bleeds: 2 damage per turn for three enemy turns, and the living leave a trail of blood.",4,1,2);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Bleed,3,2}; add(23,"daggers.lacerate",0,t);
@@ -685,19 +703,43 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         // Mace (STR, one hand): guards and bones.
         t=attack("Crush","A heavy blow that sunders: the target takes +2 damage from every hit for four enemy turns.",6,2,4);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Sundered,4,2}; add(24,"mace.crush",0,t);
+        shape("mace.crush",3,"",{});
         t=attack("Stagger","Knock an enemy off balance: an attack it is winding up is delayed by two actions.",5,2,5);
         t.stagger=2; add(24,"mace.stagger",1,t);
-        add(24,"mace.bonebreaker",2,passive("Bonebreaker","With a mace, your attacks deal +2/3/4/5/6 damage to skeletons, spirits and other bloodless foes.",PassiveKind::Bonebreaker,2));
+        shape("mace.stagger",3,"path",{"mace.crush"});
+        t=attack("Ground Slam","Smash the ground: every foe beside you is struck and sundered (+2 from every hit) for four enemy turns.",5,4,7,false,1);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Sundered,4,2}; add(24,"mace.slam",1,t);
+        shape("mace.slam",3,"path",{"mace.crush"});
+        add(24,"mace.bonebreaker",2,passive("Bonebreaker","With a mace, your attacks deal +4 damage to skeletons, spirits and other bloodless foes.",PassiveKind::Bonebreaker,4));
+        shape("mace.bonebreaker",1,"",{"mace.stagger"});
+        add(24,"mace.concussion",2,passive("Concussion","Your attacks deal +30% damage to stunned foes.",PassiveKind::CrushingBlows,30));
+        shape("mace.concussion",1,"",{"mace.slam"});
         t=attack("Shatter","Consume Chill for double damage, and break the ice around the target into shards that cut everyone standing on it (4).",9,5,7);
         t.consumeChill=true; t.statusBonusPercent=100; t.shatterIce=true; add(24,"mace.shatter",3,t);
+        shape("mace.shatter",3,"capstone",{});
+        t=attack("Skullcracker","A crushing blow to the head: stuns for two enemy turns. Bosses resist repeated stuns.",10,5,10);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Stun,2,0}; add(24,"mace.skullcracker",3,t);
+        shape("mace.skullcracker",3,"capstone",{});
         // Crossbow (DEX, two hands): heavy bolts.
         t=attack("Heavy Bolt","A heavy bolt that knocks its target back a tile: into fire, walls, foes or chasms.",8,2,3,true);
         t.pushDistance=1; add(25,"crossbow.heavy",0,t);
+        shape("crossbow.heavy",3,"",{});
         t=attack("Piercing Bolt","A bolt that passes through every enemy in its line.",7,4,6,true);
         t.pierceAll=true; add(25,"crossbow.pierce",1,t);
-        add(25,"crossbow.windlass",2,passive("Windlass","Crossbow attacks deal +2/3/4/5/6 damage while you have Opening (from waiting or moving).",PassiveKind::Windlass,2));
+        shape("crossbow.pierce",3,"path",{"crossbow.heavy"});
+        t=attack("Explosive Bolt","A bolt that bursts where it strikes, scorching everything within a tile and setting oil alight.",6,4,6,true,1);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,2,1}; add(25,"crossbow.explosive",1,t);
+        shape("crossbow.explosive",3,"path",{"crossbow.heavy"});
+        add(25,"crossbow.windlass",2,passive("Windlass","Crossbow attacks deal +4 damage while you have Opening (from waiting or moving).",PassiveKind::Windlass,4));
+        shape("crossbow.windlass",1,"",{"crossbow.pierce"});
+        add(25,"crossbow.heavy_draw",2,passive("Heavy Draw","Your crossbow bolts knock foes back one tile further.",PassiveKind::HeavyDraw,1));
+        shape("crossbow.heavy_draw",1,"",{"crossbow.explosive"});
         t=attack("Pinning Shot","A bolt that pins its target in place: it can't move for three enemy turns (it can still fight).",7,4,7,true);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Pinned,3,0}; add(25,"crossbow.pin",3,t);
+        shape("crossbow.pin",3,"capstone",{});
+        t=attack("Ballista Bolt","An enormous bolt that tears through a line of foes and knocks each one back two tiles.",12,7,10,true);
+        t.pierceAll=true; t.pushDistance=2; add(25,"crossbow.ballista",3,t);
+        shape("crossbow.ballista",3,"capstone",{});
         // Earth (INT spells): shape the ground.
         t=attack("Stone Spike","A spike of rock erupts under a visible foe and pins it in place for two enemy turns.",6,2,3,true);
         t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Pinned,2,0}; add(26,"earth.spike",0,t);
@@ -903,6 +945,8 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="earth") d.affinity=Affinity::Earth;
             else if (d.treeId=="tide") d.affinity=Affinity::Water;
             else if (d.treeId=="venom") d.affinity=Affinity::Rot;
+            else if (d.treeId=="spear" || d.treeId=="mace") d.affinity=Affinity::Steel;
+            else if (d.treeId=="crossbow") d.affinity=Affinity::Hunt;
             else if (d.treeId=="one_handed") d.affinity=(d.id=="one_handed.parry" || d.id=="one_handed.riposte")?Affinity::Guard:Affinity::Steel;
         }
         // Resonances: one-rank passives that exist only between two colours.
@@ -937,6 +981,12 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             passive("Foul Water","Foes standing in water are poisoned each turn.",PassiveKind::FoulWater,2));
         resonance("resonance.envenomed_blades",Affinity::Steel,Affinity::Rot,
             passive("Envenomed Blades","Your melee abilities poison what they strike.",PassiveKind::EnvenomedBlades,2));
+        resonance("resonance.bonecrusher",Affinity::Steel,Affinity::Earth,
+            passive("Bonecrusher","Your melee abilities knock foes back a tile: into walls, fire, each other or chasms.",PassiveKind::Bonecrusher,1));
+        resonance("resonance.storm_bolts",Affinity::Hunt,Affinity::Storm,
+            passive("Storm Bolts","Your bow and crossbow attacks shock what they hit.",PassiveKind::StormBolts,1));
+        resonance("resonance.bedrock",Affinity::Guard,Affinity::Earth,
+            passive("Bedrock","While you have Guard, nothing can push you or knock you back.",PassiveKind::Bedrock,1));
         return out;
     }();
     return catalog;

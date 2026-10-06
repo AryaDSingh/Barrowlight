@@ -90,7 +90,9 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The fourth batch (Bow, Stealth, Daggers) and its resonances.
     CutDeep, FireArrows, UnseenHand, AssassinsEdge,
     // The fifth batch (Earth, Tide, Venom) and its resonances.
-    Aftershock, Tidecaller, Virulence, Mire, FoulWater, EnvenomedBlades };
+    Aftershock, Tidecaller, Virulence, Mire, FoulWater, EnvenomedBlades,
+    // The sixth batch (Spear, Mace, Crossbow) and its resonances.
+    Skewer, HeavyDraw, Bonecrusher, StormBolts, Bedrock };
 
 struct Talent {
     std::string name;

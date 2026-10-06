@@ -509,6 +509,10 @@ void Application::enterSurface(Actor& actor, Position tile) {
 }
 
 void Application::pushActor(Actor& target, Position direction, int distance, const Actor& pusher) {
+    if (&target == &player_ && player_.talents().passiveValue(PassiveKind::Bedrock) && player_.statusEffects().has(StatusEffectType::Guard)) {
+        log("You stand your ground.");
+        return;
+    }
     auto* monster = dynamic_cast<Monster*>(&target);
     const bool anchored = immovable(target);
     // Hard Landing (Brawling): your collisions hit harder.
