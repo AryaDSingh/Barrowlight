@@ -1206,6 +1206,15 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             spawnVfx({Vfx::Kind::Ring,{blinkDestination.x+.5f,blinkDestination.y+.5f},{blinkDestination.x+.5f,blinkDestination.y+.5f},sf::Color(190,150,100),0,.4f,1.6f});
             if (!struck.empty()) log("You slam down among ",struck.size()," foe",struck.size()==1?"":"s","!");
         }
+        if (player_.talents().passiveValue(PassiveKind::LightningFeet)) {
+            // Lightning Feet: everything beside your path is shocked.
+            for (auto& m:monsters_) {
+                if (m->allied || m->stats().hp<=0) continue;
+                for (const auto& p:target.path)
+                    if (std::max(std::abs(p.x-m->position().x),std::abs(p.y-m->position().y))<=1) { m->statusEffects().apply({StatusEffectType::Shock,3,0}); break; }
+            }
+        }
+        if (player_.talents().passiveValue(PassiveKind::Tremor)) tremorAt(blinkDestination);
         if (talent.arrivalBlind) {
             Monster* nearest=nullptr; int best=3;
             for (auto& m:monsters_) {
@@ -1320,9 +1329,11 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         }
     } else {
         if (affected.empty()) log(player_.name(), " uses ", talent.name, " on empty ground.");
+        bool charged=false;
         if (talent.chargeDistance>0 && (blinkDestination.x!=beforeMovement.x || blinkDestination.y!=beforeMovement.y)) {
             player_.setPosition(blinkDestination);
             log("You charge!");
+            charged=true;
             if (const int bulwark=player_.talents().passiveValue(PassiveKind::Bulwark))
                 player_.statusEffects().apply({StatusEffectType::Guard,2,std::max(bulwark,player_.statusEffects().magnitudeOf(StatusEffectType::Guard))});
         }
@@ -1478,7 +1489,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     if (direction.x || direction.y) pushActor(*target,direction,talent.pushDistance,player_);
                     const auto landed=target->position();
                     const int moved=std::max(std::abs(landed.x-origin.x),std::abs(landed.y-origin.y));
-                    if (talent.stunOnImpact && target->stats().hp>0 && moved<talent.pushDistance && !pendingFall_ &&
+                    if ((talent.stunOnImpact || player_.talents().passiveValue(PassiveKind::Knockout)) && target->stats().hp>0 && moved<talent.pushDistance && !pendingFall_ &&
                         target->statusEffects().canReceiveStun()) {
                         target->statusEffects().apply({StatusEffectType::Stun,1,0});
                         log(target->name()," is stunned by the impact!");
@@ -1530,7 +1541,11 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     const int gap=std::max(std::abs(at.x-me.x),std::abs(at.y-me.y));
                     const Position toward{(me.x>at.x)-(me.x<at.x),(me.y>at.y)-(me.y<at.y)};
                     if (gap>1 && immovable(*target)) log(target->name(), " won't budge.");
-                    else if (gap>1) pushActor(*target,toward,std::min(talent.pullDistance,gap-1),player_);
+                    else if (gap>1) {
+                        pushActor(*target,toward,std::min(talent.pullDistance,gap-1),player_);
+                        if (player_.talents().passiveValue(PassiveKind::Taskmaster) && target->stats().hp>0)
+                            target->statusEffects().apply({StatusEffectType::Marked,3,1});
+                    }
                 }
                 if (target->stats().hp>0 && talent.hurlDistance>0) {
                     if (immovable(*target)) log(target->name(), " is too heavy to lift.");
@@ -1543,6 +1558,8 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             }
         }
 
+        // Tremor: once the charge has struck, the landing knocks the rest back.
+        if (charged && player_.talents().passiveValue(PassiveKind::Tremor)) tremorAt(player_.position());
         // Blade Dance: Guard for every foe struck.
         if (talent.guardPerHit && hits) {
             player_.statusEffects().apply({StatusEffectType::Guard,2,talent.guardPerHit*hits});
@@ -1584,6 +1601,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         for (Actor* caught:affected) if (caught->stats().hp>0 && !immovable(*caught)) {
             const auto at=caught->position();
             const Position toward{(centre.x>at.x)-(centre.x<at.x),(centre.y>at.y)-(centre.y<at.y)};
+            if (at.x+toward.x==player_.position().x && at.y+toward.y==player_.position().y) continue;
             if (toward.x || toward.y) pushActor(*caught,toward,1,player_);
         }
     }
@@ -1622,6 +1640,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         log("Dawn breaks: torches and braziers flare back to life.");
     }
     afterHiddenCast(talent,landedAny,killedAny,wasConcealed);
+    if (talent.grantOpening) player_.statusEffects().apply({StatusEffectType::Opening,3,0});
     if (talent.rootSelf && talent.selfBuffEffect) player_.statusEffects().apply({StatusEffectType::Pinned,talent.selfBuffEffect->turnsRemaining,0});
     if (const int hallowed=player_.talents().passiveValue(PassiveKind::HallowedGuard);
         hallowed && player_.statusEffects().magnitudeOf(StatusEffectType::Guard)>guardBefore) {
@@ -1933,6 +1952,19 @@ void Application::fireEcho() {
         checkAndHandleDeath(*m);
     }
     removeDeadMonsters();
+}
+
+// Tremor: landing from a charge or leap knocks the foes beside you back a tile.
+void Application::tremorAt(Position at) {
+    std::vector<Monster*> beside;
+    for (auto& m:monsters_)
+        if (!m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-at.x),std::abs(m->position().y-at.y))<=1) beside.push_back(m.get());
+    for (auto* m:beside) {
+        const auto p=m->position();
+        const Position away{(p.x>at.x)-(p.x<at.x),(p.y>at.y)-(p.y<at.y)};
+        if (away.x || away.y) pushActor(*m,away,1,player_);
+    }
+    if (!beside.empty() && visibleTile(at)) spawnVfx({Vfx::Kind::Ring,{at.x+.5f,at.y+.5f},{at.x+.5f,at.y+.5f},sf::Color(180,140,90),0,.4f,1.6f});
 }
 
 // Blizzard: each storm strikes what stands in it, then wears down.

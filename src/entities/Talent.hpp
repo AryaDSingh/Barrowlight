@@ -92,7 +92,9 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The fifth batch (Earth, Tide, Venom) and its resonances.
     Aftershock, Tidecaller, Virulence, Mire, FoulWater, EnvenomedBlades,
     // The sixth batch (Spear, Mace, Crossbow) and its resonances.
-    Skewer, HeavyDraw, Bonecrusher, StormBolts, Bedrock };
+    Skewer, HeavyDraw, Bonecrusher, StormBolts, Bedrock,
+    // The seventh batch (Brawling, Whip, Skirmish) and its resonances.
+    Knockout, Taskmaster, LightningFeet, Tremor };
 
 struct Talent {
     std::string name;
@@ -281,6 +283,8 @@ struct Talent {
     // poisoned target's poison doubles and lasts longer; festerSpread: and
     // spreads to the foes beside it.
     bool pillarShove=false, festerPoison=false, festerSpread=false;
+    // grantOpening: you also gain Opening for a few turns (Slipstream).
+    bool grantOpening=false;
 
 };
 

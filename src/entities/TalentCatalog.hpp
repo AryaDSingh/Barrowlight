@@ -235,7 +235,14 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "venom.blight") { if (m.onHitEffect) m.onHitEffect->magnitude = 5; d.mastery = "Every hit it takes deals 5 more."; }
     if (id == "traps.snare" || id == "traps.tripwire") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
     if (id == "traps.rigged") { m.areaRadius = 2; d.mastery = "The charge blasts two tiles."; }
-    if (id == "skirmish.blitz") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    if (id == "skirmish.blitz") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Opening, 2, 0}; d.mastery = "You end the run with Opening."; }
+    if (id == "skirmish.hit_and_run") { m.retreatDistance = 2; d.mastery = "Step back two tiles."; }
+    if (id == "skirmish.slipstream") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 40; d.mastery = "+40% dodge."; }
+    if (id == "skirmish.flying_kick") { stun(1); d.mastery = "The kick stuns."; }
+    if (id == "brawling.haymaker") { stun(1); d.mastery = "The punch stuns too."; }
+    if (id == "brawling.piledriver") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Stun, 2, 0}; d.mastery = "Stuns for two turns."; }
+    if (id == "whip.disarm") { if (m.onHitEffect) m.onHitEffect->magnitude = 50; d.mastery = "Its attacks miss 50% more often."; }
+    if (id == "whip.whirl") { m.areaRadius = 3; d.mastery = "Reaches three tiles out."; }
     if (id == "lamplighter.swing") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Burn deals 3 damage per turn."; }
     if (id == "lamplighter.hurl") { m.areaRadius = 2; d.mastery = "The torch's fire spreads two tiles."; }
     if (id == "lamplighter.bonfire") { m.areaRadius = 3; d.mastery = "Reaches enemies up to three tiles away."; }
@@ -596,19 +603,43 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         // Brawling (STR, any weapon or none): putting enemies where they hurt.
         t=attack("Tackle","Charge up to 3/3/4/4/5 tiles in a straight line at an enemy, strike it and knock it back a tile. Counts as movement.",5,3,5);
         t.chargeDistance=3; t.pushDistance=1; add(17,"brawling.tackle",0,t);
+        shape("brawling.tackle",3,"",{});
         t=attack("Grapple","Seize an adjacent enemy for three enemy turns: it can't walk away, and when you step, you drag it into the tile you left (through fire, water, anything). Bosses and champions are too massive to hold.",3,2,6);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Grappled,3,0}; add(17,"brawling.grapple",1,t);
-        add(17,"brawling.hard_landing",2,passive("Hard Landing","Creatures you push, drag or throw take +2/3/4/5/6 more damage when they crash into a wall, a fixture or another creature.",PassiveKind::HardLanding,2));
+        shape("brawling.grapple",3,"path",{"brawling.tackle"});
+        t=attack("Haymaker","A huge punch that knocks an adjacent foe three tiles back: into walls, fire, each other or chasms.",8,3,7);
+        t.pushDistance=3; add(17,"brawling.haymaker",1,t);
+        shape("brawling.haymaker",3,"path",{"brawling.tackle"});
+        add(17,"brawling.hard_landing",2,passive("Hard Landing","Creatures you push, drag or throw take +4 more damage when they crash into a wall, a fixture or another creature.",PassiveKind::HardLanding,4));
+        shape("brawling.hard_landing",1,"",{"brawling.grapple"});
+        add(17,"brawling.knockout",2,passive("Knockout","Foes you knock into walls, fixtures or other creatures are stunned.",PassiveKind::Knockout,1));
+        shape("brawling.knockout",1,"",{"brawling.haymaker"});
         t=attack("Hurl","Heave an adjacent enemy over your shoulder: it lands up to 2/2/3/3/4 tiles behind you, crashing into whatever is there. A grappled enemy flies one tile further. Bosses and champions are too heavy to lift.",8,5,7);
         t.hurlDistance=2; add(17,"brawling.hurl",3,t);
+        shape("brawling.hurl",3,"capstone",{});
+        t=attack("Piledriver","Drive a foe into the floor: double damage if it can't fight back properly (held, stunned, pinned or blinded), and it is stunned.",9,5,9);
+        t.backstab=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Stun,1,0}; add(17,"brawling.piledriver",3,t);
+        shape("brawling.piledriver",3,"capstone",{});
         // Whip (DEX, needs a whip): reach and pull.
         t=attack("Lash","Strike an enemy up to two tiles away in a straight line and pull it one tile toward you, through fire, water or whatever lies between.",4,1,2);
         t.reach=2; t.pullDistance=1; add(18,"whip.lash",0,t);
+        shape("whip.lash",3,"",{});
         t=attack("Trip","Crack the whip at the legs of an enemy up to two tiles away: it falls, stunned for one enemy turn. Bosses resist repeated stuns.",4,3,6);
         t.reach=2; t.onHitEffect=StatusEffectInstance{StatusEffectType::Stun,1,0}; add(18,"whip.trip",1,t);
-        add(18,"whip.flay",2,passive("Flay","Whip attacks deal +2/3/4/5/6 damage to enemies that are stunned, held, blinded, burning, chilled or shocked.",PassiveKind::Flay,2));
+        shape("whip.trip",3,"path",{"whip.lash"});
+        t=attack("Disarm","Crack the whip across a foe's hand, up to two tiles away: its attacks miss 30% more often for three enemy turns.",4,3,6);
+        t.reach=2; t.onHitEffect=StatusEffectInstance{StatusEffectType::Misfortune,3,30}; add(18,"whip.disarm",1,t);
+        shape("whip.disarm",3,"path",{"whip.lash"});
+        add(18,"whip.flay",2,passive("Flay","Whip attacks deal +4 damage to enemies that are stunned, held, blinded, burning, chilled or shocked.",PassiveKind::Flay,4));
+        shape("whip.flay",1,"",{"whip.trip"});
+        add(18,"whip.taskmaster",2,passive("Taskmaster","Foes you pull toward you are marked: their next direct hit taken deals +25%.",PassiveKind::Taskmaster,1));
+        shape("whip.taskmaster",1,"",{"whip.disarm"});
         t=attack("Snare","Lasso an enemy up to 3/3/4/4/5 tiles away, drag it right up to you and hold it fast for two turns (as Grapple). Bosses and champions won't budge.",6,4,7);
         t.reach=3; t.pullDistance=3; t.onHitEffect=StatusEffectInstance{StatusEffectType::Grappled,2,0}; add(18,"whip.snare",3,t);
+        shape("whip.snare",3,"capstone",{});
+        t=attack("Whirling Lash","Spin the whip around you: everything within two tiles is struck and dragged a tile toward you.",5,5,8,false,2);
+        t.vortex=true; add(18,"whip.whirl",3,t);
+        shape("whip.whirl",3,"capstone",{});
         // Shadow (INT spells): darkness as a weapon.
         t=attack("Shadow Bolt","A bolt of darkness: +50% damage against a target standing in darkness.",5,2,1,true);
         t.darkBonusPercent=50; add(19,"shadow.bolt",0,t);
@@ -819,11 +850,24 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         add(30,"traps.trapper",2,passive("Trapper","Your traps deal +2/3/4/5/6 damage.",PassiveKind::Trapper,2));
         add(30,"traps.rigged",3,trap("Rigged Charge","Bury a charge: when a foe steps on it, it blows up for 8 to everything within a tile and sets the ground alight.",3,4,8,1));
         // Skirmish (DEX): moving is attacking.
-        add(31,"skirmish.lunge",0,passive("Lunge","Step toward a foe two tiles ahead and you strike it as you close, for 4/5/6/7/8.",PassiveKind::Lunge,4));
-        add(31,"skirmish.pass",1,passive("Pass Strike","Step from beside a foe to another tile beside it and you cut it in passing, for 3/4/5/6/7.",PassiveKind::PassStrike,3));
-        add(31,"skirmish.running_start",2,passive("Running Start","While you have Opening (after moving or waiting), your attacks deal +2/3/4/5/6 damage.",PassiveKind::RunningStart,2));
-        t=move("Blitz","Dash up to 3/3/4/4/5 tiles and strike everything beside your path. Counts as movement.",3,3,7);
-        t.blitz=true; t.power=6; add(31,"skirmish.blitz",3,t);
+        add(31,"skirmish.lunge",0,passive("Lunge","Step toward a foe two tiles ahead and you strike it as you close, for 6.",PassiveKind::Lunge,6));
+        shape("skirmish.lunge",1,"",{});
+        t=move("Blitz","Dash up to three tiles and strike everything beside your path. Counts as movement.",3,3,7);
+        t.blitz=true; t.power=6; add(31,"skirmish.blitz",1,t);
+        shape("skirmish.blitz",3,"path",{"skirmish.lunge"});
+        t=attack("Hit and Run","Strike a foe beside you, step a tile back from it and gain Opening.",5,2,5);
+        t.retreatDistance=1; t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Opening,2,0}; add(31,"skirmish.hit_and_run",1,t);
+        shape("skirmish.hit_and_run",3,"path",{"skirmish.lunge"});
+        add(31,"skirmish.pass",2,passive("Pass Strike","Step from beside a foe to another tile beside it and you cut it in passing, for 5.",PassiveKind::PassStrike,5));
+        shape("skirmish.pass",1,"",{"skirmish.blitz"});
+        add(31,"skirmish.running_start",2,passive("Running Start","While you have Opening (after moving or waiting), your attacks deal +4 damage.",PassiveKind::RunningStart,4));
+        shape("skirmish.running_start",1,"",{"skirmish.hit_and_run"});
+        t=buff("Slipstream","Stay light on your feet: +25% dodge and Opening for three enemy responses.",StatusEffectType::Evasion,3,25,3,12);
+        t.grantOpening=true; add(31,"skirmish.slipstream",3,t);
+        shape("skirmish.slipstream",3,"capstone",{});
+        t=attack("Flying Kick","Charge up to four tiles in a straight line at a foe and kick it two tiles back.",7,4,8);
+        t.chargeDistance=4; t.pushDistance=2; add(31,"skirmish.flying_kick",3,t);
+        shape("skirmish.flying_kick",3,"capstone",{});
         // Lamplighter (INT; Radiance + Fire): the torch itself. Needs your light burning.
         t=attack("Torch Swing","Swing your burning torch: the foe takes the hit and burns for 2 a turn. Needs your light lit.",6,1,2);
         t.needsLight=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,2}; add(32,"lamplighter.swing",0,t);
@@ -947,6 +991,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="venom") d.affinity=Affinity::Rot;
             else if (d.treeId=="spear" || d.treeId=="mace") d.affinity=Affinity::Steel;
             else if (d.treeId=="crossbow") d.affinity=Affinity::Hunt;
+            else if (d.treeId=="brawling" || d.treeId=="whip" || d.treeId=="skirmish") d.affinity=Affinity::Motion;
             else if (d.treeId=="one_handed") d.affinity=(d.id=="one_handed.parry" || d.id=="one_handed.riposte")?Affinity::Guard:Affinity::Steel;
         }
         // Resonances: one-rank passives that exist only between two colours.
@@ -987,6 +1032,12 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             passive("Storm Bolts","Your bow and crossbow attacks shock what they hit.",PassiveKind::StormBolts,1));
         resonance("resonance.bedrock",Affinity::Guard,Affinity::Earth,
             passive("Bedrock","While you have Guard, nothing can push you or knock you back.",PassiveKind::Bedrock,1));
+        resonance("resonance.ghost_step",Affinity::Motion,Affinity::Guile,
+            passive("Ghost Step","Your movement abilities leave you concealed for a turn.",PassiveKind::ShadeStep,2));
+        resonance("resonance.lightning_feet",Affinity::Motion,Affinity::Storm,
+            passive("Lightning Feet","Your movement abilities shock every foe beside your path.",PassiveKind::LightningFeet,1));
+        resonance("resonance.tremor",Affinity::Motion,Affinity::Earth,
+            passive("Tremor","When a charge or leap brings you down, the foes beside you are knocked back a tile.",PassiveKind::Tremor,1));
         return out;
     }();
     return catalog;

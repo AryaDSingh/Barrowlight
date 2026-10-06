@@ -551,6 +551,7 @@ private:
     std::vector<Storm> storms_;
     void tickStorms();
     void shatterHoarfrost(const Actor& dead);
+    void tremorAt(Position at);
     void fireEcho();
     void spreadWildfire(const Actor& dead);
 

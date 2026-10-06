@@ -1024,7 +1024,7 @@ struct ApplicationRewardsTestAccess {
             const auto shove=app.player_.talents().knownTalents().size()-1;
             goblin->stats().hp=60; app.player_.setPosition({29,10}); goblin->setPosition({30,10}); app.updateFieldOfView();
             const int beforeWall=goblin->stats().hp; use(shove,{30,10});
-            check(goblin->stats().hp==beforeWall-5,"Hard Landing: a wall slam deals 3 + 2");
+            check(goblin->stats().hp==beforeWall-7,"Hard Landing: a wall slam deals 3 + 4");
 
             // Bosses can't be held or lifted.
             auto warlord=createMonster(MonsterType::GoblinWarlord,{28,11}); auto* w=warlord.get();
@@ -2050,6 +2050,80 @@ struct ApplicationRewardsTestAccess {
                 cast(ballista,{15,10});
                 check(d->stats().hp<90 && e->stats().hp<90 && e->position().x>=17,"Ballista Bolt tears through the line and knocks them back");
                 clearFoes();
+            }
+
+            // The seventh batch: Brawling.
+            arena(PlayerClass::Warrior);
+            {
+                const auto haymaker=ranked("brawling.haymaker",1);
+                auto* a=foe({11,10}); app.updateFieldOfView();
+                cast(haymaker,{11,10});
+                check(a->stats().hp<90 && a->position().x==14,"Haymaker knocks a foe three tiles back");
+                clearFoes();
+                ranked("brawling.knockout",1);
+                app.map_.setTile(13,10,Tile{TileType::Wall,false,false});
+                auto* b=foe({11,10}); app.updateFieldOfView();
+                cast(haymaker,{11,10});
+                check(b->position().x==12 && b->statusEffects().has(StatusEffectType::Stun),"Knockout: a foe knocked into a wall is stunned");
+                app.map_.setTile(13,10,Tile{TileType::Floor,true,true}); clearFoes();
+                const auto pile=ranked("brawling.piledriver",1);
+                auto* c=foe({11,10}); app.updateFieldOfView();
+                cast(pile,{11,10});
+                check(c->stats().hp<90 && c->statusEffects().has(StatusEffectType::Stun),"Piledriver slams and stuns");
+                clearFoes();
+            }
+            // Whip.
+            arena(PlayerClass::Thief);
+            {
+                check(wield("leather_whip"),"Take up a whip");
+                const auto disarm=ranked("whip.disarm",1);
+                auto* a=foe({12,10}); app.updateFieldOfView();
+                cast(disarm,{12,10});
+                check(a->statusEffects().magnitudeOf(StatusEffectType::Misfortune)==30,"Disarm: its attacks miss 30% more often");
+                clearFoes();
+                ranked("whip.taskmaster",1);
+                const auto lash=ranked("whip.lash",1);
+                auto* b=foe({12,10}); app.updateFieldOfView();
+                cast(lash,{12,10});
+                check(b->position().x==11 && b->statusEffects().has(StatusEffectType::Marked),"Taskmaster: a foe you pull is marked");
+                clearFoes();
+                const auto whirl=ranked("whip.whirl",1);
+                auto* c=foe({12,10}); auto* d=foe({10,12}); app.updateFieldOfView();
+                cast(whirl,app.player_.position());
+                check(c->position().x==11 && d->position().y==11,"Whirling Lash drags everything around you a tile closer");
+                clearFoes();
+            }
+            // Skirmish.
+            arena(PlayerClass::Thief);
+            {
+                const auto run=ranked("skirmish.hit_and_run",1);
+                auto* a=foe({11,10}); app.updateFieldOfView();
+                cast(run,{11,10});
+                check(a->stats().hp<90 && app.player_.position().x==9 && app.player_.statusEffects().has(StatusEffectType::Opening),
+                      "Hit and Run: strike, step back, and gain Opening");
+                clearFoes(); app.player_.setPosition({10,10}); app.player_.statusEffects().active().clear();
+                const auto slip=ranked("skirmish.slipstream",1);
+                cast(slip,app.player_.position());
+                check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Evasion)==25 && app.player_.statusEffects().has(StatusEffectType::Opening),
+                      "Slipstream: dodge and Opening");
+                app.player_.statusEffects().active().clear();
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.tremor")->ranks[0]);
+                const auto kick=ranked("skirmish.flying_kick",1);
+                auto* b=foe({14,10}); auto* c=foe({13,11}); app.updateFieldOfView();
+                cast(kick,{14,10});
+                check(app.player_.position().x==13 && b->position().x==16,"Flying Kick charges in and kicks the foe two tiles back");
+                check(c->position().y==12,"Tremor: landing from a charge knocks the foes beside you back");
+                clearFoes(); app.player_.setPosition({10,10});
+                // Ghost Step and Lightning Feet.
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.ghost_step")->ranks[0]);
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.lightning_feet")->ranks[0]);
+                const auto blitz=ranked("skirmish.blitz",1);
+                auto* d=foe({12,11}); app.updateFieldOfView();
+                cast(blitz,{13,10});
+                check(d->statusEffects().has(StatusEffectType::Shock),"Lightning Feet: foes beside your path are shocked");
+                clearFoes(); app.player_.setPosition({10,10}); app.player_.statusEffects().active().clear();
+                cast(blitz,{13,10});
+                check(app.player_.statusEffects().has(StatusEffectType::Concealed),"Ghost Step: movement leaves you concealed");
             }
         }
 
