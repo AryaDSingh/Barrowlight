@@ -100,7 +100,9 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The ninth batch (Acrobatics, the armour trees) and its resonances.
     Fleet, FlowingMana, ArcaneBulwark, Unstoppable,
     // The first hybrid batch (Spellblade, Animation, Blood Magic) and its resonances.
-    BladeWard, BoneArmour, Transfusion, GraveLight, BoilingBlood, Bloodletter };
+    BladeWard, BoneArmour, Transfusion, GraveLight, BoilingBlood, Bloodletter,
+    // The second hybrid batch (Shadow Archer, Lamplighter, Stormlance) and its resonances.
+    LongShadow, LanternBearer, Thunderflash, Ionise, GhostArrows };
 
 struct Talent {
     std::string name;
@@ -306,6 +308,9 @@ struct Talent {
     bool manaBurst=false, critWithOpening=false, shakeHolds=false;
     // boneprison: bone walls rise on every free tile around the target; prisonCut: and cut it.
     bool bonePrison=false, prisonCut=false;
+    // A second status laid on what it hits (Shadow Pin), and a hit that can't be dodged (Ghost Arrows).
+    std::optional<StatusEffectInstance> secondHitEffect;
+    bool undodgeable=false;
 
 };
 

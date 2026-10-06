@@ -48,6 +48,9 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
     if (target.statusEffects().has(StatusEffectType::Burn)) damage+=kit.passiveValue(PassiveKind::Kindling,attacker.stats());
     if (target.statusEffects().has(StatusEffectType::Blinded)) damage+=kit.passiveValue(PassiveKind::Dread,attacker.stats());
     if (target.statusEffects().has(StatusEffectType::Pinned)) damage+=kit.passiveValue(PassiveKind::Skewer,attacker.stats());
+    if ((talent.tree==TalentTree::Bow || talent.tree==TalentTree::ShadowArcher) &&
+        std::max(std::abs(target.position().x-attacker.position().x),std::abs(target.position().y-attacker.position().y))>=4)
+        damage+=kit.passiveValue(PassiveKind::LongShadow,attacker.stats());
     if (const int exploit=kit.passiveValue(PassiveKind::Exploit,attacker.stats())) {
         int ailments=0;
         for (const auto& e:target.statusEffects().active())
@@ -106,7 +109,7 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
 }
 
 bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
-    if (rollChance(std::min(kTotalDodgeCap,dodgeChance(target.stats().dexterity)+(target.statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(target)+ascendancyDodgeBonus(target))/100.f))) {
+    if (!talent.undodgeable && rollChance(std::min(kTotalDodgeCap,dodgeChance(target.stats().dexterity)+(target.statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(target)+ascendancyDodgeBonus(target))/100.f))) {
         if (target.talents().passiveValue(PassiveKind::Slippery,target.stats())) target.statusEffects().apply({StatusEffectType::Opening,2,0});
         return false;
     }

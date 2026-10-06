@@ -1384,6 +1384,8 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     fx.has(StatusEffectType::Grappled) || fx.has(StatusEffectType::Pinned)) { hitTalent.damagePercent+=100; combo+="Backstab: double damage. "; }
             }
             if (talent.critWithOpening && player_.statusEffects().has(StatusEffectType::Opening)) hitTalent.bonusCritChance=1.f;
+            if (wasConcealed && (talent.tree==TalentTree::Bow || talent.tree==TalentTree::ShadowArcher) && player_.talents().passiveValue(PassiveKind::GhostArrows,player_.stats()))
+                hitTalent.undodgeable=true;
             if (const int edge=player_.talents().passiveValue(PassiveKind::AssassinsEdge,player_.stats()); edge && wasConcealed && isMeleeAttack(talent)) {
                 hitTalent.damagePercent+=edge; combo+="From hiding: +"+std::to_string(edge)+"%. ";
             }
@@ -1409,6 +1411,11 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 if (player_.talents().passiveValue(PassiveKind::TemplarsEdge,player_.stats()) && isMeleeAttack(talent) && talent.id!="basic.attack" &&
                     target->stats().hp>0 && tileLit(target->position()))
                     target->statusEffects().apply({StatusEffectType::Blinded,2,0});
+                if (talent.secondHitEffect && target->stats().hp>0) target->statusEffects().apply(*talent.secondHitEffect);
+                if ((talent.tree==TalentTree::Lightning || talent.tree==TalentTree::Stormlance) && target->stats().hp>0) {
+                    if (player_.talents().passiveValue(PassiveKind::Thunderflash,player_.stats())) target->statusEffects().apply({StatusEffectType::Blinded,2,0});
+                    if (const int ion=player_.talents().passiveValue(PassiveKind::Ionise,player_.stats())) target->statusEffects().apply({StatusEffectType::Burn,3,ion});
+                }
                 // Blade Ward: melee hits give spell ward.
                 if (const int ward=player_.talents().passiveValue(PassiveKind::BladeWard,player_.stats()); ward && (isMeleeAttack(talent) || talent.spellstrike))
                     player_.spellWard=std::min(player_.stats().maxMana,player_.spellWard+ward);
@@ -1628,7 +1635,8 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             if (!talent.scatterSplash || (p.x+p.y)%2==(centre.x+centre.y)%2) setSurface(p,static_cast<SurfaceType>(talent.splashSurface),lasting);
         }
         if (talent.splashPath) for (std::size_t i=1;i<target.path.size();++i)
-            if (map_.isWalkable(target.path[i].x,target.path[i].y)) setSurface(target.path[i],static_cast<SurfaceType>(talent.splashSurface),talent.splashTurns);
+            if (map_.isWalkable(target.path[i].x,target.path[i].y) && !(target.path[i].x==player_.position().x && target.path[i].y==player_.position().y))
+                setSurface(target.path[i],static_cast<SurfaceType>(talent.splashSurface),talent.splashTurns);
     }
     if (talent.lingerTurns && !target.area.empty()) {
         Talent storm=talent; storm.lingerTurns=0;
@@ -2688,7 +2696,7 @@ int Application::playerLightRadius() const {
     if (!player_.lightLit || player_.statusEffects().has(StatusEffectType::Smothered)) return 0;
     const int base = player_.lightSource == 2 ? 5 : player_.lightSource == 1 ? 3 : 0; // a torch lights 3 tiles, a lantern 5
     return base ? base + player_.inventory().affixTotal(BonusStat::LightRadius) + (player_.talents().passiveValue(PassiveKind::InnerLight,player_.stats()) ? 1 : 0) +
-        (patronBoon(Patron::Seraph) ? 1 : 0) : 0;
+        (patronBoon(Patron::Seraph) ? 1 : 0) + player_.talents().passiveValue(PassiveKind::LanternBearer,player_.stats()) : 0;
 }
 
 bool Application::tileLit(Position p) const {

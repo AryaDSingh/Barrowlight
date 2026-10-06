@@ -2384,6 +2384,86 @@ struct ApplicationRewardsTestAccess {
                 check(a->statusEffects().has(StatusEffectType::Burn),"Grave Light: your skeletons set what they hit burning");
                 clearFoes();
             }
+
+            // The second hybrid batch: Shadow Archer.
+            arena(PlayerClass::Thief);
+            {
+                check(wield("hunting_bow"),"Take up a bow for the shadows");
+                const auto smoke=ranked("shadow_archer.smoke",1);
+                auto* a=foe({14,10}); auto* b=foe({14,11}); app.updateFieldOfView();
+                cast(smoke,{14,10});
+                check(a->statusEffects().has(StatusEffectType::Blinded) && b->statusEffects().has(StatusEffectType::Blinded) &&
+                      app.player_.statusEffects().has(StatusEffectType::Concealed),"Smoke Arrow blinds them and hides you");
+                clearFoes(); app.player_.statusEffects().active().clear();
+                const auto pin=ranked("shadow_archer.pin",1);
+                auto* c=foe({14,10}); app.updateFieldOfView();
+                cast(pin,{14,10});
+                check(c->statusEffects().has(StatusEffectType::Pinned) && c->statusEffects().has(StatusEffectType::Blinded),"Shadow Pin pins and blinds");
+                clearFoes();
+                ranked("shadow_archer.long_shadow",1);
+                const Talent shot=findTalentDefinition("bow.quick_shot")->ranks[0];
+                auto* near=foe({12,10}); auto* far=foe({15,10});
+                check(estimateTalentDamage(shot,app.player_,*far).normal==estimateTalentDamage(shot,app.player_,*near).normal+
+                      app.player_.talents().passiveValue(PassiveKind::LongShadow,app.player_.stats()),"Long Shadow: more damage to distant foes");
+                clearFoes();
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.ghost_arrows")->ranks[0]);
+                const auto shadowShot=ranked("shadow_archer.shot",1);
+                auto* d=foe({14,10}); d->stats().dexterity=500; d->stats().hp=d->stats().maxHp=500; app.updateFieldOfView();
+                bool alwaysHit=true;
+                for (int i=0;i<6;++i) {
+                    const int before=d->stats().hp;
+                    app.player_.statusEffects().apply({StatusEffectType::Concealed,3,3});
+                    cast(shadowShot,{14,10});
+                    alwaysHit&=d->stats().hp<before;
+                }
+                check(alwaysHit,"Ghost Arrows: bow attacks from hiding can't be dodged");
+                clearFoes(); app.player_.statusEffects().active().clear();
+            }
+            // Lamplighter.
+            arena(PlayerClass::Mage);
+            {
+                app.player_.lightLit=true;
+                const auto brandish=ranked("lamplighter.brandish",1);
+                auto* a=foe({11,10}); app.updateFieldOfView();
+                cast(brandish,app.player_.position());
+                check(a->statusEffects().has(StatusEffectType::Blinded) && a->position().x==12,"Brandish blinds and drives back the foes beside you");
+                clearFoes();
+                const int before=app.playerLightRadius();
+                ranked("lamplighter.bearer",1);
+                check(app.playerLightRadius()==before+2,"Lantern Bearer: your light reaches two tiles further");
+                const auto pyre=ranked("lamplighter.pyre",1);
+                auto* b=foe({14,10}); app.updateFieldOfView();
+                cast(pyre,{14,10});
+                check(b->statusEffects().magnitudeOf(StatusEffectType::Burn)==5 && app.surfaceAt({14,10})==SurfaceType::Fire,"Pyre sets one foe fiercely ablaze");
+                clearFoes();
+                // Thunderflash and Ionise: lightning blinds and burns.
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.thunderflash")->ranks[0]);
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.ionise")->ranks[0]);
+                const auto bolt=ranked("lightning.bolt",1);
+                auto* c=foe({14,10}); app.updateFieldOfView();
+                cast(bolt,{14,10});
+                check(c->statusEffects().has(StatusEffectType::Blinded) && c->statusEffects().has(StatusEffectType::Burn),"Thunderflash and Ionise: your lightning blinds and burns");
+                clearFoes();
+            }
+            // Stormlance.
+            arena(PlayerClass::Warrior);
+            {
+                check(wield("iron_spear"),"Take up a spear for the storm");
+                const auto rod=ranked("stormlance.rod",1);
+                auto* a=foe({11,10}); app.updateFieldOfView();
+                cast(rod,app.player_.position());
+                const int afterRod=a->stats().hp;
+                check(a->statusEffects().has(StatusEffectType::Shock) && app.storms_.size()==1,"Lightning Rod strikes and keeps striking");
+                app.tickStorms();
+                check(a->stats().hp<afterRod,"...as your next turn begins");
+                clearFoes(); app.storms_.clear();
+                const auto ride=ranked("stormlance.ride",1);
+                auto* b=foe({12,11}); app.updateFieldOfView();
+                cast(ride,{14,10});
+                check(app.player_.position().x==14 && b->statusEffects().has(StatusEffectType::Shock) && b->stats().hp<90,
+                      "Ride the Lightning strikes and shocks everything beside your path");
+                clearFoes(); app.player_.setPosition({10,10});
+            }
         }
 
         // Acid and blindness survive a save (a fresh Warrior: the fixture's

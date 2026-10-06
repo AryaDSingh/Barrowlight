@@ -411,7 +411,7 @@ void Application::tickSurfaces() {
             case SurfaceType::Fire:
                 if (&a == &player_ && patronBoon(Patron::AshSaint)) break; // the Ash Saint's own walk through fire
                 if (!a.statusEffects().has(StatusEffectType::Burn) && &a == &player_) log("You are standing in flames!");
-                a.statusEffects().apply({StatusEffectType::Burn, 3, 2});
+                a.statusEffects().apply({StatusEffectType::Burn, 3, std::max(2, a.statusEffects().magnitudeOf(StatusEffectType::Burn))}); // never weakens a fiercer burn
                 break;
             case SurfaceType::Ice: a.statusEffects().apply({StatusEffectType::Chill, 2, 20}); break;
             case SurfaceType::Electrified: shocked.push_back(a.position()); break;

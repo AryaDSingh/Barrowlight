@@ -272,11 +272,19 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "brawling.piledriver") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Stun, 2, 0}; d.mastery = "Stuns for two turns."; }
     if (id == "whip.disarm") { if (m.onHitEffect) m.onHitEffect->magnitude = 50; d.mastery = "Its attacks miss 50% more often."; }
     if (id == "whip.whirl") { m.areaRadius = 3; d.mastery = "Reaches three tiles out."; }
-    if (id == "lamplighter.swing") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Burn deals 3 damage per turn."; }
+    if (id == "lamplighter.swing") { m.areaRadius = 1; m.shape = EffectShape::AreaAroundTarget; d.mastery = "The swing catches the foes beside the target too."; }
+    if (id == "lamplighter.brandish") { m.areaRadius = 2; d.mastery = "Reaches two tiles out."; }
+    if (id == "lamplighter.pyre") { m.areaRadius = 1; m.shape = EffectShape::AreaAroundTarget; d.mastery = "The fire spreads to the foes beside it."; }
+    if (id == "shadow_archer.shot") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Blinded, 2, 0}; m.onHitChance = 1.f; d.mastery = "Also blinds the target."; }
+    if (id == "shadow_archer.mark") { longer(); d.mastery = "Lasts a turn longer."; }
+    if (id == "shadow_archer.smoke") { m.areaRadius = 2; d.mastery = "The smoke spreads two tiles."; }
+    if (id == "shadow_archer.pin") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 3; if (m.secondHitEffect) m.secondHitEffect->turnsRemaining = 3; d.mastery = "Pinned and blinded for three turns."; }
+    if (id == "stormlance.rod") { m.lingerTurns = 4; d.mastery = "The lightning keeps striking two turns longer."; }
+    if (id == "stormlance.ride") { m.splashSurface = 5; m.splashTurns = 3; m.splashPath = true; d.mastery = "The ground crackles behind you."; }
     if (id == "lamplighter.hurl") { m.areaRadius = 2; d.mastery = "The torch's fire spreads two tiles."; }
     if (id == "lamplighter.bonfire") { m.areaRadius = 3; d.mastery = "Reaches enemies up to three tiles away."; }
     if (id == "stormlance.thrust") { m.pierceBehind = true; d.mastery = "The charge runs on into the foe behind."; }
-    if (id == "stormlance.javelin") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    if (id == "stormlance.javelin") { m.chainJumps = 2; d.mastery = "Jumps twice."; }
     if (id == "stormlance.vault") { m.landingBurst = 10; d.mastery = "The landing burst hits for 10."; }
     if (id == "hexblade.edge") { if (m.onHitEffect) m.onHitEffect->magnitude = 40; d.mastery = "Misfortune of 40%."; }
     if (id == "hexblade.rend") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
@@ -719,11 +727,25 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         shape("blood_magic.rite",3,"capstone",{});
         t=attack("Shadow Shot","Bow shot requiring Concealment: 35/45/55/65/75% chance to remain concealed after firing. Detection and damage can still reveal you.",7,4,4,true); t.requiresStealth=true; t.stayHiddenPercent=35;
         add(16,"shadow_archer.shot",0,t);
+        shape("shadow_archer.shot",3,"",{});
         t=buff("Hunter's Mark","Mark visible ground for 3 turns. That enemy's stealth detection chance is halved, with a 5% minimum when it can check. Casting reveals you.",StatusEffectType::HuntersMark,3,50,3,5); t.targeting=TargetingMode::RangedEnemyInSight; t.huntersMark=true;
         add(16,"shadow_archer.mark",1,t);
-        add(16,"shadow_archer.unseen",2,passive("Unseen","A direct kill begun while Concealed refreshes concealment to 2/3/4/5/6 responses. At most once per Conceal cast; a qualifying kill can preserve your concealment.",PassiveKind::Unseen,2));
+        shape("shadow_archer.mark",3,"path",{"shadow_archer.shot"});
+        t=attack("Smoke Arrow","An arrow that bursts into smoke where it strikes: everything within a tile is blinded for two enemy turns, and you slip out of sight.",3,3,7,true,1);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Blinded,2,0}; t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Concealed,2,2};
+        add(16,"shadow_archer.smoke",1,t);
+        shape("shadow_archer.smoke",3,"path",{"shadow_archer.shot"});
+        add(16,"shadow_archer.unseen",2,passive("Unseen","A direct kill begun while Concealed refreshes concealment to 3 responses. At most once per Conceal cast; a qualifying kill can preserve your concealment.",PassiveKind::Unseen,3));
+        shape("shadow_archer.unseen",1,"",{"shadow_archer.mark"});
+        add(16,"shadow_archer.long_shadow",2,passive("Long Shadow","Your bow attacks deal +4 damage to foes four or more tiles away.",PassiveKind::LongShadow,4));
+        shape("shadow_archer.long_shadow",1,"",{"shadow_archer.smoke"});
         t=attack("Death from Shadows","A heavy bow shot with +50% damage while Concealed. After firing, gain Concealment for two responses. Long cooldown; does not reset Unseen.",12,8,12,true); t.returnConcealed=true; t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Concealed,2,1};
         add(16,"shadow_archer.death",3,t);
+        shape("shadow_archer.death",3,"capstone",{});
+        t=attack("Shadow Pin","An arrow through the foe's shadow: it is pinned and blinded for two enemy turns.",8,5,9,true);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Pinned,2,0}; t.secondHitEffect=StatusEffectInstance{StatusEffectType::Blinded,2,0};
+        add(16,"shadow_archer.pin",3,t);
+        shape("shadow_archer.pin",3,"capstone",{});
         // Brawling (STR, any weapon or none): putting enemies where they hurt.
         t=attack("Tackle","Charge up to 3/3/4/4/5 tiles in a straight line at an enemy, strike it and knock it back a tile. Counts as movement.",5,3,5);
         t.chargeDistance=3; t.pushDistance=1; add(17,"brawling.tackle",0,t);
@@ -1031,19 +1053,44 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         // Lamplighter (INT; Radiance + Fire): the torch itself. Needs your light burning.
         t=attack("Torch Swing","Swing your burning torch: the foe takes the hit and burns for 2 a turn. Needs your light lit.",6,1,2);
         t.needsLight=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,2}; add(32,"lamplighter.swing",0,t);
+        shape("lamplighter.swing",3,"",{});
         t=attack("Hurl Torch","Throw your torch: it bursts on impact, burning everything within a tile, and lies there burning as a light. Your own light goes with it (L lights another).",6,3,6,true,1);
         t.needsLight=true; t.hurlTorch=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,2}; add(32,"lamplighter.hurl",1,t);
-        add(32,"lamplighter.ward",2,passive("Lantern Ward","While your light burns, every foe that ends its turn beside you is seared for 2/3/4/5/6.",PassiveKind::LanternWard,2));
+        shape("lamplighter.hurl",3,"path",{"lamplighter.swing"});
+        t=attack("Brandish","Wave your torch: the foes beside you are blinded and driven back a tile. Needs your light lit.",3,3,6,false,1);
+        t.needsLight=true; t.pushDistance=1; t.onHitEffect=StatusEffectInstance{StatusEffectType::Blinded,2,0}; add(32,"lamplighter.brandish",1,t);
+        shape("lamplighter.brandish",3,"path",{"lamplighter.swing"});
+        add(32,"lamplighter.ward",2,passive("Lantern Ward","While your light burns, every foe that ends its turn beside you is seared for 4.",PassiveKind::LanternWard,4));
+        shape("lamplighter.ward",1,"",{"lamplighter.hurl"});
+        add(32,"lamplighter.bearer",2,passive("Lantern Bearer","Your light reaches two tiles further.",PassiveKind::LanternBearer,2));
+        shape("lamplighter.bearer",1,"",{"lamplighter.brandish"});
         t=attack("Bonfire","Plant your torch and let it roar: everything within two tiles burns, the ground around you catches, and the spot stays lit. Needs your light lit.",7,7,10,false,2);
         t.needsLight=true; t.bonfire=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,2}; add(32,"lamplighter.bonfire",3,t);
+        shape("lamplighter.bonfire",3,"capstone",{});
+        t=attack("Pyre","Set one foe fiercely ablaze: it burns for 5 a turn and the ground under it catches. Needs your light lit.",7,6,9,true);
+        t.projectile=false; t.needsLight=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,5,5}; t.splashSurface=3; t.splashTurns=5;
+        add(32,"lamplighter.pyre",3,t);
+        shape("lamplighter.pyre",3,"capstone",{});
         // Stormlance (STR; Spear + Lightning): the spear carries the storm. Needs a spear.
         t=attack("Charged Thrust","Strike up to two tiles away with a spear full of lightning: the foe is Shocked for four turns.",6,2,3);
         t.reach=2; t.onHitEffect=StatusEffectInstance{StatusEffectType::Shock,4,0}; add(33,"stormlance.thrust",0,t);
+        shape("stormlance.thrust",3,"",{});
         t=attack("Lightning Javelin","Hurl a bolt-tipped spear that leaps to a second foe nearby. Shocks.",8,4,6,true);
         t.chain=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Shock,4,0}; add(33,"stormlance.javelin",1,t);
-        add(33,"stormlance.static_edge",2,passive("Static Edge","Spear and Stormlance attacks deal +2/3/4/5/6 damage to Shocked enemies.",PassiveKind::StaticEdge,2));
+        shape("stormlance.javelin",3,"path",{"stormlance.thrust"});
+        t=attack("Lightning Rod","Plant the spear: lightning strikes the foes around you now, and again as each of your next two turns begins.",5,5,9,false,1);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Shock,3,0}; t.lingerTurns=2; add(33,"stormlance.rod",1,t);
+        shape("stormlance.rod",3,"path",{"stormlance.thrust"});
+        add(33,"stormlance.static_edge",2,passive("Static Edge","Spear and Stormlance attacks deal +4 damage to Shocked enemies.",PassiveKind::StaticEdge,4));
+        shape("stormlance.static_edge",1,"",{"stormlance.javelin"});
+        add(33,"stormlance.overcharge",2,passive("Overcharge","Burn, chill and shock you apply last two turns longer.",PassiveKind::LingeringElements,2));
+        shape("stormlance.overcharge",1,"",{"stormlance.rod"});
         t=move("Thunder Vault","Vault up to 3/3/4/4/5 tiles over foes and chasms and come down in a burst of lightning: everything beside you takes 6 and is Shocked.",3,5,8);
         t.vault=true; t.landingBurst=6; add(33,"stormlance.vault",3,t);
+        shape("stormlance.vault",3,"capstone",{});
+        t=move("Ride the Lightning","Dash up to four tiles as lightning: everything beside your path is struck and shocked.",4,4,8);
+        t.blitz=true; t.power=6; t.onHitEffect=StatusEffectInstance{StatusEffectType::Shock,3,0}; add(33,"stormlance.ride",3,t);
+        shape("stormlance.ride",3,"capstone",{});
         // Hexblade (STR; One-Handed + Hexes): a cursed blade.
         t=attack("Cursed Edge","A strike that curses: Misfortune (25%) for three enemy turns.",5,1,2);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Misfortune,3,25}; add(34,"hexblade.edge",0,t);
@@ -1161,6 +1208,12 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 d.affinity=(d.id=="spellblade.cleave" || d.id=="spellblade.ward" || d.id=="spellblade.blink_strike")?Affinity::Steel:Affinity::Arcane;
             else if (d.treeId=="animation") d.affinity=Affinity::Death;
             else if (d.treeId=="blood_magic") d.affinity=Affinity::Blood;
+            else if (d.treeId=="shadow_archer")
+                d.affinity=(d.id=="shadow_archer.mark" || d.id=="shadow_archer.smoke" || d.id=="shadow_archer.unseen")?Affinity::Guile:Affinity::Hunt;
+            else if (d.treeId=="lamplighter")
+                d.affinity=(d.id=="lamplighter.ward" || d.id=="lamplighter.bearer" || d.id=="lamplighter.brandish")?Affinity::Light:Affinity::Flame;
+            else if (d.treeId=="stormlance")
+                d.affinity=(d.id=="stormlance.thrust" || d.id=="stormlance.vault" || d.id=="stormlance.static_edge")?Affinity::Steel:Affinity::Storm;
             else if (d.treeId=="one_handed") d.affinity=(d.id=="one_handed.parry" || d.id=="one_handed.riposte")?Affinity::Guard:Affinity::Steel;
         }
         // Flat passive numbers grow with an attribute: damage, healing, mana,
@@ -1178,11 +1231,11 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 case PassiveKind::Lunge: case PassiveKind::PassStrike: case PassiveKind::LanternWard: case PassiveKind::SearingEdge:
                 case PassiveKind::FollowThrough: case PassiveKind::Stoneskin: case PassiveKind::HallowedGuard: case PassiveKind::Tidecaller:
                 case PassiveKind::Bulwark: case PassiveKind::FlowingMana: case PassiveKind::BladeWard: case PassiveKind::Transfusion:
-                case PassiveKind::GravePact:
+                case PassiveKind::GravePact: case PassiveKind::LongShadow: case PassiveKind::StaticEdge:
                     return 5;
                 case PassiveKind::FireArrows: case PassiveKind::Incendiary: case PassiveKind::WastingCurse: case PassiveKind::Witchfire:
                 case PassiveKind::FoulWater: case PassiveKind::EnvenomedBlades: case PassiveKind::GraveLight: case PassiveKind::BoilingBlood:
-                case PassiveKind::Bloodletter:
+                case PassiveKind::Bloodletter: case PassiveKind::Ionise:
                     return 10;
                 default: return 0;
             }
@@ -1250,6 +1303,12 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             passive("Boiling Blood","Whenever you spend life, the foes beside you catch fire.",PassiveKind::BoilingBlood,2));
         resonance("resonance.bloodletter",Affinity::Steel,Affinity::Blood,
             passive("Bloodletter","Your melee abilities make foes bleed.",PassiveKind::Bloodletter,2));
+        resonance("resonance.thunderflash",Affinity::Light,Affinity::Storm,
+            passive("Thunderflash","Your lightning also blinds what it hits.",PassiveKind::Thunderflash,1));
+        resonance("resonance.ionise",Affinity::Flame,Affinity::Storm,
+            passive("Ionise","Your lightning sets what it hits burning.",PassiveKind::Ionise,2));
+        resonance("resonance.ghost_arrows",Affinity::Hunt,Affinity::Guile,
+            passive("Ghost Arrows","Bow attacks from hiding can't be dodged.",PassiveKind::GhostArrows,1));
         // Passives grow with their tree's attribute; resonances with your highest.
         for (auto& d:out) for (auto& r:d.ranks) if (r.passive) {
             r.scalePer=growth(r.passiveKind);
