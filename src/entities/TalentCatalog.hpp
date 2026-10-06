@@ -150,6 +150,18 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "acrobatics.vault_kick") { stun(1); d.mastery = "The kick stuns for one enemy turn."; }
     if (id == "acrobatics.leap") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 30; d.mastery = "+30% dodge instead of +20%."; }
     if (id == "acrobatics.somersault") { m.blitz = true; m.power = 5; d.mastery = "You cut the foes you roll past."; }
+    if (id == "spellblade.imbue") { longer(); longer(); d.mastery = "The imbue lasts two turns longer."; }
+    if (id == "spellblade.strike") { m.pierceBehind = true; d.mastery = "Runs through to the foe behind."; }
+    if (id == "spellblade.cleave") { m.pushDistance = 1; d.mastery = "Shoves them back a tile."; }
+    if (id == "spellblade.blink_strike") { stun(1); d.mastery = "Stuns the foe."; }
+    if (id == "animation.raise") { m.summonCount = 2; d.mastery = "Raises two at once."; }
+    if (id == "animation.swap") { m.hasteSelf = 30; d.mastery = "You come out of the swap 30% faster for three turns."; }
+    if (id == "animation.spear") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Bleed, 3, 2}; m.onHitChance = 1.f; d.mastery = "Everything it pierces bleeds."; }
+    if (id == "animation.prison") { m.prisonCut = true; d.mastery = "The walls also cut the prisoner."; }
+    if (id == "blood_magic.pact") { longer(); d.mastery = "Lasts a turn longer."; }
+    if (id == "blood_magic.drain") { m.areaRadius = 1; m.shape = EffectShape::AreaAroundTarget; d.mastery = "Drains the foes beside the target too."; }
+    if (id == "blood_magic.boil") { m.areaRadius = 3; d.mastery = "Reaches three tiles out."; }
+    if (id == "blood_magic.rite") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 12; d.mastery = "+12 on every hit."; }
     if (id == "acrobatics.untouchable") { longer(); d.mastery = "Lasts three turns."; }
     if (id == "cloth.shroud") { m.wardPercent = 35; d.mastery = "Ward worth 35% of your maximum mana."; }
     if (id == "cloth.surge") { m.restoreMana = 35; d.mastery = "Restores 35 mana."; }
@@ -404,7 +416,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             // to the nearest point (so the cheapest abilities barely move).
             for (int rank=1; rank<d.maxRank(); ++rank) if (!d.ranks[rank].passive && d.ranks[0].manaCost>0)
                 d.ranks[rank].manaCost=(d.ranks[0].manaCost*(100+10*rank)+50)/100;
-            if (!hybrid) applyMastery(d);
+            applyMastery(d);
             for (auto& r:d.ranks) r.tags=talentTags(r);
             out.push_back(std::move(d));
         };
@@ -650,24 +662,61 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         shape("heavy_armour.unbreakable",3,"capstone",{});
         t=buff("Imbue Weapon","V: choose an owned element, then bind 1-9. Five turns or three landed melee hits; all variants share rank and cooldown. Melee weapon required.",StatusEffectType::FlameBlade,6,3,4,8);
         add(13,"spellblade.imbue",0,t);
+        shape("spellblade.imbue",3,"",{});
         t=attack("Spellstrike","INT-scaled melee spell. Triggers Kindle on this hit, Frostbite, Static Charge and Spellweave when learned.",7,6,4); t.spellstrike=true;
         add(13,"spellblade.strike",1,t);
-        add(13,"spellblade.rhythm",2,passive("Battle Rhythm","Casting a spell grants +4/5/6/7/8 damage to your next melee attack. A landed melee attack reduces one running spell cooldown by one, once per action.",PassiveKind::BattleRhythm,4));
+        shape("spellblade.strike",3,"path",{"spellblade.imbue"});
+        t=attack("Arcane Cleave","A spell-charged sweep through every foe beside you, powered by Intelligence.",6,5,6,false,1); t.spellstrike=true;
+        add(13,"spellblade.cleave",1,t);
+        shape("spellblade.cleave",3,"path",{"spellblade.imbue"});
+        add(13,"spellblade.rhythm",2,passive("Battle Rhythm","Casting a spell grants +6 damage to your next melee attack. A landed melee attack reduces one running spell cooldown by one, once per action.",PassiveKind::BattleRhythm,6));
+        shape("spellblade.rhythm",1,"",{"spellblade.strike"});
+        add(13,"spellblade.ward",2,passive("Blade Ward","Each melee hit you land gives you 2 spell ward, more with Intelligence.",PassiveKind::BladeWard,2));
+        shape("spellblade.ward",1,"",{"spellblade.cleave"});
         t=attack("Elemental Release","Consume Burn, Chill, Shock, Marked, Poison, Stun, Wither and Hunter's Mark on adjacent enemies: +25% damage per type consumed. Guard and buffs are preserved.",7,10,8,false,1); t.releaseAilments=true;
         add(13,"spellblade.release",3,t);
+        shape("spellblade.release",3,"capstone",{});
+        t=attack("Blink Strike","Flash up to five tiles along a clear line to a foe and strike it.",8,6,9); t.chargeDistance=5;
+        add(13,"spellblade.blink_strike",3,t);
+        shape("spellblade.blink_strike",3,"capstone",{});
         t=Talent{}; t.name="Raise Skeleton"; t.description="Raise an adjacent ally. Cap: 1 + INT/10, maximum 5. Rank and INT improve its stats. Allies dissolve on travel."; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.summonCount=1; t.manaCost=8; t.cooldownTurns=5;
         add(14,"animation.raise",0,t);
+        shape("animation.raise",3,"",{});
         t=Talent{}; t.name="Bone Swap"; t.description="Swap with a visible allied skeleton. Empty ground still spends the cast. Counts as movement for your movement talents."; t.targeting=TargetingMode::RangedEnemyInSight; t.effectKind=TalentEffectKind::SelfBuff; t.boneSwap=true; t.manaCost=4; t.cooldownTurns=4;
         add(14,"animation.swap",1,t);
-        add(14,"animation.pact",2,passive("Grave Pact","Slain minions explode for 4/5/6/7/8 damage to adjacent enemies. Expiration, gear-cap dissolution and travel never explode.",PassiveKind::GravePact,4));
+        shape("animation.swap",3,"path",{"animation.raise"});
+        t=attack("Bone Spear","A spear of bone that runs through every foe in a line.",8,5,6,true); t.pierceAll=true;
+        add(14,"animation.spear",1,t);
+        shape("animation.spear",3,"path",{"animation.raise"});
+        add(14,"animation.pact",2,passive("Grave Pact","Slain minions explode for 6 damage to adjacent enemies. Expiration, gear-cap dissolution and travel never explode.",PassiveKind::GravePact,6));
+        shape("animation.pact",1,"",{"animation.swap"});
+        add(14,"animation.bone_armour",2,passive("Bone Armour","Each skeleton you have makes hits on you deal 1 less.",PassiveKind::BoneArmour,1));
+        shape("animation.bone_armour",1,"",{"animation.spear"});
         t=Talent{}; t.name="Army of the Dead"; t.description="Raise up to three adjacent temporary skeletons for 5/6/7/8/9 actions. They do not count toward the normal cap. Only one army at a time."; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.summonCount=3; t.summonDuration=5; t.manaCost=16; t.cooldownTurns=12;
         add(14,"animation.army",3,t);
-        add(15,"blood_magic.pact",0,buff("Blood Pact","For 3/4/5/6/7 subsequent actions, spells spend HP instead of mana. A spell cannot spend your last HP. Activating this pact costs mana.",StatusEffectType::BloodPact,4,1,2,9));
+        shape("animation.army",3,"capstone",{});
+        t=Talent{}; t.name="Bone Prison"; t.description="Bone walls burst up on every free tile around a visible foe, trapping it where it stands.";
+        t.targeting=TargetingMode::RangedEnemyInSight; t.effectKind=TalentEffectKind::SelfBuff; t.bonePrison=true; t.manaCost=8; t.cooldownTurns=14;
+        add(14,"animation.prison",3,t);
+        shape("animation.prison",3,"capstone",{});
+        add(15,"blood_magic.pact",0,buff("Blood Pact","For several actions, spells spend HP instead of mana. A spell cannot spend your last HP. Activating this pact costs mana.",StatusEffectType::BloodPact,4,1,2,9));
+        shape("blood_magic.pact",3,"",{});
         t=attack("Drain Life","Direct spell: heal for 40/50/60/70/80% of actual HP removed, excluding overkill. Empty ground or a miss gives no healing.",7,8,5,true); t.projectile=false; t.drainPercent=40;
         add(15,"blood_magic.drain",1,t);
-        add(15,"blood_magic.deathless",2,passive("Deathless","Once per newly explored floor, survive lethal damage at 1 HP. Revisiting floors or town does not recharge it. Ranks 2-5 also grant 1-4 Guard for one response.",PassiveKind::Deathless,1));
+        shape("blood_magic.drain",3,"path",{"blood_magic.pact"});
+        t=attack("Blood Boil","Pay 6 life: the blood of every foe within two tiles boils. Each is struck and bleeds.",5,0,7,false,2);
+        t.hpCost=6; t.onHitEffect=StatusEffectInstance{StatusEffectType::Bleed,3,2}; add(15,"blood_magic.boil",1,t);
+        shape("blood_magic.boil",3,"path",{"blood_magic.pact"});
+        add(15,"blood_magic.deathless",2,passive("Deathless","Once per newly explored floor, survive lethal damage at 1 HP. Revisiting floors or town does not recharge it.",PassiveKind::Deathless,1));
+        shape("blood_magic.deathless",1,"",{"blood_magic.drain"});
+        add(15,"blood_magic.transfusion",2,passive("Transfusion","Your hits on bleeding foes heal you 2, more with Intelligence.",PassiveKind::Transfusion,2));
+        shape("blood_magic.transfusion",1,"",{"blood_magic.boil"});
         t=buff("Wither","Curse visible ground for 3/4/5/6/7 enemy turns. Each direct hit you land on the cursed enemy heals 2 HP, capped by HP actually removed.",StatusEffectType::Wither,3,2,8,9); t.targeting=TargetingMode::RangedEnemyInSight;
         add(15,"blood_magic.wither",3,t);
+        shape("blood_magic.wither",3,"capstone",{});
+        t=buff("Blood Rite","Pay 10 life: for four turns, every hit you land deals 8 more.",StatusEffectType::Empowered,4,8,0,12); t.hpCost=10;
+        add(15,"blood_magic.rite",3,t);
+        shape("blood_magic.rite",3,"capstone",{});
         t=attack("Shadow Shot","Bow shot requiring Concealment: 35/45/55/65/75% chance to remain concealed after firing. Detection and damage can still reveal you.",7,4,4,true); t.requiresStealth=true; t.stayHiddenPercent=35;
         add(16,"shadow_archer.shot",0,t);
         t=buff("Hunter's Mark","Mark visible ground for 3 turns. That enemy's stealth detection chance is halved, with a 5% minimum when it can check. Casting reveals you.",StatusEffectType::HuntersMark,3,50,3,5); t.targeting=TargetingMode::RangedEnemyInSight; t.huntersMark=true;
@@ -1108,6 +1157,10 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="acrobatics" || d.treeId=="light_armour") d.affinity=Affinity::Motion;
             else if (d.treeId=="cloth") d.affinity=Affinity::Arcane;
             else if (d.treeId=="heavy_armour") d.affinity=Affinity::Guard;
+            else if (d.treeId=="spellblade")
+                d.affinity=(d.id=="spellblade.cleave" || d.id=="spellblade.ward" || d.id=="spellblade.blink_strike")?Affinity::Steel:Affinity::Arcane;
+            else if (d.treeId=="animation") d.affinity=Affinity::Death;
+            else if (d.treeId=="blood_magic") d.affinity=Affinity::Blood;
             else if (d.treeId=="one_handed") d.affinity=(d.id=="one_handed.parry" || d.id=="one_handed.riposte")?Affinity::Guard:Affinity::Steel;
         }
         // Flat passive numbers grow with an attribute: damage, healing, mana,
@@ -1124,10 +1177,12 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 case PassiveKind::Flay: case PassiveKind::HardLanding: case PassiveKind::PotentBrews: case PassiveKind::Trapper:
                 case PassiveKind::Lunge: case PassiveKind::PassStrike: case PassiveKind::LanternWard: case PassiveKind::SearingEdge:
                 case PassiveKind::FollowThrough: case PassiveKind::Stoneskin: case PassiveKind::HallowedGuard: case PassiveKind::Tidecaller:
-                case PassiveKind::Bulwark: case PassiveKind::FlowingMana:
+                case PassiveKind::Bulwark: case PassiveKind::FlowingMana: case PassiveKind::BladeWard: case PassiveKind::Transfusion:
+                case PassiveKind::GravePact:
                     return 5;
                 case PassiveKind::FireArrows: case PassiveKind::Incendiary: case PassiveKind::WastingCurse: case PassiveKind::Witchfire:
-                case PassiveKind::FoulWater: case PassiveKind::EnvenomedBlades:
+                case PassiveKind::FoulWater: case PassiveKind::EnvenomedBlades: case PassiveKind::GraveLight: case PassiveKind::BoilingBlood:
+                case PassiveKind::Bloodletter:
                     return 10;
                 default: return 0;
             }
@@ -1189,6 +1244,12 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             passive("Arcane Bulwark","Whenever you take up Guard, you also gain that much spell ward.",PassiveKind::ArcaneBulwark,1));
         resonance("resonance.unstoppable",Affinity::Guard,Affinity::Motion,
             passive("Unstoppable","Taking up Guard also makes you 25% faster for two turns.",PassiveKind::Unstoppable,25));
+        resonance("resonance.grave_light",Affinity::Light,Affinity::Death,
+            passive("Grave Light","Your skeletons glow, and set what they hit burning.",PassiveKind::GraveLight,2));
+        resonance("resonance.boiling_blood",Affinity::Blood,Affinity::Flame,
+            passive("Boiling Blood","Whenever you spend life, the foes beside you catch fire.",PassiveKind::BoilingBlood,2));
+        resonance("resonance.bloodletter",Affinity::Steel,Affinity::Blood,
+            passive("Bloodletter","Your melee abilities make foes bleed.",PassiveKind::Bloodletter,2));
         // Passives grow with their tree's attribute; resonances with your highest.
         for (auto& d:out) for (auto& r:d.ranks) if (r.passive) {
             r.scalePer=growth(r.passiveKind);

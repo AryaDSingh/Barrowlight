@@ -1178,7 +1178,15 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
 
     if (talent.manaBurst) { talent.power=player_.stats().mana; player_.stats().mana=0; }
     player_.stats().mana -= talent.manaCost;
-    if (talent.hpCost) { noteHarm(); player_.stats().hp -= talent.hpCost; harmSource_=talent.name; noteHarm(); harmSource_.clear(); }
+    if (talent.hpCost) {
+        noteHarm(); player_.stats().hp -= talent.hpCost; harmSource_=talent.name; noteHarm(); harmSource_.clear();
+        if (const int boil=player_.talents().passiveValue(PassiveKind::BoilingBlood,player_.stats())) {
+            const auto me=player_.position();
+            for (auto& m:monsters_)
+                if (!m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-me.x),std::abs(m->position().y-me.y))<=1)
+                    m->statusEffects().apply({StatusEffectType::Burn,3,boil});
+        }
+    }
     spawnTalentVfx(talent, beforeMovement, cursor, target);
     judgeCast(talent);
     if (talent.id=="basic.pray") pray();
@@ -1282,6 +1290,15 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             }
             while (traps_.size()>8) traps_.erase(traps_.begin());
             log(set?"You set your trap.":"There's no room to set a trap there.");
+        }
+        if (talent.bonePrison) for (Actor* prisoner:affected) {
+            const auto at=prisoner->position();
+            int walls=0;
+            for (int dy=-1;dy<=1;++dy) for (int dx=-1;dx<=1;++dx)
+                if ((dx || dy) && raisePillarAt({at.x+dx,at.y+dy})) ++walls;
+            if (talent.prisonCut) prisoner->statusEffects().apply({StatusEffectType::Bleed,3,3});
+            log(walls?"Walls of bone burst up around ":"Bone cracks against the stone around ",prisoner->name(),"!");
+            updateFieldOfView();
         }
         if (talent.shakeOff) {
             const auto me=player_.position();
@@ -1392,6 +1409,16 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 if (player_.talents().passiveValue(PassiveKind::TemplarsEdge,player_.stats()) && isMeleeAttack(talent) && talent.id!="basic.attack" &&
                     target->stats().hp>0 && tileLit(target->position()))
                     target->statusEffects().apply({StatusEffectType::Blinded,2,0});
+                // Blade Ward: melee hits give spell ward.
+                if (const int ward=player_.talents().passiveValue(PassiveKind::BladeWard,player_.stats()); ward && (isMeleeAttack(talent) || talent.spellstrike))
+                    player_.spellWard=std::min(player_.stats().maxMana,player_.spellWard+ward);
+                // Transfusion: hits on bleeding foes heal you.
+                if (const int heal=player_.talents().passiveValue(PassiveKind::Transfusion,player_.stats()); heal && target->statusEffects().has(StatusEffectType::Bleed))
+                    player_.stats().hp=std::min(player_.stats().maxHp,player_.stats().hp+heal);
+                // Bloodletter: melee abilities make foes bleed.
+                if (const int bleed=player_.talents().passiveValue(PassiveKind::Bloodletter,player_.stats());
+                    bleed && isMeleeAttack(talent) && talent.id!="basic.attack" && target->stats().hp>0)
+                    target->statusEffects().apply({StatusEffectType::Bleed,3,bleed});
                 // Incendiary: flasks set what they catch burning.
                 if (const int burn=player_.talents().passiveValue(PassiveKind::Incendiary,player_.stats()); burn && talent.tree==TalentTree::Alchemy && target->stats().hp>0)
                     target->statusEffects().apply({StatusEffectType::Burn,3,burn});
@@ -2293,6 +2320,12 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     int guard=decision.target->statusEffects().magnitudeOf(StatusEffectType::Guard);
                     if (guard && decision.target->inventory().equipped(EquipmentSlot::OffHand)) guard+=decision.target->talents().passiveValue(PassiveKind::ShieldTraining,decision.target->stats());
                     guard+=armourGuardBonus(*decision.target)+ascendancyGuardBonus(*decision.target);
+                    if (decision.target==&player_)
+                        if (const int bones=player_.talents().passiveValue(PassiveKind::BoneArmour,player_.stats())) {
+                            int skeletons=0;
+                            for (const auto& m:monsters_) skeletons+=m->allied && m->stats().hp>0;
+                            guard+=bones*skeletons;
+                        }
                     damage=afterArmour(damage,gearArmour(*decision.target));
                     damage=std::max(0,damage-guard);
                     // Ward soaks the blow before your life does.
@@ -2308,6 +2341,9 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                         if (soaked && !damage) log("Your ward drinks the blow.");
                     }
                     decision.target->stats().hp -= damage;
+                    if (const auto* raised=dynamic_cast<const Monster*>(&actor); raised && raised->allied && damage>0 && decision.target->stats().hp>0)
+                        if (const int glow=player_.talents().passiveValue(PassiveKind::GraveLight,player_.stats()))
+                            decision.target->statusEffects().apply({StatusEffectType::Burn,3,glow});
                     if (damage>0) flashActor(*decision.target);
                     if (const auto* lord=dynamic_cast<const Monster*>(&actor); lord && lord->eventChampion==kChampionVampire && damage>0) {
                         actor.stats().hp=std::min(actor.stats().maxHp,actor.stats().hp+damage);

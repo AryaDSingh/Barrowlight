@@ -2295,6 +2295,95 @@ struct ApplicationRewardsTestAccess {
                       "Juggernaut charges, knocks back, and ends guarded");
                 clearFoes();
             }
+
+            // The first hybrid batch: Spellblade.
+            arena(PlayerClass::Warrior);
+            {
+                check(wield("iron_sword"),"Take up a sword");
+                ranked("spellblade.ward",1);
+                const auto cleave=ranked("spellblade.cleave",1);
+                auto* a=foe({11,10}); auto* b=foe({9,10}); app.updateFieldOfView();
+                app.player_.spellWard=0;
+                cast(cleave,app.player_.position());
+                check(a->stats().hp<90 && b->stats().hp<90,"Arcane Cleave sweeps through every foe beside you");
+                check(app.player_.spellWard>0,"Blade Ward: melee hits give you spell ward");
+                clearFoes();
+                const auto blink=ranked("spellblade.blink_strike",1);
+                auto* c=foe({14,10}); app.updateFieldOfView();
+                cast(blink,{14,10});
+                check(app.player_.position().x==13 && c->stats().hp<90,"Blink Strike flashes to a foe and strikes it");
+                clearFoes(); app.player_.setPosition({10,10});
+            }
+            // Animation.
+            arena(PlayerClass::Mage);
+            {
+                const auto raise=ranked("animation.raise",3);
+                app.player_.baseStats().intelligence=app.player_.stats().intelligence=30; // room for more than one skeleton
+                cast(raise,app.player_.position());
+                int skeletons=0; for (const auto& m:app.monsters_) skeletons+=m->allied;
+                check(skeletons==2,"Raise Skeleton at rank 3 raises two at once");
+                ranked("animation.bone_armour",1);
+                auto* a=foe({10,12}); app.updateFieldOfView();
+                AIDecision claw; claw.type=AIActionType::Attack; claw.target=&app.player_; claw.attackPower=8;
+                const int unarmoured=app.player_.stats().hp;
+                app.executeAIDecision(*a,claw,0);
+                const int lost=unarmoured-app.player_.stats().hp;
+                app.player_.talents()=TalentSet({basicAttack(),basicCleanse()});
+                app.player_.stats().hp=unarmoured;
+                for (int tries=0;tries<8 && app.player_.stats().hp==unarmoured;++tries) app.executeAIDecision(*a,claw,0);
+                check(unarmoured-app.player_.stats().hp>lost,"Bone Armour: each skeleton takes the edge off hits on you");
+                for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+                app.monsters_.clear();
+                const auto spear=ranked("animation.spear",1);
+                auto* b=foe({13,10}); auto* c=foe({15,10}); app.updateFieldOfView();
+                cast(spear,{15,10});
+                check(b->stats().hp<90 && c->stats().hp<90,"Bone Spear runs through a line");
+                clearFoes();
+                const auto prison=ranked("animation.prison",1);
+                auto* d=foe({14,10}); app.updateFieldOfView();
+                cast(prison,{14,10});
+                check(app.propIndexAt(13,10)>=0 && app.propIndexAt(15,11)>=0 && d->position().x==14,"Bone Prison walls a foe in");
+                clearFoes(); app.pillarTurns_.clear(); app.setProps({});
+                for (int y=6;y<=16;++y) for (int x=6;x<=20;++x) app.map_.setTile(x,y,Tile{TileType::Floor,true,true});
+            }
+            // Blood Magic.
+            arena(PlayerClass::Mage);
+            {
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.boiling_blood")->ranks[0]);
+                ranked("blood_magic.transfusion",1);
+                const auto boil=ranked("blood_magic.boil",1);
+                auto* a=foe({11,10}); auto* b=foe({10,12}); app.updateFieldOfView();
+                cast(boil,app.player_.position());
+                check(a->statusEffects().has(StatusEffectType::Bleed) && b->statusEffects().has(StatusEffectType::Bleed),"Blood Boil: everything within two tiles bleeds");
+                check(a->statusEffects().has(StatusEffectType::Burn),"Boiling Blood: spending life sets the foes beside you alight");
+                app.player_.stats().hp=100;
+                Talent strike=basicAttack();
+                for (int tries=0;tries<8 && app.player_.stats().hp<=100;++tries) applyTalentDamage(strike,app.player_,*a);
+                clearFoes();
+                const auto rite=ranked("blood_magic.rite",1);
+                app.player_.talents().resetCooldowns(); app.player_.stats().hp=200;
+                app.tryUseTalent(rite,app.player_.position());
+                check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Empowered)==8 && app.player_.stats().hp<200,"Blood Rite: pay life for harder hits");
+                app.player_.statusEffects().active().clear();
+            }
+            // Grave Light and Bloodletter.
+            arena(PlayerClass::Warrior);
+            {
+                check(wield("iron_sword"),"Take up a sword again");
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.bloodletter")->ranks[0]);
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.grave_light")->ranks[0]);
+                std::size_t strike=0;
+                for (std::size_t i=0;i<app.player_.talents().knownTalents().size();++i) if (app.player_.talents().knownTalents()[i].id=="one_handed.quick_strike") strike=i;
+                auto* a=foe({11,10}); app.updateFieldOfView();
+                cast(strike,{11,10});
+                check(a->statusEffects().has(StatusEffectType::Bleed),"Bloodletter: your melee abilities make foes bleed");
+                auto bones=createMonster(MonsterType::Skeleton,{12,11}); app.configureMinion(*bones,1,10);
+                auto* skeleton=bones.get(); app.scheduler_.add(*skeleton); app.monsters_.push_back(std::move(bones));
+                AIDecision bite; bite.type=AIActionType::Attack; bite.target=a; bite.attackPower=4;
+                for (int tries=0;tries<8 && !a->statusEffects().has(StatusEffectType::Burn);++tries) app.executeAIDecision(*skeleton,bite,0);
+                check(a->statusEffects().has(StatusEffectType::Burn),"Grave Light: your skeletons set what they hit burning");
+                clearFoes();
+            }
         }
 
         // Acid and blindness survive a save (a fresh Warrior: the fixture's

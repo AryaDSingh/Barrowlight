@@ -98,7 +98,9 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The eighth batch (Alchemy, Traps, Hexes) and its resonances.
     VolatileMix, Ambusher, HexEcho, Incendiary, WastingCurse, Witchfire,
     // The ninth batch (Acrobatics, the armour trees) and its resonances.
-    Fleet, FlowingMana, ArcaneBulwark, Unstoppable };
+    Fleet, FlowingMana, ArcaneBulwark, Unstoppable,
+    // The first hybrid batch (Spellblade, Animation, Blood Magic) and its resonances.
+    BladeWard, BoneArmour, Transfusion, GraveLight, BoilingBlood, Bloodletter };
 
 struct Talent {
     std::string name;
@@ -302,6 +304,8 @@ struct Talent {
     // shakeHolds: throws off pins, holds and slows (Unbreakable).
     int wardPercent=0, slowSelf=0;
     bool manaBurst=false, critWithOpening=false, shakeHolds=false;
+    // boneprison: bone walls rise on every free tile around the target; prisonCut: and cut it.
+    bool bonePrison=false, prisonCut=false;
 
 };
 
