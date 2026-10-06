@@ -288,6 +288,11 @@ struct Talent {
     // grantOpening: you also gain Opening for a few turns (Slipstream).
     bool grantOpening=false;
     int hasteSelf=0; // you are Hasted by this much for a few turns (Slipstream)
+    // A passive's flat number grows by 1 for every scalePer points of its
+    // attribute (scalingStat, or your highest attribute when scaleHighest),
+    // so it keeps its worth as you level. 0: it doesn't (percentages).
+    int scalePer=0;
+    bool scaleHighest=false;
 
 };
 

@@ -374,7 +374,7 @@ void Application::tickSurfaces() {
     }
     for (auto& trap : traps_) --trap.turns;
     traps_.erase(std::remove_if(traps_.begin(), traps_.end(), [](const Trap& t) { return t.turns <= 0; }), traps_.end());
-    if (const int ward = player_.talents().passiveValue(PassiveKind::LanternWard); ward && playerLightRadius() > 0) {
+    if (const int ward = player_.talents().passiveValue(PassiveKind::LanternWard,player_.stats()); ward && playerLightRadius() > 0) {
         const auto me = player_.position();
         for (auto& m : monsters_)
             if (!m->allied && m->stats().hp > 0 && std::max(std::abs(m->position().x - me.x), std::abs(m->position().y - me.y)) <= 1) {
@@ -400,9 +400,9 @@ void Application::tickSurfaces() {
         if (surfaceAt(a.position()) == SurfaceType::Water) {
             // Tidecaller: the water mends you. Foul Water: it poisons your foes.
             if (&a == &player_) {
-                if (const int mend = player_.talents().passiveValue(PassiveKind::Tidecaller))
+                if (const int mend = player_.talents().passiveValue(PassiveKind::Tidecaller,player_.stats()))
                     player_.stats().hp = std::min(player_.stats().maxHp, player_.stats().hp + mend);
-            } else if (const int foul = player_.talents().passiveValue(PassiveKind::FoulWater)) {
+            } else if (const int foul = player_.talents().passiveValue(PassiveKind::FoulWater,player_.stats())) {
                 const auto* m = dynamic_cast<const Monster*>(&a);
                 if (m && !m->allied) a.statusEffects().apply({StatusEffectType::Poison, 2, foul});
             }
@@ -509,14 +509,14 @@ void Application::enterSurface(Actor& actor, Position tile) {
 }
 
 void Application::pushActor(Actor& target, Position direction, int distance, const Actor& pusher) {
-    if (&target == &player_ && player_.talents().passiveValue(PassiveKind::Bedrock) && player_.statusEffects().has(StatusEffectType::Guard)) {
+    if (&target == &player_ && player_.talents().passiveValue(PassiveKind::Bedrock,player_.stats()) && player_.statusEffects().has(StatusEffectType::Guard)) {
         log("You stand your ground.");
         return;
     }
     auto* monster = dynamic_cast<Monster*>(&target);
     const bool anchored = immovable(target);
     // Hard Landing (Brawling): your collisions hit harder.
-    const int hard = &pusher == &player_ ? player_.talents().passiveValue(PassiveKind::HardLanding) : 0;
+    const int hard = &pusher == &player_ ? player_.talents().passiveValue(PassiveKind::HardLanding,player_.stats()) : 0;
     for (int step = 0; step < distance && target.stats().hp > 0; ++step) {
         const auto pos = target.position();
         const Position dest{pos.x + direction.x, pos.y + direction.y};
@@ -603,7 +603,7 @@ void Application::triggerTrap(std::size_t index, Monster& victim, Position headi
     if (index >= traps_.size()) return;
     const Trap trap = traps_[index];
     traps_.erase(traps_.begin() + static_cast<std::ptrdiff_t>(index));
-    const int bonus = player_.talents().passiveValue(PassiveKind::Trapper);
+    const int bonus = player_.talents().passiveValue(PassiveKind::Trapper,player_.stats());
     const auto hurt = [&](Actor& a, int amount) { a.stats().hp -= amount; flashActor(a); };
     switch (trap.kind) {
         case 1: // snare
@@ -661,8 +661,8 @@ void Application::triggerTrap(std::size_t index, Monster& victim, Position headi
     }
     // Ambusher marks what the trap caught; Incendiary sets it burning.
     if (victim.stats().hp > 0) {
-        if (player_.talents().passiveValue(PassiveKind::Ambusher)) victim.statusEffects().apply({StatusEffectType::Marked, 3, 1});
-        if (const int burn = player_.talents().passiveValue(PassiveKind::Incendiary)) victim.statusEffects().apply({StatusEffectType::Burn, 3, burn});
+        if (player_.talents().passiveValue(PassiveKind::Ambusher,player_.stats())) victim.statusEffects().apply({StatusEffectType::Marked, 3, 1});
+        if (const int burn = player_.talents().passiveValue(PassiveKind::Incendiary,player_.stats())) victim.statusEffects().apply({StatusEffectType::Burn, 3, burn});
     }
     for (auto& m : monsters_) if (m->stats().hp <= 0) checkAndHandleDeath(*m);
 }

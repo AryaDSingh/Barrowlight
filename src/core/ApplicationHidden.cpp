@@ -221,7 +221,7 @@ void Application::actMinion(Monster& minion) {
 void Application::afterHiddenCast(const Talent& t,bool landed,bool killed,int concealed) {
     if (isMeleeAttack(t) && hasMeleeWeapon(player_)) {
         player_.statusEffects().remove(StatusEffectType::BattleRhythm);
-        if (landed && player_.talents().passiveValue(PassiveKind::BattleRhythm)) {
+        if (landed && player_.talents().passiveValue(PassiveKind::BattleRhythm,player_.stats())) {
             std::optional<std::size_t> choice; int longest=0;
             for (std::size_t i=0;i<player_.talents().knownTalents().size();++i) {
                 const auto candidate=player_.talents().effectiveTalent(i);
@@ -231,21 +231,21 @@ void Application::afterHiddenCast(const Talent& t,bool landed,bool killed,int co
             if (choice) player_.talents().setCooldownRemaining(*choice,longest-1);
         }
     }
-    if (isSpell(t) && player_.talents().passiveValue(PassiveKind::BattleRhythm))
-        player_.statusEffects().apply({StatusEffectType::BattleRhythm,10000,player_.talents().passiveValue(PassiveKind::BattleRhythm)});
+    if (isSpell(t) && player_.talents().passiveValue(PassiveKind::BattleRhythm,player_.stats()))
+        player_.statusEffects().apply({StatusEffectType::BattleRhythm,10000,player_.talents().passiveValue(PassiveKind::BattleRhythm,player_.stats())});
     const bool offensive=(t.effectKind==TalentEffectKind::Damage && t.shape!=EffectShape::Movement) || t.huntersMark || t.id=="blood_magic.wither";
-    const int stay=t.stayHiddenPercent+player_.talents().passiveValue(PassiveKind::LingeringShadow);
+    const int stay=t.stayHiddenPercent+player_.talents().passiveValue(PassiveKind::LingeringShadow,player_.stats());
     bool remain=concealed && stay && rollChance(stay/100.f);
-    if (concealed && player_.talents().passiveValue(PassiveKind::UnseenHand) && !tileLit(player_.position())) remain=true;
+    if (concealed && player_.talents().passiveValue(PassiveKind::UnseenHand,player_.stats()) && !tileLit(player_.position())) remain=true;
     // Templar's Zeal: every spell guards you for the next response.
     if (isSpell(t) && t.effectKind==TalentEffectKind::Damage)
-        if (const int zeal=player_.talents().passiveValue(PassiveKind::Zeal)) player_.statusEffects().apply({StatusEffectType::Guard,1,zeal});
+        if (const int zeal=player_.talents().passiveValue(PassiveKind::Zeal,player_.stats())) player_.statusEffects().apply({StatusEffectType::Guard,1,zeal});
     if (offensive && !remain) player_.statusEffects().remove(StatusEffectType::Concealed);
     if (t.returnConcealed && t.selfBuffEffect) player_.statusEffects().apply(*t.selfBuffEffect);
-    if (killed && concealed && player_.talents().passiveValue(PassiveKind::Unseen) && player_.statusEffects().has(StatusEffectType::UnseenReady)) {
+    if (killed && concealed && player_.talents().passiveValue(PassiveKind::Unseen,player_.stats()) && player_.statusEffects().has(StatusEffectType::UnseenReady)) {
         player_.statusEffects().remove(StatusEffectType::UnseenReady);
         player_.statusEffects().apply({StatusEffectType::Concealed,
-            player_.talents().passiveValue(PassiveKind::Unseen),concealed});
+            player_.talents().passiveValue(PassiveKind::Unseen,player_.stats()),concealed});
     }
 }
 } // namespace engine

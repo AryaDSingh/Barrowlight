@@ -476,7 +476,7 @@ void Application::renderTalentTrees() {
         const std::string cells[]{std::to_string(r+1),
             (t.passive || t.effectKind!=TalentEffectKind::Damage || t.shape==EffectShape::Movement)?"-":std::to_string(t.damagePercent)+"%",
             std::to_string(t.manaCost),std::to_string(t.cooldownTurns),t.moveDistance?std::to_string(t.moveDistance):"-",
-            t.passive?std::to_string(t.passiveMagnitude):t.restoreMana?"+"+std::to_string(t.restoreMana)+" MP":
+            t.passive?std::to_string(t.passiveMagnitude+passiveGrowth(t,player_.stats())):t.restoreMana?"+"+std::to_string(t.restoreMana)+" MP":
             t.restoreHpPercent?std::to_string(t.restoreHpPercent)+"% HP":
             t.selfBuffEffect && t.selfBuffEffect->type==StatusEffectType::Concealed?std::to_string(t.selfBuffEffect->magnitude):"-"};
         for(int col=0;col<6;++col) ui_.text(window_,cells[col],{left+columns[col],y},14,c);
@@ -570,11 +570,11 @@ void Application::applyMovementTalents(Position previous) {
     const auto now=player_.position();
     if (now.x==previous.x && now.y==previous.y) return;
     player_.statusEffects().apply({StatusEffectType::Opening,2,0});
-    if (const int shade=player_.talents().passiveValue(PassiveKind::ShadeStep))
+    if (const int shade=player_.talents().passiveValue(PassiveKind::ShadeStep,player_.stats()))
         player_.statusEffects().apply({StatusEffectType::Concealed,shade,std::max(1,player_.statusEffects().magnitudeOf(StatusEffectType::Concealed))});
-    const int evasion=player_.talents().passiveValue(PassiveKind::Footwork);
+    const int evasion=player_.talents().passiveValue(PassiveKind::Footwork,player_.stats());
     if (evasion) player_.statusEffects().apply({StatusEffectType::Evasion,1,evasion});
-    const int burn=player_.talents().passiveValue(PassiveKind::Kindle);
+    const int burn=player_.talents().passiveValue(PassiveKind::Kindle,player_.stats());
     if (burn) for (const auto& enemy:monsters_) {
         const auto pos=enemy->position();
         if (!enemy->allied && enemy->stats().hp>0 && exploredMap_.at(pos.x,pos.y)==Visibility::Visible &&

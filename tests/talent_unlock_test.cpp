@@ -157,6 +157,21 @@ int main() {
         check(findTalentDefinition("juggernaut.iron_skin")->maxRank()==1,"Ascendancy nodes have a single rank");
         check(findTalentDefinition("juggernaut.iron_skin")->atRank(3).name=="Iron Skin","Asking past a node's last rank gives its last rank");
     }
+    // --- Flat passives grow with their attribute; percentages don't.
+    {
+        TalentSet kit;
+        kit.learnTalent(findTalentDefinition("fire.kindling")->ranks[0]);        // +3, Intelligence, 1 per 5
+        kit.learnTalent(findTalentDefinition("acrobatics.footwork")->ranks[0]);  // a dodge percentage
+        Stats low; low.intelligence=4; low.dexterity=4;
+        Stats high; high.intelligence=40; high.dexterity=40;
+        check(kit.passiveValue(PassiveKind::Kindling,low)==3 && kit.passiveValue(PassiveKind::Kindling,high)==11,
+              "Kindling grows by 1 for every 5 Intelligence");
+        check(kit.passiveValue(PassiveKind::Footwork,low)==kit.passiveValue(PassiveKind::Footwork,high),"Percentages don't grow");
+        TalentSet resonance;
+        resonance.learnTalent(findTalentDefinition("resonance.hallowed_guard")->ranks[0]);
+        Stats brawny; brawny.strength=30;
+        check(resonance.passiveValue(PassiveKind::HallowedGuard,brawny)==3+6,"Resonances grow with your highest attribute");
+    }
     // --- Forks and prerequisites, on a made-up tree.
     {
         const auto node=[](const char* id,int tier,int ranks,const char* fork,std::vector<std::string> needs) {

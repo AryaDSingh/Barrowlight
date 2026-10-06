@@ -1,5 +1,7 @@
 #pragma once
 
+#include "entities/Stats.hpp"
+#include <algorithm>
 #include <cstddef>
 #include <vector>
 
@@ -16,6 +18,14 @@ namespace engine {
 // Deliberately doesn't know how to *apply* a talent's effect -- that's
 // TalentEffects' job. TalentSet only owns per-actor state (which talents
 // are known, how long until each is ready again).
+// How much a passive's flat number has grown with its attribute.
+inline int passiveGrowth(const Talent& t, const Stats& stats) {
+    if (t.scalePer<=0) return 0;
+    const int value=t.scaleHighest ? std::max({stats.strength,stats.dexterity,stats.intelligence})
+        : t.scalingStat==ScalingStat::Dexterity ? stats.dexterity : t.scalingStat==ScalingStat::Intelligence ? stats.intelligence : stats.strength;
+    return std::max(0,value)/t.scalePer;
+}
+
 class TalentSet {
 public:
     TalentSet() = default;
@@ -40,6 +50,17 @@ public:
         for (std::size_t i=0; i<knownTalents_.size(); ++i) if (knownTalents_[i].id==id) return rank(i);
         return 0;
     }
+    // With the owner's attributes: each passive's flat number grows with them.
+    int passiveValue(PassiveKind kind, const Stats& stats) const {
+        int value=0;
+        for (std::size_t i=0;i<knownTalents_.size();++i) {
+            const auto* d=findTalentDefinition(knownTalents_[i].id);
+            const auto& t=d ? d->atRank(rank(i)) : knownTalents_[i];
+            if (t.passiveKind==kind) value+=t.passiveMagnitude+passiveGrowth(t,stats);
+        }
+        return value;
+    }
+    // The base numbers alone, before any growth.
     int passiveValue(PassiveKind kind) const {
         int value=0;
         for (std::size_t i=0;i<knownTalents_.size();++i) {

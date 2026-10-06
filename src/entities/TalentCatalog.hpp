@@ -1038,6 +1038,29 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="hexes") d.affinity=Affinity::Dark;
             else if (d.treeId=="one_handed") d.affinity=(d.id=="one_handed.parry" || d.id=="one_handed.riposte")?Affinity::Guard:Affinity::Steel;
         }
+        // Flat passive numbers grow with an attribute: damage, healing, mana,
+        // Guard and damage taken by 1 per 5 points; the strength of a lingering
+        // effect by 1 per 10. Percentages and on/off passives stay as they are.
+        const auto growth=[](PassiveKind k) {
+            switch (k) {
+                case PassiveKind::Riposte: case PassiveKind::Bloodlust: case PassiveKind::ShieldTraining: case PassiveKind::Ambush:
+                case PassiveKind::Frostbite: case PassiveKind::Spellweave: case PassiveKind::HeavyBrace: case PassiveKind::BattleRhythm:
+                case PassiveKind::Kindling: case PassiveKind::Exploit: case PassiveKind::Dread: case PassiveKind::Skewer:
+                case PassiveKind::Hemorrhage: case PassiveKind::ArcFlash: case PassiveKind::Aftershock: case PassiveKind::Malediction:
+                case PassiveKind::ToxicRuin: case PassiveKind::Riptide: case PassiveKind::InnerLight: case PassiveKind::Umbral:
+                case PassiveKind::LongReach: case PassiveKind::Bonebreaker: case PassiveKind::Windlass: case PassiveKind::RunningStart:
+                case PassiveKind::Flay: case PassiveKind::HardLanding: case PassiveKind::PotentBrews: case PassiveKind::Trapper:
+                case PassiveKind::Lunge: case PassiveKind::PassStrike: case PassiveKind::LanternWard: case PassiveKind::SearingEdge:
+                case PassiveKind::FollowThrough: case PassiveKind::Stoneskin: case PassiveKind::HallowedGuard: case PassiveKind::Tidecaller:
+                case PassiveKind::Bulwark:
+                    return 5;
+                case PassiveKind::FireArrows: case PassiveKind::Incendiary: case PassiveKind::WastingCurse: case PassiveKind::Witchfire:
+                case PassiveKind::FoulWater: case PassiveKind::EnvenomedBlades:
+                    return 10;
+                default: return 0;
+            }
+        };
+
         // Resonances: one-rank passives that exist only between two colours.
         const auto resonance=[&](const char* id,Affinity a,Affinity b,Talent t) {
             t.id=id; t.tree=TalentTree::Blade; t.scalingCooldown=t.cooldownTurns;
@@ -1088,6 +1111,11 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             passive("Wasting Curse","Foes you curse are also poisoned.",PassiveKind::WastingCurse,2));
         resonance("resonance.witchfire",Affinity::Dark,Affinity::Flame,
             passive("Witchfire","Your curses also set the foe burning.",PassiveKind::Witchfire,2));
+        // Passives grow with their tree's attribute; resonances with your highest.
+        for (auto& d:out) for (auto& r:d.ranks) if (r.passive) {
+            r.scalePer=growth(r.passiveKind);
+            r.scaleHighest=d.treeId=="resonance";
+        }
         return out;
     }();
     return catalog;

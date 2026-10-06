@@ -1024,7 +1024,7 @@ struct ApplicationRewardsTestAccess {
             const auto shove=app.player_.talents().knownTalents().size()-1;
             goblin->stats().hp=60; app.player_.setPosition({29,10}); goblin->setPosition({30,10}); app.updateFieldOfView();
             const int beforeWall=goblin->stats().hp; use(shove,{30,10});
-            check(goblin->stats().hp==beforeWall-7,"Hard Landing: a wall slam deals 3 + 4");
+            check(goblin->stats().hp==beforeWall-3-app.player_.talents().passiveValue(PassiveKind::HardLanding,app.player_.stats()),"Hard Landing: a wall slam deals 3, plus the grown bonus");
 
             // Bosses can't be held or lifted.
             auto warlord=createMonster(MonsterType::GoblinWarlord,{28,11}); auto* w=warlord.get();
@@ -1516,7 +1516,7 @@ struct ApplicationRewardsTestAccess {
                 a->statusEffects().apply({StatusEffectType::Burn,3,1});
                 const int without=estimateTalentDamage(bolt,app.player_,*a).normal;
                 ranked("fire.kindling",1);
-                check(estimateTalentDamage(bolt,app.player_,*a).normal==without+3,"Kindling: +3 against burning foes");
+                check(estimateTalentDamage(bolt,app.player_,*a).normal==without+app.player_.talents().passiveValue(PassiveKind::Kindling,app.player_.stats()) && app.player_.talents().passiveValue(PassiveKind::Kindling,app.player_.stats())>=3,"Kindling: +3 (and more with Intelligence) against burning foes");
                 clearFoes();
             }
 
@@ -1573,7 +1573,7 @@ struct ApplicationRewardsTestAccess {
                 b->statusEffects().apply({StatusEffectType::Burn,3,1}); b->statusEffects().apply({StatusEffectType::Poison,3,1});
                 const int plain=estimateTalentDamage(strike,app.player_,*b).normal;
                 ranked("one_handed.exploit",1);
-                check(estimateTalentDamage(strike,app.player_,*b).normal==plain+4,"Exploit: +2 for each ailment on the target");
+                check(estimateTalentDamage(strike,app.player_,*b).normal==plain+2*app.player_.talents().passiveValue(PassiveKind::Exploit,app.player_.stats()),"Exploit: a bonus for each ailment on the target");
                 clearFoes();
             }
 
@@ -1730,7 +1730,7 @@ struct ApplicationRewardsTestAccess {
                 const Talent bolt=findTalentDefinition("shadow.bolt")->ranks[0];
                 const int plain=estimateTalentDamage(bolt,app.player_,*b).normal;
                 b->statusEffects().apply({StatusEffectType::Blinded,3,0});
-                check(estimateTalentDamage(bolt,app.player_,*b).normal==plain+3,"Dread: blinded foes take +3 from your hits");
+                check(estimateTalentDamage(bolt,app.player_,*b).normal==plain+app.player_.talents().passiveValue(PassiveKind::Dread,app.player_.stats()),"Dread: blinded foes take more from your hits");
                 clearFoes();
                 const auto devour=ranked("shadow.devour",1);
                 foe({13,10}); app.updateFieldOfView();
@@ -1887,7 +1887,7 @@ struct ApplicationRewardsTestAccess {
                     if (app.player_.talents().knownTalents()[i].id=="earth.spike") app.player_.talents().setRank(i,1);
                 auto* c=foe({14,10}); auto* d=foe({15,10}); app.updateFieldOfView();
                 cast(spike,{14,10});
-                check(c->statusEffects().has(StatusEffectType::Pinned) && d->stats().hp==87,"Aftershock: pinning a foe shakes the ground beside it");
+                check(c->statusEffects().has(StatusEffectType::Pinned) && d->stats().hp==90-app.player_.talents().passiveValue(PassiveKind::Aftershock,app.player_.stats()),"Aftershock: pinning a foe shakes the ground beside it");
                 clearFoes();
                 const auto grasp=ranked("earth.grasp",1);
                 auto* e=foe({14,10}); auto* f=foe({14,11}); app.updateFieldOfView();
@@ -1916,7 +1916,7 @@ struct ApplicationRewardsTestAccess {
                 ranked("tide.tidecaller",1);
                 app.setSurface(app.player_.position(),SurfaceType::Water,0); app.player_.stats().hp=100;
                 app.tickSurfaces();
-                check(app.player_.stats().hp==102,"Tidecaller: standing in water heals you");
+                check(app.player_.stats().hp==100+app.player_.talents().passiveValue(PassiveKind::Tidecaller,app.player_.stats()),"Tidecaller: standing in water heals you");
                 app.clearSurfaces();
                 const auto flood=ranked("tide.flood",1);
                 cast(flood,app.player_.position());
@@ -1987,7 +1987,7 @@ struct ApplicationRewardsTestAccess {
                 a->statusEffects().remove(StatusEffectType::Pinned);
                 const int loose=estimateTalentDamage(thrust,app.player_,*a).normal;
                 ranked("spear.skewer",1); a->statusEffects().apply({StatusEffectType::Pinned,2,0});
-                check(estimateTalentDamage(thrust,app.player_,*a).normal==pinned+4 && pinned==loose,"Skewer: +4 against pinned foes");
+                check(estimateTalentDamage(thrust,app.player_,*a).normal==pinned+app.player_.talents().passiveValue(PassiveKind::Skewer,app.player_.stats()) && pinned==loose,"Skewer: more against pinned foes");
                 clearFoes();
                 const auto toss=ranked("spear.throw",1);
                 auto* b=foe({13,10}); auto* c=foe({15,10}); app.updateFieldOfView();
