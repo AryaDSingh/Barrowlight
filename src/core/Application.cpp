@@ -1176,6 +1176,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     if (talent.effectKind==TalentEffectKind::Damage) { combatThisTurn_=true; notifyAttack(player_,cursor); }
     cancelTargeting();
 
+    if (talent.manaBurst) { talent.power=player_.stats().mana; player_.stats().mana=0; }
     player_.stats().mana -= talent.manaCost;
     if (talent.hpCost) { noteHarm(); player_.stats().hp -= talent.hpCost; harmSource_=talent.name; noteHarm(); harmSource_.clear(); }
     spawnTalentVfx(talent, beforeMovement, cursor, target);
@@ -1365,6 +1366,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 if (wasConcealed || fx.has(StatusEffectType::Blinded) || fx.has(StatusEffectType::Stun) ||
                     fx.has(StatusEffectType::Grappled) || fx.has(StatusEffectType::Pinned)) { hitTalent.damagePercent+=100; combo+="Backstab: double damage. "; }
             }
+            if (talent.critWithOpening && player_.statusEffects().has(StatusEffectType::Opening)) hitTalent.bonusCritChance=1.f;
             if (const int edge=player_.talents().passiveValue(PassiveKind::AssassinsEdge,player_.stats()); edge && wasConcealed && isMeleeAttack(talent)) {
                 hitTalent.damagePercent+=edge; combo+="From hiding: +"+std::to_string(edge)+"%. ";
             }
@@ -1651,6 +1653,20 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     afterHiddenCast(talent,landedAny,killedAny,wasConcealed);
     if (talent.grantOpening) player_.statusEffects().apply({StatusEffectType::Opening,3,0});
     if (talent.hasteSelf) player_.statusEffects().apply({StatusEffectType::Hasted,3,talent.hasteSelf});
+    if (talent.wardPercent) {
+        player_.spellWard=std::min(player_.stats().maxMana,player_.spellWard+player_.stats().maxMana*talent.wardPercent/100);
+        log("A shimmering ward wraps around you.");
+    }
+    if (talent.slowSelf && talent.selfBuffEffect) player_.statusEffects().apply({StatusEffectType::Slowed,talent.selfBuffEffect->turnsRemaining,talent.slowSelf});
+    if (talent.shakeHolds)
+        for (const auto type:{StatusEffectType::Pinned,StatusEffectType::Grappled,StatusEffectType::Slowed,StatusEffectType::Chill})
+            player_.statusEffects().remove(type);
+    if (const int gained=player_.statusEffects().magnitudeOf(StatusEffectType::Guard)-guardBefore; gained>0) {
+        if (player_.talents().passiveValue(PassiveKind::ArcaneBulwark,player_.stats()))
+            player_.spellWard=std::min(player_.stats().maxMana,player_.spellWard+gained);
+        if (const int rush=player_.talents().passiveValue(PassiveKind::Unstoppable,player_.stats()))
+            player_.statusEffects().apply({StatusEffectType::Hasted,2,rush});
+    }
     if (talent.rootSelf && talent.selfBuffEffect) player_.statusEffects().apply({StatusEffectType::Pinned,talent.selfBuffEffect->turnsRemaining,0});
     if (const int hallowed=player_.talents().passiveValue(PassiveKind::HallowedGuard,player_.stats());
         hallowed && player_.statusEffects().magnitudeOf(StatusEffectType::Guard)>guardBefore) {
@@ -2082,6 +2098,9 @@ void Application::advanceTurnsUntilPlayerCanAct() {
         }
         ++harmClock_;
         noteHarm();
+        if (const int fleet=player_.talents().passiveValue(PassiveKind::Fleet,player_.stats());
+            fleet && player_.statusEffects().magnitudeOf(StatusEffectType::Hasted)<fleet)
+            player_.statusEffects().apply({StatusEffectType::Hasted,2,fleet});
         {
             std::string afflictions;
             for (const auto type:{StatusEffectType::Poison,StatusEffectType::Burn,StatusEffectType::Bleed,StatusEffectType::Plague,StatusEffectType::Doom})
@@ -2277,6 +2296,11 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     damage=afterArmour(damage,gearArmour(*decision.target));
                     damage=std::max(0,damage-guard);
                     // Ward soaks the blow before your life does.
+                    if (decision.target==&player_ && damage>0 && player_.spellWard>0) {
+                        const int soaked=std::min(player_.spellWard,damage);
+                        player_.spellWard-=soaked; damage-=soaked;
+                        if (!damage) log("Your ward drinks the blow.");
+                    }
                     if (decision.target==&player_ && damage>0) {
                         player_.wardRest=0;
                         const int soaked=std::min(player_.ward,damage);

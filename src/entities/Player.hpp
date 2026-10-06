@@ -77,6 +77,9 @@ public:
     bool bloodRelic=false, animationRelic=false;
     // Cloth's ward: a shield over your life. Transient: it refills on load.
     int ward=0, wardRest=0;
+    // Ward from spells (Arcane Shroud): soaks hits before the gear's ward and
+    // lasts until spent, up to your maximum mana.
+    int spellWard=0;
     // Ascendancy (entities/Ascendancy.hpp): the chosen ascendancy's id
     // (empty until the first trial), unspent ascendancy points, and the
     // trials' sigils held and trials cleared (bit n-1 = trial n).

@@ -96,7 +96,9 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The seventh batch (Brawling, Whip, Skirmish) and its resonances.
     Knockout, Taskmaster, LightningFeet, Tremor,
     // The eighth batch (Alchemy, Traps, Hexes) and its resonances.
-    VolatileMix, Ambusher, HexEcho, Incendiary, WastingCurse, Witchfire };
+    VolatileMix, Ambusher, HexEcho, Incendiary, WastingCurse, Witchfire,
+    // The ninth batch (Acrobatics, the armour trees) and its resonances.
+    Fleet, FlowingMana, ArcaneBulwark, Unstoppable };
 
 struct Talent {
     std::string name;
@@ -293,6 +295,13 @@ struct Talent {
     // so it keeps its worth as you level. 0: it doesn't (percentages).
     int scalePer=0;
     bool scaleHighest=false;
+    // wardPercent: gain spell ward worth this % of your maximum mana (Arcane
+    // Shroud). manaBurst: spend all your mana as the blast's power.
+    // slowSelf: you are Slowed by this much while it lasts (Fortify).
+    // critWithOpening: always a critical hit while you have Opening.
+    // shakeHolds: throws off pins, holds and slows (Unbreakable).
+    int wardPercent=0, slowSelf=0;
+    bool manaBurst=false, critWithOpening=false, shakeHolds=false;
 
 };
 

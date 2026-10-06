@@ -149,6 +149,17 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "acrobatics.tumble") { dodge(15); d.mastery = "+15% dodge for one enemy response after tumbling."; }
     if (id == "acrobatics.vault_kick") { stun(1); d.mastery = "The kick stuns for one enemy turn."; }
     if (id == "acrobatics.leap") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 30; d.mastery = "+30% dodge instead of +20%."; }
+    if (id == "acrobatics.somersault") { m.blitz = true; m.power = 5; d.mastery = "You cut the foes you roll past."; }
+    if (id == "acrobatics.untouchable") { longer(); d.mastery = "Lasts three turns."; }
+    if (id == "cloth.shroud") { m.wardPercent = 35; d.mastery = "Ward worth 35% of your maximum mana."; }
+    if (id == "cloth.surge") { m.restoreMana = 35; d.mastery = "Restores 35 mana."; }
+    if (id == "cloth.burst") { m.areaRadius = 3; d.mastery = "Reaches three tiles out."; }
+    if (id == "light_armour.feint") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Blinded, 2, 0}; m.markOnHit = true; d.mastery = "The feint also blinds it for a turn."; }
+    if (id == "light_armour.blur") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 45; d.mastery = "+45% dodge."; }
+    if (id == "light_armour.perfect") { m.bonusCritDamageMultiplier += .5f; d.mastery = "The critical hit lands half again as hard."; }
+    if (id == "heavy_armour.fortify") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 6; d.mastery = "Guard 6."; }
+    if (id == "heavy_armour.juggernaut") { stun(1); d.mastery = "The impact stuns."; }
+    if (id == "heavy_armour.unbreakable") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 12; d.mastery = "Guard 12."; }
     if (id == "fire.ember_bolt") { if (m.onHitEffect) m.onHitEffect->magnitude = 2; d.mastery = "Burn deals 2 damage per turn."; }
     if (id == "fire.fireball") { m.splashSurface = 3; m.splashTurns = 4; m.scatterSplash = true; d.mastery = "Leaves fire burning on the ground where it bursts."; }
     if (id == "fire.flame_wall") { m.splashTurns = 6; if (m.onHitEffect) m.onHitEffect->magnitude = 2; d.mastery = "Burns for six turns, and hotter: 2 a turn."; }
@@ -490,9 +501,19 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t.conditionalHpFraction=.5f; t.conditionalMultiplier=3; add(4,"stealth.assassinate",3,t);
         shape("stealth.assassinate",3,"capstone",{});
         add(5,"acrobatics.tumble",0,move("Tumble","Move up to three visible tiles, stopping before obstacles and actors.",3,2,4));
+        shape("acrobatics.tumble",3,"",{});
         t=attack("Vault Kick","Kick, then retreat up to three tiles even if the hit is dodged.",4,3,4); t.retreatDistance=3; add(5,"acrobatics.vault_kick",1,t);
-        add(5,"acrobatics.footwork",2,passive("Footwork","Successful movement abilities grant +10/12/15/18/20% dodge for one enemy response.",PassiveKind::Footwork,10));
+        shape("acrobatics.vault_kick",3,"path",{"acrobatics.tumble"});
+        t=move("Somersault","Roll up to two tiles, over anything in your way.",2,2,5); t.vault=true; add(5,"acrobatics.somersault",1,t);
+        shape("acrobatics.somersault",3,"path",{"acrobatics.tumble"});
+        add(5,"acrobatics.footwork",2,passive("Footwork","Successful movement abilities grant +15% dodge for one enemy response.",PassiveKind::Footwork,15));
+        shape("acrobatics.footwork",1,"",{"acrobatics.vault_kick"});
+        add(5,"acrobatics.fleet",2,passive("Fleet","You are always 15% faster.",PassiveKind::Fleet,15));
+        shape("acrobatics.fleet",1,"",{"acrobatics.somersault"});
         t=move("Evasive Leap","Move up to four tiles and gain +20% dodge for two enemy responses.",4,4,6); t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Evasion,2,20}; add(5,"acrobatics.leap",3,t);
+        shape("acrobatics.leap",3,"capstone",{});
+        add(5,"acrobatics.untouchable",3,buff("Untouchable","+50% dodge for two enemy responses.",StatusEffectType::Evasion,2,50,4,12));
+        shape("acrobatics.untouchable",3,"capstone",{});
         t=attack("Ember Bolt","A flame projectile; successful hits Burn for 1 damage per turn over three enemy turns.",4,2,1,true); t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,1}; add(6,"fire.ember_bolt",0,t);
         shape("fire.ember_bolt",3,"",{});
         t=attack("Fireball","Explode at first impact, burning enemies for 1 damage per turn over three enemy turns.",5,6,5,true,2); t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,1}; add(6,"fire.fireball",1,t);
@@ -563,22 +584,70 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t=Talent{}; t.name="Gather Mana"; t.description="Spend a turn restoring 6/7/9/10/12 mana. Requires cloth or no armour.";
         t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.restoreMana=6; t.cooldownTurns=8;
         add(10,"cloth.gather_mana",0,t);
-        add(10,"cloth.ward",1,passive("Loose Weave","With cloth or no armour and at least half mana, gain +8/10/12/14/16% dodge. Total dodge is capped at 75%.",PassiveKind::ClothWard,8));
-        add(10,"cloth.spellweave",2,passive("Spellweave","With cloth or no armour, magic-tree hits against Burn, Chill or Shock gain +4/5/6/7/8 damage. Multiple ailments do not stack this bonus.",PassiveKind::Spellweave,4));
+        shape("cloth.gather_mana",3,"",{});
+        t=Talent{}; t.name="Arcane Shroud"; t.description="With cloth or no armour, wrap yourself in a ward worth 20% of your maximum mana. It soaks hits until it is spent.";
+        t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.wardPercent=20; t.manaCost=4; t.cooldownTurns=10;
+        add(10,"cloth.shroud",1,t);
+        shape("cloth.shroud",3,"path",{"cloth.gather_mana"});
         t=attack("Repelling Pulse","With cloth or no armour, hit adjacent enemies and push survivors two tiles. Intelligence-scaled; creates room to cast.",5,6,7,false,1); t.pushDistance=2;
-        add(10,"cloth.pulse",3,t);
-        add(11,"light_armour.sidestep",0,move("Sidestep","Requires light armour. Move up to 2/2/3/3/4 visible tiles, gaining Opening and triggering movement talents.",2,0,5));
-        add(11,"light_armour.evasion",1,passive("Agile Fit","With light armour and Opening from waiting or movement abilities, gain +8/10/12/14/16% dodge. Total dodge is capped at 75%.",PassiveKind::LightEvasion,8));
-        add(11,"light_armour.precision",2,passive("Moving Aim","With light armour and Opening, all direct attacks gain +10/12/15/17/20% critical chance. Combines with Bow's Marksmanship.",PassiveKind::LightPrecision,10));
+        add(10,"cloth.pulse",1,t);
+        shape("cloth.pulse",3,"path",{"cloth.gather_mana"});
+        add(10,"cloth.ward",2,passive("Loose Weave","With cloth or no armour and at least half mana, gain +12% dodge. Total dodge is capped at 75%.",PassiveKind::ClothWard,12));
+        shape("cloth.ward",1,"",{"cloth.shroud"});
+        add(10,"cloth.spellweave",2,passive("Spellweave","With cloth or no armour, magic-tree hits against Burn, Chill or Shock gain +6 damage. Multiple ailments do not stack this bonus.",PassiveKind::Spellweave,6));
+        shape("cloth.spellweave",1,"",{"cloth.pulse"});
+        t=Talent{}; t.name="Mana Surge"; t.description="With cloth or no armour, draw the weave in: restore 20 mana and 15% of your life.";
+        t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.restoreMana=20; t.restoreHpPercent=15; t.cooldownTurns=16;
+        add(10,"cloth.surge",3,t);
+        shape("cloth.surge",3,"capstone",{});
+        // The armour trees' restore table is for Gather Mana; Mana Surge keeps its own numbers.
+        for (std::size_t r=0;r<out.back().ranks.size();++r) {
+            out.back().ranks[r].restoreMana=r+1<out.back().ranks.size()?20:35;
+            out.back().ranks[r].restoreHpPercent=15;
+        }
+        t=attack("Mana Burst","With cloth or no armour, spend all your mana at once: everything within two tiles takes that much.",0,0,12,false,2);
+        t.manaBurst=true; add(10,"cloth.burst",3,t);
+        shape("cloth.burst",3,"capstone",{});
+        add(11,"light_armour.sidestep",0,move("Sidestep","Requires light armour. Move up to two visible tiles, gaining Opening and triggering movement talents.",2,0,5));
+        shape("light_armour.sidestep",3,"",{});
+        add(11,"light_armour.evasion",2,passive("Agile Fit","With light armour and Opening from waiting or movement abilities, gain +12% dodge. Total dodge is capped at 75%.",PassiveKind::LightEvasion,12));
+        shape("light_armour.evasion",1,"",{"light_armour.parting_strike"});
+        add(11,"light_armour.precision",2,passive("Moving Aim","With light armour and Opening, all direct attacks gain +15% critical chance. Combines with Bow's Marksmanship.",PassiveKind::LightPrecision,15));
+        shape("light_armour.precision",1,"",{"light_armour.feint"});
         t=attack("Parting Strike","Requires light armour. Strike and Mark an adjacent enemy, then retreat two tiles even on a miss. No weapon requirement.",6,3,6); t.retreatDistance=2; t.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,3,1};
-        add(11,"light_armour.parting_strike",3,t);
+        add(11,"light_armour.parting_strike",1,t);
+        shape("light_armour.parting_strike",3,"path",{"light_armour.sidestep"});
+        t=attack("Feint","Requires light armour. A false blow that marks the foe and gives you Opening.",2,2,5);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Marked,3,1}; t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Opening,2,0};
+        add(11,"light_armour.feint",1,t);
+        shape("light_armour.feint",3,"path",{"light_armour.sidestep"});
+        t=buff("Blur","Requires light armour. +30% dodge and 30% faster for three turns.",StatusEffectType::Evasion,3,30,4,12);
+        t.hasteSelf=30; add(11,"light_armour.blur",3,t);
+        shape("light_armour.blur",3,"capstone",{});
+        t=attack("Perfect Opening","Requires light armour. A strike that is always a critical hit while you have Opening.",8,4,8);
+        t.critWithOpening=true; add(11,"light_armour.perfect",3,t);
+        shape("light_armour.perfect",3,"capstone",{});
         t=attack("Shoulder Check","Requires heavy armour. Strike an adjacent enemy and push them one tile. No shield required.",5,2,4); t.pushDistance=1;
         add(12,"heavy_armour.shoulder_check",0,t);
-        add(12,"heavy_armour.brace",1,passive("Brace","With heavy armour and Opening from waiting or movement abilities, reduce direct hits by 2/2/3/3/4 damage. Stacks with Guard; does not block damage over time.",PassiveKind::HeavyBrace,2));
-        add(12,"heavy_armour.resolve",2,passive("Unyielding","While wearing heavy armour, gain a 20/25/30/35/40% chance to resist an incoming Stun. Existing stuns are not removed.",PassiveKind::HeavyResolve,20));
+        shape("heavy_armour.shoulder_check",3,"",{});
+        add(12,"heavy_armour.brace",2,passive("Brace","With heavy armour and Opening from waiting or movement abilities, reduce direct hits by 3 damage. Stacks with Guard; does not block damage over time.",PassiveKind::HeavyBrace,3));
+        shape("heavy_armour.brace",1,"",{"heavy_armour.second_wind"});
+        add(12,"heavy_armour.resolve",2,passive("Unyielding","While wearing heavy armour, gain a 30% chance to resist an incoming Stun. Existing stuns are not removed.",PassiveKind::HeavyResolve,30));
+        shape("heavy_armour.resolve",1,"",{"heavy_armour.fortify"});
         t=Talent{}; t.name="Second Wind"; t.description="Requires heavy armour. Spend a turn recovering 10/12/15/17/20% of maximum HP (rounded up). Costs 4/4/5/5/6 mana, cooldown 10.";
         t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.restoreHpPercent=10; t.manaCost=4; t.cooldownTurns=10;
-        add(12,"heavy_armour.second_wind",3,t);
+        add(12,"heavy_armour.second_wind",1,t);
+        shape("heavy_armour.second_wind",3,"path",{"heavy_armour.shoulder_check"});
+        t=buff("Fortify","Requires heavy armour. Dig in: Guard 4 for four turns, but you move 25% slower while it holds.",StatusEffectType::Guard,4,4,3,9);
+        t.slowSelf=25; add(12,"heavy_armour.fortify",1,t);
+        shape("heavy_armour.fortify",3,"path",{"heavy_armour.shoulder_check"});
+        t=attack("Juggernaut","Requires heavy armour. Charge up to four tiles at a foe, knock it two tiles back, and end the charge guarded (Guard 4).",8,4,9);
+        t.chargeDistance=4; t.pushDistance=2; t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Guard,2,4};
+        add(12,"heavy_armour.juggernaut",3,t);
+        shape("heavy_armour.juggernaut",3,"capstone",{});
+        t=buff("Unbreakable","Requires heavy armour. Throw off pins, holds and slows, and stand guarded: Guard 8 for three turns.",StatusEffectType::Guard,3,8,4,12);
+        t.shakeHolds=true; add(12,"heavy_armour.unbreakable",3,t);
+        shape("heavy_armour.unbreakable",3,"capstone",{});
         t=buff("Imbue Weapon","V: choose an owned element, then bind 1-9. Five turns or three landed melee hits; all variants share rank and cooldown. Melee weapon required.",StatusEffectType::FlameBlade,6,3,4,8);
         add(13,"spellblade.imbue",0,t);
         t=attack("Spellstrike","INT-scaled melee spell. Triggers Kindle on this hit, Frostbite, Static Charge and Spellweave when learned.",7,6,4); t.spellstrike=true;
@@ -1036,6 +1105,9 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="brawling" || d.treeId=="whip" || d.treeId=="skirmish") d.affinity=Affinity::Motion;
             else if (d.treeId=="alchemy" || d.treeId=="traps") d.affinity=Affinity::Guile;
             else if (d.treeId=="hexes") d.affinity=Affinity::Dark;
+            else if (d.treeId=="acrobatics" || d.treeId=="light_armour") d.affinity=Affinity::Motion;
+            else if (d.treeId=="cloth") d.affinity=Affinity::Arcane;
+            else if (d.treeId=="heavy_armour") d.affinity=Affinity::Guard;
             else if (d.treeId=="one_handed") d.affinity=(d.id=="one_handed.parry" || d.id=="one_handed.riposte")?Affinity::Guard:Affinity::Steel;
         }
         // Flat passive numbers grow with an attribute: damage, healing, mana,
@@ -1052,7 +1124,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 case PassiveKind::Flay: case PassiveKind::HardLanding: case PassiveKind::PotentBrews: case PassiveKind::Trapper:
                 case PassiveKind::Lunge: case PassiveKind::PassStrike: case PassiveKind::LanternWard: case PassiveKind::SearingEdge:
                 case PassiveKind::FollowThrough: case PassiveKind::Stoneskin: case PassiveKind::HallowedGuard: case PassiveKind::Tidecaller:
-                case PassiveKind::Bulwark:
+                case PassiveKind::Bulwark: case PassiveKind::FlowingMana:
                     return 5;
                 case PassiveKind::FireArrows: case PassiveKind::Incendiary: case PassiveKind::WastingCurse: case PassiveKind::Witchfire:
                 case PassiveKind::FoulWater: case PassiveKind::EnvenomedBlades:
@@ -1111,10 +1183,17 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             passive("Wasting Curse","Foes you curse are also poisoned.",PassiveKind::WastingCurse,2));
         resonance("resonance.witchfire",Affinity::Dark,Affinity::Flame,
             passive("Witchfire","Your curses also set the foe burning.",PassiveKind::Witchfire,2));
+        resonance("resonance.flowing_mana",Affinity::Motion,Affinity::Arcane,
+            passive("Flowing Mana","Your movement abilities restore 3 mana, more with Intelligence.",PassiveKind::FlowingMana,3));
+        resonance("resonance.arcane_bulwark",Affinity::Guard,Affinity::Arcane,
+            passive("Arcane Bulwark","Whenever you take up Guard, you also gain that much spell ward.",PassiveKind::ArcaneBulwark,1));
+        resonance("resonance.unstoppable",Affinity::Guard,Affinity::Motion,
+            passive("Unstoppable","Taking up Guard also makes you 25% faster for two turns.",PassiveKind::Unstoppable,25));
         // Passives grow with their tree's attribute; resonances with your highest.
         for (auto& d:out) for (auto& r:d.ranks) if (r.passive) {
             r.scalePer=growth(r.passiveKind);
-            r.scaleHighest=d.treeId=="resonance";
+            r.scaleHighest=d.treeId=="resonance" && d.id!="resonance.flowing_mana";
+            if (d.id=="resonance.flowing_mana") r.scalingStat=ScalingStat::Intelligence;
         }
         return out;
     }();

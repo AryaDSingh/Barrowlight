@@ -2197,6 +2197,104 @@ struct ApplicationRewardsTestAccess {
                 check(e->statusEffects().magnitudeOf(StatusEffectType::Doom)==20,"Doom is laid on the foe");
                 clearFoes();
             }
+
+            // The ninth batch: Acrobatics.
+            arena(PlayerClass::Thief);
+            {
+                const auto roll=ranked("acrobatics.somersault",1);
+                foe({11,10}); app.updateFieldOfView();
+                cast(roll,{12,10});
+                check(app.player_.position().x==12,"Somersault rolls you over a foe in the way");
+                clearFoes(); app.player_.setPosition({10,10});
+                ranked("acrobatics.fleet",1);
+                app.player_.statusEffects().active().clear();
+                app.advanceTurnsUntilPlayerCanAct();
+                check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Hasted)>=15,"Fleet: you are always a little faster");
+                const auto untouchable=ranked("acrobatics.untouchable",1);
+                cast(untouchable,app.player_.position());
+                check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Evasion)==50,"Untouchable: +50% dodge");
+                app.player_.statusEffects().active().clear();
+            }
+            // Cloth.
+            arena(PlayerClass::Mage);
+            {
+                const auto shroud=ranked("cloth.shroud",1);
+                cast(shroud,app.player_.position());
+                check(app.player_.spellWard==app.player_.stats().maxMana/5,"Arcane Shroud: ward worth a fifth of your mana");
+                auto* a=foe({11,10});
+                const int hp=app.player_.stats().hp, ward=app.player_.spellWard;
+                AIDecision claw; claw.type=AIActionType::Attack; claw.target=&app.player_; claw.attackPower=4;
+                app.executeAIDecision(*a,claw,0);
+                check(app.player_.stats().hp==hp && app.player_.spellWard<ward,"...and it soaks the blows that land");
+                clearFoes();
+                const auto surge=ranked("cloth.surge",1);
+                app.player_.talents().resetCooldowns(); app.player_.stats().mana=0;
+                app.tryUseTalent(surge,app.player_.position());
+                check(app.player_.stats().mana>=20,"Mana Surge restores mana");
+                const auto burst=ranked("cloth.burst",1);
+                auto* b=foe({11,10}); app.updateFieldOfView();
+                app.player_.talents().resetCooldowns(); app.player_.stats().mana=40;
+                app.tryUseTalent(burst,app.player_.position());
+                check(app.player_.stats().mana<=5 && b->stats().hp<=50,"Mana Burst spends all your mana as one blast");
+                clearFoes();
+                // Flowing Mana: movement abilities restore mana.
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.flowing_mana")->ranks[0]);
+                const auto tumble=ranked("acrobatics.tumble",1);
+                app.player_.talents().resetCooldowns(); app.player_.stats().mana=app.player_.talents().effectiveTalent(tumble).manaCost;
+                app.tryUseTalent(tumble,{12,10});
+                check(app.player_.stats().mana>=3,"Flowing Mana: movement abilities restore mana");
+            }
+            // Light armour.
+            arena(PlayerClass::Thief);
+            {
+                check(wield("scout_leathers") && wield("leather_cap") && wield("leather_gloves") && wield("leather_boots"),"Put on light armour");
+                const auto feint=ranked("light_armour.feint",1);
+                auto* a=foe({11,10}); app.updateFieldOfView();
+                cast(feint,{11,10});
+                check(a->statusEffects().has(StatusEffectType::Marked) && app.player_.statusEffects().has(StatusEffectType::Opening),"Feint marks the foe and gives you Opening");
+                clearFoes(); app.player_.statusEffects().active().clear();
+                const auto blur=ranked("light_armour.blur",1);
+                cast(blur,app.player_.position());
+                check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Evasion)==30 && app.player_.statusEffects().magnitudeOf(StatusEffectType::Hasted)==30,
+                      "Blur: dodge and speed");
+                app.player_.statusEffects().active().clear();
+                const auto perfect=ranked("light_armour.perfect",1);
+                auto* b=foe({11,10}); app.updateFieldOfView();
+                app.player_.statusEffects().apply({StatusEffectType::Opening,2,0});
+                Talent probe=app.player_.talents().effectiveTalent(perfect);
+                const int crit=estimateTalentDamage(probe,app.player_,*b).critical;
+                app.player_.talents().resetCooldowns();
+                app.tryUseTalent(perfect,{11,10});
+                check(b->stats().hp==90-crit,"Perfect Opening: always a critical hit while you have Opening");
+                clearFoes();
+            }
+            // Heavy armour.
+            arena(PlayerClass::Warrior);
+            {
+                check(wield("chain_coat") && wield("iron_helm") && wield("iron_gauntlets") && wield("iron_boots"),"Put on heavy armour");
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.arcane_bulwark")->ranks[0]);
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.unstoppable")->ranks[0]);
+                const auto fortify=ranked("heavy_armour.fortify",1);
+                app.player_.statusEffects().active().clear(); app.player_.spellWard=0;
+                cast(fortify,app.player_.position());
+                check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Guard)==4 && app.player_.statusEffects().magnitudeOf(StatusEffectType::Slowed)==25,
+                      "Fortify: Guard 4, but you are slower");
+                check(app.player_.spellWard>=4 && app.player_.statusEffects().has(StatusEffectType::Hasted),
+                      "Arcane Bulwark and Unstoppable: Guard brings ward and speed");
+                app.player_.statusEffects().active().clear();
+                const auto unbreakable=ranked("heavy_armour.unbreakable",1);
+                app.player_.statusEffects().apply({StatusEffectType::Pinned,3,0}); app.player_.statusEffects().apply({StatusEffectType::Slowed,3,40});
+                cast(unbreakable,app.player_.position());
+                check(!app.player_.statusEffects().has(StatusEffectType::Pinned) && app.player_.statusEffects().magnitudeOf(StatusEffectType::Guard)==8,
+                      "Unbreakable throws off holds and stands guarded");
+                app.player_.statusEffects().active().clear();
+                const auto charge=ranked("heavy_armour.juggernaut",1);
+                auto* a=foe({14,10}); app.updateFieldOfView();
+                cast(charge,{14,10});
+                check(app.player_.position().x==13 && a->position().x==16 && app.player_.statusEffects().magnitudeOf(StatusEffectType::Guard)>=4,
+                      "Juggernaut charges, knocks back, and ends guarded");
+                clearFoes();
+            }
         }
 
         // Acid and blindness survive a save (a fresh Warrior: the fixture's
@@ -2583,7 +2681,9 @@ struct ApplicationRewardsTestAccess {
             const int column=app.treeColumnOf(alchemy);
             const int overAlchemy=static_cast<int>(app.talentTreeAbilityRect(alchemy,0).position.x)+10;
             const auto others=app.treeScroll_;
-            app.handleEvent(sf::Event::MouseWheelScrolled{sf::Mouse::Wheel::Vertical,-6.f,{overAlchemy,300}});
+            // Scroll down notch by notch until Alchemy is in view.
+            for (int notch=0;notch<40 && app.talentTreeAbilityRect(alchemy,0).position.y+50>app.treeViewBottom_;++notch)
+                app.handleEvent(sf::Event::MouseWheelScrolled{sf::Mouse::Wheel::Vertical,-1.f,{overAlchemy,300}});
             const auto icon=app.talentTreeAbilityRect(alchemy,0);
             const auto c=static_cast<std::size_t>(column);
             check(app.treeScroll_[c]>0 && app.treeScroll_[c]<=app.treeScrollMax(column) && icon.position.y<before && icon.position.y+50<=app.treeViewBottom_,

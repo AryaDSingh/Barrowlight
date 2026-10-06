@@ -570,6 +570,8 @@ void Application::applyMovementTalents(Position previous) {
     const auto now=player_.position();
     if (now.x==previous.x && now.y==previous.y) return;
     player_.statusEffects().apply({StatusEffectType::Opening,2,0});
+    if (const int flow=player_.talents().passiveValue(PassiveKind::FlowingMana,player_.stats()))
+        player_.stats().mana=std::min(player_.stats().maxMana,player_.stats().mana+flow);
     if (const int shade=player_.talents().passiveValue(PassiveKind::ShadeStep,player_.stats()))
         player_.statusEffects().apply({StatusEffectType::Concealed,shade,std::max(1,player_.statusEffects().magnitudeOf(StatusEffectType::Concealed))});
     const int evasion=player_.talents().passiveValue(PassiveKind::Footwork,player_.stats());
