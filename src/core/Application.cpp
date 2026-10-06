@@ -1288,7 +1288,8 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 traps_.push_back({p,talent.placeTrap,40,std::max(1,talent.areaRadius)});
                 ++set;
             }
-            while (traps_.size()>8) traps_.erase(traps_.begin());
+            const auto most=static_cast<std::size_t>(8+player_.talents().passiveValue(PassiveKind::TrapSense,player_.stats()));
+            while (traps_.size()>most) traps_.erase(traps_.begin());
             log(set?"You set your trap.":"There's no room to set a trap there.");
         }
         if (talent.bonePrison) for (Actor* prisoner:affected) {
@@ -1384,6 +1385,18 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     fx.has(StatusEffectType::Grappled) || fx.has(StatusEffectType::Pinned)) { hitTalent.damagePercent+=100; combo+="Backstab: double damage. "; }
             }
             if (talent.critWithOpening && player_.statusEffects().has(StatusEffectType::Opening)) hitTalent.bonusCritChance=1.f;
+            if (talent.delayedBlast) continue; // the charge lands now and blows as your next turn begins
+            if (talent.consumeCurses) {
+                int curses=0;
+                for (const auto type:{StatusEffectType::Misfortune,StatusEffectType::Linked,StatusEffectType::Wither,StatusEffectType::Doom,StatusEffectType::Slowed,StatusEffectType::Plague})
+                    if (target->statusEffects().has(type)) { ++curses; target->statusEffects().remove(type); }
+                if (curses) { hitTalent.damagePercent+=50*curses; combo+="Curses torn away: +"+std::to_string(50*curses)+"%. "; }
+            }
+            if (const int hound=player_.talents().passiveValue(PassiveKind::Bloodhound,player_.stats());
+                hound && target->statusEffects().has(StatusEffectType::Bleed) &&
+                (talent.tree==TalentTree::Bow || talent.tree==TalentTree::Crossbow || talent.tree==TalentTree::ShadowArcher)) {
+                hitTalent.damagePercent+=hound; combo+="Blood scent: +"+std::to_string(hound)+"%. ";
+            }
             if (wasConcealed && (talent.tree==TalentTree::Bow || talent.tree==TalentTree::ShadowArcher) && player_.talents().passiveValue(PassiveKind::GhostArrows,player_.stats()))
                 hitTalent.undodgeable=true;
             if (const int edge=player_.talents().passiveValue(PassiveKind::AssassinsEdge,player_.stats()); edge && wasConcealed && isMeleeAttack(talent)) {
@@ -1416,6 +1429,16 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     if (player_.talents().passiveValue(PassiveKind::Thunderflash,player_.stats())) target->statusEffects().apply({StatusEffectType::Blinded,2,0});
                     if (const int ion=player_.talents().passiveValue(PassiveKind::Ionise,player_.stats())) target->statusEffects().apply({StatusEffectType::Burn,3,ion});
                 }
+                // Hungering Blade: hits on cursed foes heal you.
+                if (const int hunger=player_.talents().passiveValue(PassiveKind::HungeringBlade,player_.stats())) {
+                    const auto& fx=target->statusEffects();
+                    if (fx.has(StatusEffectType::Misfortune) || fx.has(StatusEffectType::Linked) || fx.has(StatusEffectType::Wither) ||
+                        fx.has(StatusEffectType::Doom) || fx.has(StatusEffectType::Slowed) || fx.has(StatusEffectType::Plague))
+                        player_.stats().hp=std::min(player_.stats().maxHp,player_.stats().hp+hunger);
+                }
+                // Magma: Earth spells leave the ground burning.
+                if (talent.tree==TalentTree::Earth && player_.talents().passiveValue(PassiveKind::Magma,player_.stats()))
+                    setSurface(target->position(),SurfaceType::Fire,kSpilledFireTurns);
                 // Blade Ward: melee hits give spell ward.
                 if (const int ward=player_.talents().passiveValue(PassiveKind::BladeWard,player_.stats()); ward && (isMeleeAttack(talent) || talent.spellstrike))
                     player_.spellWard=std::min(player_.stats().maxMana,player_.spellWard+ward);
@@ -2498,7 +2521,15 @@ void Application::checkAndHandleDeath(Actor& actor) {
 
     auto* defeated = dynamic_cast<Monster*>(&actor);
     if (defeated && !defeated->claimDeath()) return;
-    if (defeated && !defeated->allied) { spreadWildfire(*defeated); shatterHoarfrost(*defeated); echoHexes(*defeated); }
+    if (defeated && !defeated->allied) {
+        spreadWildfire(*defeated); shatterHoarfrost(*defeated); echoHexes(*defeated);
+        if (player_.talents().passiveValue(PassiveKind::SoulHarvest,player_.stats())) {
+            const auto& fx=defeated->statusEffects();
+            if (fx.has(StatusEffectType::Misfortune) || fx.has(StatusEffectType::Linked) || fx.has(StatusEffectType::Wither) ||
+                fx.has(StatusEffectType::Doom) || fx.has(StatusEffectType::Slowed) || fx.has(StatusEffectType::Plague))
+                risingSouls_.push_back(defeated->position());
+        }
+    }
     if (defeated && defeated->allied) {
         scheduler_.remove(actor);
         const int explosion=player_.talents().passiveValue(PassiveKind::GravePact,player_.stats());
@@ -2674,6 +2705,24 @@ void Application::removeDeadMonsters() {
                                         return m->stats().hp <= 0;
                                     }),
                      monsters_.end());
+    raiseHarvestedSouls();
+}
+
+// Soul Harvest: each cursed foe that fell rises as your skeleton, if there's room.
+void Application::raiseHarvestedSouls() {
+    if (risingSouls_.empty()) return;
+    const auto souls=std::move(risingSouls_);
+    risingSouls_.clear();
+    for (const auto& at:souls) {
+        int permanent=0;
+        for (const auto& m:monsters_) permanent+=m->allied && m->stats().hp>0 && !m->remainingLife;
+        if (permanent>=minionCap() || isOccupied(at,nullptr) || !map_.isWalkable(at.x,at.y)) continue;
+        auto risen=createMonster(MonsterType::Skeleton,at);
+        configureMinion(*risen,1,player_.stats().intelligence);
+        scheduler_.add(*risen);
+        monsters_.push_back(std::move(risen));
+        if (visibleTile(at)) log("The cursed dead rises to serve you.");
+    }
 }
 
 void Application::updateFieldOfView() {

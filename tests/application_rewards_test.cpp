@@ -2464,6 +2464,95 @@ struct ApplicationRewardsTestAccess {
                       "Ride the Lightning strikes and shocks everything beside your path");
                 clearFoes(); app.player_.setPosition({10,10});
             }
+
+            // The last hybrid batch: Hexblade.
+            arena(PlayerClass::Warrior);
+            {
+                check(wield("iron_sword"),"Take up a sword for the hexes");
+                ranked("hexblade.hunger",1);
+                const auto cleave=ranked("hexblade.cleave",1);
+                auto* a=foe({11,10}); auto* b=foe({9,10}); app.updateFieldOfView();
+                cast(cleave,app.player_.position());
+                check(a->statusEffects().has(StatusEffectType::Misfortune) && b->statusEffects().has(StatusEffectType::Misfortune),"Cursed Cleave curses every foe beside you");
+                app.player_.stats().hp=100;
+                const auto reap=ranked("hexblade.reap",1);
+                app.player_.talents().resetCooldowns();
+                app.logMessages_.clear();
+                app.tryUseTalent(reap,{11,10});
+                check(sawLog("Curses torn away") && !a->statusEffects().has(StatusEffectType::Misfortune),"Soul Reap tears the curses off for extra damage");
+                clearFoes();
+                auto* c=foe({11,10}); c->statusEffects().apply({StatusEffectType::Misfortune,3,25}); c->statusEffects().apply({StatusEffectType::Stun,3,0}); app.updateFieldOfView();
+                app.player_.stats().hp=50; // below the sword-wielder's maximum, so healing shows
+                std::size_t strike=0;
+                for (std::size_t i=0;i<app.player_.talents().knownTalents().size();++i) if (app.player_.talents().knownTalents()[i].id=="one_handed.quick_strike") strike=i;
+                app.player_.talents().resetCooldowns();
+                app.tryUseTalent(strike,{11,10});
+                check(app.player_.stats().hp>50,"Hungering Blade: hits on cursed foes heal you");
+                clearFoes();
+            }
+            // Saboteur.
+            arena(PlayerClass::Thief);
+            {
+                const auto cracker=ranked("saboteur.firecracker",1);
+                auto* a=foe({14,10}); auto* b=foe({14,11}); app.updateFieldOfView();
+                cast(cracker,{14,10});
+                check(a->statusEffects().has(StatusEffectType::Blinded) && b->statusEffects().has(StatusEffectType::Burn),"Firecracker blinds and burns");
+                clearFoes();
+                const auto demo=ranked("saboteur.demolition",1);
+                auto* c=foe({14,10}); app.updateFieldOfView();
+                cast(demo,{14,10});
+                // The enemies get their turn, then it blows as yours begins.
+                check(c->stats().hp<90 && c->statusEffects().has(StatusEffectType::Burn) && app.storms_.empty(),"Demolition blows once your next turn begins");
+                clearFoes();
+                ranked("saboteur.trap_sense",1);
+                const auto caltrops=ranked("saboteur.caltrops",1);
+                for (int i=0;i<4;++i) cast(caltrops,{12+i*2,12});
+                check(app.traps_.size()>8,"Trap Sense: more traps set at once");
+                app.traps_.clear();
+            }
+            // Stonefist.
+            arena(PlayerClass::Warrior);
+            {
+                const auto tremor=ranked("stonefist.tremor",1);
+                auto* a=foe({11,10}); auto* b=foe({10,9}); app.updateFieldOfView();
+                cast(tremor,app.player_.position());
+                check(a->statusEffects().has(StatusEffectType::Pinned) && b->statusEffects().has(StatusEffectType::Pinned),"Tremor Punch pins every foe beside you");
+                clearFoes();
+                const auto fall=ranked("stonefist.rockfall",1);
+                auto* c=foe({14,10}); app.updateFieldOfView();
+                cast(fall,{13,10});
+                check(app.player_.position().x==13 && c->stats().hp<90,"Rockfall comes down on everything beside you");
+                clearFoes(); app.player_.setPosition({10,10});
+            }
+            // Soul Harvest, Magma and Bloodhound.
+            arena(PlayerClass::Mage);
+            {
+                app.player_.baseStats().intelligence=app.player_.stats().intelligence=30;
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.soul_harvest")->ranks[0]);
+                auto* a=foe({12,10}); a->statusEffects().apply({StatusEffectType::Misfortune,3,25});
+                a->stats().hp=0; app.checkAndHandleDeath(*a); app.removeDeadMonsters();
+                int raised=0; for (const auto& m:app.monsters_) raised+=m->allied;
+                check(raised==1,"Soul Harvest: a cursed foe rises as your skeleton");
+                for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+                app.monsters_.clear();
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.magma")->ranks[0]);
+                const auto spike=ranked("earth.spike",1);
+                foe({14,10}); app.updateFieldOfView();
+                cast(spike,{14,10});
+                check(app.surfaceAt({14,10})==SurfaceType::Fire,"Magma: Earth spells leave the ground burning");
+                clearFoes();
+            }
+            arena(PlayerClass::Thief);
+            {
+                check(wield("hunting_bow"),"Take up a bow for the hunt");
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.bloodhound")->ranks[0]);
+                const auto shot=ranked("bow.quick_shot",1);
+                auto* a=foe({14,10}); a->statusEffects().apply({StatusEffectType::Bleed,3,2}); app.updateFieldOfView();
+                app.logMessages_.clear();
+                cast(shot,{14,10});
+                check(sawLog("Blood scent"),"Bloodhound: bow hits on bleeding foes strike harder");
+                clearFoes();
+            }
         }
 
         // Acid and blindness survive a save (a fresh Warrior: the fixture's

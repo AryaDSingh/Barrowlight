@@ -286,8 +286,13 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "stormlance.thrust") { m.pierceBehind = true; d.mastery = "The charge runs on into the foe behind."; }
     if (id == "stormlance.javelin") { m.chainJumps = 2; d.mastery = "Jumps twice."; }
     if (id == "stormlance.vault") { m.landingBurst = 10; d.mastery = "The landing burst hits for 10."; }
-    if (id == "hexblade.edge") { if (m.onHitEffect) m.onHitEffect->magnitude = 40; d.mastery = "Misfortune of 40%."; }
-    if (id == "hexblade.rend") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    if (id == "hexblade.edge") { m.secondHitEffect = StatusEffectInstance{StatusEffectType::Slowed, 3, 20}; d.mastery = "Also slows it by 20%."; }
+    if (id == "hexblade.rend") { m.drainPercent = 25; d.mastery = "Heals you for a quarter of the damage."; }
+    if (id == "hexblade.cleave") { m.secondHitEffect = StatusEffectInstance{StatusEffectType::Slowed, 3, 20}; d.mastery = "Also slows them by 20%."; }
+    if (id == "saboteur.firecracker") { m.areaRadius = 2; d.mastery = "Bursts two tiles wide."; }
+    if (id == "saboteur.demolition") { m.areaRadius = 3; d.mastery = "Blows three tiles wide."; }
+    if (id == "stonefist.tremor") { m.areaRadius = 2; d.mastery = "Grips everything within two tiles."; }
+    if (id == "stonefist.rockfall") { m.slamStun = true; d.mastery = "Stuns what it lands on."; }
     if (id == "hexblade.doom") { if (m.onHitEffect) m.onHitEffect->magnitude = 25; d.mastery = "Doom erupts for 25."; }
     if (id == "saboteur.caltrops") { m.areaRadius = 2; d.mastery = "Scatters caltrops two tiles wide."; }
     if (id == "saboteur.smoke") { longer(); longer(); d.mastery = "Hidden for two responses longer."; }
@@ -1094,25 +1099,64 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         // Hexblade (STR; One-Handed + Hexes): a cursed blade.
         t=attack("Cursed Edge","A strike that curses: Misfortune (25%) for three enemy turns.",5,1,2);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Misfortune,3,25}; add(34,"hexblade.edge",0,t);
+        shape("hexblade.edge",3,"",{});
         t=attack("Soul Rend","Double damage against a cursed foe (Misfortune, Soul Link, Plague, Wither or Doom).",8,3,5);
         t.curseBonus=true; add(34,"hexblade.rend",1,t);
-        add(34,"hexblade.lingering",2,passive("Lingering Hex","Your melee hits make the curses on a foe last 1/2/3/4/5 turns longer (not Doom).",PassiveKind::LingeringHex,1));
+        shape("hexblade.rend",3,"path",{"hexblade.edge"});
+        t=attack("Cursed Cleave","A sweep through every foe beside you, cursing each with Misfortune (25%) for three enemy turns.",5,4,6,false,1);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Misfortune,3,25}; add(34,"hexblade.cleave",1,t);
+        shape("hexblade.cleave",3,"path",{"hexblade.edge"});
+        add(34,"hexblade.lingering",2,passive("Lingering Hex","Your melee hits make the curses on a foe last 3 turns longer (not Doom).",PassiveKind::LingeringHex,3));
+        shape("hexblade.lingering",1,"",{"hexblade.rend"});
+        add(34,"hexblade.hunger",2,passive("Hungering Blade","Your hits on cursed foes heal you 2, more with Strength.",PassiveKind::HungeringBlade,2));
+        shape("hexblade.hunger",1,"",{"hexblade.cleave"});
         t=attack("Doom Blade","A strike that dooms: in four enemy turns the foe takes 15.",7,5,8);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Doom,4,15}; add(34,"hexblade.doom",3,t);
+        shape("hexblade.doom",3,"capstone",{});
+        t=attack("Soul Reap","A strike that tears every curse off the foe: +50% damage for each one.",8,5,9); t.consumeCurses=true;
+        add(34,"hexblade.reap",3,t);
+        shape("hexblade.reap",3,"capstone",{});
         // Saboteur (DEX; Stealth + Alchemy): dirty work.
         add(35,"saboteur.caltrops",0,trap("Caltrops","Scatter caltrops over a tile and its neighbours: whatever steps on one takes 2 and bleeds.",4,2,5,1,true));
+        shape("saboteur.caltrops",3,"",{});
         t=buff("Smoke Bomb","Vanish in smoke: Concealed for three responses, and everything within two tiles is blinded for two enemy turns.",StatusEffectType::Concealed,3,3,3,8);
         t.smokeBomb=true; add(35,"saboteur.smoke",1,t);
-        add(35,"saboteur.tricks",2,passive("Dirty Tricks","Attacks made from concealment poison the target for 2/3/4/5/6 a turn over three turns.",PassiveKind::DirtyTricks,2));
+        shape("saboteur.smoke",3,"path",{"saboteur.caltrops"});
+        t=attack("Firecracker","A thrown cracker bursts over a tile and its neighbours: everything there is blinded and set burning.",3,3,6,false,1);
+        t.targeting=TargetingMode::RangedEnemyInSight; t.shape=EffectShape::AreaAroundTarget;
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Blinded,2,0}; t.secondHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,2};
+        add(35,"saboteur.firecracker",1,t);
+        shape("saboteur.firecracker",3,"path",{"saboteur.caltrops"});
+        add(35,"saboteur.tricks",2,passive("Dirty Tricks","Attacks made from concealment poison the target for 3 a turn over three turns.",PassiveKind::DirtyTricks,3));
+        shape("saboteur.tricks",1,"",{"saboteur.smoke"});
+        add(35,"saboteur.trap_sense",2,passive("Trap Sense","You can keep 12 traps set instead of 8.",PassiveKind::TrapSense,4));
+        shape("saboteur.trap_sense",1,"",{"saboteur.firecracker"});
         add(35,"saboteur.booby",3,trap("Booby Trap","Hide a gas charge: when a foe steps on it, poison gas bursts out and catches fire, the blast running through the cloud.",5,4,9));
+        shape("saboteur.booby",3,"capstone",{});
+        t=attack("Demolition","Throw a hissing charge: as your next turn begins it blows, striking everything within two tiles and setting it burning.",14,6,12,false,2);
+        t.targeting=TargetingMode::RangedEnemyInSight; t.shape=EffectShape::AreaAroundTarget; t.delayedBlast=true; t.lingerTurns=1;
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,2}; add(35,"saboteur.demolition",3,t);
+        shape("saboteur.demolition",3,"capstone",{});
         // Stonefist (STR; Brawling + Earth): fists of stone.
         t=attack("Rock Fist","A stone-heavy punch that knocks the foe back a tile.",6,1,2);
         t.pushDistance=1; add(36,"stonefist.fist",0,t);
+        shape("stonefist.fist",3,"",{});
         t=attack("Pillar Slam","Raise a stone pillar right behind an adjacent foe and drive it into it.",5,3,6);
         t.pillarSlam=true; add(36,"stonefist.slam",1,t);
-        add(36,"stonefist.granite",2,passive("Granite Fists","Your melee attacks deal +2/3/4/5/6 damage to foes standing against a wall, pillar or fixture.",PassiveKind::GraniteFists,2));
+        shape("stonefist.slam",3,"path",{"stonefist.fist"});
+        t=attack("Tremor Punch","Punch the ground: stone grips the feet of every foe beside you, pinning them for two enemy turns.",5,3,7,false,1);
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Pinned,2,0}; add(36,"stonefist.tremor",1,t);
+        shape("stonefist.tremor",3,"path",{"stonefist.fist"});
+        add(36,"stonefist.granite",2,passive("Granite Fists","Your melee attacks deal +4 damage to foes standing against a wall, pillar or fixture.",PassiveKind::GraniteFists,4));
+        shape("stonefist.granite",1,"",{"stonefist.slam"});
+        add(36,"stonefist.rockhide",2,passive("Rockhide","Direct hits on you deal 2 less damage.",PassiveKind::Stoneskin,2));
+        shape("stonefist.rockhide",1,"",{"stonefist.tremor"});
         t=attack("Landslide","Charge up to 4/4/5/5/6 tiles in a straight line, smash the foe two tiles back and stun it for a turn.",9,5,9);
         t.chargeDistance=4; t.pushDistance=2; t.onHitEffect=StatusEffectInstance{StatusEffectType::Stun,1,0}; add(36,"stonefist.landslide",3,t);
+        shape("stonefist.landslide",3,"capstone",{});
+        t=move("Rockfall","Leap up to three tiles, over anything in the way, and come down like a boulder on everything beside you.",3,4,9);
+        t.vault=true; t.landingSlam=10; add(36,"stonefist.rockfall",3,t);
+        shape("stonefist.rockfall",3,"capstone",{});
 
         // Ascendancy nodes (Ascendancy.hpp): one rank, bought with ascendancy points.
         auto node=[&](const char* treeId,const char* id,ScalingStat stat,Talent t) {
@@ -1212,6 +1256,11 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 d.affinity=(d.id=="shadow_archer.mark" || d.id=="shadow_archer.smoke" || d.id=="shadow_archer.unseen")?Affinity::Guile:Affinity::Hunt;
             else if (d.treeId=="lamplighter")
                 d.affinity=(d.id=="lamplighter.ward" || d.id=="lamplighter.bearer" || d.id=="lamplighter.brandish")?Affinity::Light:Affinity::Flame;
+            else if (d.treeId=="hexblade")
+                d.affinity=(d.id=="hexblade.lingering" || d.id=="hexblade.hunger" || d.id=="hexblade.reap")?Affinity::Dark:Affinity::Steel;
+            else if (d.treeId=="saboteur") d.affinity=Affinity::Guile;
+            else if (d.treeId=="stonefist")
+                d.affinity=(d.id=="stonefist.tremor" || d.id=="stonefist.granite" || d.id=="stonefist.rockhide")?Affinity::Earth:Affinity::Motion;
             else if (d.treeId=="stormlance")
                 d.affinity=(d.id=="stormlance.thrust" || d.id=="stormlance.vault" || d.id=="stormlance.static_edge")?Affinity::Steel:Affinity::Storm;
             else if (d.treeId=="one_handed") d.affinity=(d.id=="one_handed.parry" || d.id=="one_handed.riposte")?Affinity::Guard:Affinity::Steel;
@@ -1232,10 +1281,11 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 case PassiveKind::FollowThrough: case PassiveKind::Stoneskin: case PassiveKind::HallowedGuard: case PassiveKind::Tidecaller:
                 case PassiveKind::Bulwark: case PassiveKind::FlowingMana: case PassiveKind::BladeWard: case PassiveKind::Transfusion:
                 case PassiveKind::GravePact: case PassiveKind::LongShadow: case PassiveKind::StaticEdge:
+                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists:
                     return 5;
                 case PassiveKind::FireArrows: case PassiveKind::Incendiary: case PassiveKind::WastingCurse: case PassiveKind::Witchfire:
                 case PassiveKind::FoulWater: case PassiveKind::EnvenomedBlades: case PassiveKind::GraveLight: case PassiveKind::BoilingBlood:
-                case PassiveKind::Bloodletter: case PassiveKind::Ionise:
+                case PassiveKind::Bloodletter: case PassiveKind::Ionise: case PassiveKind::DirtyTricks:
                     return 10;
                 default: return 0;
             }
@@ -1309,6 +1359,12 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             passive("Ionise","Your lightning sets what it hits burning.",PassiveKind::Ionise,2));
         resonance("resonance.ghost_arrows",Affinity::Hunt,Affinity::Guile,
             passive("Ghost Arrows","Bow attacks from hiding can't be dodged.",PassiveKind::GhostArrows,1));
+        resonance("resonance.soul_harvest",Affinity::Dark,Affinity::Death,
+            passive("Soul Harvest","When a cursed foe dies, it rises as your skeleton, if you have room for one more.",PassiveKind::SoulHarvest,1));
+        resonance("resonance.magma",Affinity::Earth,Affinity::Flame,
+            passive("Magma","Your Earth spells leave the ground under what they hit burning.",PassiveKind::Magma,1));
+        resonance("resonance.bloodhound",Affinity::Hunt,Affinity::Blood,
+            passive("Bloodhound","Your bow and crossbow hits on bleeding foes deal +50% damage.",PassiveKind::Bloodhound,50));
         // Passives grow with their tree's attribute; resonances with your highest.
         for (auto& d:out) for (auto& r:d.ranks) if (r.passive) {
             r.scalePer=growth(r.passiveKind);

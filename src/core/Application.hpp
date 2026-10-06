@@ -553,6 +553,9 @@ private:
     void shatterHoarfrost(const Actor& dead);
     void tremorAt(Position at);
     void echoHexes(const Actor& dead);
+    // Soul Harvest: where cursed foes fell, raised once the dead are cleared away.
+    std::vector<Position> risingSouls_;
+    void raiseHarvestedSouls();
     void fireEcho();
     void spreadWildfire(const Actor& dead);
 

@@ -102,7 +102,9 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The first hybrid batch (Spellblade, Animation, Blood Magic) and its resonances.
     BladeWard, BoneArmour, Transfusion, GraveLight, BoilingBlood, Bloodletter,
     // The second hybrid batch (Shadow Archer, Lamplighter, Stormlance) and its resonances.
-    LongShadow, LanternBearer, Thunderflash, Ionise, GhostArrows };
+    LongShadow, LanternBearer, Thunderflash, Ionise, GhostArrows,
+    // The last hybrid batch (Hexblade, Saboteur, Stonefist) and its resonances.
+    HungeringBlade, TrapSense, SoulHarvest, Magma, Bloodhound };
 
 struct Talent {
     std::string name;
@@ -311,6 +313,9 @@ struct Talent {
     // A second status laid on what it hits (Shadow Pin), and a hit that can't be dodged (Ghost Arrows).
     std::optional<StatusEffectInstance> secondHitEffect;
     bool undodgeable=false;
+    // consumeCurses: tears every curse off the target, +50% damage for each (Soul Reap).
+    // delayedBlast: lands now, strikes as your next turn begins (Demolition).
+    bool consumeCurses=false, delayedBlast=false;
 
 };
 
