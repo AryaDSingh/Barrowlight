@@ -2106,6 +2106,7 @@ struct ApplicationRewardsTestAccess {
                 cast(slip,app.player_.position());
                 check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Evasion)==25 && app.player_.statusEffects().has(StatusEffectType::Opening),
                       "Slipstream: dodge and Opening");
+                check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Hasted)==50,"Slipstream: and you move 50% faster");
                 app.player_.statusEffects().active().clear();
                 app.player_.talents().learnTalent(findTalentDefinition("resonance.tremor")->ranks[0]);
                 const auto kick=ranked("skirmish.flying_kick",1);
@@ -2124,6 +2125,77 @@ struct ApplicationRewardsTestAccess {
                 clearFoes(); app.player_.setPosition({10,10}); app.player_.statusEffects().active().clear();
                 cast(blitz,{13,10});
                 check(app.player_.statusEffects().has(StatusEffectType::Concealed),"Ghost Step: movement leaves you concealed");
+            }
+
+            // The eighth batch: Alchemy.
+            arena(PlayerClass::Thief);
+            {
+                ranked("alchemy.volatile",1);
+                const auto frost=ranked("alchemy.frost",1);
+                auto* a=foe({14,10}); app.updateFieldOfView();
+                cast(frost,{14,10});
+                const auto& tile=app.surfaces_[static_cast<std::size_t>(10*app.map_.width()+14)];
+                check(tile.type==SurfaceType::Ice && tile.turns>=8 && a->statusEffects().has(StatusEffectType::Chill),
+                      "Frost Flask ices and chills; Volatile Mix makes the ice last longer");
+                clearFoes();
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.incendiary")->ranks[0]);
+                const auto greek=ranked("alchemy.greek_fire",1);
+                auto* b=foe({14,10}); app.updateFieldOfView();
+                cast(greek,{14,10});
+                check(app.surfaceAt({14,10})==SurfaceType::Fire && app.surfaceAt({15,11})==SurfaceType::Fire && b->statusEffects().has(StatusEffectType::Burn),
+                      "Greek Fire sets everything around a spot ablaze");
+                clearFoes();
+                auto* c=foe({14,10}); app.updateFieldOfView();
+                cast(frost,{14,10});
+                check(c->statusEffects().has(StatusEffectType::Burn),"Incendiary: your flasks set what they catch burning");
+                clearFoes();
+            }
+            // Traps.
+            arena(PlayerClass::Thief);
+            {
+                const auto snare=ranked("traps.snare",3);
+                cast(snare,{13,10});
+                check(app.traps_.size()==5,"Snare at rank 3 sets a spot and every tile around it");
+                app.traps_.clear();
+                ranked("traps.ambusher",1);
+                app.traps_.push_back({{13,10},6,40,1});
+                auto* a=foe({13,10});
+                app.triggerTrap(0,*a,{0,0});
+                check(a->stats().hp<=82 && a->statusEffects().has(StatusEffectType::Stun) && a->statusEffects().has(StatusEffectType::Marked),
+                      "Bear Trap bites and holds; Ambusher marks what it catches");
+                clearFoes(); app.traps_.clear();
+                app.traps_.push_back({{13,10},8,40,1});
+                auto* b=foe({13,10}); auto* c=foe({14,10});
+                app.triggerTrap(0,*b,{0,0});
+                check(b->statusEffects().has(StatusEffectType::Pinned) && c->statusEffects().has(StatusEffectType::Pinned),"Net Trap pins everything nearby");
+                clearFoes(); app.traps_.clear();
+            }
+            // Hexes.
+            arena(PlayerClass::Mage);
+            {
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.wasting_curse")->ranks[0]);
+                app.player_.talents().learnTalent(findTalentDefinition("resonance.witchfire")->ranks[0]);
+                const auto enfeeble=ranked("hexes.enfeeble",1);
+                auto* a=foe({14,10}); app.updateFieldOfView();
+                cast(enfeeble,{14,10});
+                check(a->statusEffects().magnitudeOf(StatusEffectType::Slowed)==40,"Enfeeble: a real slow, 40%");
+                check(a->statusEffects().has(StatusEffectType::Poison) && a->statusEffects().has(StatusEffectType::Burn),
+                      "Wasting Curse poisons and Witchfire burns the foes you curse");
+                ranked("hexes.echo",1);
+                auto* b=foe({16,10});
+                a->stats().hp=0; app.checkAndHandleDeath(*a);
+                check(b->statusEffects().has(StatusEffectType::Slowed),"Hex Echo: a cursed foe's curse leaps on when it dies");
+                clearFoes();
+                const auto misfortune=ranked("hexes.misfortune",3);
+                auto* c=foe({14,10}); auto* d=foe({15,10}); app.updateFieldOfView();
+                cast(misfortune,{14,10});
+                check(c->statusEffects().has(StatusEffectType::Misfortune) && d->statusEffects().has(StatusEffectType::Misfortune),"Misfortune at rank 3 curses the foes beside it too");
+                clearFoes();
+                const auto doom=ranked("hexes.doom",1);
+                auto* e=foe({14,10}); app.updateFieldOfView();
+                cast(doom,{14,10});
+                check(e->statusEffects().magnitudeOf(StatusEffectType::Doom)==20,"Doom is laid on the foe");
+                clearFoes();
             }
         }
 

@@ -1262,6 +1262,11 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     } else if (talent.effectKind == TalentEffectKind::SelfBuff) {
         for (Actor* target : affected) {
             applyTalentSelfBuff(talent, *target);
+            // A curse laid on a foe: Wasting Curse poisons it, Witchfire burns it.
+            if (target!=&player_ && talent.tree==TalentTree::Hexes) {
+                if (const int rot=player_.talents().passiveValue(PassiveKind::WastingCurse)) target->statusEffects().apply({StatusEffectType::Poison,4,rot});
+                if (const int fire=player_.talents().passiveValue(PassiveKind::Witchfire)) target->statusEffects().apply({StatusEffectType::Burn,3,fire});
+            }
         }
         log(player_.name(), " uses ", talent.name, "!");
         if (talent.restoreMana) log("Mana: ",player_.stats().mana,"/",player_.stats().maxMana);
@@ -1385,6 +1390,9 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 if (player_.talents().passiveValue(PassiveKind::TemplarsEdge) && isMeleeAttack(talent) && talent.id!="basic.attack" &&
                     target->stats().hp>0 && tileLit(target->position()))
                     target->statusEffects().apply({StatusEffectType::Blinded,2,0});
+                // Incendiary: flasks set what they catch burning.
+                if (const int burn=player_.talents().passiveValue(PassiveKind::Incendiary); burn && talent.tree==TalentTree::Alchemy && target->stats().hp>0)
+                    target->statusEffects().apply({StatusEffectType::Burn,3,burn});
                 // Storm Bolts: bow and crossbow attacks shock.
                 if (player_.talents().passiveValue(PassiveKind::StormBolts) && target->stats().hp>0 &&
                     (talent.tree==TalentTree::Bow || talent.tree==TalentTree::Crossbow))
@@ -1587,7 +1595,8 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         const Position centre=target.area.empty()?cursor:target.area.front();
         for (const auto& p:target.area) {
             if (talent.shape==EffectShape::AreaAroundSelf && talent.splashSurface!=2 && p.x==player_.position().x && p.y==player_.position().y) continue;
-            if (!talent.scatterSplash || (p.x+p.y)%2==(centre.x+centre.y)%2) setSurface(p,static_cast<SurfaceType>(talent.splashSurface),talent.splashTurns);
+            const int lasting=talent.splashTurns && talent.tree==TalentTree::Alchemy ? talent.splashTurns+player_.talents().passiveValue(PassiveKind::VolatileMix) : talent.splashTurns;
+            if (!talent.scatterSplash || (p.x+p.y)%2==(centre.x+centre.y)%2) setSurface(p,static_cast<SurfaceType>(talent.splashSurface),lasting);
         }
         if (talent.splashPath) for (std::size_t i=1;i<target.path.size();++i)
             if (map_.isWalkable(target.path[i].x,target.path[i].y)) setSurface(target.path[i],static_cast<SurfaceType>(talent.splashSurface),talent.splashTurns);
@@ -1641,6 +1650,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     }
     afterHiddenCast(talent,landedAny,killedAny,wasConcealed);
     if (talent.grantOpening) player_.statusEffects().apply({StatusEffectType::Opening,3,0});
+    if (talent.hasteSelf) player_.statusEffects().apply({StatusEffectType::Hasted,3,talent.hasteSelf});
     if (talent.rootSelf && talent.selfBuffEffect) player_.statusEffects().apply({StatusEffectType::Pinned,talent.selfBuffEffect->turnsRemaining,0});
     if (const int hallowed=player_.talents().passiveValue(PassiveKind::HallowedGuard);
         hallowed && player_.statusEffects().magnitudeOf(StatusEffectType::Guard)>guardBefore) {
@@ -1692,7 +1702,7 @@ int Application::situationalBonus(const Talent& talent, const Actor& target) con
     }
     if (isSpell(talent) && conducts(surfaceAt(target.position()))) bonus+=kit.passiveValue(PassiveKind::Riptide);
     if (effects.has(StatusEffectType::Misfortune) || effects.has(StatusEffectType::Linked) || effects.has(StatusEffectType::Plague) ||
-        effects.has(StatusEffectType::Wither) || effects.has(StatusEffectType::Doom)) bonus+=kit.passiveValue(PassiveKind::Malediction);
+        effects.has(StatusEffectType::Wither) || effects.has(StatusEffectType::Doom) || effects.has(StatusEffectType::Slowed)) bonus+=kit.passiveValue(PassiveKind::Malediction);
     if (effects.has(StatusEffectType::Poison) || effects.has(StatusEffectType::Plague)) bonus+=kit.passiveValue(PassiveKind::ToxicRuin);
     const auto me=player_.position(), there=target.position();
     if (talent.tree==TalentTree::Spear && std::max(std::abs(me.x-there.x),std::abs(me.y-there.y))>=2) bonus+=kit.passiveValue(PassiveKind::LongReach);
@@ -1949,6 +1959,28 @@ void Application::fireEcho() {
         checkAndHandleDeath(*m);
     }
     removeDeadMonsters();
+}
+
+// Hex Echo: a cursed foe's curses leap to the nearest foe within four tiles.
+void Application::echoHexes(const Actor& dead) {
+    if (!player_.talents().passiveValue(PassiveKind::HexEcho)) return;
+    std::vector<StatusEffectInstance> curses;
+    for (const auto& e:dead.statusEffects().active())
+        if (e.type==StatusEffectType::Misfortune || e.type==StatusEffectType::Linked || e.type==StatusEffectType::Slowed || e.type==StatusEffectType::Doom)
+            curses.push_back(e);
+    if (curses.empty()) return;
+    Monster* next=nullptr; int best=5;
+    for (auto& m:monsters_) {
+        if (m.get()==&dead || m->allied || m->stats().hp<=0) continue;
+        const int d=std::max(std::abs(m->position().x-dead.position().x),std::abs(m->position().y-dead.position().y));
+        if (d<best) { best=d; next=m.get(); }
+    }
+    if (!next) return;
+    for (auto curse:curses) { curse.turnsRemaining=std::max(curse.turnsRemaining,2); next->statusEffects().apply(curse); }
+    if (visibleTile(dead.position()) || visibleTile(next->position())) {
+        spawnVfx({Vfx::Kind::Bolt,{dead.position().x+.5f,dead.position().y+.5f},{next->position().x+.5f,next->position().y+.5f},sf::Color(150,90,200),0,.35f,1.f});
+        log("The curse passes to ",next->name(),"!");
+    }
 }
 
 // Tremor: landing from a charge or leap knocks the foes beside you back a tile.
@@ -2398,7 +2430,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
 
     auto* defeated = dynamic_cast<Monster*>(&actor);
     if (defeated && !defeated->claimDeath()) return;
-    if (defeated && !defeated->allied) { spreadWildfire(*defeated); shatterHoarfrost(*defeated); }
+    if (defeated && !defeated->allied) { spreadWildfire(*defeated); shatterHoarfrost(*defeated); echoHexes(*defeated); }
     if (defeated && defeated->allied) {
         scheduler_.remove(actor);
         const int explosion=player_.talents().passiveValue(PassiveKind::GravePact);

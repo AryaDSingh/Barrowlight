@@ -225,7 +225,7 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "tide.maelstrom") { m.areaRadius = 3; d.mastery = "Covers three tiles."; }
     if (id == "tide.undertow") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Pinned, 2, 0}; m.onHitChance = 1.f; d.mastery = "It comes up gasping: pinned for a turn."; }
     if (id == "tide.flood") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Chill, 3, 20}; m.onHitChance = 1.f; d.mastery = "Chills everything it floods."; }
-    if (id == "hexes.misfortune") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 40; d.mastery = "Its attacks miss 40% more often."; }
+    if (id == "hexes.misfortune") { m.areaRadius = 1; m.shape = EffectShape::AreaAroundTarget; d.mastery = "Curses the foes beside it too."; }
     if (id == "hexes.link") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 100; d.mastery = "All of the damage jumps, not half."; }
     if (id == "hexes.puppet") { if (m.selfBuffEffect) m.selfBuffEffect->turnsRemaining = 5; d.mastery = "The puppet serves for five turns."; }
     if (id == "venom.bolt") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Poison deals 3 damage per turn."; }
@@ -233,11 +233,17 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "venom.plague") { if (m.onHitEffect) m.onHitEffect->turnsRemaining = 7; d.mastery = "The plague lasts seven turns."; }
     if (id == "venom.fester") { m.festerSpread = true; d.mastery = "The festering poison spreads to the foes beside it."; }
     if (id == "venom.blight") { if (m.onHitEffect) m.onHitEffect->magnitude = 5; d.mastery = "Every hit it takes deals 5 more."; }
-    if (id == "traps.snare" || id == "traps.tripwire") { m.cooldownTurns = std::max(1, m.cooldownTurns - 2); d.mastery = "Cooldown two turns shorter."; }
+    if (id == "traps.snare" || id == "traps.tripwire") { m.areaRadius = 1; m.shape = EffectShape::AreaAroundTarget; d.mastery = "Sets them on a spot and every tile around it."; }
+    if (id == "traps.bear") { m.placeTrap = 7; d.mastery = "The jaws leave it bleeding too."; }
+    if (id == "traps.net") { m.areaRadius = 2; d.mastery = "The net catches everything within two tiles."; }
+    if (id == "alchemy.frost") { m.areaRadius = 2; d.mastery = "The flask splashes two tiles."; }
+    if (id == "alchemy.greek_fire") { m.areaRadius = 3; d.mastery = "Sets everything within three tiles ablaze."; }
+    if (id == "hexes.enfeeble") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 60; d.mastery = "Slowed by 60%."; }
+    if (id == "hexes.doom") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 30; d.mastery = "Doom falls for 30."; }
     if (id == "traps.rigged") { m.areaRadius = 2; d.mastery = "The charge blasts two tiles."; }
     if (id == "skirmish.blitz") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Opening, 2, 0}; d.mastery = "You end the run with Opening."; }
     if (id == "skirmish.hit_and_run") { m.retreatDistance = 2; d.mastery = "Step back two tiles."; }
-    if (id == "skirmish.slipstream") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 40; d.mastery = "+40% dodge."; }
+    if (id == "skirmish.slipstream") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 40; m.hasteSelf = 75; d.mastery = "+40% dodge, and 75% faster."; }
     if (id == "skirmish.flying_kick") { stun(1); d.mastery = "The kick stuns."; }
     if (id == "brawling.haymaker") { stun(1); d.mastery = "The punch stuns too."; }
     if (id == "brawling.piledriver") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Stun, 2, 0}; d.mastery = "Stuns for two turns."; }
@@ -685,12 +691,26 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         // Alchemy (DEX): flasks that leave something on the ground.
         t=attack("Oil Flask","Lob a flask that splashes oil over a tile and its neighbours. Oil burns long once lit.",2,2,4,false,1);
         t.targeting=TargetingMode::RangedEnemyInSight; t.shape=EffectShape::AreaAroundTarget; t.splashSurface=1; add(21,"alchemy.oil",0,t);
+        shape("alchemy.oil",3,"",{});
         t=attack("Firebomb","A flask of fire: burns everything within a tile for 1 per turn and sets the ground alight.",5,4,6,false,1);
         t.targeting=TargetingMode::RangedEnemyInSight; t.shape=EffectShape::AreaAroundTarget; t.splashSurface=3; t.splashTurns=3;
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,1}; add(21,"alchemy.firebomb",1,t);
-        add(21,"alchemy.brews",2,passive("Potent Brews","Your flasks deal +2/3/4/5/6 damage.",PassiveKind::PotentBrews,2));
+        shape("alchemy.firebomb",3,"path",{"alchemy.oil"});
+        t=attack("Frost Flask","A flask of ice: splashes ice over a tile and its neighbours for six turns, chilling what stands there.",3,3,6,false,1);
+        t.targeting=TargetingMode::RangedEnemyInSight; t.shape=EffectShape::AreaAroundTarget; t.splashSurface=4; t.splashTurns=6;
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,3,20}; add(21,"alchemy.frost",1,t);
+        shape("alchemy.frost",3,"path",{"alchemy.oil"});
+        add(21,"alchemy.brews",2,passive("Potent Brews","Your flasks deal +4 damage.",PassiveKind::PotentBrews,4));
+        shape("alchemy.brews",1,"",{"alchemy.firebomb"});
+        add(21,"alchemy.volatile",2,passive("Volatile Mix","The ground your flasks leave lasts three turns longer.",PassiveKind::VolatileMix,3));
+        shape("alchemy.volatile",1,"",{"alchemy.frost"});
         t=attack("Acid Flask","Splash acid within a tile for eight turns: anything standing in it takes 2 a turn and is Marked (its next direct hit taken deals +25%).",4,5,8,false,1);
         t.targeting=TargetingMode::RangedEnemyInSight; t.shape=EffectShape::AreaAroundTarget; t.splashSurface=7; t.splashTurns=8; add(21,"alchemy.acid",3,t);
+        shape("alchemy.acid",3,"capstone",{});
+        t=attack("Greek Fire","A flask of fire that won't go out: everything within two tiles is set ablaze for six turns.",6,7,10,false,2);
+        t.targeting=TargetingMode::RangedEnemyInSight; t.shape=EffectShape::AreaAroundTarget; t.splashSurface=3; t.splashTurns=6;
+        t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,2}; add(21,"alchemy.greek_fire",3,t);
+        shape("alchemy.greek_fire",3,"capstone",{});
         // Spear (STR, two hands): reach and footing.
         t=attack("Thrust","Strike an enemy up to two tiles away in a straight line; the point runs on into anyone standing right behind it.",5,1,2);
         t.reach=2; t.pierceBehind=true; add(22,"spear.thrust",0,t);
@@ -815,11 +835,23 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         // Hexes (INT spells): curses.
         t=buff("Misfortune","Curse a visible foe for four enemy turns: its attacks miss 25% more often.",StatusEffectType::Misfortune,4,25,2,6);
         t.targeting=TargetingMode::RangedEnemyInSight; add(28,"hexes.misfortune",0,t);
+        shape("hexes.misfortune",3,"",{});
         t=buff("Soul Link","Bind a visible foe for four enemy turns: half of every hit it takes from you jumps to the nearest other foe within three tiles.",StatusEffectType::Linked,4,50,3,7);
         t.targeting=TargetingMode::RangedEnemyInSight; add(28,"hexes.link",1,t);
-        add(28,"hexes.malediction",2,passive("Malediction","Your attacks deal +2/3/4/5/6 damage to cursed enemies (Misfortune, Soul Link, Plague, Wither, Doom).",PassiveKind::Malediction,2));
+        shape("hexes.link",3,"path",{"hexes.misfortune"});
+        t=buff("Enfeeble","Curse a visible foe: it grows slow, acting 40% less often for four enemy turns.",StatusEffectType::Slowed,4,40,3,7);
+        t.targeting=TargetingMode::RangedEnemyInSight; add(28,"hexes.enfeeble",1,t);
+        shape("hexes.enfeeble",3,"path",{"hexes.misfortune"});
+        add(28,"hexes.malediction",2,passive("Malediction","Your attacks deal +4 damage to cursed enemies (Misfortune, Soul Link, Enfeeble, Plague, Wither, Doom).",PassiveKind::Malediction,4));
+        shape("hexes.malediction",1,"",{"hexes.link"});
+        add(28,"hexes.echo",2,passive("Hex Echo","When a cursed foe dies, its curses leap to the nearest foe within four tiles.",PassiveKind::HexEcho,1));
+        shape("hexes.echo",1,"",{"hexes.enfeeble"});
         t=buff("Puppet","Seize a visible foe's will for three enemy turns: it fights its own side. Bosses and champions resist.",StatusEffectType::Puppeted,3,1,6,12);
         t.targeting=TargetingMode::RangedEnemyInSight; add(28,"hexes.puppet",3,t);
+        shape("hexes.puppet",3,"capstone",{});
+        t=buff("Doom","Lay doom on a visible foe: in four enemy turns, it takes 20.",StatusEffectType::Doom,4,20,5,10);
+        t.targeting=TargetingMode::RangedEnemyInSight; add(28,"hexes.doom",3,t);
+        shape("hexes.doom",3,"capstone",{});
         // Venom (INT spells): poison and plague.
         t=attack("Venom Bolt","A bolt of venom: poisons for 2 per turn over four enemy turns.",3,2,1,true);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Poison,4,2}; add(29,"venom.bolt",0,t);
@@ -846,9 +878,19 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             tr.placeTrap=kind; tr.manaCost=mana; tr.cooldownTurns=cd; tr.areaRadius=radius; if (spread) tr.shape=EffectShape::AreaAroundTarget; return tr;
         };
         add(30,"traps.snare",0,trap("Snare","Set a snare on visible ground: the first foe to step on it takes 4 and is pinned for three turns.",1,1,4));
+        shape("traps.snare",3,"",{});
         add(30,"traps.tripwire",1,trap("Tripwire","Stretch a tripwire: the first foe to cross it takes 2 and is flung two tiles on in the direction it was walking.",2,2,5));
-        add(30,"traps.trapper",2,passive("Trapper","Your traps deal +2/3/4/5/6 damage.",PassiveKind::Trapper,2));
+        shape("traps.tripwire",3,"path",{"traps.snare"});
+        add(30,"traps.bear",1,trap("Bear Trap","Set iron jaws: the first foe to step in takes 8 and is held, stunned, for two enemy turns.",6,3,7));
+        shape("traps.bear",3,"path",{"traps.snare"});
+        add(30,"traps.trapper",2,passive("Trapper","Your traps deal +4 damage.",PassiveKind::Trapper,4));
+        shape("traps.trapper",1,"",{"traps.tripwire"});
+        add(30,"traps.ambusher",2,passive("Ambusher","Foes caught in your traps are marked: their next direct hit taken deals +25%.",PassiveKind::Ambusher,1));
+        shape("traps.ambusher",1,"",{"traps.bear"});
         add(30,"traps.rigged",3,trap("Rigged Charge","Bury a charge: when a foe steps on it, it blows up for 8 to everything within a tile and sets the ground alight.",3,4,8,1));
+        shape("traps.rigged",3,"capstone",{});
+        add(30,"traps.net",3,trap("Net Trap","Hide a weighted net: when a foe steps on it, everything within a tile is pinned for three turns.",8,4,9,1));
+        shape("traps.net",3,"capstone",{});
         // Skirmish (DEX): moving is attacking.
         add(31,"skirmish.lunge",0,passive("Lunge","Step toward a foe two tiles ahead and you strike it as you close, for 6.",PassiveKind::Lunge,6));
         shape("skirmish.lunge",1,"",{});
@@ -862,8 +904,8 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         shape("skirmish.pass",1,"",{"skirmish.blitz"});
         add(31,"skirmish.running_start",2,passive("Running Start","While you have Opening (after moving or waiting), your attacks deal +4 damage.",PassiveKind::RunningStart,4));
         shape("skirmish.running_start",1,"",{"skirmish.hit_and_run"});
-        t=buff("Slipstream","Stay light on your feet: +25% dodge and Opening for three enemy responses.",StatusEffectType::Evasion,3,25,3,12);
-        t.grantOpening=true; add(31,"skirmish.slipstream",3,t);
+        t=buff("Slipstream","Stay light on your feet: +25% dodge, Opening, and 50% faster, for three turns.",StatusEffectType::Evasion,3,25,3,12);
+        t.grantOpening=true; t.hasteSelf=50; add(31,"skirmish.slipstream",3,t);
         shape("skirmish.slipstream",3,"capstone",{});
         t=attack("Flying Kick","Charge up to four tiles in a straight line at a foe and kick it two tiles back.",7,4,8);
         t.chargeDistance=4; t.pushDistance=2; add(31,"skirmish.flying_kick",3,t);
@@ -992,6 +1034,8 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="spear" || d.treeId=="mace") d.affinity=Affinity::Steel;
             else if (d.treeId=="crossbow") d.affinity=Affinity::Hunt;
             else if (d.treeId=="brawling" || d.treeId=="whip" || d.treeId=="skirmish") d.affinity=Affinity::Motion;
+            else if (d.treeId=="alchemy" || d.treeId=="traps") d.affinity=Affinity::Guile;
+            else if (d.treeId=="hexes") d.affinity=Affinity::Dark;
             else if (d.treeId=="one_handed") d.affinity=(d.id=="one_handed.parry" || d.id=="one_handed.riposte")?Affinity::Guard:Affinity::Steel;
         }
         // Resonances: one-rank passives that exist only between two colours.
@@ -1038,6 +1082,12 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             passive("Lightning Feet","Your movement abilities shock every foe beside your path.",PassiveKind::LightningFeet,1));
         resonance("resonance.tremor",Affinity::Motion,Affinity::Earth,
             passive("Tremor","When a charge or leap brings you down, the foes beside you are knocked back a tile.",PassiveKind::Tremor,1));
+        resonance("resonance.incendiary",Affinity::Guile,Affinity::Flame,
+            passive("Incendiary","Your traps and flasks set what they catch burning.",PassiveKind::Incendiary,2));
+        resonance("resonance.wasting_curse",Affinity::Dark,Affinity::Rot,
+            passive("Wasting Curse","Foes you curse are also poisoned.",PassiveKind::WastingCurse,2));
+        resonance("resonance.witchfire",Affinity::Dark,Affinity::Flame,
+            passive("Witchfire","Your curses also set the foe burning.",PassiveKind::Witchfire,2));
         return out;
     }();
     return catalog;

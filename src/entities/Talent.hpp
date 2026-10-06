@@ -94,7 +94,9 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The sixth batch (Spear, Mace, Crossbow) and its resonances.
     Skewer, HeavyDraw, Bonecrusher, StormBolts, Bedrock,
     // The seventh batch (Brawling, Whip, Skirmish) and its resonances.
-    Knockout, Taskmaster, LightningFeet, Tremor };
+    Knockout, Taskmaster, LightningFeet, Tremor,
+    // The eighth batch (Alchemy, Traps, Hexes) and its resonances.
+    VolatileMix, Ambusher, HexEcho, Incendiary, WastingCurse, Witchfire };
 
 struct Talent {
     std::string name;
@@ -285,6 +287,7 @@ struct Talent {
     bool pillarShove=false, festerPoison=false, festerSpread=false;
     // grantOpening: you also gain Opening for a few turns (Slipstream).
     bool grantOpening=false;
+    int hasteSelf=0; // you are Hasted by this much for a few turns (Slipstream)
 
 };
 

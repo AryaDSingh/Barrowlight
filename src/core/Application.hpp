@@ -552,6 +552,7 @@ private:
     void tickStorms();
     void shatterHoarfrost(const Actor& dead);
     void tremorAt(Position at);
+    void echoHexes(const Actor& dead);
     void fireEcho();
     void spreadWildfire(const Actor& dead);
 

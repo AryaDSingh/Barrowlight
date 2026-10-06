@@ -644,15 +644,33 @@ void Application::triggerTrap(std::size_t index, Monster& victim, Position headi
             explodeGas(trap.at);
             break;
         }
+        case 6: case 7: // bear trap; its third rank also bleeds
+            hurt(victim, 8 + bonus);
+            if (victim.statusEffects().canReceiveStun()) victim.statusEffects().apply({StatusEffectType::Stun, 2, 0});
+            if (trap.kind == 7) victim.statusEffects().apply({StatusEffectType::Bleed, 3, 2});
+            log("Iron jaws snap shut on ", victim.name(), "!");
+            break;
+        case 8: { // net trap: everything within reach is pinned
+            log("A net drops!");
+            for (auto& m : monsters_)
+                if (m->stats().hp > 0 && !m->allied && std::max(std::abs(m->position().x - trap.at.x), std::abs(m->position().y - trap.at.y)) <= std::max(1, trap.radius))
+                    m->statusEffects().apply({StatusEffectType::Pinned, 3, 0});
+            break;
+        }
         default: break;
+    }
+    // Ambusher marks what the trap caught; Incendiary sets it burning.
+    if (victim.stats().hp > 0) {
+        if (player_.talents().passiveValue(PassiveKind::Ambusher)) victim.statusEffects().apply({StatusEffectType::Marked, 3, 1});
+        if (const int burn = player_.talents().passiveValue(PassiveKind::Incendiary)) victim.statusEffects().apply({StatusEffectType::Burn, 3, burn});
     }
     for (auto& m : monsters_) if (m->stats().hp <= 0) checkAndHandleDeath(*m);
 }
 
 void Application::renderTraps() {
-    static constexpr const char* kTrapIcons[]{"", "wolf-trap", "tripwire", "time-bomb", "caltrops", "rolling-bomb"};
+    static constexpr const char* kTrapIcons[]{"", "wolf-trap", "tripwire", "time-bomb", "caltrops", "rolling-bomb", "wolf-trap", "wolf-trap", "lasso"};
     for (const auto& trap : traps_) {
-        if (!visibleTile(trap.at) || trap.kind < 1 || trap.kind > 5) continue;
+        if (!visibleTile(trap.at) || trap.kind < 1 || trap.kind > 8) continue;
         const auto at = worldToScreen(trap.at.x, trap.at.y);
         const float tile = kTile;
         ui_.icon(window_, kTrapIcons[trap.kind], {{at.x + tile * .2f, at.y + tile * .2f}, {tile * .6f, tile * .6f}}, sf::Color(205, 190, 160, 200));
