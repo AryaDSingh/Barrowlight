@@ -24,7 +24,7 @@ Actor& TurnScheduler::nextTurn() {
 
     while (true) {
         for (auto& entry : entries_) {
-            entry.energy += entry.actor->stats().speed;
+            entry.energy += entry.actor->stats().speed * speedPercent(entry.actor->statusEffects()) / 100;
         }
 
         // Among everyone who crossed the threshold this round, the one

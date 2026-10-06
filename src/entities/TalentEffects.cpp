@@ -92,7 +92,6 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
         (talent.consumeBurn && target.statusEffects().has(StatusEffectType::Burn))) percent=percent*(100+talent.statusBonusPercent)/100;
     if (target.statusEffects().has(StatusEffectType::Stun)) percent=percent*(100+kit.passiveValue(PassiveKind::CrushingBlows))/100;
     damage=damage*percent/100;
-    if (attacker.statusEffects().has(StatusEffectType::Chill)) damage=damage*(100-attacker.statusEffects().magnitudeOf(StatusEffectType::Chill))/100;
     if (target.statusEffects().magnitudeOf(StatusEffectType::Marked)>0) damage=damage*(100+kMarkedDamagePercent)/100;
     int guard=target.statusEffects().magnitudeOf(StatusEffectType::Guard);
     if (guard && target.inventory().equipped(EquipmentSlot::OffHand)) guard+=target.talents().passiveValue(PassiveKind::ShieldTraining);

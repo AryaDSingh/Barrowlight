@@ -1766,9 +1766,6 @@ void Application::processMonsterTurns() {
             }
         }
         const bool hadPoison = actor->statusEffects().has(StatusEffectType::Poison);
-        const int chillMagnitude=actor->statusEffects().magnitudeOf(StatusEffectType::Chill);
-        bool chilledMove=false;
-        for (const auto& e:actor->statusEffects().active()) if (e.type==StatusEffectType::Chill) chilledMove=e.turnsRemaining%2==1;
         for (const auto& effect:actor->statusEffects().active()) {
             if (isCurse(effect.type) && monster && monster->allied) combatThisTurn_=true;
             if (effect.type==StatusEffectType::Doom && effect.turnsRemaining==1)
@@ -1818,7 +1815,7 @@ void Application::processMonsterTurns() {
                         summon.summonType=monster->summonsCommitted==2?MonsterType::SkeletonArcher:MonsterType::SkeletonGuard;
                         summon.abilityIndex=actor->talents().knownTalents().size(); // cooldown reserved at commitment
                         if (isOccupied(intent.target,actor)) log("The occupied ritual tile disrupts the summon!");
-                        else { log(actor->name(), " completes its ritual!"); executeAIDecision(*actor,summon,chillMagnitude); }
+                        else { log(actor->name(), " completes its ritual!"); executeAIDecision(*actor,summon); }
                     } else {
                         log(actor->name(), " releases its committed attack!");
                         if (intent.contains(player_.position()) && hasLineOfFire(map_,intent.target,player_.position())) {
@@ -1827,7 +1824,7 @@ void Application::processMonsterTurns() {
                             if (intent.kind==IntentKind::MagicStrike) hit.scalingStat=ScalingStat::Intelligence;
                             else if (intent.kind==IntentKind::StunStrike) hit.effectToApply=StatusEffectInstance{StatusEffectType::Stun,1,0};
                             lastHitDodged_=true;
-                            executeAIDecision(*actor,hit,chillMagnitude);
+                            executeAIDecision(*actor,hit);
                             // Slams and heavy blows knock you back: into whatever is behind you.
                             const int knockback=intent.kind==IntentKind::StunStrike ? 1 : intent.kind==IntentKind::HeavyStrike ?
                                 (monster->type()==MonsterType::GoblinWarlord ? 2 : 1) : 0;
@@ -1845,7 +1842,7 @@ void Application::processMonsterTurns() {
                             AIDecision hit; hit.type=AIActionType::Attack; hit.target=ally; hit.attackPower=intent.attackPower;
                             if (intent.kind==IntentKind::MagicStrike) hit.scalingStat=ScalingStat::Intelligence;
                             if (intent.kind==IntentKind::StunStrike) hit.effectToApply=StatusEffectInstance{StatusEffectType::Stun,1,0};
-                            executeAIDecision(*actor,hit,chillMagnitude);
+                            executeAIDecision(*actor,hit);
                         }
                     }
                     suppressAttackVfx_=false;
@@ -1853,7 +1850,7 @@ void Application::processMonsterTurns() {
             } else if (monster && !monster->allied && monster==boss_ && bossSurfaceAction(*monster)) {
                 // The boss spent its turn on a brazier or on the light.
             } else if (monster && (monster->allied || monster->statusEffects().has(StatusEffectType::Puppeted))) {
-                actMinion(*monster,chilledMove);
+                actMinion(*monster);
             } else if (actor->ai() != nullptr) {
                 bool hidden=player_.statusEffects().has(StatusEffectType::Concealed);
                 if (hidden) {
@@ -1898,7 +1895,7 @@ void Application::processMonsterTurns() {
                                 log(actor->name()," begins a ritual.");
                             } else log(actor->name()," winds up.");
                         }
-                    } else if (!(chilledMove && decision.type==AIActionType::Move)) executeAIDecision(*actor,decision,chillMagnitude);
+                    } else executeAIDecision(*actor,decision);
                 }
             }
             actor->talents().tickCooldowns();
@@ -2082,7 +2079,7 @@ void Application::advanceTurnsUntilPlayerCanAct() {
     }
 }
 
-void Application::executeAIDecision(Actor& actor, const AIDecision& decision, int chillMagnitude) {
+void Application::executeAIDecision(Actor& actor, const AIDecision& decision, int /*unused: Chill now slows instead*/) {
     if (decision.type==AIActionType::Attack || decision.type==AIActionType::UseAbility) {
         const auto* attacker=dynamic_cast<const Monster*>(&actor);
         const auto* target=dynamic_cast<const Monster*>(decision.target);
@@ -2235,7 +2232,6 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     // Global crit (per design: every creature, player and
                     // monster alike, rolls it) -- multiplies the result of
                     // everything above.
-                    if (chillMagnitude>0) damage=damage*(100-chillMagnitude)/100;
                     const bool marked=decision.target->statusEffects().has(StatusEffectType::Marked);
                     if (marked) damage=damage*(100+kMarkedDamagePercent)/100;
                     bool crit = false;

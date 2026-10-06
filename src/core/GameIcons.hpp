@@ -209,6 +209,8 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::Puppeted: return "puppet";
         case StatusEffectType::Plague: return "virus";
         case StatusEffectType::Frenzy: return "bloody-sword";
+        case StatusEffectType::Hasted: return "sprint";
+        case StatusEffectType::Slowed: return "hourglass";
     }
     return "aura";
 }

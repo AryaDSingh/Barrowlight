@@ -128,6 +128,7 @@ sf::Color buffColor(StatusEffectType type) {
         case StatusEffectType::ArcaneBlade: return kArcane;
         case StatusEffectType::BloodPact: return kBlood;
         case StatusEffectType::Frenzy: return kBlood;
+        case StatusEffectType::Slowed: return kIce;
         default: return kHoly;
     }
 }

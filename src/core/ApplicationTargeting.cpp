@@ -114,7 +114,9 @@ std::string statusTooltip(const StatusEffectInstance& e) {
     case StatusEffectType::Empowered: return "Adds "+n+" damage to direct attacks.";
     case StatusEffectType::Guard: return "Blocks up to "+n+" damage from each direct hit. Does not block damage over time or Doom.";
     case StatusEffectType::Evasion: return "Adds "+n+" percentage points of dodge. Total dodge is capped at 75%.";
-    case StatusEffectType::Chill: return "Reduces damage dealt by "+n+"%. Chilled enemies also skip movement on alternating turns.";
+    case StatusEffectType::Chill: return "Slowed by the cold: acts "+n+"% less often.";
+    case StatusEffectType::Hasted: return "Acts "+n+"% more often.";
+    case StatusEffectType::Slowed: return "Acts "+n+"% less often.";
     case StatusEffectType::Shock: return "Enables Lightning follow-ups. Certain talents consume Shock for an additional effect.";
     case StatusEffectType::Concealed: return "Enemies roll detection using distance, Dexterity and concealment rank. Most attacks and taking damage reveal you.";
     case StatusEffectType::Opening: return "A brief opportunity from waiting or movement talents. Enables bonuses from compatible bow and armour talents.";

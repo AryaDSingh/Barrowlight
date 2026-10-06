@@ -22,6 +22,8 @@ enum class StatusEffectType {
     Puppeted,        // fights for the player until it ends (Hexes)
     Plague,          // poison that spreads to its neighbours when it dies (Venom)
     Frenzy,          // your hits heal you for magnitude% of the damage they deal (Two-Handed)
+    Hasted,          // acts magnitude% more often
+    Slowed,          // acts magnitude% less often (Chill slows the same way)
 };
 
 struct StatusEffectInstance {
@@ -70,6 +72,13 @@ inline bool isCleansable(StatusEffectType type) {
            type==StatusEffectType::Bleed || type==StatusEffectType::Sundered || type==StatusEffectType::Plague || isCurse(type);
 }
 inline constexpr int kMarkedDamagePercent=25;
+// How fast a creature acts, as a percentage of its base speed: Hasted speeds
+// it up, Slowed and Chill slow it down. Never below a quarter.
+inline int speedPercent(const StatusEffects& effects) {
+    const int percent=100+effects.magnitudeOf(StatusEffectType::Hasted)-effects.magnitudeOf(StatusEffectType::Slowed)
+                     -effects.magnitudeOf(StatusEffectType::Chill);
+    return percent<25?25:percent;
+}
 inline const char* statusName(StatusEffectType type) {
     switch (type) {
     case StatusEffectType::Poison: return "Poison";
@@ -105,6 +114,8 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::Puppeted: return "Puppet";
     case StatusEffectType::Plague: return "Plague";
     case StatusEffectType::Frenzy: return "Frenzy";
+    case StatusEffectType::Hasted: return "Hasted";
+    case StatusEffectType::Slowed: return "Slowed";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

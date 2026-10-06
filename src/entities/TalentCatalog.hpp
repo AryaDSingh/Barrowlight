@@ -26,7 +26,7 @@ inline constexpr std::array<TreeDefinition, 37> kTalentTrees{{
     {"stealth", "Stealth", TalentTree::Stealth, "Concealment and ambush. Rank, DEX and distance oppose enemy detection rolls.", ""},
     {"acrobatics", "Acrobatics", TalentTree::Acrobatics, "Reposition, disengage and evade after movement abilities.", ""},
     {"fire", "Fire", TalentTree::Fire, "Burn enemies, spread fire and ignite movement abilities.", ""},
-    {"ice", "Ice", TalentTree::Ice, "Chill reduces outgoing damage and slows movement; shatter chilled enemies.", ""},
+    {"ice", "Ice", TalentTree::Ice, "Chill slows your foes; shatter chilled enemies.", ""},
     {"lightning", "Lightning", TalentTree::Lightning, "Burst, chaining and consuming Shock for a decisive hit.", ""},
     {"arcane", "Arcane", TalentTree::Arcane, "Flexible force, Blink and efficient spellcasting.", ""},
     {"cloth", "Cloth / Unarmoured", TalentTree::Cloth, "Requires cloth or no armour. Recover mana, evade and exploit elemental ailments. Available from level 5.", ""},
@@ -505,7 +505,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t.projectile=false; t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,2};
         t.splashSurface=3; t.splashTurns=4; t.scatterSplash=true; add(6,"fire.firestorm",3,t);
         shape("fire.firestorm",3,"capstone",{});
-        t=attack("Ice Shard","Chill on hit: -20% outgoing damage and movement on alternate turns for three enemy turns.",4,2,2,true); t.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,3,20}; add(7,"ice.shard",0,t);
+        t=attack("Ice Shard","A shard of ice: chills on hit, slowing the target by 20% for three enemy turns.",4,2,2,true); t.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,3,20}; add(7,"ice.shard",0,t);
         shape("ice.shard",3,"",{});
         t=attack("Frost Nova","Chill adjacent enemies for three turns; helps create an escape.",4,4,5,false,1); t.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,3,20}; add(7,"ice.nova",1,t);
         shape("ice.nova",3,"path",{"ice.shard"});

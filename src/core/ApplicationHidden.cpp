@@ -207,14 +207,12 @@ Actor* Application::nearestOpponent(Actor& actor,bool playerHidden) {
     for (auto& other:monsters_) if (other.get()!=&actor && (puppet ? !other->allied : other->allied!=allied)) consider(*other);
     return nearest;
 }
-void Application::actMinion(Monster& minion,bool chilledMove) {
+void Application::actMinion(Monster& minion) {
     if (auto* enemy=nearestOpponent(minion,false)) {
         auto decision=minion.ai()->decideAction(minion,map_,*enemy,{});
-        if (!(chilledMove && decision.type==AIActionType::Move))
-            executeAIDecision(minion,decision,minion.statusEffects().magnitudeOf(StatusEffectType::Chill));
+        executeAIDecision(minion,decision);
         return;
     }
-    if (chilledMove) return;
     const auto pos=minion.position(), player=player_.position();
     if (std::abs(pos.x-player.x)+std::abs(pos.y-player.y)<=1) return;
     const auto path=findPath(map_,pos,player);

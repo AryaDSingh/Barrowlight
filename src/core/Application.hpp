@@ -150,7 +150,7 @@ private:
     void dissolveMinions();
     void summonMinions(const Talent& talent);
     Actor* nearestOpponent(Actor& actor,bool playerHidden);
-    void actMinion(Monster& minion,bool chilledMove);
+    void actMinion(Monster& minion);
     void afterHiddenCast(const Talent& talent,bool landed,bool killed,int concealed);
     std::size_t imbueSelection_=0;
 
