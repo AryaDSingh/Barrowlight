@@ -33,6 +33,7 @@ public:
           type_(type) { lastObservedHp=stats.hp; tactics.home=position; tactics.lastKnown=position; tactics.concealed=enemyAmbusher(type); }
 
     int lastObservedHp=0; // transient damage observation; rebuilt on load
+    bool voicedAlert=false; // transient: has shouted on spotting you, until it loses you
     EnemyTactics tactics;
     bool allied=false;
     int summonRank=1, summonIntelligence=0, remainingLife=0; // 0 permanent; positive temporary

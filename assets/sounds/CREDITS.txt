@@ -1,0 +1,40 @@
+Sound effects in assets/sounds/sfx/ were cut, layered, pitched and levelled
+from these packs. Every one is CC0 (public domain): no attribution is
+required, but the authors are credited here with thanks.
+
+Impact Sounds (Kenney) -- CC0
+  https://kenney.nl/assets/impact-sounds
+  punches, soft impacts, wood, metal, glass, bells and mining hits.
+
+RPG Audio (Kenney) -- CC0
+  https://kenney.nl/assets/rpg-audio
+  knife slices and chops.
+
+Basic Spell Impacts (Lentikula) -- CC0
+  https://lentikula.itch.io/freecc0-basic-spell-impacts-sfx
+  fire, ice, lightning and water spell impacts.
+
+Impact (Iwan 'qubodup' Gabovitch) -- CC0
+  https://opengameart.org/content/impact
+  wet meat and stone impacts.
+
+2 wooden squish splatter sequences (Independent.nu, posted by qubodup) -- CC0
+  https://opengameart.org/content/2-wooden-squish-splatter-sequences
+  the splatter in the gory critical hits.
+
+20 sword sound effects (StarNinjas) -- CC0
+  https://opengameart.org/content/20-sword-sound-effects-attacks-and-clashes
+  sword swings, and the whoosh of a dodged blow.
+
+80 CC0 creature SFX (rubberduck) -- CC0
+  https://opengameart.org/content/80-cc0-creature-sfx
+  the monster voices: grunts, roars, hisses, screams.
+
+The families: slash, pierce, blunt (weapons); fire, frost, lightning, water,
+arcane, shadow, light, earth, rot, blood (spells); crit_gore, crit_bone,
+crit_fire, crit_frost, crit_storm, crit_magic (the extra layer a critical
+hit adds); dodge. Five variants each. Also levelup and death (the
+player's), and voice_<kind>_<alert|hurt|death> for each kind of monster:
+goblin, brute, beast, spider, bones, spirit, human, drowned.
+
+Rebuild them all with tools/sfx_build.py (set SFX_SRC to the unpacked packs).

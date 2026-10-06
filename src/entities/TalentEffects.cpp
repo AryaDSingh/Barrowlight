@@ -108,7 +108,11 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
     return {damage,critical};
 }
 
+namespace { bool lastCritical = false; }
+bool lastHitWasCritical() { return lastCritical; }
+
 bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
+    lastCritical = false;
     if (!talent.undodgeable && rollChance(std::min(kTotalDodgeCap,dodgeChance(target.stats().dexterity)+(target.statusEffects().magnitudeOf(StatusEffectType::Evasion)+armourDodgeBonus(target)+ascendancyDodgeBonus(target))/100.f))) {
         if (target.talents().passiveValue(PassiveKind::Slippery,target.stats())) target.statusEffects().apply({StatusEffectType::Opening,2,0});
         return false;
@@ -126,6 +130,7 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
         attacker.talents().passiveValue(PassiveKind::Marksmanship,attacker.stats())/100.f : 0.f;
     if (rollCrit(attacker.stats().dexterity, talent.bonusCritChance+aim+(armourCritBonus(attacker)+attacker.inventory().affixTotal(BonusStat::CritChance)+attacker.talents().passiveValue(PassiveKind::Versatility,attacker.stats()))/100.f)) {
         damage = estimate.critical;
+        lastCritical = true;
     }
 
     const int actualDamage=std::min(std::max(0,target.stats().hp),damage);

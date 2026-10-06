@@ -29,6 +29,9 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
 // it's the one thing that currently knows about every Actor in the
 // level; for an AreaAroundTarget/AreaAroundSelf talent, this gets called
 // once per affected Actor).
+// Whether the last hit applyTalentDamage landed was a critical one.
+bool lastHitWasCritical();
+
 bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target);
 
 // Applies `talent`'s healing to `target`'s Stats::hp, added rather than

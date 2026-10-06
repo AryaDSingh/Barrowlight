@@ -2872,6 +2872,19 @@ struct ApplicationRewardsTestAccess {
         };
         auto release=[&](int x,int y) { app.handleEvent(sf::Event::MouseButtonReleased{sf::Mouse::Button::Left,{x,y}}); };
         auto addItem=[&](const char* id) { app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition(id),app.nextItemId_++)); };
+        // Every combat sound family is on disk and loaded.
+        {
+            bool all=true;
+            for (const char* family:{"slash","pierce","blunt","fire","frost","lightning","water","arcane","shadow","light","earth","rot","blood",
+                                     "crit_gore","crit_bone","crit_fire","crit_frost","crit_storm","crit_magic","dodge","levelup","death"})
+                all&=app.soundManager_.hasFamily(family);
+            check(all,"Every combat sound family loads");
+            bool voiced=true;
+            for (int t=0; t<=static_cast<int>(MonsterType::TheSleeper); ++t)
+                for (const char* event:{"alert","hurt","death"})
+                    voiced&=app.soundManager_.hasFamily(std::string("voice_")+monsterVoice(static_cast<MonsterType>(t))+"_"+event);
+            check(voiced,"Every monster has a voice for spotting you, pain and death");
+        }
         // The death screen lists the blows that led there, with what dealt them.
         setup(PlayerClass::Warrior);
         {

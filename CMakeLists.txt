@@ -106,6 +106,7 @@ set(CORE_HEADERS
     src/core/TurnScheduler.hpp
     src/core/SaveGame.hpp
     src/core/SoundManager.hpp
+    src/core/CombatSounds.hpp
     src/core/SpriteAtlas.hpp
     src/core/ScreenLayout.hpp
     src/core/UiKit.hpp

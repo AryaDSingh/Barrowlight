@@ -1,20 +1,11 @@
 #include "core/SoundManager.hpp"
 
 #include <algorithm>
-#include <tuple>
+#include <filesystem>
 
 namespace engine {
 
 namespace {
-// Same "relative to launch directory" convention kFontPath already
-// established (Prompt 13) -- these assets ship alongside the
-// executable, not embedded in it.
-constexpr const char* kHitPath = "assets/sounds/hit.wav";
-constexpr const char* kDeathPath = "assets/sounds/death.wav";
-constexpr const char* kLevelUpPath = "assets/sounds/levelup.wav";
-constexpr const char* kDodgePath = "assets/sounds/dodge.wav";
-constexpr const char* kSelectPath = "assets/sounds/select.wav";
-
 // Test builds (ROGUELIKE_SILENT, set in CMakeLists.txt) never make a sound.
 #ifdef ROGUELIKE_SILENT
 constexpr bool kSilent = true;
@@ -39,32 +30,59 @@ const char* musicPath(MusicTrack track) {
 }
 } // namespace
 
-SoundManager::SoundManager()
-    : hitSound_(hitBuffer_),
-      deathSound_(deathBuffer_),
-      levelUpSound_(levelUpBuffer_),
-      dodgeSound_(dodgeBuffer_),
-      selectSound_(selectBuffer_) {
-    // Each Sound above is constructed bound to its buffer *before* the
-    // buffer has any real data loaded into it -- Sound holds a
-    // reference to the SoundBuffer object itself, not a snapshot of its
-    // data at construction time, so loading the actual file content
-    // here afterward is fine; play() reads whatever the buffer holds at
-    // that later point in time. A failed load leaves that buffer empty
-    // (0 duration, no samples) -- play() on an empty buffer is a
-    // harmless no-op, not a crash, so no failure handling is needed
-    // beyond just not crashing on a missing file.
-    // Prompt 25: loadFromFile()'s bool return is deliberately discarded
-    // here, not left as an accidental compiler warning -- a failed load
-    // (missing file, say) leaves that buffer empty, and play() on an
-    // empty buffer is already a harmless no-op (see this class's own
-    // header comment), so there's genuinely nothing to react to on
-    // failure beyond not crashing, which already holds either way.
-    std::ignore = hitBuffer_.loadFromFile(kHitPath);
-    std::ignore = deathBuffer_.loadFromFile(kDeathPath);
-    std::ignore = levelUpBuffer_.loadFromFile(kLevelUpPath);
-    std::ignore = dodgeBuffer_.loadFromFile(kDodgePath);
-    std::ignore = selectBuffer_.loadFromFile(kSelectPath);
+SoundManager::SoundManager() {
+    // Every combat family, by file name: slash_0.ogg, slash_1.ogg, crit_gore_0.ogg...
+    std::error_code error;
+    for (const auto& entry : std::filesystem::directory_iterator("assets/sounds/sfx", error)) {
+        if (entry.path().extension() != ".ogg") continue;
+        const std::string stem = entry.path().stem().string();
+        const auto cut = stem.rfind('_');
+        if (cut == std::string::npos) continue;
+        auto& buffers = families_[stem.substr(0, cut)];
+        buffers.emplace_back();
+        if (!buffers.back().loadFromFile(entry.path().string())) buffers.pop_back();
+    }
+}
+
+void SoundManager::playFamily(const std::string& family, float volume, float pitch) {
+    if (kSilent) return;
+    const auto found = families_.find(family);
+    if (found == families_.end() || found->second.empty()) return;
+    const float now = clock_.getElapsedTime().asSeconds();
+    if (const auto last = lastPlayed_.find(family); last != lastPlayed_.end() && now - last->second < .045f) return;
+    lastPlayed_[family] = now;
+    auto& buffers = found->second;
+    int variant = std::uniform_int_distribution<int>(0, static_cast<int>(buffers.size()) - 1)(rng_);
+    if (buffers.size() > 1 && variant == lastVariant_[family]) variant = (variant + 1) % static_cast<int>(buffers.size());
+    lastVariant_[family] = variant;
+    // A free voice, or a new one, or (all 24 busy) the oldest.
+    sf::Sound* voice = nullptr;
+    for (auto& v : voices_) if (v->getStatus() == sf::SoundSource::Status::Stopped) { voice = v.get(); break; }
+    if (!voice && voices_.size() < 24) { voices_.push_back(std::make_unique<sf::Sound>(buffers[static_cast<std::size_t>(variant)])); voice = voices_.back().get(); }
+    if (!voice) { voice = voices_[nextVoice_ % voices_.size()].get(); ++nextVoice_; voice->stop(); }
+    voice->setBuffer(buffers[static_cast<std::size_t>(variant)]);
+    voice->setPitch(pitch * std::uniform_real_distribution<float>(.94f, 1.06f)(rng_));
+    voice->setVolume(std::clamp(volume, 0.f, 100.f));
+    voice->play();
+}
+
+void SoundManager::playHit(HitSound sound, bool critical, bool targetBleeds) {
+    playFamily(hitFamily(sound), critical ? 100.f : 85.f);
+    if (critical) playFamily(critFamily(sound, targetBleeds), 100.f, .93f);
+}
+
+void SoundManager::playDodge() {
+    playFamily("dodge", 90.f);
+}
+
+void SoundManager::playVoice(const char* kind, const char* event) {
+    const std::string family = std::string("voice_") + kind + "_" + event;
+    const float now = clock_.getElapsedTime().asSeconds();
+    const bool dying = std::string(event) == "death";
+    // Grunts give way to anything else the same kind says for a moment; deaths always sound.
+    if (const auto last = lastPlayed_.find("voice_" + std::string(kind)); !dying && last != lastPlayed_.end() && now - last->second < .4f) return;
+    lastPlayed_["voice_" + std::string(kind)] = now;
+    playFamily(family, dying ? 85.f : std::string(event) == "hurt" ? 60.f : 75.f);
 }
 
 void SoundManager::setMusic(MusicTrack track) {
@@ -105,23 +123,12 @@ void SoundManager::toggleMusic() {
 }
 
 void SoundManager::play(SoundEffect effect) {
-    if (kSilent) return;
     switch (effect) {
-        case SoundEffect::Hit:
-            hitSound_.play();
-            break;
-        case SoundEffect::Death:
-            deathSound_.play();
-            break;
-        case SoundEffect::LevelUp:
-            levelUpSound_.play();
-            break;
-        case SoundEffect::Dodge:
-            dodgeSound_.play();
-            break;
-        case SoundEffect::Select:
-            selectSound_.play();
-            break;
+        case SoundEffect::Hit: playFamily("blunt", 85.f); break;
+        case SoundEffect::Death: playFamily("death"); break;
+        case SoundEffect::LevelUp: playFamily("levelup", 90.f); break;
+        case SoundEffect::Dodge: playDodge(); break;
+        case SoundEffect::Select: break;
     }
 }
 

@@ -1,19 +1,25 @@
 #pragma once
 
+#include <deque>
+#include <map>
+#include <memory>
+#include <random>
+#include <string>
+#include <vector>
 #include <SFML/Audio.hpp>
+
+#include "core/CombatSounds.hpp"
 
 namespace engine {
 
-// Which sound effect to play -- see SoundManager::play(). One entry per
-// generated WAV file in assets/sounds/ (see
-// ARCHITECTURE_DECISIONS.md, "Sound effects," for why they're
-// synthesized rather than sourced from an external library).
+// The game's non-combat moments -- see SoundManager::play(). Each is a
+// family in assets/sounds/sfx/ (assets/sounds/CREDITS.txt).
 enum class SoundEffect {
-    Hit,     // a talent or attack lands (either side, on either side of the fight)
-    Death,   // the player or a monster dies
-    LevelUp, // the player levels up
+    Hit,     // a plain blow: striking a landmark
+    Death,   // the player dies
+    LevelUp, // the player levels up, or gains a power
     Dodge,   // an attack was dodged -- either side
-    Select,  // a UI choice: class selection, the AbilityChoice screen
+    Select,  // a UI choice: silent, the click is enough
 };
 
 // Background music (assets/music/CREDITS.txt). Each track loops; a change
@@ -34,17 +40,26 @@ enum class MusicTrack { None, Title, Town, Barracks, Sanctum, Crypts, Boss };
 // presentation detail; the game must stay fully playable with it
 // silent, never a hard requirement anything else depends on.
 //
-// One sf::Sound per effect, not a pool of interchangeable ones: this is
-// a turn-based game, not real-time action, so sound events are
-// naturally spaced out enough that re-triggering the same effect's
-// single Sound instance (restarting it if it happens to still be
-// playing) is entirely adequate -- deliberately simpler than building a
-// pool for overlapping playback this project doesn't need.
+// Every sound plays through a small pool of voices, so a hit, its crit
+// layer and a level-up can overlap.
 class SoundManager {
 public:
     SoundManager();
 
     void play(SoundEffect effect);
+
+    // Combat sounds from assets/sounds/sfx/<family>_<n>.ogg: a random
+    // variant (never the same one twice running) at a slightly varied pitch.
+    // The same family twice within a few hundredths of a second plays once,
+    // so a spell striking six foes doesn't stack into one deafening blast.
+    void playFamily(const std::string& family, float volume = 100.f, float pitch = 1.f);
+    // A landed hit: the family's own sound, and on a critical its heavier layer.
+    void playHit(HitSound sound, bool critical, bool targetBleeds);
+    void playDodge();
+    // A monster's voice: kind from monsterVoice(), event "alert", "hurt" or
+    // "death". One voice of each kind at a time, so a pack shouts once.
+    void playVoice(const char* kind, const char* event);
+    bool hasFamily(const std::string& family) const { return families_.count(family) > 0; }
 
     // Music: setMusic() picks the track to fade to (a no-op if it's
     // already the one playing); updateMusic() advances the crossfade and
@@ -63,17 +78,15 @@ private:
     MusicTrack target_ = MusicTrack::None;
     bool musicEnabled_ = true;
 
-    sf::SoundBuffer hitBuffer_;
-    sf::SoundBuffer deathBuffer_;
-    sf::SoundBuffer levelUpBuffer_;
-    sf::SoundBuffer dodgeBuffer_;
-    sf::SoundBuffer selectBuffer_;
-
-    sf::Sound hitSound_;
-    sf::Sound deathSound_;
-    sf::Sound levelUpSound_;
-    sf::Sound dodgeSound_;
-    sf::Sound selectSound_;
+    // Combat families. Buffers live in deques so their addresses never move
+    // while a voice is playing them.
+    std::map<std::string, std::deque<sf::SoundBuffer>> families_;
+    std::map<std::string, int> lastVariant_;
+    std::map<std::string, float> lastPlayed_;
+    std::vector<std::unique_ptr<sf::Sound>> voices_;
+    std::size_t nextVoice_ = 0;
+    sf::Clock clock_;
+    std::mt19937 rng_{std::random_device{}()}; // its own: sound never touches combat randomness
 };
 
 } // namespace engine

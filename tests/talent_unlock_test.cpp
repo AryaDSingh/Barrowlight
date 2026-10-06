@@ -9,6 +9,7 @@
 #include "ai/NullAIBehavior.hpp"
 #include "entities/MageTalents.hpp"
 #include "entities/TalentCatalog.hpp"
+#include "core/CombatSounds.hpp"
 #include <map>
 #include "entities/Monster.hpp"
 #include "entities/PlayerClassFactory.hpp"
@@ -156,6 +157,22 @@ int main() {
         check(pilotsForked,"The forked trees: seven nodes, 3-rank actives, 1-rank passives, two forks");
         check(findTalentDefinition("juggernaut.iron_skin")->maxRank()==1,"Ascendancy nodes have a single rank");
         check(findTalentDefinition("juggernaut.iron_skin")->atRank(3).name=="Iron Skin","Asking past a node's last rank gives its last rank");
+    }
+    // --- Combat sounds: each hit sounds like what dealt it.
+    {
+        const auto talent=[](const char* id){ return findTalentDefinition(id)->ranks[0]; };
+        check(talentSound(talent("one_handed.quick_strike"),WeaponKind::OneHanded)==HitSound::Slash,"A sword strike slashes");
+        check(talentSound(talent("mace.crush"),WeaponKind::Mace)==HitSound::Blunt,"A mace crushes");
+        check(talentSound(talent("bow.quick_shot"),WeaponKind::Bow)==HitSound::Pierce,"An arrow pierces");
+        check(talentSound(talent("fire.fireball"),WeaponKind::Staff)==HitSound::Fire && talentSound(talent("ice.shard"),WeaponKind::Staff)==HitSound::Frost,
+              "Spells sound like their element");
+        check(talentSound(basicAttack(),WeaponKind::None)==HitSound::Blunt,"Bare fists thump");
+        check(std::string(critFamily(HitSound::Slash,true))=="crit_gore" && std::string(critFamily(HitSound::Slash,false))=="crit_bone",
+              "A slashing crit sprays gore from the living and cracks bone from the dead");
+        check(std::string(critFamily(HitSound::Fire,true))=="crit_fire" && std::string(critFamily(HitSound::Blunt,true))=="crit_bone",
+              "Other crits take their own heavier layer");
+        check(monsterSound(MonsterType::Archer,false)==HitSound::Pierce && monsterSound(MonsterType::Ogre,false)==HitSound::Blunt,
+              "Monsters sound like what they are");
     }
     // --- Flat passives grow with their attribute; percentages don't.
     {

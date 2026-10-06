@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "core/CombatSounds.hpp"
 #include "core/SaveGame.hpp"
 #include "core/GameIcons.hpp"
 #include "core/ScreenLayout.hpp"
@@ -193,8 +194,9 @@ const char* floorSheet(FloorRegion region) { return region == FloorRegion::Barra
 SpriteFrame floorFrame(int x, int y, FloorRegion region) {
     const unsigned h = tileHash(x, y);
     if (region == FloorRegion::Barracks) {
-        // Mostly the plain slab, sometimes cracked, rarely the small bricks.
-        const int column = h % 7 == 0 ? 128 : h % 23 == 0 ? 64 : 96;
+        // The plain slab, rarely the small slabs. (The sheet's cracked slab
+        // reads as brick wall once tinted, so floors never use it.)
+        const int column = h % 23 == 0 ? 64 : 96;
         return {kEvilDungeon, sf::IntRect({column, 0}, {32, 32})};
     }
     // The cobble sheet's 7x4 interior blocks: purple rows start at 0,
@@ -1208,6 +1210,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             for (auto* m:struck) {
                 if (applyTalentDamage(slam,player_,*m)) {
                     flashActor(*m);
+                    soundManager_.playHit(HitSound::Blunt,lastHitWasCritical(),bleeds(m->type()));
                     if (talent.slamStun && m->stats().hp>0 && m->statusEffects().canReceiveStun()) m->statusEffects().apply({StatusEffectType::Stun,1,0});
                 }
                 checkAndHandleDeath(*m);
@@ -1251,7 +1254,11 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 if (near) struck.push_back(m.get());
             }
             for (auto* m:struck) {
-                if (applyTalentDamage(strike,player_,*m)) { flashActor(*m); if (talent.landingBurst) m->statusEffects().apply({StatusEffectType::Shock,4,0}); }
+                if (applyTalentDamage(strike,player_,*m)) {
+                    flashActor(*m);
+                    soundManager_.playHit(talent.landingBurst?HitSound::Lightning:talentSound(strike,WeaponKind::None),lastHitWasCritical(),bleeds(m->type()));
+                    if (talent.landingBurst) m->statusEffects().apply({StatusEffectType::Shock,4,0});
+                }
                 checkAndHandleDeath(*m);
             }
             if (talent.landingBurst) {
@@ -1415,6 +1422,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             const int hpBefore=target->stats().hp;
             const int burning=target->statusEffects().magnitudeOf(StatusEffectType::Burn);
             if (applyTalentDamage(hitTalent, player_, *target)) {
+                const bool critical=lastHitWasCritical();
                 landedAny=true; killedAny=killedAny || target->stats().hp<=0; ++hits;
                 if (talent.markOnHit && target->stats().hp>0) target->statusEffects().apply({StatusEffectType::Marked,3,1});
                 // Shadow Bolt at rank 3: a target in darkness is blinded too.
@@ -1549,7 +1557,13 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     log(target->name(), " is marked.");
                 log(player_.name(), " uses ", talent.name, " on ", target->name(), " (",
                     target->stats().hp, "/", target->stats().maxHp, " hp left)");
-                soundManager_.play(SoundEffect::Hit);
+                {
+                    // The hit sounds like what dealt it; a critical adds its heavier layer.
+                    const auto* held=player_.inventory().equipped(EquipmentSlot::Weapon);
+                    const auto* struck=dynamic_cast<const Monster*>(target);
+                    soundManager_.playHit(talentSound(talent,held && held->definition()?held->definition()->weaponKind:WeaponKind::None),
+                                          critical,!struck || bleeds(struck->type()));
+                }
                 if (target->stats().hp>0 && talent.pushDistance>0) {
                     const auto from=player_.position(), origin=target->position();
                     const Position direction{(origin.x>from.x)-(origin.x<from.x),(origin.y>from.y)-(origin.y<from.y)};
@@ -1621,7 +1635,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 checkAndHandleDeath(*target);
             } else {
                 log(target->name(), " dodges ", player_.name(), "'s ", talent.name, "!");
-                soundManager_.play(SoundEffect::Dodge);
+                soundManager_.playDodge();
             }
         }
 
@@ -1993,6 +2007,14 @@ void Application::processMonsterTurns() {
     if (mode_!=GameMode::GameOver) burstAfterimages();
 
     removeDeadMonsters();
+    // Monsters that just spotted you shout -- once, until they lose you again.
+    for (auto& m : monsters_) {
+        if (m->allied || m->stats().hp <= 0) continue;
+        if (m->tactics.alert == 0) { m->voicedAlert = false; continue; }
+        if (m->voicedAlert || exploredMap_.at(m->position().x, m->position().y) != Visibility::Visible) continue;
+        m->voicedAlert = true;
+        soundManager_.playVoice(monsterVoice(m->type()), "alert");
+    }
 }
 
 // Afterimage: the tiles you blinked from burst, striking everything beside them.
@@ -2009,7 +2031,7 @@ void Application::burstAfterimages() {
             if (!m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-at.x),std::abs(m->position().y-at.y))<=1) struck.push_back(m.get());
         for (auto* m:struck) {
             if (m->stats().hp<=0) continue;
-            if (applyTalentDamage(burst,player_,*m)) flashActor(*m);
+            if (applyTalentDamage(burst,player_,*m)) { flashActor(*m); soundManager_.playHit(HitSound::Arcane,lastHitWasCritical(),bleeds(m->type())); }
             checkAndHandleDeath(*m);
         }
     }
@@ -2086,7 +2108,10 @@ void Application::tickStorms() {
             if (visibleTile(p) && (p.x+p.y)%2==0) spawnVfx({Vfx::Kind::Puff,{p.x+.5f,p.y+.2f},{p.x+.5f,p.y+.8f},sf::Color(200,230,255),0,.5f,.6f});
         for (auto* m:struck) {
             if (m->stats().hp<=0) continue;
-            if (applyTalentDamage(storm.talent,player_,*m)) flashActor(*m);
+            if (applyTalentDamage(storm.talent,player_,*m)) {
+                flashActor(*m);
+                soundManager_.playHit(talentSound(storm.talent,WeaponKind::None),lastHitWasCritical(),bleeds(m->type()));
+            }
             checkAndHandleDeath(*m);
         }
         if (--storm.turns>0) storms_.push_back(std::move(storm));
@@ -2319,7 +2344,7 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                         checkAndHandleDeath(actor);
                     }
                     log(decision.target->name(), " dodges ", actor.name(), "'s attack!");
-                    soundManager_.play(SoundEffect::Dodge);
+                    soundManager_.playDodge();
                 } else {
                     int damage = decision.attackPower;
                     if (const auto* gloom = dynamic_cast<const Monster*>(&actor); gloom && gloom->type() == MonsterType::Gloomstalker)
@@ -2400,7 +2425,13 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     log(actor.name(), crit ? " critically hits " : " hits ", decision.target->name(),
                         " for ", damage, " (", decision.target->stats().hp, "/",
                         decision.target->stats().maxHp, " hp left)");
-                    soundManager_.play(SoundEffect::Hit);
+                    {
+                        // A monster's blow sounds like the monster; its critical adds the heavier layer.
+                        const auto* striker=dynamic_cast<const Monster*>(&actor);
+                        const auto* struck=dynamic_cast<const Monster*>(decision.target);
+                        soundManager_.playHit(striker?monsterSound(striker->type(),decision.scalingStat==ScalingStat::Intelligence):HitSound::Slash,
+                                              crit,!struck || bleeds(struck->type()));
+                    }
                     checkAndHandleDeath(*decision.target);
                 }
             }
@@ -2490,6 +2521,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
     if (actor.stats().hp > 0) {
         if(auto* m=dynamic_cast<Monster*>(&actor); m && !m->allied) {
             if(m->stats().hp<m->lastObservedHp) {
+                if(exploredMap_.at(m->position().x,m->position().y)==Visibility::Visible) soundManager_.playVoice(monsterVoice(m->type()),"hurt");
                 m->tactics.concealed=false;
                 if(m->tactics.alert==0) alertEnemyGroup(*m,m->position());
             }
@@ -2497,8 +2529,6 @@ void Application::checkAndHandleDeath(Actor& actor) {
         }
         return;
     }
-
-    soundManager_.play(SoundEffect::Death);
 
     if (&actor == &player_) {
         if (player_.talents().passiveValue(PassiveKind::Deathless,player_.stats()) &&
@@ -2508,6 +2538,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
             if (guard) player_.statusEffects().apply({StatusEffectType::Guard,2,guard});
             log("Death refuses you."); return;
         }
+        soundManager_.play(SoundEffect::Death);
         log("You have died!");
         // As of Prompt 17: a real GameOver screen instead of closing
         // the window outright. selectClass() (reachable from the
@@ -2521,6 +2552,8 @@ void Application::checkAndHandleDeath(Actor& actor) {
 
     auto* defeated = dynamic_cast<Monster*>(&actor);
     if (defeated && !defeated->claimDeath()) return;
+    if (defeated && exploredMap_.at(defeated->position().x,defeated->position().y)==Visibility::Visible)
+        soundManager_.playVoice(monsterVoice(defeated->type()),"death");
     if (defeated && !defeated->allied) {
         spreadWildfire(*defeated); shatterHoarfrost(*defeated); echoHexes(*defeated);
         if (player_.talents().passiveValue(PassiveKind::SoulHarvest,player_.stats())) {
