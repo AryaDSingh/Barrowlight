@@ -8,6 +8,7 @@
 #include <chrono>
 #include <set>
 #include "entities/TalentProgression.hpp"
+#include "core/Keywords.hpp"
 #include "entities/PlayerLeveling.hpp"
 #include "entities/Ascendancy.hpp"
 #include "entities/RunProgression.hpp"
@@ -2989,7 +2990,7 @@ struct ApplicationRewardsTestAccess {
                 all&=app.soundManager_.hasFamily(family);
             check(all,"Every combat sound family loads");
             bool voiced=true;
-            for (int t=0; t<=static_cast<int>(MonsterType::Mimic); ++t)
+            for (int t=0; t<=static_cast<int>(MonsterType::Forgemaster); ++t)
                 for (const char* event:{"alert","hurt","death"})
                     voiced&=app.soundManager_.hasFamily(std::string("voice_")+monsterVoice(static_cast<MonsterType>(t))+"_"+event);
             check(voiced,"Every monster has a voice for spotting you, pain and death");
@@ -3771,6 +3772,15 @@ struct ApplicationRewardsTestAccess {
         check(packsSafe && varied && rares && named,"500 generated floors: safe unique positions, opening packs, rare caps and new roster");
         check(!humans,"Goblins hold the Ruins: no human archers or torchbearers before the Crypts");
 
+        // --- Keywords: mechanics named in descriptions, explained on hover.
+    {
+        check(keywordFor("burns,") && std::string(keywordFor("burns,")->name)=="Burn" && keywordFor("Stunned.") && !keywordFor("sword"),
+              "A keyword is found in its word forms, past the punctuation around it");
+        const auto rally=keywordsIn(findTalentDefinition("warbanner.rally")->ranks[0].description);
+        check(!rally.empty() && std::string(rally.front()->name)=="Shaken","Rally Cry's description names Shaken");
+        const auto pommel=keywordsIn(findTalentDefinition("one_handed.pommel")->ranks[0].description);
+        check(pommel.size()==1 && std::string(pommel[0]->name)=="Stun","Each keyword is listed once");
+    }
         // The Encounter Lab: every class and build starts level 6 with the
         // same budget spent, in the same seeded rooms, and logs the attempt.
         {
@@ -3885,6 +3895,69 @@ struct ApplicationRewardsTestAccess {
             }
         }
         check(generatedSaves,"60 real generated class/floor saves parse successfully");
+
+        // The Ashen Foundry: locked until Grik's key, five floors of furnaces,
+        // heat, splitting golems and the Forgemaster at the bottom.
+        {
+            app.selectClass(PlayerClass::Warrior);
+            app.mode_=GameMode::Town;
+            app.travelFloor(kFoundryFirst,true);
+            check(app.mode_==GameMode::Town && app.currentFloor_!=kFoundryFirst,"The Foundry is locked without the Foreman's key");
+            app.mode_=GameMode::Playing; app.currentFloor_=3; app.regenerateLevel(77);
+            auto made=createMonster(MonsterType::GoblinCaptain,{app.player_.position().x+1,app.player_.position().y}); auto* grik=made.get();
+            app.scheduler_.add(*grik); app.monsters_.push_back(std::move(made));
+            grik->stats().hp=0; app.checkAndHandleDeath(*grik); app.removeDeadMonsters();
+            check(app.loreDrops_.size()==1 && app.loreDrops_[0].id=="foreman_key","Grik drops the Foreman's key");
+            app.player_.setPosition(app.loreDrops_[0].at); app.pickupItem();
+            check(app.foundryOpen(),"Taking the key opens the Foundry");
+            bool furnaces=true, saves=true, boss=false;
+            for (int floor=kFoundryFirst; floor<=kFoundryLast; ++floor) {
+                app.currentFloor_=floor; app.regenerateLevel(900+floor);
+                int count=0; for (const auto& p:app.props_) count+=p.kind==PropKind::Furnace;
+                furnaces=furnaces && count>=3;
+                for (const auto& m:app.monsters_) boss=boss || m->type()==MonsterType::Forgemaster;
+                if (floor==kFoundryFirst+1 || floor==kFoundryLast) {
+                    // Stand by a furnace, with a foe in view, for the snapshot.
+                    for (const auto& p:app.props_) if (p.kind==PropKind::Furnace) {
+                        for (int d=-1; d<=1; ++d) if (app.map_.isWalkable(p.pos.x+d,p.pos.y+1) && !app.isOccupied({p.pos.x+d,p.pos.y+1},nullptr)) { app.player_.setPosition({p.pos.x+d,p.pos.y+1}); break; }
+                        break;
+                    }
+                    if (floor==kFoundryLast && app.boss_) app.player_.setPosition({app.boss_->position().x,app.boss_->position().y+3});
+                    app.updateFieldOfView();
+                    snapshot(floor==kFoundryLast?"foundry-boss.png":"foundry.png");
+                }
+                const auto path=(output/"foundry.txt").string();
+                saves=saves && saveGame(app.captureState(false),path) && loadGame(path).has_value();
+            }
+            check(furnaces,"Every Foundry floor has its furnaces");
+            check(boss && app.boss_ && app.boss_->type()==MonsterType::Forgemaster,"The Forgemaster waits on the Foundry's last floor");
+            check(saves,"Every Foundry floor saves and loads");
+            // Heat: beside a furnace it builds, away it fades, water quenches, too much burns.
+            setup(PlayerClass::Warrior);
+            app.setProps({{PropKind::Furnace,{11,10}}}); app.map_.setTile(11,10,Tile{TileType::Wall,false,true});
+            for (int i=0;i<3;++i) app.tickHeat();
+            check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Heat)==3,"Beside a furnace, Heat builds by 1 a turn");
+            app.player_.setPosition({5,10}); app.tickHeat();
+            check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Heat)==2,"Away from it, Heat fades");
+            app.addHeat(10); const int hp=app.player_.stats().hp; app.tickHeat();
+            check(app.player_.stats().hp==hp-2,"At 10 Heat or more, it burns");
+            app.setSurface({5,10},SurfaceType::Water,0); app.tickHeat();
+            check(!app.player_.statusEffects().has(StatusEffectType::Heat),"Water quenches Heat at once");
+            app.clearSurfaces(); app.setProps({});
+            // Golems split; slaglings burn where they fall.
+            app.currentFloor_=kFoundryFirst;
+            auto golem=createMonster(MonsterType::SlagGolem,{12,10}); auto* g=golem.get(); app.scheduler_.add(*g); app.monsters_.push_back(std::move(golem));
+            g->stats().hp=0; app.checkAndHandleDeath(*g); app.removeDeadMonsters();
+            int slaglings=0; Monster* slag=nullptr;
+            for (auto& m:app.monsters_) if (m->type()==MonsterType::Slagling && m->stats().hp>0) { ++slaglings; slag=m.get(); }
+            check(slaglings==2,"A slain Slag Golem splits into two Slaglings");
+            if (slag) {
+                const auto at=slag->position();
+                slag->stats().hp=0; app.checkAndHandleDeath(*slag); app.removeDeadMonsters();
+                check(app.surfaceAt(at)==SurfaceType::Fire,"A slain Slagling leaves the ground burning");
+            }
+            app.currentFloor_=1;
+        }
 
         app.window_.close();
         std::cout << checks << " reward checks, " << failures << " failures.\n";

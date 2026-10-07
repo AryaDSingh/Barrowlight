@@ -54,6 +54,10 @@ void Application::readLore(std::size_t index) {
     if (player_.knowsLore(drop.id)) return;
     player_.lore.push_back(drop.id);
     soundManager_.playFamily("levelup", 70.f);
+    if (drop.id == "foreman_key") {
+        log("An iron key on a chain, stamped with a hammer and a flame.");
+        log("It opens the Ashen Foundry. Choose it from the dungeon menu in town.");
+    }
     if (drop.id == "warlord_standard") {
         log("Torn goblin silk on a broken spear, stitched under the Warlord's mark:");
         log("\"Plant it where you stand. Let them break on it.\"");

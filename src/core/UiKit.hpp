@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <optional>
 
 #include <SFML/Graphics.hpp>
@@ -54,6 +55,12 @@ public:
                       sf::Color color, Font f = Font::Body) const;
     std::vector<std::string> wrap(const std::string& str, float width, unsigned size, Font f = Font::Body) const;
     // Draws wrapped text, advancing y; lines past `bottom` are dropped.
+    // A paragraph whose highlighted words take their own colour, each
+    // underlined faintly; their boxes come back so a hover can explain them.
+    struct Highlight { sf::FloatRect box; std::string word; };
+    std::vector<Highlight> richParagraph(sf::RenderTarget& target, const std::string& str, float x, float& y, float width, unsigned size,
+                                         sf::Color color, const std::function<std::optional<sf::Color>(const std::string&)>& highlight,
+                                         Font f = Font::Body, float bottom = 100000.f) const;
     void paragraph(sf::RenderTarget& target, const std::string& str, float x, float& y, float width, unsigned size,
                    sf::Color color, Font f = Font::Body, float bottom = 100000.f) const;
 

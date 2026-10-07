@@ -35,6 +35,12 @@ enum class MonsterType {
     DrownedChorister, // a singing spirit whose bolts charge the water you stand in
     TheSleeper,       // the Cathedral's boss: floods, charges the water, heals in it
     Mimic,            // a chest that bites (save format 41)
+    // The Ashen Foundry (save format 43).
+    OrcSmith,         // hammer melee; each hit heats you
+    SlagGolem,        // slow and tough; splits into two Slaglings when it dies
+    Slagling,         // small and quick; leaves the ground burning where it dies
+    BellowsImp,       // fans the fires around it, and blows heat at you from range
+    Forgemaster,      // the Foundry's boss
 };
 
 // Darkvision: goblinkind, orcs, beasts and the undead see without light.
@@ -53,7 +59,8 @@ inline bool bleeds(MonsterType type) {
     switch (type) {
         case MonsterType::Skeleton: case MonsterType::SkeletonArcher: case MonsterType::SkeletonGuard:
         case MonsterType::CryptShade: case MonsterType::CryptSentinel: case MonsterType::Lich:
-        case MonsterType::Gloomstalker: case MonsterType::DrownedOne: case MonsterType::DrownedChorister: case MonsterType::TheSleeper: case MonsterType::Mimic: return false;
+        case MonsterType::Gloomstalker: case MonsterType::DrownedOne: case MonsterType::DrownedChorister: case MonsterType::TheSleeper: case MonsterType::Mimic:
+        case MonsterType::SlagGolem: case MonsterType::Slagling: case MonsterType::Forgemaster: return false;
         default: return true;
     }
 }

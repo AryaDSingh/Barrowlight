@@ -93,6 +93,9 @@ inline HitSound monsterSound(MonsterType type, bool magic) {
         case MonsterType::DrownedOne: case MonsterType::DeepLurker: case MonsterType::TheSleeper: return HitSound::Water;
         case MonsterType::Spider: return HitSound::Rot;
         case MonsterType::Mimic: return HitSound::Pierce;
+        case MonsterType::OrcSmith: case MonsterType::Forgemaster: return HitSound::Blunt;
+        case MonsterType::SlagGolem: return HitSound::Earth;
+        case MonsterType::Slagling: case MonsterType::BellowsImp: return HitSound::Fire;
         default: return magic ? HitSound::Arcane : HitSound::Slash;
     }
 }
@@ -101,7 +104,10 @@ inline HitSound monsterSound(MonsterType type, bool magic) {
 // assets/sounds/sfx/voice_<kind>_<alert|hurt|death>_<n>.ogg.
 inline const char* monsterVoice(MonsterType type) {
     switch (type) {
-        case MonsterType::Ogre: case MonsterType::GoblinWarlord: case MonsterType::OrcFirebrand: case MonsterType::Mimic: return "brute";
+        case MonsterType::Ogre: case MonsterType::GoblinWarlord: case MonsterType::OrcFirebrand: case MonsterType::Mimic:
+        case MonsterType::OrcSmith: case MonsterType::SlagGolem: case MonsterType::Forgemaster: return "brute";
+        case MonsterType::Slagling: return "drowned"; // it bubbles
+        case MonsterType::BellowsImp: return "goblin";
         case MonsterType::Gloomstalker: return "beast";
         case MonsterType::Spider: return "spider";
         case MonsterType::Skeleton: case MonsterType::SkeletonArcher: case MonsterType::SkeletonGuard: case MonsterType::CryptSentinel: return "bones";

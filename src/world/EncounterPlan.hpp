@@ -58,6 +58,14 @@ inline std::vector<EncounterSpawn> planEncounters(const GeneratedDungeon& dungeo
         } else if (vignette == Vignette::GraveDig) {
             // Grave-robbers: goblins have come down to loot the dead.
             pack={MonsterType::GoblinRaider,MonsterType::GoblinStalker,MonsterType::Goblin}; cost=10;
+        } else if (foundryFloor(floorId)) {
+            switch(i%5) {
+                case 0: pack={MonsterType::OrcSmith,MonsterType::OrcSmith,MonsterType::BellowsImp}; cost=11; break;
+                case 1: pack={MonsterType::SlagGolem,MonsterType::Slagling,MonsterType::Slagling}; cost=11; break;
+                case 2: pack={MonsterType::OrcSmith,MonsterType::OrcFirebrand,MonsterType::Slagling}; cost=10; break;
+                case 3: pack={MonsterType::SlagGolem,MonsterType::BellowsImp,MonsterType::OrcSmith}; cost=12; break;
+                default: pack={MonsterType::Slagling,MonsterType::Slagling,MonsterType::BellowsImp}; cost=8; break;
+            }
         } else if (cathedral) {
             switch(i%5) {
                 case 0: pack={MonsterType::DrownedOne,MonsterType::DeepLurker,MonsterType::DrownedChorister}; cost=12; break;

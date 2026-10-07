@@ -9,6 +9,7 @@
 #include "core/GameIcons.hpp"
 #include "core/ScreenLayout.hpp"
 #include "entities/Ascendancy.hpp"
+#include "core/Keywords.hpp"
 #include "entities/TalentProgression.hpp"
 #include "entities/MonsterFactory.hpp"
 #include "entities/TalentCatalog.hpp"
@@ -36,6 +37,10 @@ void Application::onBossDefeated(const Monster& boss) {
     if (boss.type() == MonsterType::GoblinWarlord && !(player_.trialKeys & 1)) {
         player_.trialKeys |= 1;
         log("The Warlord drops the ", trialSigil(1), "! It opens the ", trialName(1), " at the obelisk in town.");
+    } else if (boss.type() == MonsterType::Forgemaster) {
+        log("The Forgemaster cools and cracks, and the Foundry's fires gutter low.");
+        grantUnique(boss.position());
+        log("Its stairs lead back to town.");
     } else if (boss.type() == MonsterType::TheSleeper) {
         log("The Sleeper Below sinks into the dark water, and the Cathedral falls silent.");
         grantUnique(boss.position());
@@ -279,11 +284,12 @@ void Application::renderAscendancyChoice() {
     for (const char* nodeId : chosen.nodes)
         if (const auto* d = findTalentDefinition(nodeId)) {
             ui_.text(window_, d->ranks[0].name, {dx, y}, 16, d->ranks[0].passive ? ui::kInfo : ui::kMagic, ui::Font::Bold); y += 22;
-            ui_.paragraph(window_, d->ranks[0].description, dx + 12, y, dw - 12, 14, ui::kMuted, ui::Font::Body, kAscendLearn.position.y - 10);
+            keywordParagraph(d->ranks[0].description, dx + 12, y, dw - 12, 14, ui::kMuted, kAscendLearn.position.y - 10);
             y += 4;
         }
     ui_.button(window_, kAscendLearn, std::string("Become a ") + chosen.name + " (Enter)", hovered(kAscendLearn), open, 16);
     ui_.button(window_, kAscendClose, "Later (Esc)", hovered(kAscendClose), true, 16);
+    drawKeywordTip();
 }
 
 void Application::renderAscendancy() {
@@ -323,7 +329,7 @@ void Application::renderAscendancy() {
         if (!t.passive) kind += "   " + std::to_string(t.manaCost) + " mana, cooldown " + std::to_string(t.cooldownTurns);
         ui_.text(window_, kind, {r.position.x + 84, r.position.y + 44}, 13, t.passive ? ui::kInfo : ui::kMagic, ui::Font::Bold);
         float y = r.position.y + 80;
-        ui_.paragraph(window_, t.description, r.position.x + 16, y, r.size.x - 32, 15, ui::kText, ui::Font::Body, r.position.y + r.size.y - 26);
+        keywordParagraph(t.description, r.position.x + 16, y, r.size.x - 32, 15, ui::kText, r.position.y + r.size.y - 26);
         if (learned) ui_.text(window_, "Learned", {r.position.x + r.size.x - 74, r.position.y + r.size.y - 26}, 14, ui::kUnique, ui::Font::Bold);
     }
     const auto* chosen = findTalentDefinition(a->nodes[ascendancySelection_]);
@@ -332,6 +338,7 @@ void Application::renderAscendancy() {
     ui_.button(window_, kAscendClose, "Close (Esc)", hovered(kAscendClose), true, 16);
     ui_.text(window_, "1-6 or click to choose. Your nodes are permanent. Y opens this screen.",
              {x + 30, kAscendLearn.position.y + 12}, 14, ui::kMuted);
+    drawKeywordTip();
 }
 
 // --- The trial obelisk in town ---------------------------------------------------------
@@ -388,4 +395,20 @@ void Application::renderTrialMenu() {
     ui_.button(window_, kTrialClose, "Leave (Esc)", hovered(kTrialClose), true, 16);
 }
 
+} // namespace engine
+
+namespace engine {
+void Application::keywordParagraph(const std::string& text, float x, float& y, float width, unsigned size, sf::Color color, float bottom) {
+    const auto mouse = mousePixel_ ? std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)) : std::nullopt;
+    for (const auto& h : ui_.richParagraph(window_, text, x, y, width, size, color, keywordColour, ui::Font::Body, bottom))
+        if (mouse && h.box.contains(*mouse)) { keywordTip_ = h.word; keywordTipAt_ = *mouse; }
+}
+
+// The keyword under the mouse, explained; drawn last so it sits on top.
+void Application::drawKeywordTip() {
+    if (keywordTip_.empty()) return;
+    if (const auto* k = keywordFor(keywordTip_))
+        ui_.tooltip(window_, {{k->name, k->color, 16, ui::Font::Bold}, {k->text, ui::kText, 14}}, keywordTipAt_, 280);
+    keywordTip_.clear();
+}
 } // namespace engine

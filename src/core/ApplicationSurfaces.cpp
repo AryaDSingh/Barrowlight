@@ -550,6 +550,13 @@ void Application::pushActor(Actor& target, Position direction, int distance, con
         }
         if (const int index = propIndexAt(dest.x, dest.y); index >= 0) {
             const auto kind = props_[static_cast<std::size_t>(index)].kind;
+            if (kind == PropKind::Furnace) {
+                log(target.name(), " is thrown against the furnace!");
+                target.stats().hp -= 3 + hard; flashActor(target);
+                target.statusEffects().apply({StatusEffectType::Burn, 3, 2});
+                if (&target == &player_) addHeat(3);
+                break;
+            }
             if (kind == PropKind::Brazier || kind == PropKind::ColdBrazier || kind == PropKind::OilBarrel) {
                 log(target.name(), " crashes into the ", propName(kind), "!");
                 knockOver(dest, direction, kind == PropKind::Brazier ? &target : nullptr);
@@ -852,7 +859,8 @@ void Application::seedSurfaces(unsigned seed) {
         if (p.x == player_.position().x && p.y == player_.position().y) return true;
         return std::any_of(monsters_.begin(), monsters_.end(), [&](const auto& m) { return m->position().x == p.x && m->position().y == p.y; });
     };
-    int braziers = std::uniform_int_distribution<int>(3, 5)(rng);
+    const bool foundry = foundryFloor(currentFloor_);
+    int braziers = foundry ? std::uniform_int_distribution<int>(6, 9)(rng) : std::uniform_int_distribution<int>(3, 5)(rng);
     for (int attempt = 0; attempt < 400 && braziers > 0; ++attempt) {
         const Position p = floor[std::uniform_int_distribution<std::size_t>(0, floor.size() - 1)(rng)];
         bool open = clearOf(p, 3) && !occupiedByActor(p) && surfaceAt(p) == SurfaceType::None;
@@ -860,7 +868,7 @@ void Application::seedSurfaces(unsigned seed) {
             for (int dx = -1; dx <= 1 && open; ++dx)
                 open = map_.isWalkable(p.x + dx, p.y + dy) && propIndexAt(p.x + dx, p.y + dy) < 0;
         if (!open) continue;
-        props.push_back({std::uniform_int_distribution<int>(0, 9)(rng) < 7 ? PropKind::Brazier : PropKind::ColdBrazier, p});
+        props.push_back({foundry ? PropKind::Furnace : std::uniform_int_distribution<int>(0, 9)(rng) < 7 ? PropKind::Brazier : PropKind::ColdBrazier, p});
         map_.setTile(p.x, p.y, Tile{TileType::Wall, false, true});
         setProps(props);
         --braziers;
@@ -993,6 +1001,17 @@ void Application::renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>
 
     }
     window_.draw(iron);
+    for (const auto& prop : props_) {
+        if (prop.kind != PropKind::Furnace || exploredMap_.at(prop.pos.x, prop.pos.y) == Visibility::Hidden) continue;
+        if (prop.pos.x < x0 || prop.pos.x >= x1 || prop.pos.y < y0 || prop.pos.y >= y1) continue;
+        const auto at = worldToScreen(prop.pos.x, prop.pos.y);
+        const int frame = (static_cast<int>(now * 3.f) + prop.pos.x + prop.pos.y) % 4;
+        sprites_.draw(window_, {"dcss/lava.png", sf::IntRect({frame * 32, 0}, {32, 32})}, at, kTile,
+                      exploredMap_.at(prop.pos.x, prop.pos.y) == Visibility::Visible ? sf::Color::White : sf::Color(110, 90, 80));
+        sf::RectangleShape rim({kTile - 2.f, kTile - 2.f}); rim.setPosition({at.x + 1.f, at.y + 1.f});
+        rim.setFillColor(sf::Color::Transparent); rim.setOutlineThickness(2.f); rim.setOutlineColor(sf::Color(48, 40, 38));
+        window_.draw(rim);
+    }
     for (const auto& prop : props_)
         if (prop.kind == PropKind::Brazier && exploredMap_.at(prop.pos.x, prop.pos.y) == Visibility::Visible &&
             prop.pos.x >= x0 && prop.pos.x < x1 && prop.pos.y >= y0 && prop.pos.y < y1) {

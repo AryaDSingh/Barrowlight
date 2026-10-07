@@ -6,10 +6,16 @@ inline constexpr int kRunFinalFloor=20;
 // Goblin Warlord. Its floors are numbered 21-26 so every floor has one id,
 // but they are as dangerous as floors 7-12 (floorDepth). Its last floor
 // holds the Sleeper Below; its stairs lead back to town.
-inline constexpr int kCathedralFirst=21, kCathedralLast=26, kMaxFloorId=26;
+inline constexpr int kCathedralFirst=21, kCathedralLast=26;
 inline bool cathedralFloor(int floor) { return floor>=kCathedralFirst && floor<=kCathedralLast; }
+// The Ashen Foundry: a side dungeon of five floors, opened by the Foreman's
+// key that Grik the Packleader carries. As dangerous as Ruins 6-10; the
+// Forgemaster waits on its last floor, and its stairs lead back to town.
+inline constexpr int kFoundryFirst=27, kFoundryLast=31, kMaxFloorId=31;
+inline bool foundryFloor(int floor) { return floor>=kFoundryFirst && floor<=kFoundryLast; }
+inline bool sideDungeonFloor(int floor) { return cathedralFloor(floor) || foundryFloor(floor); }
 // How deep a floor is for difficulty, loot and rewards.
-inline int floorDepth(int floor) { return cathedralFloor(floor) ? floor-kCathedralFirst+7 : floor; }
+inline int floorDepth(int floor) { return cathedralFloor(floor) ? floor-kCathedralFirst+7 : foundryFloor(floor) ? floor-kFoundryFirst+6 : floor; }
 // Two pools, like ToME's class and generic points: ability points (four at
 // level 1, then one a level) for the class trees, and utility points (two
 // at level 1, then one a level) for the utility trees.

@@ -1,4 +1,5 @@
 #include "core/Application.hpp"
+#include "core/Keywords.hpp"
 #include "entities/RunProgression.hpp"
 #include "core/GameIcons.hpp"
 #include "entities/TalentProgression.hpp"
@@ -203,8 +204,12 @@ void Application::handleTreeMouse(const sf::Event& event) {
 }
 
 // The resonance strip sits above the details panel, right to left from Continue.
+// Resonance icons run left from the Continue button, closing up when there
+// are many so they never reach the point counters.
 sf::FloatRect Application::resonanceRect(std::size_t visible) const {
-    return {{1088.f-46.f*static_cast<float>(visible+1),18.f},{38.f,38.f}};
+    const float count=static_cast<float>(std::max<std::size_t>(1,visibleResonances().size()));
+    const float stride=std::min(46.f,(1088.f-560.f)/count), side=std::min(38.f,stride-4.f);
+    return {{1088.f-stride*static_cast<float>(visible+1),18.f+(38.f-side)/2},{side,side}};
 }
 std::vector<std::size_t> Application::visibleResonances() const {
     std::vector<std::size_t> shown;
@@ -341,23 +346,25 @@ void Application::renderTalentTrees() {
     ui_.heading(window_,"Talents",{28,16},28);
     // Point counters, like ToME's boxed "Class points: 0" tabs.
     float x=200;
-    for(const auto& [label,value]:{std::pair<std::string,int>{"Level",player_.level()},{"Tree points",player_.treePoints()},
-                                   {"Ability points",player_.abilityPoints()},{"Utility points",player_.utilityPoints()}}) {
-        const std::string text=label+": "+std::to_string(value);
+    for(const auto& [label,value]:{std::pair<std::string,int>{"Level",player_.level()},{"Tree",player_.treePoints()},
+                                   {"Ability",player_.abilityPoints()},{"Utility",player_.utilityPoints()}}) {
+        const std::string text=label+" "+std::to_string(value);
         const sf::FloatRect box{{x,20},{ui_.textWidth(text,16,ui::Font::Bold)+24,30}};
         ui_.inset(window_,box,sf::Color(140,108,62));
         ui_.textCentered(window_,text,box,16,ui::kGold,ui::Font::Bold);
         x+=box.size.x+10;
     }
-    // Your colours: plain counts, in their own colour.
+    // Your colours: plain counts, in their own colour, up to the resonances.
     x+=6;
+    const auto shownResonances=visibleResonances();
+    const float colourLimit=shownResonances.empty()?832.f:resonanceRect(shownResonances.size()-1).position.x-8;
     for (int a=1;a<=static_cast<int>(Affinity::Rot);++a) {
         const auto affinity=static_cast<Affinity>(a);
         const int points=affinityPoints(player_,affinity);
         if (!points) continue;
         const auto info=affinityInfo(affinity);
         const std::string text=std::string(info.name)+" "+std::to_string(points);
-        if (x+ui_.textWidth(text,15,ui::Font::Bold)>832) break;
+        if (x+ui_.textWidth(text,15,ui::Font::Bold)>colourLimit) break;
         ui_.text(window_,text,{x,26},15,sf::Color(info.r,info.g,info.b),ui::Font::Bold);
         x+=ui_.textWidth(text,15,ui::Font::Bold)+14;
     }
@@ -471,7 +478,7 @@ void Application::renderTalentTrees() {
             left,y,width,14,active?ui::kGood:ui::kBad);
     }
     y+=4;
-    ui_.paragraph(window_,veiled?hybridRequirement(player_,tree.id):t0.description,left,y,width,15,ui::kText,ui::Font::Body,292);
+    keywordParagraph(veiled?hybridRequirement(player_,tree.id):t0.description,left,y,width,15,ui::kText,292);
     y=298;
     // Rank table.
     const char* headings[]{"Rank","Damage","Mana","Cooldown","Move","Extra"};
@@ -535,9 +542,11 @@ void Application::renderTalentTrees() {
             ui_.tooltip(window_,{{"???",ui::kGold,17,ui::Font::Title},{hybridRequirement(player_,hoverTree.id),ui::kText,14}},*mouse,300);
             continue;
         }
-        ui_.tooltip(window_,{{hd.ranks[0].name,ui::kGold,17,ui::Font::Title},
+        std::vector<ui::Line> lines{{hd.ranks[0].name,ui::kGold,17,ui::Font::Title},
             {"Rank "+std::to_string(player_.talents().rankOf(hd.id))+" of "+std::to_string(hd.maxRank())+(hd.ranks[0].passive?", passive":""),ui::kMuted,13},
-            {hd.ranks[0].description,ui::kText,14},{"Click to see ranks and learn it.",ui::kInfo,13}},*mouse,300);
+            {hd.ranks[0].description,ui::kText,14},{"Click to see ranks and learn it.",ui::kInfo,13}};
+        appendKeywordLines(lines,hd.ranks[0].description);
+        ui_.tooltip(window_,lines,*mouse,300);
     }
 
     // --- Hotbar binding dialog -------------------------------------------------
@@ -560,6 +569,7 @@ void Application::renderTalentTrees() {
             else if(known) ui_.icon(window_,talentIcon(*known),{{rect.position.x+12,rect.position.y+12},{50,50}},ui::kText);
         }
     }
+    drawKeywordTip();
 }
 
 float Application::enemyStealthDetectionChance(const Actor& enemy) const {

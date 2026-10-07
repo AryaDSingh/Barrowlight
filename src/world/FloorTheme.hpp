@@ -15,6 +15,9 @@ struct FloorTheme {
 
 // Derived from the already-saved floor number; no extra save state or RNG.
 inline FloorTheme floorTheme(int floor) {
+    if (foundryFloor(floor)) return {FloorRegion::Barracks,"Forge Halls",
+        "The forge the goblins stole their steel from. It never stopped burning.",
+        {44,34,32},{92,70,60},{240,120,50}};
     if (cathedralFloor(floor)) return {FloorRegion::Crypts,"Drowned Cathedral",
         "A sunken church. Black water fills its naves, and something below still sings.",
         {30,52,60},{50,82,90},{90,200,190}};

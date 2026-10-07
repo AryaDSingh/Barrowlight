@@ -127,6 +127,11 @@ sf::Color monsterColor(MonsterType type) {
         case MonsterType::DrownedChorister: return sf::Color(150, 210, 230);
         case MonsterType::TheSleeper: return sf::Color(120, 230, 200);
         case MonsterType::Mimic: return sf::Color(190, 130, 70);
+        case MonsterType::OrcSmith: return sf::Color(200, 90, 60);
+        case MonsterType::SlagGolem: return sf::Color(110, 90, 80);
+        case MonsterType::Slagling: return sf::Color(240, 110, 50);
+        case MonsterType::BellowsImp: return sf::Color(220, 70, 50);
+        case MonsterType::Forgemaster: return sf::Color(250, 120, 40);
     }
     return sf::Color(190, 190, 190); // unreachable -- all enum values handled above
 }
@@ -191,6 +196,7 @@ constexpr SpriteFrame kDoorFrame{kTileset, sf::IntRect({112, 64}, {16, 32})};
 // per tile by a position hash, so the floor doesn't visibly repeat but
 // doesn't shimmer between frames either.
 const char* floorSheet(FloorRegion region) { return region == FloorRegion::Barracks ? kEvilDungeon : kCobbles; }
+constexpr const char* kVolcanicFloor = "dcss/volcanic_floor.png";
 
 SpriteFrame floorFrame(int x, int y, FloorRegion region) {
     const unsigned h = tileHash(x, y);
@@ -225,6 +231,7 @@ std::pair<SpriteFrame, const char*> propFrame(PropKind kind) {
         case PropKind::Bookcase: return {{kTileset, sf::IntRect({368, 240}, {16, 48})}, kTileset};
         case PropKind::Sarcophagus: return {{kTileset, sf::IntRect({416, 304}, {32, 32})}, kTileset};
         case PropKind::Idol: return {{kTileset, sf::IntRect({336, 304}, {16, 32})}, kTileset};
+        case PropKind::Furnace: return {{kTileset, sf::IntRect({448, 304}, {16, 16})}, kTileset}; // blank: drawn by renderSurfaces
     }
     return {{kTileset, sf::IntRect({64, 304}, {16, 16})}, kTileset};
 }
@@ -376,6 +383,12 @@ MonsterLook monsterLook(MonsterType type) {
         case MonsterType::TheSleeper: return {{"dcss/kraken_head.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color(170, 205, 200), 2.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
         // The open chest, flushed red: its lid is a jaw now.
         case MonsterType::Mimic: return {{"calciumtrice/tiles/dungeon_tileset_calciumtrice.png", sf::IntRect({48, 304}, {16, 16})}, sf::Color(240, 175, 160), 1.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
+        // The Ashen Foundry (Stone Soup tiles).
+        case MonsterType::OrcSmith: return {{"dcss/orc_warlord.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color::White, 1.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
+        case MonsterType::SlagGolem: return {{"dcss/iron_elemental.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color(255, 210, 190), 1.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
+        case MonsterType::Slagling: return {{"dcss/jelly.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color::White, .8f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
+        case MonsterType::BellowsImp: return {{"dcss/imp.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color::White, .9f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
+        case MonsterType::Forgemaster: return {{"dcss/molten_gargoyle.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color::White, 2.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
         case MonsterType::GoblinWarlord: return {idleFrame("calciumtrice/monsters/GreyMinotaur.png", 0, 48, 52)};
         case MonsterType::Lich: return {idleFrame("calciumtrice/monsters/Death.png")};
         case MonsterType::GoblinCaptain: return {idleFrame("calciumtrice/monsters/ArmourPsionicGoblin.png")};
@@ -1970,6 +1983,11 @@ void Application::processMonsterTurns() {
                                 if (intent.contains({x,y}) && hasLineOfFire(map_,intent.target,{x,y}) && (x+y)%2==0)
                                     setSurface({x,y},SurfaceType::Fire,kSpilledFireTurns);
                     }
+                    if (intent.kind==IntentKind::MagicStrike && monster->type()==MonsterType::Forgemaster) {
+                        for (int y=intent.target.y-intent.radius;y<=intent.target.y+intent.radius;++y)
+                            for (int x=intent.target.x-intent.radius;x<=intent.target.x+intent.radius;++x)
+                                if (intent.contains({x,y}) && hasLineOfFire(map_,intent.target,{x,y})) setSurface({x,y},SurfaceType::Fire,kSpilledFireTurns);
+                    }
                     if (intent.kind==IntentKind::MagicStrike && monster->type()==MonsterType::Bomber) {
                         std::vector<Position> blast;
                         for (int y=intent.target.y-intent.radius;y<=intent.target.y+intent.radius;++y)
@@ -2045,13 +2063,19 @@ void Application::processMonsterTurns() {
                         decision.attackPower=decision.attackPower*(100-shaken)/100;
                     essenceStrike(*monster,decision);
                     labEnemyDecision(*monster,decision);
+                    if (monster->type()==MonsterType::BellowsImp) fanFires(monster->position());
+                    // At half its life the Forgemaster calls slaglings out of the furnaces.
+                    if (monster->type()==MonsterType::Forgemaster && !forgeSummoned_ && monster->stats().hp*2<=monster->stats().maxHp) {
+                        forgeSummoned_=true; foundryDeath(*monster);
+                    }
                     const bool warlord=monster && monster->type()==MonsterType::GoblinWarlord;
                     const bool lich=monster && monster->type()==MonsterType::Lich;
-                    const bool blast=monster && (monster->type()==MonsterType::Bomber || monster->type()==MonsterType::OssuaryWarden || warlord) && decision.type==AIActionType::UseAbility;
+                    const bool forge=monster && monster->type()==MonsterType::Forgemaster;
+                    const bool blast=monster && (monster->type()==MonsterType::Bomber || monster->type()==MonsterType::OssuaryWarden || warlord || forge) && decision.type==AIActionType::UseAbility;
                     const bool slam=monster && monster->type()==MonsterType::Ogre && decision.type==AIActionType::Attack &&
                         decision.effectToApply && decision.effectToApply->type==StatusEffectType::Stun;
                     const bool guard=monster && monster->type()==MonsterType::SkeletonGuard;
-                    const bool heavy=decision.type==AIActionType::Attack && (guard || (warlord && actor->stats().hp*10<=actor->stats().maxHp*3));
+                    const bool heavy=decision.type==AIActionType::Attack && (guard || forge || (warlord && actor->stats().hp*10<=actor->stats().maxHp*3));
                     const bool bolt=lich && decision.type==AIActionType::Attack;
                     const bool summon=lich && decision.type==AIActionType::Summon;
                     if (blast || slam || heavy || bolt || summon) {
@@ -2284,6 +2308,7 @@ void Application::advanceTurnsUntilPlayerCanAct() {
             fireEcho();
             tickStorms();
             tickBanner();
+            tickHeat();
             return; // genuinely the player's turn now
         }
         log("You are stunned and lose a turn!");
@@ -2518,6 +2543,9 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
 
             // A dodged hit lands no on-hit effect either -- avoiding the
             // blow avoids the poison that would have ridden in on it.
+            // The Foundry's smiths and imps heat you with every blow that lands.
+            if (const auto* heater=dynamic_cast<const Monster*>(&actor); !dodged && decision.target == &player_ && heater &&
+                (heater->type() == MonsterType::OrcSmith || heater->type() == MonsterType::BellowsImp)) addHeat(2);
             if (!dodged && decision.effectToApply.has_value() && decision.target->stats().hp > 0) {
                 const bool blocked=decision.effectToApply->type==StatusEffectType::Stun && !decision.target->statusEffects().canReceiveStun();
                 const bool armourBlocked=decision.effectToApply->type==StatusEffectType::Stun && !blocked && armourResistsStun(*decision.target);
@@ -2636,6 +2664,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
     if (defeated && !defeated->claimDeath()) return;
     if (defeated && exploredMap_.at(defeated->position().x,defeated->position().y)==Visibility::Visible)
         soundManager_.playVoice(monsterVoice(defeated->type()),"death");
+    if (defeated && !defeated->allied) foundryDeath(*defeated);
     if (defeated && !defeated->allied) {
         spreadWildfire(*defeated); shatterHoarfrost(*defeated); echoHexes(*defeated);
         if (player_.talents().passiveValue(PassiveKind::SoulHarvest,player_.stats())) {
@@ -2928,6 +2957,7 @@ void Application::computeLight() {
             litTiles_[static_cast<std::size_t>(item->position().y * map_.width() + item->position().x)] = 1;
     // Braziers, and burning ground.
     for (const auto& prop : props_) if (prop.kind == PropKind::Brazier) light(prop.pos, 3, fire, 3.6f, true);
+    for (const auto& prop : props_) if (prop.kind == PropKind::Furnace) light(prop.pos, 4, sf::Color(255, 130, 50), 4.2f, true);
     for (const auto& decal : decals_) if (decal.kind == DecalKind::Candle) light(decal.pos, 2, sf::Color(255, 185, 110), 2.2f, true);
     if (surfaces_.size() == litTiles_.size())
         for (int y = 0; y < map_.height(); ++y)
@@ -3036,7 +3066,7 @@ void Application::regenerateLevel(unsigned int seed) {
     // kFirstBossFloor (5) for now -- the actual Lich (see ROADMAP.md)
     // is a separate, later piece of work; this gets the full 10-floor
     // structure and victory gating correct end to end first.
-    params.includeBossRoom = (currentFloor_ == kFirstBossFloor || currentFloor_ == 10 || currentFloor_ == kFinalFloor || currentFloor_ == kCathedralLast);
+    params.includeBossRoom = (currentFloor_ == kFirstBossFloor || currentFloor_ == 10 || currentFloor_ == kFinalFloor || currentFloor_ == kCathedralLast || currentFloor_ == kFoundryLast);
     params.cathedral=cathedralFloor(currentFloor_);
     params.includeVault=currentFloor_>=3 && !params.includeBossRoom && nextItemId_<=std::numeric_limits<std::uint64_t>::max()-3;
     const GeneratedDungeon dungeon = generateDungeon(params, seed);
@@ -3050,7 +3080,7 @@ void Application::regenerateLevel(unsigned int seed) {
 
     map_ = dungeon.map;
     actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN; vfx_.clear(); hitFlash_.clear();
-    vfx_.clear(); hitFlash_.clear(); lightOrbs_.clear(); loreDrops_.clear(); banner_.reset();
+    vfx_.clear(); hitFlash_.clear(); lightOrbs_.clear(); loreDrops_.clear(); banner_.reset(); forgeSummoned_=false;
     setProps(dungeon.props); pillarTurns_.clear(); traps_.clear();
 
     player_.setPosition(dungeon.playerStart);
@@ -3081,7 +3111,7 @@ void Application::regenerateLevel(unsigned int seed) {
         // the true final fight, not a placeholder like it was before
         // this was actually built.
         const MonsterType bossType =
-            currentFloor_ == kCathedralLast ? MonsterType::TheSleeper : (currentFloor_ >= 10) ? MonsterType::Lich : MonsterType::GoblinWarlord;
+            currentFloor_ == kCathedralLast ? MonsterType::TheSleeper : currentFloor_ == kFoundryLast ? MonsterType::Forgemaster : (currentFloor_ >= 10) ? MonsterType::Lich : MonsterType::GoblinWarlord;
         Position bossPosition=dungeon.bossRoomCenter;
         auto startDistance=[&](Position p) {
             const int dx=p.x-dungeon.playerStart.x,dy=p.y-dungeon.playerStart.y;
@@ -3715,7 +3745,8 @@ void Application::render() {
     // Floors, wall faces and decorations all come from the dungeon tileset,
     // so each pass is one batched draw call.
     const sf::Texture* tileset = sprites_.texture(kTileset);
-    const sf::Texture* floorTexture = sprites_.texture(floorSheet(theme.region));
+    const bool foundry = foundryFloor(currentFloor_);
+    const sf::Texture* floorTexture = sprites_.texture(foundry ? kVolcanicFloor : floorSheet(theme.region));
     sf::VertexArray wallTops(sf::PrimitiveType::Triangles), dais(sf::PrimitiveType::Triangles);
     // The cobble art carries its own colour, so it gets a soft, slightly
     // desaturating tint rather than the full theme colour.
@@ -3763,7 +3794,8 @@ void Application::render() {
                     quad(tops, at, {kTileSize, 6}, lip, sf::Color(6, 6, 10), true);
                 continue;
             }
-            if (floorTexture) SpriteAtlas::append(floors, floorFrame(x, y, theme.region), at, kTileSize, shadeFor(vis, floorTint));
+            if (floorTexture) SpriteAtlas::append(floors, foundry ? SpriteFrame{kVolcanicFloor, sf::IntRect({static_cast<int>(tileHash(x, y) % 7) * 32, 0}, {32, 32})}
+                                                          : floorFrame(x, y, theme.region), at, kTileSize, shadeFor(vis, foundry ? sf::Color(150, 138, 136) : floorTint));
             else {
                 sf::RectangleShape tileShape({kTileSize - 1.f, kTileSize - 1.f});
                 tileShape.setPosition(at);

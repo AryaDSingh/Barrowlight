@@ -118,6 +118,7 @@ void Application::planRoamers(unsigned seed) {
     if (floorDepth(currentFloor_) < kChampionDepth || roll(rng) >= kChampionChance) return;
     std::array<MonsterType, 3> band{MonsterType::Ogre, MonsterType::GoblinRaider, MonsterType::Shaman};
     if (cathedralFloor(currentFloor_)) band = {MonsterType::DeepLurker, MonsterType::DrownedOne, MonsterType::DrownedChorister};
+    else if (foundryFloor(currentFloor_)) band = {MonsterType::SlagGolem, MonsterType::OrcSmith, MonsterType::BellowsImp};
     else if (floorTheme(currentFloor_).region == FloorRegion::Crypts) band = {MonsterType::CryptSentinel, MonsterType::Skeleton, MonsterType::Bonecaller};
     int route = 0;
     for (int i = 1; i < static_cast<int>(points.size()); ++i)
@@ -163,6 +164,7 @@ void Application::spawnHunters() {
     const Position me = player_.position();
     std::array<MonsterType, 3> pack{MonsterType::GoblinRaider, MonsterType::GoblinStalker, MonsterType::Goblin};
     if (cathedralFloor(currentFloor_)) pack = {MonsterType::DeepLurker, MonsterType::DrownedOne, MonsterType::DeepLurker};
+    else if (foundryFloor(currentFloor_)) pack = {MonsterType::OrcSmith, MonsterType::Slagling, MonsterType::OrcSmith};
     else if (floorTheme(currentFloor_).region == FloorRegion::Crypts) pack = {MonsterType::Skeleton, MonsterType::CryptShade, MonsterType::SkeletonGuard};
     const MonsterTier tier = floorDepth(currentFloor_) >= 4 ? MonsterTier::Elite : MonsterTier::Base;
     std::mt19937 rng(static_cast<unsigned>(floorTurns_ * 2654435761u) ^ static_cast<unsigned>(me.x * 73 + me.y));

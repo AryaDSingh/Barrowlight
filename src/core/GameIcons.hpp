@@ -236,6 +236,7 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::Slowed: return "hourglass";
         case StatusEffectType::Shaken: return "shouting";
         case StatusEffectType::Steadfast: return "checked-shield";
+        case StatusEffectType::Heat: return "campfire";
     }
     return "aura";
 }

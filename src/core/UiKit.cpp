@@ -212,6 +212,34 @@ void Kit::paragraph(sf::RenderTarget& target, const std::string& str, float x, f
     }
 }
 
+std::vector<Kit::Highlight> Kit::richParagraph(sf::RenderTarget& target, const std::string& str, float x, float& y, float width, unsigned size,
+                                               sf::Color color, const std::function<std::optional<sf::Color>(const std::string&)>& highlight,
+                                               Font f, float bottom) const {
+    std::vector<Highlight> found;
+    const float lineHeight = std::round(font(f).getLineSpacing(size));
+    const float space = textWidth(" ", size, f);
+    for (const auto& line : wrap(str, width, size, f)) {
+        if (y + lineHeight <= bottom) {
+            float cx = x;
+            std::size_t i = 0;
+            while (i <= line.size()) {
+                const auto end = std::min(line.find(' ', i), line.size());
+                const std::string word = line.substr(i, end - i);
+                const float w = textWidth(word, size, f);
+                if (const auto c = highlight(word)) {
+                    text(target, word, {cx, y}, size, *c, f);
+                    rect(target, {{cx, y + lineHeight - 3.f}, {w, 1.f}}, sf::Color(c->r, c->g, c->b, 110));
+                    found.push_back({{{cx, y}, {w, lineHeight}}, word});
+                } else text(target, word, {cx, y}, size, color, f);
+                cx += w + space;
+                i = end + 1;
+            }
+        }
+        y += lineHeight;
+    }
+    return found;
+}
+
 void Kit::stone(sf::RenderTarget& target, sf::FloatRect r, sf::Color shade) const {
     flushQuads(target);
     sf::RectangleShape shape(r.size);

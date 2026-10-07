@@ -46,7 +46,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 42;
+constexpr int kSaveFormatVersion = 43;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -103,7 +103,7 @@ bool validItems(const SaveGameState& state) {
     }
     const int guardCount=static_cast<int>(std::count_if(state.monsters.begin(),state.monsters.end(),[](const auto& m){return m.vaultGuard;}));
     if (state.vaultExists) {
-        if (state.currentFloor<3 || state.currentFloor==5 || state.currentFloor==10 || state.currentFloor==kRunFinalFloor || state.currentFloor==kCathedralLast ||
+        if (state.currentFloor<3 || state.currentFloor==5 || state.currentFloor==10 || state.currentFloor==kRunFinalFloor || state.currentFloor==kCathedralLast || state.currentFloor==kFoundryLast ||
             !state.map.isWalkable(state.vaultCenter.x,state.vaultCenter.y) ||
             !state.map.inBounds(state.vaultEntrance.x,state.vaultEntrance.y) ||
             state.map.isWalkable(state.vaultEntrance.x,state.vaultEntrance.y)!=state.vaultOpened ||
@@ -345,7 +345,7 @@ bool readStatusEffects(std::istream& in, std::vector<StatusEffectInstance>& effe
         if (!(in >> type >> turnsRemaining >> magnitude)) {
             return false;
         }
-        if (type<0 || type>static_cast<int>(StatusEffectType::Steadfast) || turnsRemaining<1 || turnsRemaining>10000 || magnitude<0 || magnitude>10000) return false;
+        if (type<0 || type>static_cast<int>(StatusEffectType::Heat) || turnsRemaining<1 || turnsRemaining>10000 || magnitude<0 || magnitude>10000) return false;
         if (type==static_cast<int>(StatusEffectType::Marked) && magnitude!=1) return false;
         effects.push_back(
             StatusEffectInstance{static_cast<StatusEffectType>(type), turnsRemaining, magnitude});
@@ -598,7 +598,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         int isBoss = 0;
         int tier = 0;
         if (!(in >> type >> m.position.x >> m.position.y >> m.hp >> m.maxHp >> isBoss >> tier >> m.rewardsEligible) ||
-            tier < 0 || tier > 2 || type < 0 || type > static_cast<int>(version>=41?MonsterType::Mimic:version>=35?MonsterType::TheSleeper:version>=31?MonsterType::DrownedOne:version>=22?MonsterType::FrostAcolyte:version>=16?MonsterType::OssuaryWarden:MonsterType::Skeleton) ||
+            tier < 0 || tier > 2 || type < 0 || type > static_cast<int>(version>=43?MonsterType::Forgemaster:version>=41?MonsterType::Mimic:version>=35?MonsterType::TheSleeper:version>=31?MonsterType::DrownedOne:version>=22?MonsterType::FrostAcolyte:version>=16?MonsterType::OssuaryWarden:MonsterType::Skeleton) ||
             !state.map.isWalkable(m.position.x, m.position.y) || m.maxHp <= 0 || m.hp <= 0 || m.hp > m.maxHp) {
             return std::nullopt;
         }

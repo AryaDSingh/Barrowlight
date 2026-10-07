@@ -139,6 +139,11 @@ assets/sprites/dcss/
   (kraken head and tentacles, electric eel, phantom, blue fountain, shallow water
   and its wave edges, blood splatters, the strongbox from UNUSED/other/chest2,
   the breach rift from dngn_enter_abyss, dug earth from dirt0-2;
+  for the Ashen Foundry, from the full Dungeon Crawl Stone Soup set
+  (https://opengameart.org/content/dungeon-crawl-32x32-tiles-supplemental, CC0):
+  volcanic_floor_0-6, volcanic_wall_0-6 and lava_0-3, and the monsters
+  orc_warlord (Orc Smith), iron_elemental (Slag Golem), jelly (Slagling),
+  imp (Bellows Imp) and molten_gargoyle (the Forgemaster);
   unmodified; oil.png and oil1-4.png are the blood splatters turned grey for oil
   slicks)
   Downloaded 2026-10-03 for the Drowned Cathedral.

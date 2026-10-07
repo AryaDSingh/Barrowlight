@@ -13,8 +13,9 @@ enum class PropKind { Barrel = 1, Crate = 2, Sacks = 3, Throne = 4, SkeletonThro
                       OilBarrel = 7, Brazier = 8, ColdBrazier = 9,
                       StonePillar = 10, // raised by Earth magic; crumbles in time (and on reload)
                       // Furniture for lived-in rooms (DungeonGenerator's vignettes).
-                      Table = 11, Chair = 12, Bookcase = 13, Sarcophagus = 14, Idol = 15 };
-inline constexpr int kPropKindMin = 1, kPropKindMax = 15;
+                      Table = 11, Chair = 12, Bookcase = 13, Sarcophagus = 14, Idol = 15,
+                      Furnace = 16 }; // the Ashen Foundry's: heat in the 8 tiles around it
+inline constexpr int kPropKindMin = 1, kPropKindMax = 16;
 
 struct Prop {
     PropKind kind;
@@ -41,6 +42,7 @@ inline const char* propName(PropKind kind) {
         case PropKind::Bookcase: return "Bookcase";
         case PropKind::Sarcophagus: return "Sarcophagus";
         case PropKind::Idol: return "Idol";
+        case PropKind::Furnace: return "Furnace";
     }
     return "";
 }

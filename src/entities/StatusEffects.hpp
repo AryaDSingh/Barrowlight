@@ -26,6 +26,7 @@ enum class StatusEffectType {
     Slowed,          // acts magnitude% less often (Chill slows the same way)
     Shaken,          // deals magnitude% less damage (Warbanner's Rally Cry)
     Steadfast,       // can't be moved or stunned; direct hits deal magnitude less (Hold the Line)
+    Heat,            // builds near furnaces and fire; at 10 or more it burns (the Ashen Foundry)
 };
 
 struct StatusEffectInstance {
@@ -120,6 +121,7 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::Slowed: return "Slowed";
     case StatusEffectType::Shaken: return "Shaken";
     case StatusEffectType::Steadfast: return "Steadfast";
+    case StatusEffectType::Heat: return "Heat";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

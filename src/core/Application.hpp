@@ -201,6 +201,12 @@ private:
     void plantBanner(int turns, bool great, Position near);
     void tickBanner();
     bool nearBanner(Position p) const;
+    // The Ashen Foundry (ApplicationFoundry.cpp).
+    void addHeat(int amount);
+    void tickHeat();
+    void fanFires(Position imp);
+    void foundryDeath(Monster& monster);
+    bool forgeSummoned_ = false; // the Forgemaster has called its slaglings
     // The Encounter Lab (ApplicationLab.cpp): a fixed, seeded run of three
     // rooms for comparing builds, logged turn by turn to encounter-lab/.
     bool labMode_ = false, labRun_ = false;
@@ -230,6 +236,12 @@ private:
     void handleSandboxKey(sf::Keyboard::Key key);
     void handleSandboxMouse(const sf::Event& event);
     void renderSandbox();
+    // A description with its keywords highlighted; hovering one explains it
+    // (drawn by drawKeywordTip() once the screen is done).
+    void keywordParagraph(const std::string& text, float x, float& y, float width, unsigned size, sf::Color color, float bottom = 100000.f);
+    void drawKeywordTip();
+    std::string keywordTip_;
+    sf::Vector2f keywordTipAt_;
     bool vaultExists_=false, vaultOpened_=false, vaultClaimed_=false;
     Position vaultCenter_{}, vaultEntrance_{};
     std::vector<std::unique_ptr<Item>> vaultRewards_;
@@ -519,6 +531,7 @@ private:
     void returnToTown(bool byStairs=false); // the stairs need no quiet turns, only no danger
     void travelFloor(int destination,bool fromTown=false,bool falling=false);
     bool cathedralOpen() const { return (player_.trialKeys & 1) != 0; } // the Warlord's sigil opens it
+    bool foundryOpen() const { return player_.knowsLore("foreman_key"); } // Grik's key opens it
     bool interactStairs();
     void handleTownKey(sf::Keyboard::Key key);
     void handleTownMouse(const sf::Event& event);

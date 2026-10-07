@@ -225,7 +225,8 @@ void Application::renderGroundItems() {
         glow.setFillColor(sf::Color(240, 136, 52, 70)); window_.draw(glow);
         ui_.icon(window_, "scroll-unfurled", {{screen.x + 4.f, screen.y + 4.f}, {20.f, 20.f}}, ui::kUnique);
         if (drop.at.x == player_.position().x && drop.at.y == player_.position().y)
-            mapHints_.push_back({std::string(drop.id == "warlord_standard" ? "The Warlord's Standard" : "Lore") + " at your feet. G: read it", ui::kUnique});
+            mapHints_.push_back({std::string(drop.id == "warlord_standard" ? "The Warlord's Standard" : drop.id == "foreman_key" ? "The Foreman's key" : "Lore") +
+                                 " at your feet. G: take it", ui::kUnique});
     }
     for (const auto& item : groundItems_) {
         const auto p = item->position();

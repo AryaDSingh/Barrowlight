@@ -1,4 +1,4 @@
-ROGUELIKE_SAVE 42
+ROGUELIKE_SAVE 43
 5 4
 #####
 #...#

@@ -56,6 +56,7 @@ Captive Application::essenceAt(Position altar) const {
     const auto essence = static_cast<Essence>(1 + static_cast<int>(h % kEssenceKinds));
     std::array<MonsterType, 3> held{MonsterType::GoblinRaider, MonsterType::Ogre, MonsterType::GoblinBulwark};
     if (cathedralFloor(currentFloor_)) held = {MonsterType::DeepLurker, MonsterType::DrownedOne, MonsterType::DeepLurker};
+    else if (foundryFloor(currentFloor_)) held = {MonsterType::SlagGolem, MonsterType::OrcSmith, MonsterType::SlagGolem};
     else if (floorTheme(currentFloor_).region == FloorRegion::Crypts) held = {MonsterType::CryptSentinel, MonsterType::SkeletonGuard, MonsterType::Skeleton};
     return {essence, held[(h / 7) % held.size()], (h / 31) % 5 == 0};
 }
@@ -152,6 +153,7 @@ void Application::spawnRiftborn(int count, bool keeper) {
     std::vector<MonsterType> roster{MonsterType::Goblin, MonsterType::GoblinRaider, MonsterType::GoblinStalker};
     MonsterType brute = MonsterType::Ogre;
     if (cathedralFloor(currentFloor_)) { roster = {MonsterType::DrownedOne, MonsterType::DeepLurker}; brute = MonsterType::DeepLurker; }
+    else if (foundryFloor(currentFloor_)) { roster = {MonsterType::OrcSmith, MonsterType::Slagling}; brute = MonsterType::SlagGolem; }
     else if (floorTheme(currentFloor_).region == FloorRegion::Crypts) { roster = {MonsterType::Skeleton, MonsterType::CryptShade, MonsterType::SkeletonGuard}; brute = MonsterType::CryptSentinel; }
     const int radius = breachRadius();
     std::vector<Position> edge;

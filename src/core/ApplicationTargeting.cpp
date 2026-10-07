@@ -1,5 +1,6 @@
 #include "core/Application.hpp"
 #include "entities/Ascendancy.hpp"
+#include "core/Keywords.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -119,6 +120,7 @@ std::string statusTooltip(const StatusEffectInstance& e) {
     case StatusEffectType::Slowed: return "Acts "+n+"% less often.";
     case StatusEffectType::Shaken: return "Deals "+n+"% less damage.";
     case StatusEffectType::Steadfast: return "Can't be moved or stunned; direct hits deal "+n+" less.";
+    case StatusEffectType::Heat: return "Heat "+n+". It builds near furnaces and fire and fades away from them; water quenches it. At 10 or more it burns you for 2 a turn.";
     case StatusEffectType::Shock: return "Enables Lightning follow-ups. Certain talents consume Shock for an additional effect.";
     case StatusEffectType::Concealed: return "Enemies roll detection using distance, Dexterity and concealment rank. Most attacks and taking damage reveal you.";
     case StatusEffectType::Opening: return "A brief opportunity from waiting or movement talents. Enables bonuses from compatible bow and armour talents.";
@@ -858,6 +860,7 @@ void Application::renderHudTooltips() {
             if (const auto i=player_.talents().hotbarIndex(talentPage_*kPageSize+slot); i && *i==*selected) slotX=hotbarRect(slot).position.x;
         // While aiming, stay clear of the mode banner as well.
         const sf::FloatRect room=aimingTalent_?sf::FloatRect{{0,0},{playLayout::screenWidth,kModeBanner().position.y-6}}:aboveHotbar;
+        appendKeywordLines(lines,talent.description);
         ui_.tooltip(window_,lines,{slotX-18,room.size.y},360,room);
         return;
     }
@@ -970,7 +973,8 @@ void Application::renderHudTooltips() {
         const auto kind=props_[static_cast<std::size_t>(index)].kind;
         const char* hint=kind==PropKind::Brazier?"Lights the dark. Walk into it to spill burning coals; cold puts it out.":
             kind==PropKind::ColdBrazier?"Unlit. A fire spell lights it.":
-            kind==PropKind::OilBarrel?"Fire or lightning blows it up; an arrow punctures it; walk into it to flood the floor with oil.":nullptr;
+            kind==PropKind::OilBarrel?"Fire or lightning blows it up; an arrow punctures it; walk into it to flood the floor with oil.":
+            kind==PropKind::Furnace?"Standing in the 8 tiles around it builds Heat. Knock a foe into it and it burns.":nullptr;
         if (hint) { lines.push_back({propName(kind),ui::kGold,16,ui::Font::Bold}); lines.push_back({hint,ui::kText,14}); }
     }
     for (const auto& front:wallTorches_) if (front.x==inspectTile->x && (front.y==inspectTile->y || front.y-1==inspectTile->y)) {

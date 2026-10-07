@@ -394,6 +394,40 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
                 makeStats(scaledHp(44, tier), 14, 4, 6), std::make_unique<Chaser>(bite));
             break;
         }
+        case MonsterType::OrcSmith: case MonsterType::SlagGolem: case MonsterType::Slagling: case MonsterType::BellowsImp: {
+            // The Ashen Foundry's own: heat and splitting live in Application.
+            MonsterAttackProfile profile;
+            int hp = 34, strength = 12, dexterity = 4, intelligence = 2, power = 6, speed = 100;
+            const char* name = "Orc Smith";
+            if (type == MonsterType::SlagGolem) { name = "Slag Golem"; hp = 50; strength = 14; dexterity = 2; power = 7; speed = 70; }
+            if (type == MonsterType::Slagling) { name = "Slagling"; hp = 12; strength = 6; dexterity = 8; power = 3; speed = 120; }
+            if (type == MonsterType::BellowsImp) { name = "Bellows Imp"; hp = 18; strength = 2; dexterity = 12; intelligence = 10; power = 2;
+                profile.scalingStat = ScalingStat::Intelligence; }
+            profile.power = scaledPower(power, strength / 5, tier);
+            std::unique_ptr<AIBehavior> ai;
+            if (type == MonsterType::BellowsImp) ai = std::make_unique<Kiter>(profile, 5, 2);
+            else ai = std::make_unique<Chaser>(profile);
+            monster = std::make_unique<Monster>(type, tieredName(name, tier), 'f', position,
+                makeStats(scaledHp(hp, tier), strength, dexterity, intelligence), std::move(ai));
+            monster->stats().speed = speed;
+            break;
+        }
+        case MonsterType::Forgemaster: {
+            // A furnace that walks: a telegraphed hammer, a warned blast of heat
+            // that sets the ground burning, and slaglings from the furnaces.
+            MonsterAttackProfile hammer;
+            hammer.power = 7;
+            std::vector<Talent> abilities;
+            Talent blast;
+            blast.name = "Furnace Breath"; blast.id = "forgemaster.breath";
+            blast.description = "A radius-2 blast of heat with three actions to escape; the ground it touches burns.";
+            blast.cooldownTurns = 4; blast.scalingStat = ScalingStat::Strength;
+            abilities.push_back(blast);
+            monster = std::make_unique<Monster>(type, "The Forgemaster", 'F', position, makeStats(260, 16, 4, 8),
+                std::make_unique<BossBehavior>(hammer, /*blastPower=*/9, /*blastRange=*/5, /*tooCloseRange=*/2, /*enrageBonus=*/3),
+                TalentSet(abilities));
+            break;
+        }
         case MonsterType::TheSleeper: {
             // A drowned god's eye: bolts from range, never backs away. Its
             // flood, its charged water and its call live in Application.
@@ -494,6 +528,11 @@ int xpRewardForType(MonsterType type, MonsterTier tier) {
         case MonsterType::DrownedChorister: baseReward=18; break;
         case MonsterType::TheSleeper: return 250;
         case MonsterType::Mimic: baseReward=40; break;
+        case MonsterType::OrcSmith: baseReward=20; break;
+        case MonsterType::SlagGolem: baseReward=26; break;
+        case MonsterType::Slagling: baseReward=6; break;
+        case MonsterType::BellowsImp: baseReward=18; break;
+        case MonsterType::Forgemaster: return 220;
         case MonsterType::SkeletonArcher: baseReward=16; break;
         case MonsterType::SkeletonGuard: baseReward=22; break;
         case MonsterType::Bonecaller: baseReward=18; break;
