@@ -134,6 +134,7 @@ void Application::foundryDeath(Monster& monster) {
     };
     carries(MonsterType::DrownedChorister, "chorister_hymn", "A sodden hymn-sheet drifts down where the Chorister fell.");
     carries(MonsterType::Bonecaller, "bonecaller_journal", "A Bonecaller's journal slips from its robes.");
+    carries(MonsterType::FrostAcolyte, "acolyte_catechism", "A frost-rimed catechism falls from the Acolyte's hands.");
     if (monster.type() == MonsterType::GoblinCaptain && monster.stats().hp <= 0 && !player_.knowsLore("foreman_key") &&
         std::none_of(loreDrops_.begin(), loreDrops_.end(), [](const LoreDrop& d) { return d.id == "foreman_key"; })) {
         loreDrops_.push_back({at, "foreman_key"});
@@ -147,6 +148,24 @@ void Application::tickStormcall() {
     const auto me = player_.position();
     if (const int eye = player_.talents().passiveValue(PassiveKind::EyeOfTheStorm, player_.stats()); eye && surfaceAt(me) == SurfaceType::Electrified)
         player_.statusEffects().apply({StatusEffectType::Hasted, 2, eye});
+    // Rimeheart: ice that creeps; and inside Winter's Heart, nothing reaches you.
+    if (!frostCreep_.empty()) {
+        auto creeping = std::move(frostCreep_); frostCreep_.clear();
+        for (const auto& [p, turns] : creeping) {
+            for (const Position n : {Position{p.x + 1, p.y}, Position{p.x - 1, p.y}, Position{p.x, p.y + 1}, Position{p.x, p.y - 1}})
+                if (map_.isWalkable(n.x, n.y) && surfaceAt(n) != SurfaceType::Ice && !(n.x == me.x && n.y == me.y)) { freezeGround(n, turns - 1); break; }
+        }
+    }
+    const auto ice = std::find_if(player_.statusEffects().active().begin(), player_.statusEffects().active().end(),
+                                  [](const StatusEffectInstance& e) { return e.type == StatusEffectType::Encased; });
+    if (ice != player_.statusEffects().active().end()) {
+        const int turnsLeft = ice->turnsRemaining, reach = ice->magnitude;
+        player_.stats().hp = std::max(player_.stats().hp, encasedHp_);
+        for (const auto type : {StatusEffectType::Poison, StatusEffectType::Burn, StatusEffectType::Bleed, StatusEffectType::Chill, StatusEffectType::Slowed,
+                                StatusEffectType::Stun, StatusEffectType::Doom, StatusEffectType::Plague, StatusEffectType::Marked, StatusEffectType::Shock})
+            player_.statusEffects().remove(type);
+        if (turnsLeft <= 1) { player_.statusEffects().remove(StatusEffectType::Encased); winterBurst(reach, reach > 2); }
+    }
     // Bonewright: the bone storm cuts the foes beside you; Bone Lord hastens your minions.
     if (const int shards = player_.statusEffects().magnitudeOf(StatusEffectType::BoneStorm)) {
         for (auto& m : monsters_)
@@ -189,6 +208,35 @@ void Application::tickStormcall() {
         soundManager_.playHit(HitSound::Lightning, lastHitWasCritical(), bleeds(nearest->type()));
     }
     checkAndHandleDeath(*nearest);
+    removeDeadMonsters();
+}
+
+// Ice you make (Rimeheart); with Creeping Frost it spreads a tile a turn.
+void Application::freezeGround(Position p, int creep) {
+    if (!map_.isWalkable(p.x, p.y)) return;
+    setSurface(p, SurfaceType::Ice, 12);
+    if (creep > 0 && frostCreep_.size() < 40) frostCreep_.push_back({p, creep});
+}
+
+// Winter's Heart bursts: frost through everything near you, and ice underfoot.
+void Application::winterBurst(int radius, bool freeze) {
+    const auto me = player_.position();
+    Talent burst; burst.name = "Winter's Heart"; burst.id = "rimeheart.heart.burst"; burst.tree = TalentTree::Rimeheart;
+    burst.effectKind = TalentEffectKind::Damage; burst.power = 10; burst.scalingStat = ScalingStat::Intelligence;
+    for (int dy = -radius; dy <= radius; ++dy)
+        for (int dx = -radius; dx <= radius; ++dx)
+            if ((dx || dy) && map_.isWalkable(me.x + dx, me.y + dy)) setSurface({me.x + dx, me.y + dy}, SurfaceType::Ice, 12);
+    for (auto& m : monsters_) {
+        if (m->allied || m->stats().hp <= 0 || std::max(std::abs(m->position().x - me.x), std::abs(m->position().y - me.y)) > radius) continue;
+        if (applyTalentDamage(burst, player_, *m)) {
+            flashActor(*m);
+            m->statusEffects().apply({StatusEffectType::Chill, 3, 30});
+            if (freeze && m->stats().hp > 0 && m->statusEffects().canReceiveStun()) m->statusEffects().apply({StatusEffectType::Stun, 1, 0});
+        }
+        checkAndHandleDeath(*m);
+    }
+    combatThisTurn_ = true;
+    log("The ice around you bursts!");
     removeDeadMonsters();
 }
 

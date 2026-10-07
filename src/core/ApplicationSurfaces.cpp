@@ -49,7 +49,7 @@ Element talentElement(const Talent& t) {
     if (t.tree == TalentTree::Tide) return Element::None; // its chill must not freeze the water it brings
     if (t.tree == TalentTree::Stormlance || t.tree == TalentTree::Tempest) return Element::Lightning;
     if (t.tree == TalentTree::Fire || (t.onHitEffect && t.onHitEffect->type == StatusEffectType::Burn)) return Element::Fire;
-    if (t.tree == TalentTree::Ice || (t.onHitEffect && t.onHitEffect->type == StatusEffectType::Chill)) return Element::Ice;
+    if (t.tree == TalentTree::Ice || t.tree == TalentTree::Rimeheart || (t.onHitEffect && t.onHitEffect->type == StatusEffectType::Chill)) return Element::Ice;
     if (t.tree == TalentTree::Lightning) return Element::Lightning;
     if (t.tree == TalentTree::Bow || t.tree == TalentTree::ShadowArcher || t.tree == TalentTree::Crossbow) return Element::Arrow;
     return Element::None;
@@ -512,7 +512,7 @@ void Application::enterSurface(Actor& actor, Position tile) {
 }
 
 void Application::pushActor(Actor& target, Position direction, int distance, const Actor& pusher) {
-    if (target.statusEffects().has(StatusEffectType::Steadfast) || target.statusEffects().has(StatusEffectType::Anvil)) {
+    if (target.statusEffects().has(StatusEffectType::Steadfast) || target.statusEffects().has(StatusEffectType::Anvil) || target.statusEffects().has(StatusEffectType::Encased)) {
         log(&target == &player_ ? "You hold your ground." : target.name() + " holds its ground.");
         return;
     }

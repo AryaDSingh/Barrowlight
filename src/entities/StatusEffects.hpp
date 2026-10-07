@@ -33,6 +33,7 @@ enum class StatusEffectType {
     Stormcall,       // a storm over you strikes the nearest foe each turn (Tempest)
     BoneStorm,       // bone shards whirl around you, cutting the foes beside you (Bonewright)
     BoneLord,        // your minions are hastened and hit harder (Bonewright)
+    Encased,         // sealed in ice: can't act, can't be hurt; bursts when it ends (Rimeheart)
 };
 
 struct StatusEffectInstance {
@@ -58,7 +59,7 @@ public:
 
     bool has(StatusEffectType type) const;
     void remove(StatusEffectType type);
-    bool canReceiveStun() const { return !has(StatusEffectType::Stun) && !has(StatusEffectType::StunRecovery) && !has(StatusEffectType::Steadfast); }
+    bool canReceiveStun() const { return !has(StatusEffectType::Stun) && !has(StatusEffectType::StunRecovery) && !has(StatusEffectType::Steadfast) && !has(StatusEffectType::Encased); }
     void setStunRules(int maximumDuration, int recoveryTurns) { maxStunDuration_=maximumDuration; stunRecoveryTurns_=recoveryTurns; }
     int stunRecoveryTurns() const { return stunRecoveryTurns_; }
     int maxStunDuration() const { return maxStunDuration_; }
@@ -134,6 +135,7 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::Stormcall: return "Stormcall";
     case StatusEffectType::BoneStorm: return "Bone Storm";
     case StatusEffectType::BoneLord: return "Bone Lord";
+    case StatusEffectType::Encased: return "Encased";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

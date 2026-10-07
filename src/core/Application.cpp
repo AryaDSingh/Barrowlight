@@ -1213,6 +1213,8 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     const Position blinkDestination = target.destination;
     // Forgeborn: a blow or a blast that spends all your Heat.
     const int heldHeat=player_.statusEffects().magnitudeOf(StatusEffectType::Heat);
+    // Shatter Lance: twice as hard against a foe standing on ice.
+    if (talent.onIceDouble && surfaceAt(cursor)==SurfaceType::Ice) talent.damagePercent*=2;
     // Overheat: at 10 Heat or more, every hit lands half again as hard.
     if (heldHeat>=10 && player_.talents().passiveValue(PassiveKind::Overheat,player_.stats())) talent.damagePercent=talent.damagePercent*3/2;
     if (talent.landingSlam && talent.ventHeat) talent.landingSlam+=talent.ventHeat*heldHeat;
@@ -1396,6 +1398,20 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         if (talent.plantBanner) plantBanner(talent.plantBanner,talent.greatBanner,player_.position());
         if (talent.gainHeat) addHeat(talent.gainHeat);
         if (talent.stormcall) { player_.statusEffects().apply({StatusEffectType::Stormcall,talent.stormcall,1}); log("A storm gathers over you."); }
+        if (talent.deepFreeze) {
+            const auto me=player_.position(); const int r=talent.deepFreeze; int frozen=0;
+            for (int dy=-r;dy<=r;++dy) for (int dx=-r;dx<=r;++dx)
+                if (surfaceAt({me.x+dx,me.y+dy})==SurfaceType::Water) setSurface({me.x+dx,me.y+dy},SurfaceType::Ice,12);
+            for (auto& m:monsters_)
+                if (!m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-me.x),std::abs(m->position().y-me.y))<=r &&
+                    surfaceAt(m->position())==SurfaceType::Ice) { m->statusEffects().apply({StatusEffectType::Stun,2,0}); ++frozen; }
+            log(frozen?"The cold takes them where they stand.":"Everything around you freezes.");
+        }
+        if (talent.wintersHeart) {
+            player_.statusEffects().apply({StatusEffectType::Encased,3,talent.wintersHeart>3?3:2});
+            encasedHp_=player_.stats().hp;
+            log("Ice closes over you.");
+        }
         if (talent.boneStorm) { player_.statusEffects().apply({StatusEffectType::BoneStorm,talent.boneStorm,4}); log("Bone shards whirl up around you."); }
         if (talent.boneLord) { player_.statusEffects().apply({StatusEffectType::BoneLord,talent.boneLord,3}); log("Your dead stand taller."); }
         if (talent.boneWall) {
@@ -1868,6 +1884,15 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         player_.stats().hp=std::min(player_.stats().maxHp,player_.stats().hp+hallowed);
         log("A warm light steadies you.");
     }
+    if (talent.rime) {
+        const int creep=player_.talents().passiveValue(PassiveKind::CreepingFrost,player_.stats());
+        for (const auto& p:target.area) freezeGround(p,creep);
+    }
+    if (talent.iceTrail) {
+        const int creep=player_.talents().passiveValue(PassiveKind::CreepingFrost,player_.stats());
+        freezeGround(beforeMovement,creep);
+        for (const auto& p:target.path) if (!(p.x==blinkDestination.x && p.y==blinkDestination.y)) freezeGround(p,creep);
+    }
     if (talent.slagPool) {
         for (const auto& p:target.area) if (map_.isWalkable(p.x,p.y)) setSurface(p,SurfaceType::Fire,kSpilledFireTurns);
         for (auto* hit:affected) if (hit!=&player_ && hit->stats().hp>0) hit->statusEffects().apply({StatusEffectType::Slowed,3,30});
@@ -1920,6 +1945,7 @@ int Application::situationalBonus(const Talent& talent, const Actor& target) con
         if (player_.stats().hp*2<player_.stats().maxHp) bonus+=gear.affixTotal(BonusStat::LowLifeDamage);
         if (const auto* m=dynamic_cast<const Monster*>(&target); m && m->tactics.alert==0) bonus+=gear.affixTotal(BonusStat::UnawareDamage);
     }
+    if (const int brittle=kit.passiveValue(PassiveKind::BrittleCold,player_.stats()); brittle && target.statusEffects().has(StatusEffectType::Chill)) bonus+=brittle;
     if (const int charge=kit.passiveValue(PassiveKind::Overcharge,player_.stats());
         charge && (talent.tree==TalentTree::Lightning || talent.tree==TalentTree::Tempest || talent.tree==TalentTree::Stormlance) &&
         target.statusEffects().has(StatusEffectType::Shock)) bonus+=charge;
@@ -2366,7 +2392,8 @@ void Application::advanceTurnsUntilPlayerCanAct() {
                 if (player_.statusEffects().has(type)) afflictions+=(afflictions.empty()?"":" and ")+std::string(statusName(type));
             harmSource_=afflictions;
         }
-        const bool stunned = tickStatusEffects(player_);
+        const bool encased = player_.statusEffects().has(StatusEffectType::Encased);
+        const bool stunned = tickStatusEffects(player_) || encased;
         if (hadPoison && player_.stats().hp > 0) {
             log("Poison deals damage (", player_.stats().hp, "/", player_.stats().maxHp,
                 " hp left)");
@@ -2385,7 +2412,8 @@ void Application::advanceTurnsUntilPlayerCanAct() {
             tickStormcall();
             return; // genuinely the player's turn now
         }
-        log("You are stunned and lose a turn!");
+        if (encased) { tickStormcall(); log("You wait inside the ice."); }
+        else log("You are stunned and lose a turn!");
         player_.talents().tickCooldowns();
         currentActor_ = &scheduler_.nextTurn();
         processMonsterTurns();
@@ -2730,6 +2758,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
 
     if (&actor == &player_) {
         if (sandboxGod_) { player_.stats().hp=player_.stats().maxHp; return; }
+        if (player_.statusEffects().has(StatusEffectType::Encased)) { player_.stats().hp=std::max(player_.stats().hp,encasedHp_); return; }
         if (player_.talents().passiveValue(PassiveKind::Deathless,player_.stats()) &&
             std::find(player_.deathlessSpentFloors.begin(),player_.deathlessSpentFloors.end(),currentFloor_)==player_.deathlessSpentFloors.end()) {
             player_.deathlessSpentFloors.push_back(currentFloor_); player_.stats().hp=1;

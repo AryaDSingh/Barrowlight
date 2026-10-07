@@ -21,6 +21,7 @@ enum class TalentTree {
     Slagcaller, // the Ashen Foundry's second deep tree
     Tempest,    // the Drowned Cathedral's deep tree
     Bonewright, // the Deep Crypts' deep tree
+    Rimeheart,  // the Deep Crypts' second deep tree
 };
 
 // Abilities and talents have five ranks; rank 5 often adds a mastery effect
@@ -93,7 +94,7 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The third batch (Shadow, Radiance, Shield) and its resonances.
     Dread, Bulwark, Twilight, TemplarsEdge, HallowedGuard,
     // The fourth batch (Bow, Stealth, Daggers) and its resonances.
-    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, BrittleSlag, Pyroclasm, Overcharge, EyeOfTheStorm, Marrow, GrownGuard, UnseenHand, AssassinsEdge,
+    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, BrittleSlag, Pyroclasm, Overcharge, EyeOfTheStorm, Marrow, GrownGuard, BrittleCold, CreepingFrost, UnseenHand, AssassinsEdge,
     // The fifth batch (Earth, Tide, Venom) and its resonances.
     Aftershock, Tidecaller, Virulence, Mire, FoulWater, EnvenomedBlades,
     // The sixth batch (Spear, Mace, Crossbow) and its resonances.
@@ -234,6 +235,11 @@ struct Talent {
     bool slagPool=false, eruption=false;
     int stormcall=0, staticField=0; // Tempest: turns of the storm over you; radius of electrified ground around you
     int boneWall=0, boneStorm=0, boneLord=0; // Bonewright: walls raised; turns of the bone storm; turns your minions are lorded
+    // Rimeheart. rime: freeze the ground it hits. onIceDouble: double damage to
+    // a foe on ice. iceTrail: a movement that leaves ice behind. deepFreeze:
+    // radius frozen around you. wintersHeart: turns encased in ice.
+    bool rime=false, onIceDouble=false, iceTrail=false;
+    int deepFreeze=0, wintersHeart=0;
     int drainPercent=0, stayHiddenPercent=0;
     bool huntersMark=false, returnConcealed=false;
     int committedRhythm=-1;

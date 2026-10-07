@@ -387,8 +387,8 @@ void Application::renderTrialMenu() {
     const auto* a = findAscendancy(player_.ascendancy);
     ui_.textCentered(window_, std::string("Sigils from the great bosses open its trials. Win them to ascend") +
                      (a ? std::string(" further as a ") + a->name + "." : "; the first lets you choose how."), {{x, top + 64}, {w, 22}}, 16, ui::kMuted);
-    const char* rewards[]{"Reward: an ascendancy point, and your ascendancy if you have none.", "Reward: an ascendancy point.",
-                          "Reward: an ascendancy point, and the Forgeknight opens."};
+    const char* rewards[]{"Reward: an ascendancy point, and your ascendancy if you have none.", "Reward: an ascendancy point, and your ascendancy if you have none.",
+                          "Reward: an ascendancy point, and your ascendancy if you have none."};
     const char* fights[]{"A living statue that slams the ground and quakes the arena. Its blows grow wilder as it cracks.",
                          "A saint who fell to the Lich: bolts, curses and rituals that raise the dead.",
                          "The forge's own champion, among furnaces: a hammer you see coming, and blasts of heat that set the floor alight."};

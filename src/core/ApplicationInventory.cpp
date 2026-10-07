@@ -229,7 +229,8 @@ void Application::renderGroundItems() {
                                              drop.id == "forgemaster_brand" ? "The Forgemaster's brand" :
                                              drop.id == "slag_formula" ? "A slag-scrawled formula" :
                                              drop.id == "chorister_hymn" ? "The Chorister's hymn" :
-                                             drop.id == "bonecaller_journal" ? "A Bonecaller's journal" : "Lore") +
+                                             drop.id == "bonecaller_journal" ? "A Bonecaller's journal" :
+                                             drop.id == "acolyte_catechism" ? "A Frost Acolyte's catechism" : "Lore") +
                                  " at your feet. G: take it", ui::kUnique});
     }
     for (const auto& item : groundItems_) {

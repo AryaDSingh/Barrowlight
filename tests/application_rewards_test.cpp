@@ -2135,6 +2135,64 @@ struct ApplicationRewardsTestAccess {
                 clearFoes(); app.player_.statusEffects().active().clear();
             }
 
+            // Rimeheart: the Crypts' second deep tree, from the first Frost Acolyte's catechism.
+            arena(PlayerClass::Mage);
+            {
+                auto made=createMonster(MonsterType::FrostAcolyte,{12,10}); auto* acolyte=made.get();
+                app.scheduler_.add(*acolyte); app.monsters_.push_back(std::move(made));
+                acolyte->stats().hp=0; app.checkAndHandleDeath(*acolyte); app.removeDeadMonsters();
+                check(app.loreDrops_.size()==1 && app.loreDrops_[0].id=="acolyte_catechism","The first Frost Acolyte slain drops its catechism");
+                app.player_.setPosition(app.loreDrops_[0].at); app.pickupItem(); app.player_.setPosition({10,10});
+                check(deepTreeKnown(app.player_,"rimeheart"),"The catechism reveals Rimeheart");
+                giveColour(app.player_,Affinity::Frost,8); giveColour(app.player_,Affinity::Water,4); app.player_.level()=12; app.player_.treePoints()=1;
+                check(purchaseTree(app.player_,PlayerClass::Mage,*findTree("rimeheart")),"With Frost 8, Water 4 and level 12 Rimeheart opens");
+                auto* a=foe({14,10});
+                cast(ranked("rimeheart.rime",1),{14,10});
+                check(app.surfaceAt({14,10})==SurfaceType::Ice && app.surfaceAt({15,10})==SurfaceType::Ice && a->statusEffects().has(StatusEffectType::Chill),
+                      "Rime freezes the ground and chills those on it");
+                a->stats().hp=a->stats().maxHp=200;
+                cast(ranked("rimeheart.lance",1),{14,10});
+                const int onIce=200-a->stats().hp;
+                a->stats().hp=200; app.clearSurfaces();
+                cast(ranked("rimeheart.lance",1),{14,10});
+                check(onIce>=(200-a->stats().hp)*2-2,"Shatter Lance hits twice as hard on ice");
+                ranked("rimeheart.brittle",1);
+                const auto& lance=findTalentDefinition("rimeheart.lance")->ranks[0];
+                a->statusEffects().apply({StatusEffectType::Chill,3,20}); const int chilled=app.situationalBonus(lance,*a);
+                a->statusEffects().remove(StatusEffectType::Chill);
+                check(chilled>=app.situationalBonus(lance,*a)+3,"Brittle Cold: chilled foes take more");
+                clearFoes();
+                ranked("rimeheart.creeping",1);
+                app.lastMoveDirection_={1,0};
+                cast(ranked("rimeheart.path",1),{14,10});
+                check(app.surfaceAt({10,10})==SurfaceType::Ice && app.surfaceAt({12,10})==SurfaceType::Ice,"Glacial Path leaves ice behind you");
+                int iceBefore=0, iceAfter=0;
+                for (int y=0;y<22;++y) for (int x=0;x<32;++x) iceBefore+=app.surfaceAt({x,y})==SurfaceType::Ice;
+                app.tickStormcall();
+                for (int y=0;y<22;++y) for (int x=0;x<32;++x) iceAfter+=app.surfaceAt({x,y})==SurfaceType::Ice;
+                check(iceAfter>iceBefore,"Creeping Frost: your ice spreads");
+                app.clearSurfaces(); app.frostCreep_.clear(); app.player_.setPosition({10,10});
+                auto* b=foe({12,10}); app.setSurface({12,10},SurfaceType::Water,0);
+                cast(ranked("rimeheart.freeze",1),app.player_.position());
+                check(app.surfaceAt({12,10})==SurfaceType::Ice && b->statusEffects().has(StatusEffectType::Stun),"Deep Freeze: the water freezes and the foe in it is frozen");
+                clearFoes(); app.clearSurfaces();
+                // Encased, nothing hurts you.
+                app.player_.statusEffects().apply({StatusEffectType::Encased,3,2}); app.encasedHp_=app.player_.stats().hp;
+                const int life=app.player_.stats().hp;
+                app.player_.stats().hp=life-30; app.player_.statusEffects().apply({StatusEffectType::Poison,3,2}); app.tickStormcall();
+                check(app.player_.stats().hp==life && !app.player_.statusEffects().has(StatusEffectType::Poison),"Encased, nothing hurts you and no ailment takes hold");
+                app.player_.statusEffects().active().clear();
+                // Cast for real: your turns pass inside the ice until it bursts.
+                auto* c=foe({11,10});
+                app.logMessages_.clear();
+                cast(ranked("rimeheart.heart",1),app.player_.position());
+                check(sawLog("Ice closes over you") && sawLog("You wait inside the ice") && !app.player_.statusEffects().has(StatusEffectType::Encased),
+                      "Winter's Heart: you wait inside the ice, and then it is over");
+                check(c->stats().hp<90 && c->statusEffects().has(StatusEffectType::Chill) && app.surfaceAt({11,11})==SurfaceType::Ice,
+                      "When the ice bursts, it hits and chills everything near you, and the ground freezes");
+                clearFoes(); app.clearSurfaces(); app.player_.statusEffects().active().clear();
+            }
+
             // Daggers.
             arena(PlayerClass::Thief);
             {
@@ -4156,12 +4214,12 @@ struct ApplicationRewardsTestAccess {
                   "The Trial of the Forge pits you against the Anvil-Born");
             int furnaces=0; for (const auto& p:app.props_) furnaces+=p.kind==PropKind::Furnace;
             check(furnaces>0,"Its arena burns with furnaces");
-            check(!ascendancyQualified(app.player_,"forgeknight"),"The Forgeknight waits for its colours and its trial");
+            check(!ascendancyQualified(app.player_,"forgeknight"),"The Forgeknight waits for its colours");
             giveColour(app.player_,Affinity::Steel,6); giveColour(app.player_,Affinity::Flame,6);
-            check(!ascendancyQualified(app.player_,"forgeknight"),"Colours alone don't open the Forgeknight");
+            check(ascendancyQualified(app.player_,"forgeknight"),"Steel 6 and Flame 6 allow the Forgeknight; any trial won lets you take it");
             app.boss_->stats().hp=0; app.checkAndHandleDeath(*app.boss_); app.removeDeadMonsters();
             check((app.player_.trialsCleared & 4) && app.player_.ascendancyPoints==1 && ascendancyQualified(app.player_,"forgeknight"),
-                  "Winning the trial opens the Forgeknight to Steel 6 and Flame 6");
+                  "Winning the trial gives a point, and the Forgeknight can be taken");
             snapshot("ui-ascendancy-forge.png");
             app.chooseAscendancy("forgeknight");
             check(app.player_.ascendancy=="forgeknight","You become a Forgeknight");

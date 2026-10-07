@@ -205,6 +205,11 @@ private:
     void addHeat(int amount);
     void tickHeat();
     void tickStormcall();
+    // Rimeheart: ice you make that creeps outward; the life you hold while encased.
+    void freezeGround(Position p, int creep);
+    std::vector<std::pair<Position, int>> frostCreep_;
+    int encasedHp_ = 0;
+    void winterBurst(int radius, bool freeze);
     void fanFires(Position imp);
     void foundryDeath(Monster& monster);
     void raiseSlag(MonsterType kind, Position at, int turns, bool shard, int rank = 1);

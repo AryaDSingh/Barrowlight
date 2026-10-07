@@ -50,7 +50,7 @@ inline constexpr std::array<AscendancyDefinition, 8> kAscendancies{{
      {"duelist.challenge", "duelist.flurry", "duelist.momentum", "duelist.finisher", "duelist.counter", "duelist.en_garde"}},
     {"paragon", "Paragon", kWarrior | kMage | kThief, "STR / DEX / INT", "A master of everything and of nothing in particular: steady, whole, hard to kill.", "aura",
      {"paragon.exalt", "paragon.renewal", "paragon.balance", "paragon.versatility", "paragon.resilience", "paragon.wellspring"}},
-    // Opened by the Trial of the Forge.
+    // Born of the Ashen Foundry.
     {"forgeknight", "Forgeknight", kWarrior | kMage | kThief, "STR", "A knight of the forge: heat is your armour, and the fire answers every blow.", "hammer-drop",
      {"forgeknight.heat_engine", "forgeknight.slam", "forgeknight.quench", "forgeknight.burning_plate", "forgeknight.overheat", "forgeknight.anvil"}},
 }};
@@ -71,7 +71,7 @@ inline bool isAscendancyTree(const std::string& treeId) { return findAscendancy(
 // the second trial also needs the first one cleared. Bit n-1 of the
 // player's trialKeys/trialsCleared is trial n.
 // The third, the Trial of the Forge, is opened by the Forgemaster's sigil and
-// stands alone; winning it opens the Forgeknight.
+// stands alone. Any trial won lets you take any ascendancy your colours allow.
 inline constexpr int kTrialCount = 3, kForgeTrial = 3;
 inline const char* trialName(int trial) { return trial == 3 ? "Trial of the Forge" : trial == 1 ? "Trial of Stone" : "Trial of the Fallen"; }
 inline const char* trialSigil(int trial) { return trial == 3 ? "Forge Sigil" : trial == 1 ? "Stone Sigil" : "Bone Sigil"; }

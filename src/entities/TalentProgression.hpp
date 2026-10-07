@@ -110,7 +110,6 @@ inline bool ascendancyQualified(const std::function<int(const std::string&)>& ra
     return reached>=need.anyCount;
 }
 inline bool ascendancyQualified(const Player& p,const std::string& id) {
-    if (id=="forgeknight" && !(p.trialsCleared & (1<<(kForgeTrial-1)))) return false; // the forge's own trial first
     return ascendancyQualified([&](const std::string& t){ return p.talents().rankOf(t); },id);
 }
 inline std::string ascendancyNeedText(const Player& p,const std::string& id) {
@@ -128,7 +127,6 @@ inline std::string ascendancyNeedText(const Player& p,const std::string& id) {
         text+=" at "+std::to_string(need.anyPoints)+":";
         for (const auto colour:need.anyOf) text+=" "+std::string(affinityInfo(colour).name)+" "+std::to_string(std::min(affinityPoints(p,colour),need.anyPoints));
     }
-    if (id=="forgeknight") text+=(p.trialsCleared & (1<<(kForgeTrial-1)))?", Trial of the Forge won":", and the Trial of the Forge";
     return text;
 }
 } // namespace engine
