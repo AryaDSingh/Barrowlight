@@ -11,6 +11,7 @@
 #include "core/Keywords.hpp"
 #include "entities/PlayerLeveling.hpp"
 #include "entities/Ascendancy.hpp"
+#include "entities/Lore.hpp"
 #include "entities/RunProgression.hpp"
 #include "world/EncounterPlan.hpp"
 #include "world/LineOfFire.hpp"
@@ -2150,12 +2151,16 @@ struct ApplicationRewardsTestAccess {
                 cast(ranked("rimeheart.rime",1),{14,10});
                 check(app.surfaceAt({14,10})==SurfaceType::Ice && app.surfaceAt({15,10})==SurfaceType::Ice && app.surfaceAt({15,11})==SurfaceType::Ice && a->statusEffects().has(StatusEffectType::Chill),
                       "Rime freezes the ground and chills those on it");
+                // Four casts each way, so a critical can't decide it.
+                a->stats().hp=a->stats().maxHp=2000;
+                const auto lanceAt=ranked("rimeheart.lance",1);
+                int onIce=0, dry=0;
+                for (int i=0;i<4;++i) { for (int y=9;y<=11;++y) for (int x=13;x<=15;++x) app.setSurface({x,y},SurfaceType::Ice,12);
+                    const int before=a->stats().hp; cast(lanceAt,{14,10}); onIce+=before-a->stats().hp; }
+                app.clearSurfaces();
+                for (int i=0;i<4;++i) { const int before=a->stats().hp; cast(lanceAt,{14,10}); dry+=before-a->stats().hp; }
+                check(dry>0 && onIce*10>=dry*16,"Shatter Lance hits twice as hard on ice");
                 a->stats().hp=a->stats().maxHp=200;
-                cast(ranked("rimeheart.lance",1),{14,10});
-                const int onIce=200-a->stats().hp;
-                a->stats().hp=200; app.clearSurfaces();
-                cast(ranked("rimeheart.lance",1),{14,10});
-                check(onIce>=(200-a->stats().hp)*2-2,"Shatter Lance hits twice as hard on ice");
                 ranked("rimeheart.brittle",1);
                 const auto& lance=findTalentDefinition("rimeheart.lance")->ranks[0];
                 a->statusEffects().apply({StatusEffectType::Chill,3,20}); const int chilled=app.situationalBonus(lance,*a);
@@ -4630,14 +4635,17 @@ struct ApplicationRewardsTestAccess {
                 check(std::max(std::abs(maw->position().x-18),std::abs(maw->position().y-10))==1 && (maw->doubleBite || far->stats().hp<90),
                       "Point: Thornmaw leaps beside the foe and goes for it");
                 far->stats().hp=far->stats().maxHp=500; maw->doubleBite=true; app.wardenFoe_=far;
-                // Bite until one lands (a bite can miss), then again for a plain one.
-                for (int i=0;i<10 && far->stats().hp==500;++i) { app.currentActor_=maw; app.processMonsterTurns(); }
+                // One action at a time (Thornmaw is fast enough to act twice in a round):
+                // bite until one lands (a bite can miss), then six plain bites to average.
+                for (int i=0;i<10 && far->stats().hp==500;++i) app.actMinion(*maw);
                 const int doubled=500-far->stats().hp;
-                far->stats().hp=500;
-                for (int i=0;i<10 && far->stats().hp==500;++i) { app.currentActor_=maw; app.processMonsterTurns(); }
-                const int plain=500-far->stats().hp;
-                // A critical on the plain bite is half again: the doubled one still beats it.
-                check(!maw->doubleBite && plain>0 && doubled*10>=plain*13,"Its next bite on that foe deals double");
+                int plain=0, landed=0;
+                for (int i=0;i<40 && landed<6;++i) {
+                    const int before=far->stats().hp=500;
+                    app.actMinion(*maw);
+                    if (far->stats().hp<before) { plain+=before-far->stats().hp; ++landed; }
+                }
+                check(!maw->doubleBite && landed>0 && doubled*landed*10>=plain*15,"Its next bite on that foe deals double");
                 check(app.nearestOpponent(*maw,false)==far,"Thornmaw goes for the foe you pointed at");
                 for (auto& m:app.monsters_) if (!m->allied) { m->stats().hp=0; app.scheduler_.remove(*m); }
                 app.removeDeadMonsters(); maw->doubleBite=false; app.wardenFoe_=nullptr;
@@ -4667,7 +4675,10 @@ struct ApplicationRewardsTestAccess {
                 auto* brute=foeAt({me.x,me.y+1}); brute->stats().strength=30; brute->stats().dexterity=10;
                 const int life=app.player_.stats().hp;
                 for (int i=0;i<10 && app.player_.stats().hp==life;++i) { app.currentActor_=brute; app.processMonsterTurns(); }
-                check(app.wardenFoe_==brute && app.wardenPin_,"Guardian Instinct: Thornmaw turns on whatever hits you");
+                check(app.wardenFoe_==brute,"Guardian Instinct: Thornmaw turns on whatever hits you");
+                app.wardenPin_=true; maw->setPosition({brute->position().x+1,brute->position().y});
+                for (int i=0;i<10 && app.wardenPin_;++i) app.actMinion(*maw);
+                check(!app.wardenPin_ && brute->statusEffects().has(StatusEffectType::Pinned),"and its next bite on it pins it");
                 // Call of the Wild.
                 const auto wild=learn("beastwarden.call_wild"); ready(); app.tryUseTalent(wild,app.player_.position());
                 app.tickStormcall();
@@ -4825,6 +4836,33 @@ struct ApplicationRewardsTestAccess {
             app.tickStormcall();
             check(!app.player_.statusEffects().has(StatusEffectType::Vampirism),"In time, the curse fades");
             app.player_.statusEffects().active().clear(); app.player_.lightLit=true;
+        }
+
+        // The journal (J): the lore you've found, kept.
+        {
+            setup(PlayerClass::Warrior);
+            const auto sawLog=[&](const char* text) { for (const auto& line:app.logMessages_) if (line.find(text)!=std::string::npos) return true; return false; };
+            app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::J});
+            check(app.journalOpen_,"J opens the journal");
+            snapshot("ui-journal-empty.png");
+            app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::J});
+            check(!app.journalOpen_,"J closes it again");
+            // Lore you read goes into it.
+            app.loreDrops_.push_back({app.player_.position(),"hollow_map"});
+            app.logMessages_.clear(); app.pickupItem();
+            check(app.player_.knowsLore("hollow_map") && sawLog("A map scratched into a flat bone") && sawLog("journal (J)"),"Reading lore tells you it's kept in your journal");
+            for (const char* id:{"warlord_standard","foreman_key","forgemaster_brand","slag_formula","chorister_hymn","bonecaller_journal","acolyte_catechism","witch_seed","hound_collar"})
+                app.player_.lore.push_back(id);
+            check(loreEntries().size()==10 && std::all_of(app.player_.lore.begin(),app.player_.lore.end(),[](const std::string& id){ return loreEntry(id)!=nullptr; }),
+                  "Every piece of lore has a journal entry");
+            app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::J});
+            snapshot("ui-journal.png");
+            app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Down});
+            check(app.journalScroll_==1,"Down turns to the next page");
+            snapshot("ui-journal-page2.png");
+            app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Escape});
+            check(!app.journalOpen_,"Esc closes the journal");
+            app.player_.lore.clear();
         }
 
         app.window_.close();

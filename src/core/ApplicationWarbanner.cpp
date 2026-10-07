@@ -1,4 +1,5 @@
 #include "core/Application.hpp"
+#include "entities/Lore.hpp"
 #include "entities/TalentProgression.hpp"
 
 #include <algorithm>
@@ -54,42 +55,13 @@ void Application::readLore(std::size_t index) {
     if (player_.knowsLore(drop.id)) return;
     player_.lore.push_back(drop.id);
     soundManager_.playFamily("levelup", 70.f);
-    if (drop.id == "hound_collar") {
-        log("A collar of braided thorn-bark, worn smooth. Someone kept these hounds once.");
-    }
-    if (drop.id == "witch_seed") {
-        log("A black seed, still warm. Hold it and you can feel the thorns wanting to grow.");
-    }
-    if (drop.id == "hollow_map") {
-        log("A map scratched into a flat bone: a way down to a cloister the forest swallowed.");
-        log("It leads to Thornwood Hollow. Choose it from the dungeon menu in town.");
-    }
-    if (drop.id == "foreman_key") {
-        log("An iron key on a chain, stamped with a hammer and a flame.");
-        log("It opens the Ashen Foundry. Choose it from the dungeon menu in town.");
-    }
-    if (drop.id == "acolyte_catechism") {
-        log("A catechism of the cold, its pages stiff with frost: the winter does not end, it only waits.");
-    }
-    if (drop.id == "bonecaller_journal") {
-        log("A journal bound in skin: how bones remember their shape, and how to ask them to take a new one.");
-    }
-    if (drop.id == "chorister_hymn") {
-        log("Water-stained notes of a hymn no living throat could sing. Reading them, you hear the thunder in it.");
-    }
-    if (drop.id == "slag_formula") {
-        log("A slab of cooled slag, scratched with a smith's formula: how to wake the slag, and how to make it stand.");
-    }
-    if (drop.id == "forgemaster_brand") {
-        log("A branding iron, still hot, its mark a hammer inside a flame. The heat runs up your arm and stays.");
-    }
-    if (drop.id == "warlord_standard") {
-        log("Torn goblin silk on a broken spear, stitched under the Warlord's mark:");
-        log("\"Plant it where you stand. Let them break on it.\"");
-    }
+    if (const auto* entry = loreEntry(drop.id)) for (const char* line : entry->text) log(line);
+    if (drop.id == "hollow_map") log("It leads to Thornwood Hollow. Choose it from the dungeon menu in town.");
+    if (drop.id == "foreman_key") log("It opens the Ashen Foundry. Choose it from the dungeon menu in town.");
     for (std::size_t t = 0; t < kTalentTrees.size(); ++t)
         if (const auto g = deepGate(kTalentTrees[t].id); g && drop.id == g->lore)
             log("A new path shows among your talents: ", kTalentTrees[t].name, ".");
+    log("You keep it in your journal (J).");
 }
 
 } // namespace engine

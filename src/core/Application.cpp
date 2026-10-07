@@ -757,7 +757,7 @@ void Application::renderPause() {
 
 // A 1280x720 menu is in front: the mouse speaks its coordinates.
 bool Application::menuOpen() const {
-    return mode_ != GameMode::Playing || inventoryOpen_ || shrineMenu_ || vaultMenu_ || exitMenu_ || trialMenu_ || ascendancyMenu_ || pauseMenu_ || sandboxMenu_;
+    return mode_ != GameMode::Playing || inventoryOpen_ || shrineMenu_ || vaultMenu_ || exitMenu_ || trialMenu_ || ascendancyMenu_ || pauseMenu_ || sandboxMenu_ || journalOpen_;
 }
 
 float Application::menuSplit() const {
@@ -906,6 +906,7 @@ void Application::handleEvent(const sf::Event& input) {
         return; // inventory mouse actions must never click through onto the map
     }
     if(sandboxMenu_ && !event->is<sf::Event::KeyPressed>()) { handleSandboxMouse(*event); return; }
+    if(journalOpen_ && !event->is<sf::Event::KeyPressed>()) { handleJournalMouse(*event); return; }
     if(ascendancyMenu_ && !event->is<sf::Event::KeyPressed>()) { handleAscendancyMouse(*event); return; }
     if(mode_==GameMode::Town && !event->is<sf::Event::KeyPressed>()) {
         handleTownMouse(*event);
@@ -922,6 +923,16 @@ void Application::handleEvent(const sf::Event& input) {
 
     if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
         if (sandboxMenu_) { handleSandboxKey(keyPressed->code); return; }
+        if (journalOpen_) {
+            const auto k = keyPressed->code;
+            if (k == sf::Keyboard::Key::J || k == sf::Keyboard::Key::Escape) journalOpen_ = false;
+            else if (k == sf::Keyboard::Key::Up) journalScroll_ = std::max(0, journalScroll_ - 1);
+            else if (k == sf::Keyboard::Key::Down) ++journalScroll_;
+            return;
+        }
+        if (keyPressed->code == sf::Keyboard::Key::J && (mode_ == GameMode::Playing || mode_ == GameMode::Town) && !inventoryOpen_ && !ascendancyMenu_) {
+            cancelTargeting(); journalOpen_ = true; journalScroll_ = 0; return;
+        }
         if (sandboxRun_ && keyPressed->code == sf::Keyboard::Key::F1 && (mode_ == GameMode::Playing || mode_ == GameMode::Town)) {
             inventoryOpen_ = false; cancelTargeting(); sandboxMenu_ = true; return;
         }
@@ -4442,7 +4453,7 @@ void Application::render() {
     window_.setView(playView_); renderVault();
     window_.setView(playView_); renderShrine();
     window_.setView(playView_); renderAscendancy();
-    window_.setView(playView_); renderSandbox();
+    window_.setView(playView_); renderSandbox(); renderJournal();
     if (vaultMenu_ || shrineMenu_ || exitMenu_ || ascendancyMenu_ || sandboxMenu_) mapHints_.clear();
     window_.setView(playView_);
     renderMapHints();

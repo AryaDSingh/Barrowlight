@@ -1,4 +1,5 @@
 #include "core/Application.hpp"
+#include "entities/Lore.hpp"
 #include "entities/MonsterFactory.hpp"
 #include "core/GameIcons.hpp"
 #include "core/PlayLayout.hpp"
@@ -225,15 +226,7 @@ void Application::renderGroundItems() {
         glow.setFillColor(sf::Color(240, 136, 52, 70)); window_.draw(glow);
         ui_.icon(window_, "scroll-unfurled", {{screen.x + 4.f, screen.y + 4.f}, {20.f, 20.f}}, ui::kUnique);
         if (drop.at.x == player_.position().x && drop.at.y == player_.position().y)
-            mapHints_.push_back({std::string(drop.id == "warlord_standard" ? "The Warlord's Standard" : drop.id == "foreman_key" ? "The Foreman's key" :
-                                             drop.id == "forgemaster_brand" ? "The Forgemaster's brand" :
-                                             drop.id == "slag_formula" ? "A slag-scrawled formula" :
-                                             drop.id == "chorister_hymn" ? "The Chorister's hymn" :
-                                             drop.id == "bonecaller_journal" ? "A Bonecaller's journal" :
-                                             drop.id == "acolyte_catechism" ? "A Frost Acolyte's catechism" :
-                                             drop.id == "hollow_map" ? "A map drawn on bone" :
-                                             drop.id == "witch_seed" ? "A Rot Witch's seed" :
-                                             drop.id == "hound_collar" ? "A braided hound collar" : "Lore") +
+            mapHints_.push_back({std::string(loreEntry(drop.id) ? loreEntry(drop.id)->title : "Lore") +
                                  " at your feet. G: take it", ui::kUnique});
     }
     for (const auto& item : groundItems_) {

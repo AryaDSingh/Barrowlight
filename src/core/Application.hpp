@@ -322,6 +322,11 @@ private:
     void revealSelectedTree();
     // The talent map: every tree around the 16 colours (M toggles it with the list).
     bool talentMap_ = false;
+    // The journal (J): the lore you've found, kept (ApplicationJournal.cpp).
+    bool journalOpen_ = false;
+    int journalScroll_ = 0;
+    void renderJournal();
+    void handleJournalMouse(const sf::Event& event);
     void renderTalentMap();
     std::optional<std::size_t> talentMapTreeAt(sf::Vector2f p) const;
     void closeTalentTrees();
