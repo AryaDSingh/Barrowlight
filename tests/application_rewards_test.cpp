@@ -1525,6 +1525,16 @@ struct ApplicationRewardsTestAccess {
                 std::size_t fireTree=0; while (std::string(kTalentTrees[fireTree].id)!="fire") ++fireTree;
                 app.mode_=GameMode::AbilityChoice; app.treeSelection_=fireTree; app.abilitySelection_=1; app.treeScroll_={};
                 snapshot("ui-talent-forked.png");
+                // The talent map: the same trees around their colours.
+                app.handleTreeKey(sf::Keyboard::Key::M,false);
+                check(app.talentMap_,"M opens the talent map");
+                snapshot("ui-talent-map.png");
+                std::optional<std::size_t> found;
+                for (int y=110;y<690 && !found;y+=4) for (int x=30;x<812 && !found;x+=4)
+                    if (const auto t=app.talentMapTreeAt({static_cast<float>(x),static_cast<float>(y)}); t && std::string(kTalentTrees[*t].id)=="arcane") found=t;
+                check(found.has_value(),"Arcane sits somewhere on the map");
+                app.player_.sandbox=true; snapshot("ui-talent-map-all.png"); app.player_.sandbox=false;
+                app.talentMap_=false;
                 app.mode_=GameMode::Playing;
             }
 

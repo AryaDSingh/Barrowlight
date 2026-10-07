@@ -280,6 +280,10 @@ private:
     void scrollTrees(int column, float pixels);
     int treeColumnOf(std::size_t tree) const;
     void revealSelectedTree();
+    // The talent map: every tree around the 16 colours (M toggles it with the list).
+    bool talentMap_ = false;
+    void renderTalentMap();
+    std::optional<std::size_t> talentMapTreeAt(sf::Vector2f p) const;
     void closeTalentTrees();
     void requestHotbar(std::size_t slot);
     void applyMovementTalents(Position previous);

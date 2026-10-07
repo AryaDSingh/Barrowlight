@@ -21,6 +21,7 @@ const sf::FloatRect treeButton{{866,566},{184,36}}, abilityButton{{1058,566},{18
 const sf::FloatRect kBindingDialog{{230,246},{820,258}};
 const sf::FloatRect cancelBindingButton{{kBindingDialog.position.x+kBindingDialog.size.x-138,kBindingDialog.position.y+16},{120,30}};
 constexpr float kTreeColumnX[]{28,300,572};
+const sf::FloatRect kTalentViewToggle{{730, 72}, {96, 26}};
 constexpr float kTreeTop=70, kCategoryHeight=30, kTreeRowHeight=96, kIcon=50, kIconStride=60, kColumnWidth=250;
 
 enum class TreeCategory { Martial, Magic, Utility, Defence, Hybrid, Deep };
@@ -165,7 +166,7 @@ sf::FloatRect Application::talentTreeAbilityRect(std::size_t tree, std::size_t a
 
 void Application::handleTreeMouse(const sf::Event& event) {
     if(const auto* move=event.getIf<sf::Event::MouseMoved>()) mousePixel_=move->position;
-    if(const auto* wheel=event.getIf<sf::Event::MouseWheelScrolled>(); wheel && !bindingTalent_ && wheel->position.x<kTreeViewWidth) {
+    if(const auto* wheel=event.getIf<sf::Event::MouseWheelScrolled>(); wheel && !bindingTalent_ && !talentMap_ && wheel->position.x<kTreeViewWidth) {
         // The wheel scrolls the column it's over.
         const float x=static_cast<float>(wheel->position.x);
         const int column=x<kTreeColumnX[1]-14?0:x<kTreeColumnX[2]-14?1:2;
@@ -183,6 +184,15 @@ void Application::handleTreeMouse(const sf::Event& event) {
         return;
     }
     if(playButton.contains(p)) { closeTalentTrees(); return; }
+    if(kTalentViewToggle.contains(p)) { talentMap_=!talentMap_; return; }
+    // On the map, a tree you click opens in the list, ready to learn.
+    if(talentMap_ && p.x<kTreeViewWidth && p.y>=kTreeViewTop) {
+        if(const auto tree=talentMapTreeAt(p)) {
+            treeSelection_=*tree; abilitySelection_=0; resonanceSelection_.reset(); treeFeedback_.clear();
+            talentMap_=false; revealSelectedTree();
+        }
+        return;
+    }
     if(treeButton.contains(p)) { handleTreeKey(sf::Keyboard::Key::Enter,false); return; }
     if(abilityButton.contains(p)) { handleTreeKey(sf::Keyboard::Key::A,false); return; }
     if(bindButton.contains(p)) { handleTreeKey(sf::Keyboard::Key::B,false); return; }
@@ -269,6 +279,7 @@ void Application::handleTreeKey(sf::Keyboard::Key key, bool shift) {
     if (key==sf::Keyboard::Key::Escape && bindingTalent_) { bindingTalent_=false; treeFeedback_="Hotbar assignment cancelled."; return; }
     if (key==sf::Keyboard::Key::Up || key==sf::Keyboard::Key::Down || key==sf::Keyboard::Key::Left || key==sf::Keyboard::Key::Right || key==sf::Keyboard::Key::A || key==sf::Keyboard::Key::Enter) bindingTalent_=false;
     if (key==sf::Keyboard::Key::F5) { saveGame(); return; }
+    if (key==sf::Keyboard::Key::M && !bindingTalent_) { talentMap_=!talentMap_; return; }
     if (key==sf::Keyboard::Key::T || key==sf::Keyboard::Key::Escape) { closeTalentTrees(); return; }
     if (key==sf::Keyboard::Key::Up || key==sf::Keyboard::Key::Down || key==sf::Keyboard::Key::Left || key==sf::Keyboard::Key::Right)
         resonanceSelection_.reset();
@@ -388,6 +399,7 @@ void Application::renderTalentTrees() {
     // --- Trees by category, three columns of icon rows ------------------------
     for (int c=0;c<3;++c) scrollTrees(c,0); // the tree list may have changed size
     const auto layout=layoutTrees(player_,treeScroll_);
+    if (talentMap_) renderTalentMap(); else {
     for(float dx:{kTreeColumnX[1]-14,kTreeColumnX[2]-14,836.f}) ui_.divider(window_,dx,72,700);
     const float viewHeight=treeViewBottom_-kTreeViewTop;
     // Clipped to the tree area, within whatever frame the screen is drawn in.
@@ -452,6 +464,9 @@ void Application::renderTalentTrees() {
         sf::RectangleShape bar({4,thumb}); bar.setPosition({x,trackTop+(track-thumb)*treeScroll_.at(static_cast<std::size_t>(c))/range});
         bar.setFillColor(ui::kBronze); window_.draw(bar);
     }
+
+    } // the list view
+    ui_.button(window_,kTalentViewToggle,talentMap_?"List (M)":"Map (M)",hovered(kTalentViewToggle),true,14);
 
     // --- Details of the selected ability -------------------------------------
     if (resonanceSelection_) renderResonanceDetails(); else {
@@ -534,7 +549,7 @@ void Application::renderTalentTrees() {
     }
 
     // Hover tooltip for an ability icon you're not already inspecting.
-    if(!bindingTalent_ && mouse && mouse->y>=kTreeViewTop && mouse->y<=treeViewBottom_) for(std::size_t row=0;row<layout.trees.size();++row) for(std::size_t i=0;i<treeNodes(layout.trees[row]).size();++i) {
+    if(!talentMap_ && !bindingTalent_ && mouse && mouse->y>=kTreeViewTop && mouse->y<=treeViewBottom_) for(std::size_t row=0;row<layout.trees.size();++row) for(std::size_t i=0;i<treeNodes(layout.trees[row]).size();++i) {
         if(!abilityRect(layout.origins[row],layout.trees[row],i).contains(*mouse)) continue;
         const auto& hd=*treeNodes(layout.trees[row])[i];
         const auto& hoverTree=kTalentTrees[layout.trees[row]];
@@ -609,6 +624,133 @@ void Application::applyMovementTalents(Position previous) {
             enemy->statusEffects().apply({StatusEffectType::Burn,2,burn});
             player_.statusEffects().remove(StatusEffectType::Concealed);
         }
+    }
+}
+} // namespace engine
+
+namespace engine {
+namespace {
+// The talent map's geometry: 16 colours on an ellipse, base trees just inside
+// their colour, hybrids further in between their two, deep trees at the core.
+constexpr float kMapCx = 421.f, kMapCy = 400.f, kMapRx = 360.f, kMapRy = 284.f, kMedallion = 40.f;
+const Affinity kRing[]{Affinity::Steel, Affinity::Guard, Affinity::Light, Affinity::Flame, Affinity::Storm, Affinity::Frost, Affinity::Water, Affinity::Earth,
+                       Affinity::Rot, Affinity::Hunt, Affinity::Motion, Affinity::Guile, Affinity::Dark, Affinity::Death, Affinity::Blood, Affinity::Arcane};
+float ringAngle(Affinity a) {
+    for (int i = 0; i < 16; ++i) if (kRing[i] == a) return -1.5708f + 6.28319f * static_cast<float>(i) / 16.f;
+    return 0.f;
+}
+sf::Vector2f onEllipse(float angle, float scale) { return {kMapCx + std::cos(angle) * kMapRx * scale, kMapCy + std::sin(angle) * kMapRy * scale}; }
+float bandOf(const std::string& id) {
+    if (deepGate(id)) return .24f;
+    if (hybridGate(id) || id == "blood_magic") return .50f;
+    return .76f;
+}
+// Each tree's place, worked out once: the mean of its nodes' colours, then
+// nudged apart so no two medallions overlap.
+const std::vector<sf::Vector2f>& treeSpots() {
+    static const std::vector<sf::Vector2f> spots = [] {
+        std::vector<float> angle(kTalentTrees.size()), band(kTalentTrees.size());
+        for (std::size_t t = 0; t < kTalentTrees.size(); ++t) {
+            float x = 0, y = 0;
+            for (const auto* d : treeNodes(t))
+                if (d->affinity != Affinity::None) { x += std::cos(ringAngle(d->affinity)); y += std::sin(ringAngle(d->affinity)); }
+            angle[t] = (x || y) ? std::atan2(y, x) : 6.28319f * static_cast<float>(t) / static_cast<float>(kTalentTrees.size());
+            band[t] = bandOf(kTalentTrees[t].id);
+        }
+        std::vector<sf::Vector2f> p(kTalentTrees.size());
+        // A small fixed offset per tree, so trees of identical colours start apart.
+        for (std::size_t t = 0; t < p.size(); ++t)
+            p[t] = onEllipse(angle[t] + .06f * (static_cast<float>(t % 5) - 2.f), band[t] + .03f * (static_cast<float>(t % 3) - 1.f));
+        for (int pass = 0; pass < 300; ++pass)
+            for (std::size_t a = 0; a < p.size(); ++a)
+                for (std::size_t b = a + 1; b < p.size(); ++b) {
+                    const sf::Vector2f d = p[b] - p[a];
+                    const float len = std::max(.01f, std::sqrt(d.x * d.x + d.y * d.y)), want = kMedallion + 22.f;
+                    if (len >= want) continue;
+                    const sf::Vector2f push = d / len * ((want - len) / 2.f);
+                    p[a] -= push; p[b] += push;
+                }
+        for (auto& q : p) { q.x = std::clamp(q.x, 30.f, 812.f); q.y = std::clamp(q.y, 110.f, 690.f); }
+        return p;
+    }();
+    return spots;
+}
+} // namespace
+
+std::optional<std::size_t> Application::talentMapTreeAt(sf::Vector2f p) const {
+    for (std::size_t t = 0; t < kTalentTrees.size(); ++t) {
+        if (!treeVisible(player_, t)) continue;
+        const auto c = treeSpots()[t];
+        if (std::abs(p.x - c.x) <= kMedallion / 2 && std::abs(p.y - c.y) <= kMedallion / 2) return t;
+    }
+    return std::nullopt;
+}
+
+void Application::renderTalentMap() {
+    const auto mouse = mousePixel_ ? std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)) : std::nullopt;
+    const auto& spots = treeSpots();
+    // A night sky of its own, so nothing behind the screen shows through.
+    sf::RectangleShape sky({kTreeViewWidth - 8.f, 720.f - kTreeViewTop - 6.f}); sky.setPosition({4.f, kTreeViewTop});
+    sky.setFillColor(sf::Color(10, 9, 13, 250)); window_.draw(sky);
+    // Threads from each tree to its colours: faint, brighter once it's yours.
+    sf::VertexArray threads(sf::PrimitiveType::Lines);
+    for (std::size_t t = 0; t < kTalentTrees.size(); ++t) {
+        if (!treeVisible(player_, t)) continue;
+        const bool open = treeAccess(player_, kTalentTrees[t].id) != nullptr;
+        std::vector<Affinity> colours;
+        for (const auto* d : treeNodes(t)) if (d->affinity != Affinity::None && std::find(colours.begin(), colours.end(), d->affinity) == colours.end()) colours.push_back(d->affinity);
+        for (const auto a : colours) {
+            const auto info = affinityInfo(a);
+            const sf::Color c(info.r, info.g, info.b, open ? 120 : 34);
+            threads.append({spots[t], c}); threads.append({onEllipse(ringAngle(a), 1.f), c});
+        }
+    }
+    window_.draw(threads);
+    // The colours: brighter and larger the more you hold.
+    for (const auto a : kRing) {
+        const auto info = affinityInfo(a);
+        const int points = affinityPoints(player_, a);
+        const auto at = onEllipse(ringAngle(a), 1.f);
+        const float r = 8.f + static_cast<float>(std::min(points, 12));
+        sf::CircleShape star(r); star.setOrigin({r, r}); star.setPosition(at);
+        star.setFillColor(sf::Color(info.r, info.g, info.b, static_cast<std::uint8_t>(points ? 230 : 60)));
+        star.setOutlineThickness(1.5f); star.setOutlineColor(sf::Color(info.r, info.g, info.b, 200));
+        window_.draw(star);
+        const std::string label = std::string(info.name) + (points ? " " + std::to_string(points) : "");
+        const float w = ui_.textWidth(label, 13, ui::Font::Bold);
+        const float ly = at.y + (at.y < kMapCy ? -r - 18.f : r + 2.f);
+        ui_.text(window_, label, {at.x - w / 2, ly}, 13, sf::Color(info.r, info.g, info.b, static_cast<std::uint8_t>(points ? 255 : 130)), ui::Font::Bold);
+    }
+    // The trees.
+    std::optional<std::size_t> hovered;
+    for (std::size_t t = 0; t < kTalentTrees.size(); ++t) {
+        if (!treeVisible(player_, t)) continue;
+        const auto& tree = kTalentTrees[t];
+        const bool open = treeAccess(player_, tree.id) != nullptr;
+        const bool named = open || player_.sandbox || hybridNamed(player_, tree.id);
+        const bool ready = !open && treePurchaseReason(player_, playerClass_, tree).empty();
+        const sf::FloatRect box{{spots[t].x - kMedallion / 2, spots[t].y - kMedallion / 2}, {kMedallion, kMedallion}};
+        if (mouse && box.contains(*mouse)) hovered = t;
+        ui_.inset(window_, box, open ? ui::kGold : ready ? ui::kBronze : sf::Color(60, 56, 52));
+        if (named) ui_.icon(window_, talentIcon(treeNodes(t).front()->ranks[0]), {{box.position.x + 6, box.position.y + 6}, {kMedallion - 12, kMedallion - 12}},
+                            open ? sf::Color(240, 230, 206) : ready ? ui::kText : sf::Color(84, 80, 76));
+        else ui_.textCentered(window_, "?", box, 22, sf::Color(110, 104, 96), ui::Font::Title);
+        if (open || ready) {
+            const std::string name = tree.name;
+            const float w = ui_.textWidth(name, 12, ui::Font::Bold);
+            ui_.text(window_, name, {spots[t].x - w / 2, box.position.y + kMedallion + 1}, 12, open ? ui::kGold : ui::kText, ui::Font::Bold);
+        }
+    }
+    ui_.text(window_, "Gold: yours.  Bronze: ready to open.  Dim: not yet.  Click a tree to see its abilities.", {18, 698}, 13, ui::kMuted);
+    if (hovered) {
+        const auto& tree = kTalentTrees[*hovered];
+        const bool open = treeAccess(player_, tree.id) != nullptr;
+        const bool named = open || player_.sandbox || hybridNamed(player_, tree.id);
+        std::vector<ui::Line> lines{{named ? tree.name : "???", ui::kGold, 17, ui::Font::Title}};
+        if (named) lines.push_back({tree.description, ui::kText, 14});
+        const auto reason = open ? std::string("Open.") : treePurchaseReason(player_, playerClass_, tree);
+        lines.push_back({reason.empty() ? "Ready to open." : reason, open || reason.empty() ? ui::kGood : ui::kMuted, 13});
+        ui_.tooltip(window_, lines, *mouse, 300);
     }
 }
 } // namespace engine
