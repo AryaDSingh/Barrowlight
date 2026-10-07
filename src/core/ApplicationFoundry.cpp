@@ -138,6 +138,7 @@ void Application::foundryDeath(Monster& monster) {
     carries(MonsterType::OssuaryWarden, "hollow_map", "A map, drawn on bone, slips from the Warden's ashes.");
     carries(MonsterType::RotWitch, "witch_seed", "A black seed rolls from the witch's hand, still warm.");
     carries(MonsterType::BriarHound, "hound_collar", "A braided collar slips from the hound's neck.");
+    carries(MonsterType::RimeWight, "wight_oath", "A shield of black ice falls from the wight's arm, an oath cut into it.");
     // A frozen thrall shatters: ice across the 8 tiles around it, and the shards cut whoever stands there.
     if (monster.type() == MonsterType::FrozenThrall) {
         const auto at = monster.position();

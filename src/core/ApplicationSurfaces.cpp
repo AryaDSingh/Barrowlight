@@ -49,7 +49,7 @@ Element talentElement(const Talent& t) {
     if (t.tree == TalentTree::Tide) return Element::None; // its chill must not freeze the water it brings
     if (t.tree == TalentTree::Stormlance || t.tree == TalentTree::Tempest) return Element::Lightning;
     if (t.tree == TalentTree::Fire || (t.onHitEffect && t.onHitEffect->type == StatusEffectType::Burn)) return Element::Fire;
-    if (t.tree == TalentTree::Ice || t.tree == TalentTree::Rimeheart || (t.onHitEffect && t.onHitEffect->type == StatusEffectType::Chill)) return Element::Ice;
+    if (t.tree == TalentTree::Ice || t.tree == TalentTree::Rimeheart || t.tree == TalentTree::Wintermarch || (t.onHitEffect && t.onHitEffect->type == StatusEffectType::Chill)) return Element::Ice;
     if (t.tree == TalentTree::Lightning) return Element::Lightning;
     if (t.tree == TalentTree::Bow || t.tree == TalentTree::ShadowArcher || t.tree == TalentTree::Crossbow) return Element::Arrow;
     return Element::None;

@@ -24,6 +24,7 @@ enum class TalentTree {
     Rimeheart,  // the Deep Crypts' second deep tree
     Briarheart, // Thornwood Hollow's deep tree
     Packmaster, // Thornwood Hollow's second deep tree
+    Wintermarch, // Rimeholt's deep tree
 };
 
 // Abilities and talents have five ranks; rank 5 often adds a mastery effect
@@ -96,7 +97,7 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The third batch (Shadow, Radiance, Shield) and its resonances.
     Dread, Bulwark, Twilight, TemplarsEdge, HallowedGuard,
     // The fourth batch (Bow, Stealth, Daggers) and its resonances.
-    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, BrittleSlag, Pyroclasm, Overcharge, EyeOfTheStorm, Marrow, GrownGuard, BrittleCold, CreepingFrost, Thornborn, BriarSnares, PackTactics, Blooded, Thornmaw, PackOfTwo, RunningMate, GuardianInstinct, Contagion, Outbreak, Miasma, Wasting, UnseenHand, AssassinsEdge,
+    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, BrittleSlag, Pyroclasm, Overcharge, EyeOfTheStorm, Marrow, GrownGuard, BrittleCold, CreepingFrost, Thornborn, BriarSnares, PackTactics, Blooded, Thornmaw, PackOfTwo, RunningMate, GuardianInstinct, Contagion, Outbreak, Miasma, Wasting, Permafrost, BitterCold, UnseenHand, AssassinsEdge,
     // The fifth batch (Earth, Tide, Venom) and its resonances.
     Aftershock, Tidecaller, Virulence, Mire, FoulWater, EnvenomedBlades,
     // The sixth batch (Spear, Mace, Crossbow) and its resonances.
@@ -262,6 +263,12 @@ struct Talent {
     // Plaguebringer. patientZero: the plague it lays grows with Intelligence.
     // pandemic: every plagued foe in sight has its plague doubled and lengthened.
     bool patientZero=false, pandemic=false;
+    // Wintermarch. rimePlate: turns your plate chills those who strike you.
+    // frozenAdvance: a step that slows the foes around where you land.
+    // hoarfrost: turns the cold chills the foes around you (hoarReach tiles).
+    // winterMarch: turns everything near you slows to a crawl.
+    bool frozenAdvance=false;
+    int rimePlate=0, hoarfrost=0, hoarReach=1, winterMarch=0;
     int drainPercent=0, stayHiddenPercent=0;
     bool huntersMark=false, returnConcealed=false;
     int committedRhythm=-1;

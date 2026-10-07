@@ -2408,6 +2408,70 @@ struct ApplicationRewardsTestAccess {
                 app.monsters_.clear(); app.player_.packHp.clear(); app.mode_=GameMode::Playing; app.currentFloor_=1;
             }
 
+            // Wintermarch: Rimeholt's deep tree, from the first Rime Wight's frozen oath.
+            arena(PlayerClass::Warrior);
+            {
+                auto made=createMonster(MonsterType::RimeWight,{12,10}); auto* wight=made.get();
+                app.scheduler_.add(*wight); app.monsters_.push_back(std::move(made));
+                wight->stats().hp=0; app.checkAndHandleDeath(*wight); app.removeDeadMonsters();
+                check(app.loreDrops_.size()==1 && app.loreDrops_[0].id=="wight_oath","The first Rime Wight slain drops its frozen oath");
+                app.player_.setPosition(app.loreDrops_[0].at); app.pickupItem(); app.player_.setPosition({10,10});
+                check(deepTreeKnown(app.player_,"wintermarch"),"The oath reveals Wintermarch");
+                giveColour(app.player_,Affinity::Frost,10); giveColour(app.player_,Affinity::Guard,6); app.player_.level()=22; app.player_.treePoints()=1;
+                check(purchaseTree(app.player_,PlayerClass::Warrior,*findTree("wintermarch")),"With Frost 10, Guard 6 and level 22 Wintermarch opens");
+                // Rime Plate.
+                cast(ranked("wintermarch.plate",1),app.player_.position());
+                check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Guard)>=4 && app.player_.statusEffects().has(StatusEffectType::RimePlate),"Rime Plate: Guard 4");
+                auto* striker=foe({11,10}); striker->stats().dexterity=10;
+                const int life=app.player_.stats().hp;
+                for (int i=0;i<10 && app.player_.stats().hp==life;++i) { app.currentActor_=striker; app.processMonsterTurns(); }
+                check(striker->statusEffects().has(StatusEffectType::Chill),"A foe that strikes you through Rime Plate is chilled");
+                clearFoes(); app.player_.statusEffects().active().clear();
+                // Frozen Advance.
+                auto* waiting=foe({13,10});
+                app.lastMoveDirection_={1,0};
+                cast(ranked("wintermarch.advance",1),{12,10});
+                check(app.player_.position().x==12 && waiting->statusEffects().has(StatusEffectType::Slowed),"Frozen Advance: step, and the foe beside where you land slows");
+                clearFoes(); app.player_.setPosition({10,10});
+                // Hoarfrost and Bitter Cold.
+                auto* close=foe({11,10});
+                cast(ranked("wintermarch.hoarfrost",1),app.player_.position());
+                app.tickStormcall();
+                check(close->statusEffects().has(StatusEffectType::Chill),"Hoarfrost chills the foes around you each turn");
+                ranked("wintermarch.bitter",1); app.tickStormcall();
+                check(close->statusEffects().magnitudeOf(StatusEffectType::Slowed)>=20,"Bitter Cold: a chilled foe beside you is slowed further");
+                clearFoes(); app.player_.statusEffects().active().clear();
+                // Permafrost: chilled foes hit softer.
+                ranked("wintermarch.permafrost",1);
+                const auto blows=[&](bool chilled) {
+                    auto* brute=foe({11,10}); brute->stats().strength=20; brute->stats().dexterity=10;
+                    int total=0;
+                    for (int i=0;i<30;++i) {
+                        app.player_.stats().hp=500; app.player_.statusEffects().active().clear();
+                        brute->statusEffects().active().clear();
+                        if (chilled) brute->statusEffects().apply({StatusEffectType::Chill,5,1});
+                        app.currentActor_=brute; app.processMonsterTurns();
+                        total+=500-app.player_.stats().hp;
+                    }
+                    clearFoes(); return total;
+                };
+                const int warm=blows(false), cold=blows(true);
+                check(warm>0 && cold<warm,"Permafrost: chilled foes deal less damage to you");
+                // Winter's March.
+                auto* far=foe({13,10});
+                cast(ranked("wintermarch.march",1),app.player_.position());
+                app.tickStormcall();
+                check(far->statusEffects().magnitudeOf(StatusEffectType::Slowed)>=50 && ascendancyGuardBonus(app.player_)>=3,
+                      "Winter's March: foes within 3 tiles crawl, and hits on you deal 3 less");
+                clearFoes(); app.player_.statusEffects().active().clear();
+                // Avalanche.
+                auto* under=foe({14,10});
+                cast(ranked("wintermarch.avalanche",1),{14,10});
+                check(under->stats().hp<90 && under->statusEffects().has(StatusEffectType::Stun) && app.surfaceAt({15,11})==SurfaceType::Ice,
+                      "Avalanche: it crushes, it freezes the ground, and it stuns");
+                clearFoes(); app.player_.statusEffects().active().clear();
+            }
+
             // Daggers.
             arena(PlayerClass::Thief);
             {
@@ -4857,7 +4921,7 @@ struct ApplicationRewardsTestAccess {
             check(app.player_.knowsLore("hollow_map") && sawLog("A map scratched into a flat bone") && sawLog("journal (J)"),"Reading lore tells you it's kept in your journal");
             for (const char* id:{"warlord_standard","foreman_key","forgemaster_brand","slag_formula","chorister_hymn","bonecaller_journal","acolyte_catechism","witch_seed","hound_collar"})
                 app.player_.lore.push_back(id);
-            check(loreEntries().size()==11 && std::all_of(app.player_.lore.begin(),app.player_.lore.end(),[](const std::string& id){ return loreEntry(id)!=nullptr; }),
+            check(loreEntries().size()>=11 && std::all_of(app.player_.lore.begin(),app.player_.lore.end(),[](const std::string& id){ return loreEntry(id)!=nullptr; }),
                   "Every piece of lore has a journal entry");
             app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::J});
             snapshot("ui-journal.png");

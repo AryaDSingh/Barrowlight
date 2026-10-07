@@ -113,6 +113,20 @@ void Application::tickPack() {
     tickContagion();
     tickVampirism();
     tickCold();
+    // Wintermarch: Hoarfrost chills those around you, Bitter Cold slows the chilled beside you, Winter's March slows all near.
+    {
+        const auto me = player_.position();
+        const int hoar = player_.statusEffects().magnitudeOf(StatusEffectType::Hoarfrost);
+        const int bitter = player_.talents().passiveValue(PassiveKind::BitterCold, player_.stats());
+        const bool march = player_.statusEffects().has(StatusEffectType::WinterMarch);
+        for (auto& m : monsters_) {
+            if (m->allied || m->stats().hp <= 0) continue;
+            const int d = std::max(std::abs(m->position().x - me.x), std::abs(m->position().y - me.y));
+            if (hoar && d <= hoar) m->statusEffects().apply({StatusEffectType::Chill, 2, 20});
+            if (bitter && d <= 1 && m->statusEffects().has(StatusEffectType::Chill)) m->statusEffects().apply({StatusEffectType::Slowed, 2, bitter});
+            if (march && d <= 3) m->statusEffects().apply({StatusEffectType::Slowed, 2, 50});
+        }
+    }
     if (wardenFoe_ && std::none_of(monsters_.begin(), monsters_.end(), [&](const auto& m) { return m.get() == wardenFoe_ && m->stats().hp > 0; }))
         wardenFoe_ = nullptr, wardenPin_ = false;
     // Thornmaw walks with you, unless it fell on this floor.

@@ -1484,6 +1484,9 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 maw->doubleBite=true; wardenFoe_=foe;
                 log("Thornmaw leaps at ",foe->name(),"!");
             }
+        if (talent.rimePlate) { player_.statusEffects().apply({StatusEffectType::RimePlate,talent.rimePlate,1}); log("Frost hardens over your armour."); }
+        if (talent.hoarfrost) { player_.statusEffects().apply({StatusEffectType::Hoarfrost,talent.hoarfrost,talent.hoarReach}); log("The cold pours off you."); }
+        if (talent.winterMarch) { player_.statusEffects().apply({StatusEffectType::WinterMarch,talent.winterMarch,1}); log("Winter marches with you."); }
         if (talent.callWild) {
             player_.statusEffects().apply({StatusEffectType::CallOfTheWild,talent.callWild,1});
             log("The wild answers. You run together.");
@@ -2022,6 +2025,14 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             if (talent.briarSeed) growBriar(p); else freezeGround(p,creep);
         }
     }
+    // Frozen Advance: the foes around where you land are slowed.
+    if (talent.frozenAdvance) {
+        const auto me=player_.position(); int slowed=0;
+        for (auto& m:monsters_)
+            if (!m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-me.x),std::abs(m->position().y-me.y))<=1) {
+                m->statusEffects().apply({StatusEffectType::Slowed,3,30}); ++slowed; }
+        if (slowed) log("The cold follows your step, and they slow.");
+    }
     // Running Mate: Thornmaw lands beside you when you move.
     if (talent.shape==EffectShape::Movement && player_.talents().passiveValue(PassiveKind::RunningMate,player_.stats()))
         if (auto* maw=thornmaw()) {
@@ -2322,6 +2333,9 @@ void Application::processMonsterTurns() {
                     AIDecision decision=enemyDecision(*monster,opponent);
                     if (const int shaken=actor->statusEffects().magnitudeOf(StatusEffectType::Shaken))
                         decision.attackPower=decision.attackPower*(100-shaken)/100;
+                    if (const int frost=player_.talents().passiveValue(PassiveKind::Permafrost,player_.stats());
+                        frost && !monster->allied && decision.target==&player_ && actor->statusEffects().has(StatusEffectType::Chill))
+                        decision.attackPower=std::max(0,decision.attackPower-frost);
                     if (const int wasting=player_.talents().passiveValue(PassiveKind::Wasting,player_.stats());
                         wasting && !monster->allied && actor->statusEffects().has(StatusEffectType::Plague))
                         decision.attackPower=decision.attackPower*(100-wasting)/100;
@@ -2843,6 +2857,10 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                         log(actor.name()," is cut by thorns for ",thorns,".");
                         checkAndHandleDeath(actor);
                     }
+                    // Rime Plate: a foe that strikes you in melee is chilled.
+                    if (decision.target==&player_ && actor.stats().hp>0 && player_.statusEffects().has(StatusEffectType::RimePlate) &&
+                        std::max(std::abs(actor.position().x-player_.position().x),std::abs(actor.position().y-player_.position().y))<=1)
+                        actor.statusEffects().apply({StatusEffectType::Chill,2,30});
                     // Guardian Instinct: Thornmaw turns on whatever hits you.
                     if (decision.target==&player_ && damage>0 && actor.stats().hp>0 && player_.talents().passiveValue(PassiveKind::GuardianInstinct,player_.stats()))
                         if (const auto* foe=dynamic_cast<const Monster*>(&actor); foe && !foe->allied) { wardenFoe_=&actor; wardenPin_=true; }

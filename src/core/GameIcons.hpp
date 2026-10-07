@@ -140,6 +140,8 @@ inline std::string talentIcon(const Talent& talent) {
         {"plaguebringer.miasma", "poison-gas"}, {"plaguebringer.wasting", "broken-bone"}, {"plaguebringer.pandemic", "cursed-star"},
         {"beastwarden.thornmaw", "wolverine-claws"}, {"beastwarden.point", "target-arrows"}, {"beastwarden.pack_of_two", "crossed-swords"},
         {"beastwarden.running_mate", "run"}, {"beastwarden.guardian", "shield-reflect"}, {"beastwarden.call_wild", "shouting"},
+        {"wintermarch.plate", "breastplate"}, {"wintermarch.advance", "footprint"}, {"wintermarch.hoarfrost", "snowflake-1"},
+        {"wintermarch.permafrost", "frozen-orb"}, {"wintermarch.bitter", "ice-bolt"}, {"wintermarch.march", "visored-helm"}, {"wintermarch.avalanche", "falling-rocks"},
         {"packmaster.call", "wolverine-claws"}, {"packmaster.sic", "target-arrows"}, {"packmaster.bond", "cut-palm"}, {"packmaster.tactics", "crossed-swords"},
         {"packmaster.blooded", "bloody-sword"}, {"packmaster.howl", "shouting"}, {"packmaster.feral", "linked-rings"},
         {"briarheart.seed", "tree-branch"}, {"briarheart.lash", "barbed-coil"}, {"briarheart.blood", "cut-palm"}, {"briarheart.thornborn", "spiked-fence"},
@@ -271,6 +273,9 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::FeralBond: return "linked-rings";
         case StatusEffectType::CallOfTheWild: return "run";
         case StatusEffectType::Vampirism: return "evil-moon";
+        case StatusEffectType::RimePlate: return "breastplate";
+        case StatusEffectType::Hoarfrost: return "snowflake-1";
+        case StatusEffectType::WinterMarch: return "footprint";
     }
     return "aura";
 }

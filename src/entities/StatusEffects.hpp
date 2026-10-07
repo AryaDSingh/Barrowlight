@@ -43,6 +43,9 @@ enum class StatusEffectType {
     FeralBond,       // half of each hit on you goes to your nearest beast (Packmaster)
     CallOfTheWild,   // you and Thornmaw are hastened; each kill heals you both (Beastwarden)
     Vampirism,       // the Vampire Lord's curse: night eyes and a thirst, but light burns (save format 45)
+    RimePlate,       // foes that strike you in melee are chilled (Wintermarch)
+    Hoarfrost,       // the foes around you are chilled each turn; magnitude is the reach (Wintermarch)
+    WinterMarch,     // foes within 3 tiles crawl; hits on you deal less (Wintermarch)
 };
 
 struct StatusEffectInstance {
@@ -152,6 +155,9 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::FeralBond: return "Feral Bond";
     case StatusEffectType::CallOfTheWild: return "Call of the Wild";
     case StatusEffectType::Vampirism: return "Vampirism";
+    case StatusEffectType::RimePlate: return "Rime Plate";
+    case StatusEffectType::Hoarfrost: return "Hoarfrost";
+    case StatusEffectType::WinterMarch: return "Winter's March";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }
