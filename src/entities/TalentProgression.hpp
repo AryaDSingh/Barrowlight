@@ -43,7 +43,7 @@ inline std::string treePurchaseReason(const Player& p, PlayerClass cls, const Tr
     if (treeAccess(p,t.id)) return "Already open.";
     if (utilityTree(t.id)) {
         if (openTrees(p,true)>=utilityTreeSlots(p.level())) {
-            for (int level=p.level()+1;level<=kRunMaxLevel;++level)
+            for (int level=p.level()+1;level<=p.levelCap();++level)
                 if (utilityTreeSlots(level)>openTrees(p,true)) return "Another utility tree opens at level "+std::to_string(level)+".";
             return "No more utility trees.";
         }

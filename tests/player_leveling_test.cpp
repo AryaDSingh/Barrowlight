@@ -93,9 +93,10 @@ int main() {
               "4 level-ups grant 2 points each == 8 unspent attribute points");
     }
 
-    // --- grantXp: capped at level 30 (20 at the Lich, 30 on the paths beyond), doesn't overshoot.
+    // --- grantXp: capped at level 30 on the paths beyond the Lich (the winter road), doesn't overshoot.
     {
         Player player = makePlayer();
+        player.lore.push_back("winter_road");
         grantXp(player, 100000); // an absurdly large grant -- should still stop at 30
         check(player.level() == 30, "an enormous XP grant still caps at level 30, not beyond");
         check(player.xp() == 0,
@@ -106,9 +107,20 @@ int main() {
               "29 level-ups granted 2 points each == 58 unspent attribute points, none lost to the cap");
     }
 
+    // --- grantXp: before the Lich falls, the cap is 20.
+    {
+        Player player = makePlayer();
+        grantXp(player, 100000);
+        check(player.level() == 20, "until you go on past the Lich, the cap is 20");
+        player.lore.push_back("winter_road");
+        grantXp(player, 2000);
+        check(player.level() > 20, "past the Lich, levels go on");
+    }
+
     // --- grantXp: already at level 30, further XP does nothing.
     {
         Player player = makePlayer();
+        player.lore.push_back("winter_road");
         grantXp(player, 100000);
         check(player.level() == 30, "sanity check -- player is capped at 30 before the next grant");
         const int hpBefore = player.stats().maxHp;

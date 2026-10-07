@@ -1,5 +1,6 @@
 #pragma once
 
+#include "entities/RunProgression.hpp"
 #include <utility>
 #include <algorithm>
 
@@ -84,6 +85,8 @@ public:
     struct Nemesis { int type = -1; std::string name; int depth = 0; int rank = 0; };
     Nemesis nemesis;
     bool knowsLore(const std::string& id) const { return std::find(lore.begin(), lore.end(), id) != lore.end(); }
+    // The level cap: 20 through the Lich; 30 once you go on past him (the winter road).
+    int levelCap() const { return knowsLore("winter_road") ? kRunMaxLevel : kMainLevelCap; }
     // Cloth's ward: a shield over your life. Transient: it refills on load.
     int ward=0, wardRest=0;
     // Ward from spells (Arcane Shroud): soaks hits before the gear's ward and

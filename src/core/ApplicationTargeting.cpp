@@ -379,7 +379,7 @@ void Application::renderBattleHud() {
         std::to_string(stats.mana)+"/"+std::to_string(stats.maxMana));
 
     // --- Bottom centre: experience and the hotbar ------------------------------------
-    const bool maxLevel=player_.level()>=kRunMaxLevel;
+    const bool maxLevel=player_.level()>=player_.levelCap();
     const auto xp=kXpArea();
     ui_.bar(window_,{{xp.position.x,xpStripY},{xp.size.x,xpStripHeight}},
             maxLevel?1.f:static_cast<float>(player_.xp())/std::max(1,xpForNextLevel(player_.level())),sf::Color(196,156,72));

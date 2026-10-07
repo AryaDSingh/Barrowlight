@@ -36,9 +36,15 @@ void Application::growThorns(Position witch) {
             }
 }
 
-// A Brood Spider lays an egg sac beside it every few turns.
+// A Brood Spider lays an egg sac beside it every few turns, while it hunts you,
+// and only while the floor holds fewer than 8 eggs and spiderlings.
 void Application::broodTurn(Monster& spider) {
-    if (spider.type() == MonsterType::BroodSpider && ++spider.eggTimer < 5) return;
+    if (spider.type() == MonsterType::BroodSpider) {
+        if (spider.tactics.alert <= 0 || ++spider.eggTimer < 5) return;
+        const auto brood = std::count_if(monsters_.begin(), monsters_.end(), [](const auto& m) {
+            return !m->allied && m->stats().hp > 0 && (m->type() == MonsterType::EggSac || m->type() == MonsterType::Spiderling); });
+        if (brood >= 8) return;
+    }
     spider.eggTimer = 0;
     const auto at = spider.position();
     for (int dy = -1; dy <= 1; ++dy)

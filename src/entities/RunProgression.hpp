@@ -1,7 +1,8 @@
 #pragma once
 namespace engine {
-// Level 20 at the Lich; the paths beyond take you to 30.
-inline constexpr int kRunMaxLevel=30;
+// Level 20 at the Lich; the paths beyond him take you to 30 (Player::levelCap:
+// 20 until you go on past him).
+inline constexpr int kRunMaxLevel=30, kMainLevelCap=20;
 inline constexpr int kRunFinalFloor=20;
 // The Drowned Cathedral: a side dungeon of six floors, opened by slaying the
 // Goblin Warlord. Its floors are numbered 21-26 so every floor has one id,

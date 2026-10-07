@@ -4,7 +4,6 @@
 namespace engine {
 
 namespace {
-constexpr int kMaxLevel = kRunMaxLevel;
 constexpr int kXpPerLevelStep = 20;
 constexpr int kMaxHpGrowthPerLevel = 1;
 constexpr int kAttributePointsPerLevel = 2;
@@ -18,6 +17,7 @@ int xpForNextLevel(int currentLevel) {
 }
 
 void grantXp(Player& player, int amount) {
+    const int kMaxLevel = player.levelCap(); // 20, or 30 past the Lich
     if (player.level() >= kMaxLevel) {
         return; // already capped -- don't let XP pile up toward a level that won't come
     }

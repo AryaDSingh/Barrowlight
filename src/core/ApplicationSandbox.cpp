@@ -119,7 +119,7 @@ void Application::sandboxCharacter(int action) {
     auto& base = player_.baseStats();
     const auto levels = [&](int n) {
         const int before = player_.level();
-        for (int i = 0; i < n && player_.level() < kRunMaxLevel; ++i) grantXp(player_, xpForNextLevel(player_.level()) - player_.xp());
+        for (int i = 0; i < n && player_.level() < player_.levelCap(); ++i) grantXp(player_, xpForNextLevel(player_.level()) - player_.xp());
         if (player_.level() > before) { soundManager_.play(SoundEffect::LevelUp); log("You are now level ", player_.level(), "."); }
     };
     switch (action) {

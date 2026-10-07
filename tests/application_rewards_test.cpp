@@ -4664,6 +4664,7 @@ struct ApplicationRewardsTestAccess {
 
             // Brood spiders lay eggs; eggs hatch unless broken.
             auto spiderMade=createMonster(MonsterType::BroodSpider,{8,6}); auto* spider=spiderMade.get();
+            spider->tactics.alert=8; // it lays while it hunts you
             app.scheduler_.add(*spider); app.monsters_.push_back(std::move(spiderMade));
             const auto eggs=[&]{ std::vector<Monster*> out; for (auto& m:app.monsters_) if (m->type()==MonsterType::EggSac && m->stats().hp>0) out.push_back(m.get()); return out; };
             const auto spiderlings=[&]{ int n=0; for (auto& m:app.monsters_) n+=m->type()==MonsterType::Spiderling && m->stats().hp>0; return n; };
@@ -4685,6 +4686,12 @@ struct ApplicationRewardsTestAccess {
                 auto* second=eggs().front(); second->stats().hp=0; app.checkAndHandleDeath(*second); app.removeDeadMonsters();
             }
             check(eggs().empty() && spiderlings()==2,"An egg broken before it hatches is gone for good");
+            // The brood has a limit: no more than 8 eggs and spiderlings on a floor.
+            for (int i=0;i<100;++i) { app.broodTurn(*spider); for (auto* e:eggs()) app.hatchTurn(*e); app.removeDeadMonsters(); }
+            check(static_cast<int>(eggs().size())+spiderlings()<=9,"A floor never holds more than 8 eggs and spiderlings (a hatching can tip it one over)");
+            spider->tactics.alert=0; const auto brood=eggs().size();
+            for (int i=0;i<10;++i) app.broodTurn(*spider);
+            check(eggs().size()==brood,"A spider that isn't hunting you doesn't lay");
             for (auto& m:app.monsters_) app.scheduler_.remove(*m);
             app.monsters_.clear();
 
@@ -5146,6 +5153,10 @@ struct ApplicationRewardsTestAccess {
             app.monsters_.clear(); app.boss_=nullptr; app.clearSurfaces(); app.player_.statusEffects().active().clear();
             // Beyond the Lich, levels go on to 30, with tree points at 25 and 30.
             check(kRunMaxLevel==30 && earnedTreePoints(20)==4 && earnedTreePoints(25)==5 && earnedTreePoints(30)==6,"Levels go on to 30, with tree points at 25 and 30");
+            app.player_.lore.clear();
+            check(app.player_.levelCap()==20,"Until you go on past the Lich, the cap stays 20");
+            app.player_.lore.push_back("winter_road");
+            check(app.player_.levelCap()==30,"Past him, it is 30");
             app.player_.lore.clear(); app.currentFloor_=1;
         }
 
@@ -5275,6 +5286,28 @@ struct ApplicationRewardsTestAccess {
             const auto rites=learn("gravelord.last_rites"); ready(); app.tryUseTalent(rites,app.player_.position());
             check(standing()==0 && near->stats().hp<90 && app.player_.stats().hp>50,"Last Rites: your dead burst, hurting the foes beside them, and you heal");
             clear(); app.player_.statusEffects().active().clear(); app.player_.ascendancy.clear();
+        }
+
+        // Soak: on the newest floors, every foe comes for you while you wait out 150
+        // turns (unkillable). Any crash or hang in their behaviour shows up here.
+        {
+            setup(PlayerClass::Warrior);
+            app.sandboxGod_=true;
+            bool alive=true;
+            for (const int floor:{kThornFirst+2,kThornLast,kRimeFirst+3,kRimeLast}) {
+                app.mode_=GameMode::Playing; app.currentFloor_=floor; app.regenerateLevel(990+floor);
+                for (auto& m:app.monsters_) if (!m->allied) { m->tactics.alert=8; m->tactics.lastKnown=app.player_.position(); }
+                for (int turn=0;turn<150 && app.mode_==GameMode::Playing;++turn) {
+                    app.currentActor_=&app.player_;
+                    app.finishInventoryTurn();
+                    if (app.mode_!=GameMode::Playing) break;
+                }
+                alive=alive && app.mode_==GameMode::Playing && app.currentFloor_==floor;
+            }
+            check(alive,"150 turns on Thornwood and Rimeholt floors, every foe hunting you, without a crash or a hang");
+            app.sandboxGod_=false; app.currentFloor_=1;
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.boss_=nullptr;
         }
 
         app.window_.close();
