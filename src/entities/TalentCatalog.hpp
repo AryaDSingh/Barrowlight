@@ -8,6 +8,7 @@
 #include <map>
 #include <vector>
 #include "entities/Talent.hpp"
+#include "entities/MonsterType.hpp"
 #include "entities/PlayerClass.hpp"
 
 namespace engine {
@@ -18,7 +19,7 @@ struct TreeDefinition {
     const char* description;
     const char* starterItem;
 };
-inline constexpr std::array<TreeDefinition, 39> kTalentTrees{{
+inline constexpr std::array<TreeDefinition, 40> kTalentTrees{{
     {"one_handed", "One-Handed", TalentTree::OneHanded, "Efficient strikes, defensive openings and finishing blows.", "iron_sword"},
     {"two_handed", "Two-Handed", TalentTree::TwoHanded, "Heavy swings, surrounding enemies and blood-fuelled attacks.", "greatsword"},
     {"shield", "Shield", TalentTree::Shield, "Block damage, interrupt attacks and control space.", "wooden_shield"},
@@ -58,6 +59,7 @@ inline constexpr std::array<TreeDefinition, 39> kTalentTrees{{
     {"stonefist", "Stonefist", TalentTree::Stonefist, "Brawling and Earth: fists of stone, and pillars to break foes against.", ""},
     {"warbanner", "Warbanner", TalentTree::Warbanner, "A deep tree: plant a war standard, hold your ground beside it, and break their packs.", ""},
     {"forgeborn", "Forgeborn", TalentTree::Forgeborn, "A deep tree: burning plate. Struck, you heat up; hot, your blows sear.", ""},
+    {"slagcaller", "Slagcaller", TalentTree::Slagcaller, "A deep tree: molten ground, and slag that rises to fight for you.", ""},
 }};
 inline const TreeDefinition* findTree(const std::string& id) {
     for (const auto& t : kTalentTrees) if (id == t.id) return &t;
@@ -153,6 +155,11 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "stealth.vanish") { longer(); d.mastery = "Hide for four responses."; }
     if (id == "stealth.smoke_bomb") { m.cooldownTurns -= 4; d.mastery = "Ready again four turns sooner."; }
     if (id == "stealth.feign") { m.restoreHpPercent = 10; d.mastery = "You also recover 10% of your life."; }
+    if (id == "slagcaller.pool") { m.areaRadius = 2; d.mastery = "The pool spreads over 5 by 5."; }
+    if (id == "slagcaller.slagling") { m.summonCount = 2; d.mastery = "Two slaglings rise."; }
+    if (id == "slagcaller.hail") { m.lingerTurns = 4; d.mastery = "The cinders fall two turns longer."; }
+    if (id == "slagcaller.golem") { m.summonDuration = 30; d.mastery = "The golem stands for 30 turns."; }
+    if (id == "slagcaller.eruption") { m.areaRadius = 2; d.mastery = "It strikes everything within two tiles."; }
     if (id == "forgeborn.stoke") { m.gainHeat = 6; d.mastery = "Gain 6 Heat."; }
     if (id == "forgeborn.searing") { m.shape = EffectShape::AreaAroundTarget; m.areaRadius = 1; d.mastery = "The blow also strikes the foes beside its target."; }
     if (id == "forgeborn.plate") { m.moltenPlate = 6; d.mastery = "Lasts 6 turns."; }
@@ -365,6 +372,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             if (tree == 30 || tree == 31 || tree == 35) t.scalingStat=ScalingStat::Dexterity;
             if (tree == 32) t.scalingStat=ScalingStat::Intelligence;
             if (tree == 33 || tree == 34 || tree == 36) t.scalingStat=ScalingStat::Strength;
+            if (tree == 39) t.scalingStat=ScalingStat::Intelligence;
             if (tree == 33) t.weaponRequirement=WeaponRequirement::Spear;
             if (tree == 34) t.weaponRequirement=WeaponRequirement::OneHanded;
             if (tree == 10) t.armourRequirement=ArmourRequirement::Cloth;
@@ -961,6 +969,28 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t.description="For 5 turns your Heat can't fall and you are hastened. When it ends, your Heat vents in a blast within two tiles.";
         t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Hasted,5,25}; t.forgeheart=5; t.manaCost=8; t.cooldownTurns=16; add(38,"forgeborn.forgeheart",3,t);
         shape("forgeborn.forgeheart",3,"capstone",{});
+        // Slagcaller (INT), the Foundry's second deep tree: Earth 8, Flame 6, level 12, and the slag formula.
+        t=attack("Slag Pool","Pour molten slag over a 3 by 3 patch in sight: it burns, and foes standing in it are slowed for three turns.",3,5,6,true,1);
+        t.slagPool=true; add(39,"slagcaller.pool",0,t);
+        shape("slagcaller.pool",3,"",{});
+        t=Talent{}; t.name="Raise Slagling"; t.description="A slagling crawls up beside you and fights for 10 turns. When it dies it bursts into flame.";
+        t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.summonCount=1; t.summonDuration=10; t.summonKind=static_cast<int>(MonsterType::Slagling);
+        t.manaCost=6; t.cooldownTurns=6; add(39,"slagcaller.slagling",1,t);
+        shape("slagcaller.slagling",3,"path",{"slagcaller.pool"});
+        t=attack("Cinder Hail","Cinders fall on everything within a tile of a spot for three turns, burning what stands there.",5,6,8,true,1);
+        t.projectile=false; t.lingerTurns=2; t.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,2}; add(39,"slagcaller.hail",1,t);
+        shape("slagcaller.hail",3,"path",{"slagcaller.pool"});
+        add(39,"slagcaller.brittle",2,passive("Brittle Slag","When one of your slaglings dies, it splits into two smaller ones, once.",PassiveKind::BrittleSlag,1));
+        shape("slagcaller.brittle",1,"",{"slagcaller.slagling"});
+        add(39,"slagcaller.pyroclasm",2,passive("Pyroclasm","Fire on the ground also slows the foes standing in it by 20%.",PassiveKind::Pyroclasm,20));
+        shape("slagcaller.pyroclasm",1,"",{"slagcaller.hail"});
+        t=Talent{}; t.name="Slag Golem"; t.description="Raise a slow, tough slag golem beside you for 20 turns. When it dies it splits into two slaglings.";
+        t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.summonCount=1; t.summonDuration=20; t.summonKind=static_cast<int>(MonsterType::SlagGolem);
+        t.manaCost=12; t.cooldownTurns=18; add(39,"slagcaller.golem",3,t);
+        shape("slagcaller.golem",3,"capstone",{});
+        t=attack("Eruption","The ground under a foe in sight erupts: heavy damage to everything beside it, the ground around burns, and the target is stunned.",12,10,10,true,1);
+        t.projectile=false; t.eruption=true; add(39,"slagcaller.eruption",3,t);
+        shape("slagcaller.eruption",3,"capstone",{});
         // Mace (STR, one hand): guards and bones.
         t=attack("Crush","A heavy blow that sunders: the target takes +2 damage from every hit for four enemy turns.",6,2,4);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Sundered,4,2}; add(24,"mace.crush",0,t);
@@ -1336,6 +1366,8 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="saboteur") d.affinity=Affinity::Guile;
             else if (d.treeId=="stonefist")
                 d.affinity=(d.id=="stonefist.tremor" || d.id=="stonefist.granite" || d.id=="stonefist.rockhide")?Affinity::Earth:Affinity::Motion;
+            else if (d.treeId=="slagcaller")
+                d.affinity=(d.id=="slagcaller.hail" || d.id=="slagcaller.pyroclasm" || d.id=="slagcaller.eruption")?Affinity::Flame:Affinity::Earth;
             else if (d.treeId=="forgeborn")
                 d.affinity=(d.id=="forgeborn.searing" || d.id=="forgeborn.tempered" || d.id=="forgeborn.forgeheart")?Affinity::Steel:Affinity::Flame;
             else if (d.treeId=="warbanner")

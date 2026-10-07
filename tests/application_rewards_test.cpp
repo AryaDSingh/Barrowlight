@@ -1989,6 +1989,52 @@ struct ApplicationRewardsTestAccess {
                 clearFoes(); app.player_.statusEffects().active().clear();
             }
 
+            // Slagcaller: the Foundry's second deep tree, from the formula in its vaults.
+            setup(PlayerClass::Mage);
+            {
+                app.loreDrops_.push_back({{11,10},"slag_formula"});
+                app.player_.setPosition({11,10}); app.pickupItem();
+                check(deepTreeKnown(app.player_,"slagcaller"),"The slag formula reveals Slagcaller");
+                giveColour(app.player_,Affinity::Earth,8); giveColour(app.player_,Affinity::Flame,6); app.player_.level()=12; app.player_.treePoints()=1;
+                check(purchaseTree(app.player_,PlayerClass::Mage,*findTree("slagcaller")),"With Earth 8, Flame 6 and level 12 Slagcaller opens");
+                arena(PlayerClass::Mage);
+                auto* a=foe({13,10});
+                cast(ranked("slagcaller.pool",1),{13,10});
+                check(app.surfaceAt({13,10})==SurfaceType::Fire && a->statusEffects().has(StatusEffectType::Slowed),"Slag Pool: the ground burns, and foes in it are slowed");
+                clearFoes();
+                cast(ranked("slagcaller.slagling",1),app.player_.position());
+                Monster* mine=nullptr;
+                for (auto& m:app.monsters_) if (m->allied && m->type()==MonsterType::Slagling) mine=m.get();
+                check(mine && mine->remainingLife>0,"Raise Slagling: a slagling rises to fight for you, for a while");
+                ranked("slagcaller.brittle",1);
+                if (mine) {
+                    const auto at=mine->position();
+                    mine->stats().hp=0; app.checkAndHandleDeath(*mine); app.removeDeadMonsters();
+                    int shards=0; Monster* shard=nullptr;
+                    for (auto& m:app.monsters_) if (m->allied && m->type()==MonsterType::Slagling && m->stats().hp>0) { ++shards; shard=m.get(); }
+                    check(app.surfaceAt(at)==SurfaceType::Fire && shards==2,"Brittle Slag: your slagling bursts into flame and splits in two");
+                    if (shard) {
+                        const auto before=app.monsters_.size();
+                        shard->stats().hp=0; app.checkAndHandleDeath(*shard); app.removeDeadMonsters();
+                        check(app.monsters_.size()==before-1,"A split slagling doesn't split again");
+                    }
+                }
+                clearFoes();
+                cast(ranked("slagcaller.golem",1),app.player_.position());
+                Monster* golem=nullptr;
+                for (auto& m:app.monsters_) if (m->allied && m->type()==MonsterType::SlagGolem) golem=m.get();
+                check(golem && golem->stats().speed==70,"Slag Golem: a slow, tough golem rises for you");
+                clearFoes();
+                auto* b=foe({14,10});
+                cast(ranked("slagcaller.eruption",1),{14,10});
+                check(b->statusEffects().has(StatusEffectType::Stun) && app.surfaceAt({15,11})==SurfaceType::Fire,"Eruption: the target is stunned and the ground around it burns");
+                clearFoes();
+                ranked("slagcaller.pyroclasm",1);
+                auto* c=foe({13,12}); app.setSurface({13,12},SurfaceType::Fire,5); app.tickSurfaces();
+                check(c->statusEffects().has(StatusEffectType::Slowed),"Pyroclasm: fire on the ground slows the foes in it");
+                clearFoes(); app.player_.statusEffects().active().clear();
+            }
+
             // Daggers.
             arena(PlayerClass::Thief);
             {

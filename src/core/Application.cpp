@@ -1845,6 +1845,19 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         player_.stats().hp=std::min(player_.stats().maxHp,player_.stats().hp+hallowed);
         log("A warm light steadies you.");
     }
+    if (talent.slagPool) {
+        for (const auto& p:target.area) if (map_.isWalkable(p.x,p.y)) setSurface(p,SurfaceType::Fire,kSpilledFireTurns);
+        for (auto* hit:affected) if (hit!=&player_ && hit->stats().hp>0) hit->statusEffects().apply({StatusEffectType::Slowed,3,30});
+    }
+    if (talent.eruption) {
+        const Position centre=cursor; // the foe it was aimed at
+        for (int dy=-2;dy<=2;++dy) for (int dx=-2;dx<=2;++dx)
+            if (map_.isWalkable(centre.x+dx,centre.y+dy) && !(centre.x+dx==player_.position().x && centre.y+dy==player_.position().y))
+                setSurface({centre.x+dx,centre.y+dy},SurfaceType::Fire,kSpilledFireTurns);
+        if (Actor* struck=actorAt(centre,&player_); struck && struck->stats().hp>0 && struck->statusEffects().canReceiveStun())
+            struck->statusEffects().apply({StatusEffectType::Stun,1,0});
+        log("The ground erupts!");
+    }
     if (talent.ventHeat && talent.shape==EffectShape::Movement) {
         // Furnace Slam: the ground burns around where you land.
         for (int dy=-1;dy<=1;++dy) for (int dx=-1;dx<=1;++dx)
@@ -2725,6 +2738,22 @@ void Application::checkAndHandleDeath(Actor& actor) {
     }
     if (defeated && defeated->allied) {
         scheduler_.remove(actor);
+        // Your slag: a slagling bursts into flame (and with Brittle Slag splits,
+        // once); a golem breaks into two slaglings.
+        if (defeated->type()==MonsterType::Slagling || defeated->type()==MonsterType::SlagGolem) {
+            const auto at=defeated->position();
+            if (defeated->type()==MonsterType::Slagling) setSurface(at,SurfaceType::Fire,kSpilledFireTurns);
+            const bool split=defeated->type()==MonsterType::SlagGolem ||
+                (!defeated->shard && player_.talents().passiveValue(PassiveKind::BrittleSlag,player_.stats()));
+            if (split) {
+                int made=0;
+                for (int dy=-1;dy<=1 && made<2;++dy) for (int dx=-1;dx<=1 && made<2;++dx)
+                    if ((dx || dy) && map_.isWalkable(at.x+dx,at.y+dy) && !isOccupied({at.x+dx,at.y+dy},nullptr)) {
+                        raiseSlag(MonsterType::Slagling,{at.x+dx,at.y+dy},6,defeated->type()==MonsterType::Slagling); ++made;
+                    }
+                if (made) log("Your slag breaks apart and keeps fighting.");
+            }
+        }
         const int explosion=player_.talents().passiveValue(PassiveKind::GravePact,player_.stats());
         if (explosion) for (auto& enemy:monsters_) if (!enemy->allied && enemy->stats().hp>0 &&
             std::abs(enemy->position().x-actor.position().x)+std::abs(enemy->position().y-actor.position().y)<=1) {
@@ -3122,6 +3151,8 @@ void Application::regenerateLevel(unsigned int seed) {
     vaultExists_=dungeon.hasVault; vaultOpened_=false; vaultClaimed_=false;
     vaultCenter_=dungeon.vaultCenter; vaultEntrance_=dungeon.vaultEntrance;
     vaultRewards_.clear();
+    if (vaultExists_ && foundryFloor(currentFloor_) && !player_.knowsLore("slag_formula"))
+        loreDrops_.push_back({vaultCenter_,"slag_formula"});
     landmark_=dungeon.landmark; landmarkAltar_=dungeon.landmarkAltar; landmarkUsed_=false; shrineMenu_=false;
     extraLandmarks_.clear();
     for (const auto& [kind,altar]:dungeon.extraLandmarks) extraLandmarks_.push_back({kind,altar,false});

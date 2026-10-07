@@ -136,6 +136,8 @@ inline std::string talentIcon(const Talent& talent) {
         {"warbanner.ranks", "impact-point"}, {"warbanner.last", "checked-shield"}, {"warbanner.charge", "charging-bull"},
         {"forgeknight.heat_engine", "campfire"}, {"forgeknight.slam", "meteor-impact"}, {"forgeknight.quench", "big-wave"},
         {"forgeknight.burning_plate", "magic-shield"}, {"forgeknight.overheat", "fire-dash"}, {"forgeknight.anvil", "bordered-shield"},
+        {"slagcaller.pool", "fire-dash"}, {"slagcaller.slagling", "fireball"}, {"slagcaller.hail", "meteor-impact"}, {"slagcaller.brittle", "cracked-shield"},
+        {"slagcaller.pyroclasm", "campfire"}, {"slagcaller.golem", "rock"}, {"slagcaller.eruption", "earth-crack"},
         {"forgeborn.stoke", "campfire"}, {"forgeborn.searing", "hammer-drop"}, {"forgeborn.plate", "magic-shield"}, {"forgeborn.tempered", "fist"},
         {"forgeborn.heat_sink", "bordered-shield"}, {"forgeborn.vent", "meteor-impact"}, {"forgeborn.forgeheart", "fire-dash"},
         {"alchemy.oil", "round-bottom-flask"}, {"alchemy.firebomb", "molotov"}, {"alchemy.brews", "bubbling-flask"}, {"alchemy.acid", "fizzing-flask"},

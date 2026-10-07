@@ -159,6 +159,15 @@ void Application::configureMinion(Monster& m,int rank,int intelligence) {
     m.stats().strength=2+rank+intelligence/5; m.stats().dexterity=2;
     m.stats().intelligence=0; m.stats().speed=100;
 }
+// Slag that fights for you (Slagcaller): a slagling, or a slow and tough golem.
+void Application::raiseSlag(MonsterType kind,Position at,int turns,bool shard) {
+    auto m=createMonster(kind,at);
+    configureMinion(*m,1,player_.stats().intelligence);
+    if (kind==MonsterType::SlagGolem) { m->stats().maxHp*=2; m->stats().hp=m->stats().maxHp; m->stats().strength+=3; m->stats().speed=70; }
+    if (kind==MonsterType::Slagling) m->stats().speed=120;
+    m->remainingLife=turns+1; m->shard=shard;
+    scheduler_.add(*m); monsters_.push_back(std::move(m));
+}
 int Application::minionCap() const { return std::clamp(1+player_.stats().intelligence/10,1,5); }
 void Application::enforceMinionCap() {
     int count=0; for (const auto& m:monsters_) if (m->allied && m->stats().hp>0 && !m->remainingLife) ++count;
@@ -174,19 +183,22 @@ void Application::dissolveMinions() {
 void Application::summonMinions(const Talent& t) {
     int permanent=0; bool army=false;
     for (const auto& m:monsters_) if (m->allied && m->stats().hp>0) { if (m->remainingLife) army=true; else ++permanent; }
-    if (t.summonDuration && army) { log("Your existing army prevents another army. Cast spent."); return; }
+    const bool slag=t.summonKind>=0;
+    if (t.summonDuration && army && !slag) { log("Your existing army prevents another army. Cast spent."); return; }
     int remaining=t.summonDuration?t.summonCount:std::min(t.summonCount,minionCap()-permanent);
     const auto p=player_.position(); int raised=0;
     for (const Position d:std::vector<Position>{{1,0},{0,1},{-1,0},{0,-1}}) {
         const Position pos{p.x+d.x,p.y+d.y};
         if (remaining<=0) break;
         if (!map_.isWalkable(pos.x,pos.y) || isOccupied(pos,nullptr)) continue;
+        if (slag) { raiseSlag(static_cast<MonsterType>(t.summonKind),pos,t.summonDuration,false); --remaining; ++raised; continue; }
         auto m=createMonster(MonsterType::Skeleton,pos);
         configureMinion(*m,t.summonRank,player_.stats().intelligence);
         m->remainingLife=t.summonDuration?t.summonDuration+1:0;
         scheduler_.add(*m); monsters_.push_back(std::move(m)); --remaining; ++raised;
     }
-    log("Raised ",raised," skeleton(s). Permanent minion cap: ",minionCap(),".");
+    if (slag) log(raised?"The slag rises to fight for you.":"There's no room for the slag to rise.");
+    else log("Raised ",raised," skeleton(s). Permanent minion cap: ",minionCap(),".");
 }
 Actor* Application::nearestOpponent(Actor& actor,bool playerHidden) {
     const auto* monster=dynamic_cast<const Monster*>(&actor);

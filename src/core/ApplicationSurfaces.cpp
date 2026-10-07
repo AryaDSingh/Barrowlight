@@ -412,6 +412,9 @@ void Application::tickSurfaces() {
                 if (&a == &player_ && patronBoon(Patron::AshSaint)) break; // the Ash Saint's own walk through fire
                 if (!a.statusEffects().has(StatusEffectType::Burn) && &a == &player_) log("You are standing in flames!");
                 a.statusEffects().apply({StatusEffectType::Burn, 3, std::max(2, a.statusEffects().magnitudeOf(StatusEffectType::Burn))}); // never weakens a fiercer burn
+                if (const auto* m = dynamic_cast<const Monster*>(&a); m && !m->allied)
+                    if (const int slow = player_.talents().passiveValue(PassiveKind::Pyroclasm, player_.stats()))
+                        a.statusEffects().apply({StatusEffectType::Slowed, 2, slow});
                 break;
             case SurfaceType::Ice: a.statusEffects().apply({StatusEffectType::Chill, 2, 20}); break;
             case SurfaceType::Electrified: shocked.push_back(a.position()); break;

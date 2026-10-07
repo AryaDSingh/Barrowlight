@@ -18,6 +18,7 @@ enum class TalentTree {
     Traps, Skirmish, Lamplighter, Stormlance, Hexblade, Saboteur, Stonefist,
     Warbanner, // the first deep tree
     Forgeborn, // the Ashen Foundry's deep tree
+    Slagcaller, // the Ashen Foundry's second deep tree
 };
 
 // Abilities and talents have five ranks; rank 5 often adds a mastery effect
@@ -90,7 +91,7 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The third batch (Shadow, Radiance, Shield) and its resonances.
     Dread, Bulwark, Twilight, TemplarsEdge, HallowedGuard,
     // The fourth batch (Bow, Stealth, Daggers) and its resonances.
-    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, UnseenHand, AssassinsEdge,
+    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, BrittleSlag, Pyroclasm, UnseenHand, AssassinsEdge,
     // The fifth batch (Earth, Tide, Venom) and its resonances.
     Aftershock, Tidecaller, Virulence, Mire, FoulWater, EnvenomedBlades,
     // The sixth batch (Spear, Mace, Crossbow) and its resonances.
@@ -224,6 +225,11 @@ struct Talent {
     int imbueElement=0; // 1 fire, 2 ice, 3 lightning, 4 arcane
     bool spellstrike=false, releaseAilments=false, boneSwap=false;
     int summonCount=0, summonDuration=0, summonRank=1;
+    // Slagcaller. summonKind: what is raised (a MonsterType; -1 skeletons).
+    // slagPool: the ground it hits burns and slows. eruption: the ground
+    // around its target burns, and the target is stunned.
+    int summonKind=-1;
+    bool slagPool=false, eruption=false;
     int drainPercent=0, stayHiddenPercent=0;
     bool huntersMark=false, returnConcealed=false;
     int committedRhythm=-1;

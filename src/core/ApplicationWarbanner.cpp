@@ -58,6 +58,9 @@ void Application::readLore(std::size_t index) {
         log("An iron key on a chain, stamped with a hammer and a flame.");
         log("It opens the Ashen Foundry. Choose it from the dungeon menu in town.");
     }
+    if (drop.id == "slag_formula") {
+        log("A slab of cooled slag, scratched with a smith's formula: how to wake the slag, and how to make it stand.");
+    }
     if (drop.id == "forgemaster_brand") {
         log("A branding iron, still hot, its mark a hammer inside a flame. The heat runs up your arm and stays.");
     }
