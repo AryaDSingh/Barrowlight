@@ -112,6 +112,7 @@ void Application::tickVampirism() {
 void Application::tickPack() {
     tickContagion();
     tickVampirism();
+    tickCold();
     if (wardenFoe_ && std::none_of(monsters_.begin(), monsters_.end(), [&](const auto& m) { return m.get() == wardenFoe_ && m->stats().hp > 0; }))
         wardenFoe_ = nullptr, wardenPin_ = false;
     // Thornmaw walks with you, unless it fell on this floor.

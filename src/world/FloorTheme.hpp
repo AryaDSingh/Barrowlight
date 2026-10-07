@@ -15,6 +15,9 @@ struct FloorTheme {
 
 // Derived from the already-saved floor number; no extra save state or RNG.
 inline FloorTheme floorTheme(int floor) {
+    if (rimeFloor(floor)) return {FloorRegion::Crypts,"Frozen Barrows",
+        "Barrows where the winter dead never rotted. The water freezes where it pools, and the ice creeps across the floor.",
+        {28,36,48},{70,86,104},{170,200,235}};
     if (thornFloor(floor)) return {FloorRegion::Crypts,"Overgrown Cloister",
         "A drowned cloister the forest took back. Roots split the flagstones, and something weaves in the dark.",
         {30,44,32},{58,76,56},{120,170,90}};

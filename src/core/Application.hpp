@@ -234,6 +234,11 @@ private:
     void rememberFoe();
     void spawnNemesis();
     void tickVampirism(); // light burns, blood heals, water hurts (ApplicationPack.cpp)
+    // Rimeholt (ApplicationRime.cpp): the cold creeps; the king's court rises.
+    void tickCold();
+    void callCourt(Monster& king);
+    bool courtCalled_ = false;
+    void goOn(); // after the Lich: the run goes on
     void stablePack();      // leaving a floor: your hounds wait to follow you
     void callPackBack();    // arriving: they come to your side
     void packKill();
@@ -587,6 +592,7 @@ private:
     bool cathedralOpen() const { return (player_.trialKeys & 1) != 0; } // the Warlord's sigil opens it
     bool foundryOpen() const { return player_.knowsLore("foreman_key"); } // Grik's key opens it
     bool thornwoodOpen() const { return player_.knowsLore("hollow_map"); } // Veyra's map opens it
+    bool rimeholtOpen() const { return player_.knowsLore("winter_road"); } // going on past the Lich opens it
     bool interactStairs();
     void handleTownKey(sf::Keyboard::Key key);
     void handleTownMouse(const sf::Event& event);

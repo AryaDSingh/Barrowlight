@@ -49,7 +49,17 @@ enum class MonsterType {
     Spiderling,       // small and quick
     Thornback,        // slow, armoured; striking it in melee cuts you
     HollowMother,     // Thornwood's boss
+    // Rimeholt (save format 47).
+    RimeWight,        // a dead soldier of the winter court; its blade chills
+    IceWraith,        // keeps its distance; its touch chills
+    FrostBear,        // ice forms where it walks
+    FrozenThrall,     // slow and tough; shatters into ice that cuts what's beside it
+    WinterKing,       // Rimeholt's boss
 };
+// Rimeholt's own walk on ice unchilled.
+inline bool rimeNative(MonsterType t) {
+    return t == MonsterType::RimeWight || t == MonsterType::IceWraith || t == MonsterType::FrostBear || t == MonsterType::FrozenThrall || t == MonsterType::WinterKing;
+}
 // The Hollow's own walk through its thorns unharmed.
 inline bool thornNative(MonsterType t) {
     return t == MonsterType::BriarHound || t == MonsterType::RotWitch || t == MonsterType::BroodSpider || t == MonsterType::EggSac ||
@@ -73,7 +83,8 @@ inline bool bleeds(MonsterType type) {
         case MonsterType::Skeleton: case MonsterType::SkeletonArcher: case MonsterType::SkeletonGuard:
         case MonsterType::CryptShade: case MonsterType::CryptSentinel: case MonsterType::Lich:
         case MonsterType::Gloomstalker: case MonsterType::DrownedOne: case MonsterType::DrownedChorister: case MonsterType::TheSleeper: case MonsterType::Mimic:
-        case MonsterType::SlagGolem: case MonsterType::Slagling: case MonsterType::Forgemaster: case MonsterType::EggSac: return false;
+        case MonsterType::SlagGolem: case MonsterType::Slagling: case MonsterType::Forgemaster: case MonsterType::EggSac: case MonsterType::RimeWight: case MonsterType::IceWraith:
+        case MonsterType::FrozenThrall: case MonsterType::WinterKing: return false;
         default: return true;
     }
 }

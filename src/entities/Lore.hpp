@@ -29,6 +29,8 @@ inline const std::vector<LoreEntry>& loreEntries() {
          {"A map scratched into a flat bone: a way down to a cloister the forest swallowed."}, "Thornwood Hollow"},
         {"witch_seed", "A Rot Witch's seed",
          {"A black seed, still warm. Hold it and you can feel the thorns wanting to grow."}, "Briarheart"},
+        {"winter_road", "The winter road",
+         {"Beneath the Lich's throne the stone is white with frost, and a cold wind climbs from far below: a road north, to a court the winter kept."}, "Rimeholt"},
         {"hound_collar", "A braided hound collar",
          {"A collar of braided thorn-bark, worn smooth. Someone kept these hounds once."}, "Packmaster"},
     };

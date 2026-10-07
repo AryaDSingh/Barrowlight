@@ -435,6 +435,42 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
             monster->stats().speed = speed;
             break;
         }
+        case MonsterType::RimeWight: case MonsterType::IceWraith: case MonsterType::FrostBear: case MonsterType::FrozenThrall: {
+            // Rimeholt's own: the cold, the frost bear's ice and the thrall's shattering live in Application.
+            MonsterAttackProfile profile;
+            int hp = 48, strength = 15, dexterity = 10, intelligence = 2, power = 8, speed = 100;
+            const char* name = "Rime Wight";
+            if (type == MonsterType::RimeWight) { profile.onHitEffect = StatusEffectInstance{StatusEffectType::Chill, 2, 20}; profile.onHitChance = .5f; }
+            if (type == MonsterType::IceWraith) { name = "Ice Wraith"; hp = 34; strength = 2; dexterity = 10; intelligence = 14; power = 6;
+                profile.scalingStat = ScalingStat::Intelligence; profile.onHitEffect = StatusEffectInstance{StatusEffectType::Chill, 2, 30}; profile.onHitChance = 1.f; }
+            if (type == MonsterType::FrostBear) { name = "Frost Bear"; hp = 70; strength = 16; dexterity = 8; power = 9; speed = 110; }
+            if (type == MonsterType::FrozenThrall) { name = "Frozen Thrall"; hp = 90; strength = 14; dexterity = 2; power = 8; speed = 70; }
+            profile.power = scaledPower(power, strength / 5, tier);
+            std::unique_ptr<AIBehavior> ai;
+            if (type == MonsterType::IceWraith) ai = std::make_unique<Kiter>(profile, 5, 2);
+            else ai = std::make_unique<Chaser>(profile);
+            monster = std::make_unique<Monster>(type, tieredName(name, tier), 'r', position,
+                makeStats(scaledHp(hp, tier), strength, dexterity, intelligence), std::move(ai));
+            monster->stats().speed = speed;
+            break;
+        }
+        case MonsterType::WinterKing: {
+            // The king who kept his court in the cold: a warned blast of frost
+            // that ices the ground, and his court raised at half his life.
+            MonsterAttackProfile blade;
+            blade.power = 10;
+            blade.onHitEffect = StatusEffectInstance{StatusEffectType::Chill, 2, 30}; blade.onHitChance = .5f;
+            std::vector<Talent> abilities;
+            Talent frost;
+            frost.name = "Winter's Breath"; frost.id = "winterking.breath";
+            frost.description = "A radius-2 blast of frost with three actions to escape: it chills, and the ground turns to ice.";
+            frost.cooldownTurns = 4; frost.scalingStat = ScalingStat::Strength;
+            abilities.push_back(frost);
+            monster = std::make_unique<Monster>(type, "The Winter King", 'K', position, makeStats(420, 16, 10, 10),
+                std::make_unique<BossBehavior>(blade, /*blastPower=*/8, /*blastRange=*/5, /*tooCloseRange=*/2, /*enrageBonus=*/3),
+                TalentSet(abilities));
+            break;
+        }
         case MonsterType::HollowMother: {
             // A great spider-queen: a warned burst of webbing that pins and
             // seeds thorns, and her brood called out of the walls at half life.
@@ -580,6 +616,11 @@ int xpRewardForType(MonsterType type, MonsterTier tier) {
         case MonsterType::Spiderling: baseReward=5; break;
         case MonsterType::Thornback: baseReward=28; break;
         case MonsterType::HollowMother: return 280;
+        case MonsterType::RimeWight: baseReward=34; break;
+        case MonsterType::IceWraith: baseReward=30; break;
+        case MonsterType::FrostBear: baseReward=38; break;
+        case MonsterType::FrozenThrall: baseReward=40; break;
+        case MonsterType::WinterKing: return 400;
         case MonsterType::SkeletonArcher: baseReward=16; break;
         case MonsterType::SkeletonGuard: baseReward=22; break;
         case MonsterType::Bonecaller: baseReward=18; break;

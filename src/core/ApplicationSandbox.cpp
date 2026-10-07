@@ -24,7 +24,7 @@ sf::FloatRect sandboxCell(int i) { return {{806.f + 148.f * (i % 3), 124.f + 22.
 sf::FloatRect sandboxButton(int i) { return {{806.f + 222.f * (i % 2), 130.f + 40.f * (i / 2)}, {216, 34}}; }
 const sf::FloatRect kPagePrev{{806, 640}, {60, 30}}, kPageNext{{1184, 640}, {60, 30}};
 constexpr int kItemsPerPage = 36; // 18 rows of 2, from y 154 to 622
-constexpr int kMonsterTypes = static_cast<int>(MonsterType::HollowMother) + 1;
+constexpr int kMonsterTypes = static_cast<int>(MonsterType::WinterKing) + 1;
 
 const char* itemGroupName(int g) { return g == 0 ? "Weapons" : g == 1 ? "Armour" : g == 2 ? "Jewellery" : "Uniques"; }
 bool inItemGroup(const ItemDefinition& d, int group) {

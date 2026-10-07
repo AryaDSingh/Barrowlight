@@ -170,6 +170,7 @@ add_executable(roguelike
     src/core/ApplicationPack.cpp
     src/core/ApplicationJournal.cpp
     src/core/ApplicationNemesis.cpp
+    src/core/ApplicationRime.cpp
     src/core/ApplicationEffects.cpp
     src/core/ApplicationSurfaces.cpp
     src/core/ApplicationHidden.cpp

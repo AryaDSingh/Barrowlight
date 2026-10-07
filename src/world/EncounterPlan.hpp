@@ -58,6 +58,14 @@ inline std::vector<EncounterSpawn> planEncounters(const GeneratedDungeon& dungeo
         } else if (vignette == Vignette::GraveDig) {
             // Grave-robbers: goblins have come down to loot the dead.
             pack={MonsterType::GoblinRaider,MonsterType::GoblinStalker,MonsterType::Goblin}; cost=10;
+        } else if (rimeFloor(floorId)) {
+            switch(i%5) {
+                case 0: pack={MonsterType::RimeWight,MonsterType::RimeWight,MonsterType::IceWraith}; cost=12; break;
+                case 1: pack={MonsterType::FrostBear,MonsterType::RimeWight}; cost=11; break;
+                case 2: pack={MonsterType::FrozenThrall,MonsterType::IceWraith,MonsterType::IceWraith}; cost=13; break;
+                case 3: pack={MonsterType::RimeWight,MonsterType::FrozenThrall,MonsterType::RimeWight}; cost=13; break;
+                default: pack={MonsterType::FrostBear,MonsterType::IceWraith,MonsterType::RimeWight}; cost=12; break;
+            }
         } else if (thornFloor(floorId)) {
             switch(i%5) {
                 case 0: pack={MonsterType::BriarHound,MonsterType::BriarHound,MonsterType::BriarHound}; cost=11; break;
@@ -121,7 +129,7 @@ inline std::vector<EncounterSpawn> planEncounters(const GeneratedDungeon& dungeo
         });
         MonsterTier tier=MonsterTier::Base;
         // Named encounters recur every five floors, never in the opening pack.
-        if (!result.empty() && floor%5==3 && !uniquePlaced && !dangerous && !thornFloor(floorId) && budget>=cost+5) {
+        if (!result.empty() && floor%5==3 && !uniquePlaced && !dangerous && !thornFloor(floorId) && !rimeFloor(floorId) && budget>=cost+5) {
             pack.front()=crypt?MonsterType::OssuaryWarden:MonsterType::GoblinCaptain;
             cost+=5; uniquePlaced=true;
         } else if (!result.empty() && !dangerous && floor>=4 && !rarePlaced && budget>=cost+4 &&

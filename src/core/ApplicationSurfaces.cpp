@@ -417,7 +417,10 @@ void Application::tickSurfaces() {
                     if (const int slow = player_.talents().passiveValue(PassiveKind::Pyroclasm, player_.stats()))
                         a.statusEffects().apply({StatusEffectType::Slowed, 2, slow});
                 break;
-            case SurfaceType::Ice: a.statusEffects().apply({StatusEffectType::Chill, 2, 20}); break;
+            case SurfaceType::Ice:
+                if (const auto* native = dynamic_cast<const Monster*>(&a); !(native && rimeNative(native->type()))) // the winter's own walk on it unchilled
+                    a.statusEffects().apply({StatusEffectType::Chill, 2, 20});
+                break;
             case SurfaceType::Thorns: thornsCut(a); break;
             case SurfaceType::Electrified: shocked.push_back(a.position()); break;
             case SurfaceType::Gas:
@@ -862,6 +865,8 @@ void Application::seedSurfaces(unsigned seed) {
     for (int i = 0; i < puddles; ++i) pool(SurfaceType::Water, cathedral ? std::uniform_int_distribution<int>(8, 18)(rng) : std::uniform_int_distribution<int>(4, 10)(rng));
     // Thornwood: brambles across the floor.
     if (thornFloor(currentFloor_)) for (int i = 0; i < 6; ++i) pool(SurfaceType::Thorns, std::uniform_int_distribution<int>(3, 8)(rng));
+    // Rimeholt: sheets of ice.
+    if (rimeFloor(currentFloor_)) for (int i = 0; i < 8; ++i) pool(SurfaceType::Ice, std::uniform_int_distribution<int>(4, 10)(rng));
     const int slicks = cathedral ? 0 : region == FloorRegion::Barracks ? 2 : 1;
     for (int i = 0; i < slicks; ++i) pool(SurfaceType::Oil, std::uniform_int_distribution<int>(3, 7)(rng));
 

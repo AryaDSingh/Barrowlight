@@ -148,6 +148,10 @@ assets/sprites/dcss/
   vine_floor.png), briar_patch (thorny ground), and the monsters hound
   (Briar Hound), dryad (Rot Witch), spider (Brood Spider and spiderlings),
   giant_spore (egg sac), giant_beetle (Thornback) and orb_spider (the Hollow Mother);
+  for Rimeholt, from the crawl-tiles Oct-5-2010 set (the same CC0 tiles): ice0-3
+  (packed into ice_floor.png, three of them mirrored), and the monsters wight
+  (the Winter King), skeletal_warrior (Rime Wight), freezing_wraith (Ice Wraith),
+  ice_beast (Frost Bear) and simulacrum_large (Frozen Thrall);
   unmodified; oil.png and oil1-4.png are the blood splatters turned grey for oil
   slicks)
   Downloaded 2026-10-03 for the Drowned Cathedral.

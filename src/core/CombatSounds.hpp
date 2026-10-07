@@ -101,6 +101,10 @@ inline HitSound monsterSound(MonsterType type, bool magic) {
         case MonsterType::BriarHound: return HitSound::Pierce;
         case MonsterType::RotWitch: case MonsterType::BroodSpider: case MonsterType::Spiderling: case MonsterType::HollowMother: case MonsterType::EggSac: return HitSound::Rot;
         case MonsterType::Thornback: return HitSound::Blunt;
+        case MonsterType::RimeWight: case MonsterType::WinterKing: return HitSound::Slash;
+        case MonsterType::IceWraith: return HitSound::Frost;
+        case MonsterType::FrostBear: return HitSound::Pierce;
+        case MonsterType::FrozenThrall: return HitSound::Blunt;
         default: return magic ? HitSound::Arcane : HitSound::Slash;
     }
 }
@@ -116,6 +120,9 @@ inline const char* monsterVoice(MonsterType type) {
         case MonsterType::BriarHound: case MonsterType::Thornback: return "beast";
         case MonsterType::RotWitch: return "spirit";
         case MonsterType::BroodSpider: case MonsterType::EggSac: case MonsterType::Spiderling: case MonsterType::HollowMother: return "spider";
+        case MonsterType::RimeWight: case MonsterType::FrozenThrall: case MonsterType::WinterKing: return "bones";
+        case MonsterType::IceWraith: return "spirit";
+        case MonsterType::FrostBear: return "beast";
         case MonsterType::Gloomstalker: return "beast";
         case MonsterType::Spider: return "spider";
         case MonsterType::Skeleton: case MonsterType::SkeletonArcher: case MonsterType::SkeletonGuard: case MonsterType::CryptSentinel: return "bones";

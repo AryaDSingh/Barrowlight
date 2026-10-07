@@ -4857,7 +4857,7 @@ struct ApplicationRewardsTestAccess {
             check(app.player_.knowsLore("hollow_map") && sawLog("A map scratched into a flat bone") && sawLog("journal (J)"),"Reading lore tells you it's kept in your journal");
             for (const char* id:{"warlord_standard","foreman_key","forgemaster_brand","slag_formula","chorister_hymn","bonecaller_journal","acolyte_catechism","witch_seed","hound_collar"})
                 app.player_.lore.push_back(id);
-            check(loreEntries().size()==10 && std::all_of(app.player_.lore.begin(),app.player_.lore.end(),[](const std::string& id){ return loreEntry(id)!=nullptr; }),
+            check(loreEntries().size()==11 && std::all_of(app.player_.lore.begin(),app.player_.lore.end(),[](const std::string& id){ return loreEntry(id)!=nullptr; }),
                   "Every piece of lore has a journal entry");
             app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::J});
             snapshot("ui-journal.png");
@@ -4931,6 +4931,89 @@ struct ApplicationRewardsTestAccess {
             }
             for (auto& m:app.monsters_) app.scheduler_.remove(*m);
             app.monsters_.clear(); app.player_.nemesis={}; app.currentFloor_=1; app.boss_=nullptr;
+        }
+
+        // Rimeholt: beyond the Lich, the run goes on.
+        {
+            setup(PlayerClass::Warrior);
+            app.mode_=GameMode::Town;
+            app.travelFloor(kRimeFirst,true);
+            check(app.mode_==GameMode::Town && app.currentFloor_!=kRimeFirst,"Rimeholt is buried in snow until the Lich falls");
+            // The Lich's victory screen offers to go on.
+            app.mode_=GameMode::GameOver; app.wonGame_=true; app.defeatedBossName_="Lich"; app.currentFloor_=20;
+            snapshot("ui-victory-go-on.png");
+            app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::G});
+            check(app.mode_==GameMode::Playing && !app.wonGame_ && app.rimeholtOpen() && app.player_.knowsLore("winter_road"),
+                  "After the Lich, Go on (G): the run continues, and the winter road opens");
+            app.currentFloor_=1;
+            // Its floors.
+            bool icy=true, saves=true, boss=false;
+            for (int floor=kRimeFirst; floor<=kRimeLast; ++floor) {
+                app.currentFloor_=floor; app.regenerateLevel(970+floor);
+                int ice=0;
+                for (int y=0;y<app.map_.height();++y) for (int x=0;x<app.map_.width();++x) ice+=app.surfaceAt({x,y})==SurfaceType::Ice;
+                icy=icy && ice>=8;
+                for (const auto& m:app.monsters_) boss=boss || m->type()==MonsterType::WinterKing;
+                if (floor==kRimeFirst+2 || floor==kRimeLast) {
+                    if (floor==kRimeLast && app.boss_) app.player_.setPosition({app.boss_->position().x,app.boss_->position().y+3});
+                    app.updateFieldOfView();
+                    snapshot(floor==kRimeLast?"rimeholt-boss.png":"rimeholt.png");
+                }
+                const auto path=(output/"rimeholt.txt").string();
+                saves=saves && saveGame(app.captureState(false),path) && loadGame(path).has_value();
+            }
+            check(icy,"Every Rimeholt floor has its sheets of ice");
+            check(boss && app.boss_ && app.boss_->type()==MonsterType::WinterKing,"The Winter King waits on Rimeholt's last floor");
+            check(saves,"Every Rimeholt floor saves and loads");
+            check(floorDepth(kRimeFirst)==21 && floorDepth(kRimeLast)==30,"Rimeholt is as deep as floors 21 to 30");
+            app.mode_=GameMode::Town; app.travelFloor(kRimeFirst,true);
+            check(app.mode_==GameMode::Playing && app.currentFloor_==kRimeFirst,"With the road open, Rimeholt can be entered from town");
+
+            // The cold: water freezes and the ice creeps.
+            setup(PlayerClass::Warrior);
+            app.currentFloor_=kRimeFirst;
+            app.setSurface({14,10},SurfaceType::Water,0);
+            for (int x=4;x<=8;++x) app.setSurface({x,15},SurfaceType::Ice,0);
+            int before=0, after=0;
+            for (int y=0;y<22;++y) for (int x=0;x<32;++x) before+=app.surfaceAt({x,y})==SurfaceType::Ice;
+            app.tickStormcall(); app.floorTurns_=1; app.tickStormcall();
+            for (int y=0;y<22;++y) for (int x=0;x<32;++x) after+=app.surfaceAt({x,y})==SurfaceType::Ice;
+            check(app.surfaceAt({14,10})==SurfaceType::Ice,"In Rimeholt, standing water freezes");
+            check(after>before+1,"and the ice creeps across the floor");
+            app.clearSurfaces();
+            // The winter's own walk on ice unchilled.
+            const auto spawn=[&](MonsterType type,Position p) { auto made=createMonster(type,p); auto* m=made.get();
+                m->tactics.alert=8; m->tactics.lastKnown=app.player_.position(); app.scheduler_.add(*m); app.monsters_.push_back(std::move(made)); return m; };
+            auto* wight=spawn(MonsterType::RimeWight,{15,10});
+            app.setSurface({15,10},SurfaceType::Ice,0); app.setSurface(app.player_.position(),SurfaceType::Ice,0);
+            app.tickSurfaces();
+            check(!wight->statusEffects().has(StatusEffectType::Chill) && app.player_.statusEffects().has(StatusEffectType::Chill),"Ice chills you, but not the winter's own");
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.clearSurfaces(); app.player_.statusEffects().active().clear();
+            // A frost bear leaves ice where it walks.
+            auto* bear=spawn(MonsterType::FrostBear,{16,10});
+            app.currentActor_=bear; app.processMonsterTurns();
+            check(bear->position().x!=16 && app.surfaceAt({16,10})==SurfaceType::Ice,"A Frost Bear leaves ice where it walks");
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.clearSurfaces();
+            // A frozen thrall shatters.
+            auto* thrall=spawn(MonsterType::FrozenThrall,{11,10});
+            thrall->setXpReward(0); // a level-up would heal you and hide the cut
+            const int life=app.player_.stats().hp;
+            thrall->stats().hp=0; app.checkAndHandleDeath(*thrall); app.removeDeadMonsters();
+            check(app.player_.stats().hp==life-6 && app.surfaceAt({12,11})==SurfaceType::Ice,"A slain Frozen Thrall shatters: ice around it, and shards that cut you");
+            app.clearSurfaces();
+            // The Winter King raises his court at half his life.
+            auto* king=spawn(MonsterType::WinterKing,{16,10});
+            king->stats().hp=king->stats().maxHp/2; app.boss_=king; app.courtCalled_=false;
+            for (int i=0;i<4 && !app.courtCalled_;++i) { app.player_.stats().hp=app.player_.stats().maxHp; app.currentActor_=king; app.processMonsterTurns(); }
+            int court=0; for (auto& m:app.monsters_) court+=m->type()==MonsterType::RimeWight && m->stats().hp>0;
+            check(app.courtCalled_ && court==3,"At half his life the Winter King raises three of his court");
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.boss_=nullptr; app.clearSurfaces(); app.player_.statusEffects().active().clear();
+            // Beyond the Lich, levels go on to 30, with tree points at 25 and 30.
+            check(kRunMaxLevel==30 && earnedTreePoints(20)==4 && earnedTreePoints(25)==5 && earnedTreePoints(30)==6,"Levels go on to 30, with tree points at 25 and 30");
+            app.player_.lore.clear(); app.currentFloor_=1;
         }
 
         app.window_.close();

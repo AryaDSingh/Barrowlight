@@ -50,6 +50,10 @@ void Application::onBossDefeated(const Monster& boss) {
         }
         grantUnique(boss.position());
         log("Its stairs lead back to town.");
+    } else if (boss.type() == MonsterType::WinterKing) {
+        log("The Winter King's crown cracks, and for the first time in an age the barrows begin to thaw.");
+        grantUnique(boss.position());
+        log("Its stairs lead back to town.");
     } else if (boss.type() == MonsterType::HollowMother) {
         log("The Hollow Mother curls up and is still, and the thorns begin to wither.");
         if (!(player_.trialKeys & (1 << (kHollowTrial - 1)))) {

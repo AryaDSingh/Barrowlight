@@ -58,6 +58,7 @@ Captive Application::essenceAt(Position altar) const {
     if (cathedralFloor(currentFloor_)) held = {MonsterType::DeepLurker, MonsterType::DrownedOne, MonsterType::DeepLurker};
     else if (foundryFloor(currentFloor_)) held = {MonsterType::SlagGolem, MonsterType::OrcSmith, MonsterType::SlagGolem};
     else if (thornFloor(currentFloor_)) held = {MonsterType::Thornback, MonsterType::BroodSpider, MonsterType::Thornback};
+    else if (rimeFloor(currentFloor_)) held = {MonsterType::FrozenThrall, MonsterType::IceWraith, MonsterType::FrozenThrall};
     else if (floorTheme(currentFloor_).region == FloorRegion::Crypts) held = {MonsterType::CryptSentinel, MonsterType::SkeletonGuard, MonsterType::Skeleton};
     return {essence, held[(h / 7) % held.size()], (h / 31) % 5 == 0};
 }
@@ -156,6 +157,7 @@ void Application::spawnRiftborn(int count, bool keeper) {
     if (cathedralFloor(currentFloor_)) { roster = {MonsterType::DrownedOne, MonsterType::DeepLurker}; brute = MonsterType::DeepLurker; }
     else if (foundryFloor(currentFloor_)) { roster = {MonsterType::OrcSmith, MonsterType::Slagling}; brute = MonsterType::SlagGolem; }
     else if (thornFloor(currentFloor_)) { roster = {MonsterType::BriarHound, MonsterType::Spiderling}; brute = MonsterType::Thornback; }
+    else if (rimeFloor(currentFloor_)) { roster = {MonsterType::RimeWight, MonsterType::IceWraith}; brute = MonsterType::FrozenThrall; }
     else if (floorTheme(currentFloor_).region == FloorRegion::Crypts) { roster = {MonsterType::Skeleton, MonsterType::CryptShade, MonsterType::SkeletonGuard}; brute = MonsterType::CryptSentinel; }
     const int radius = breachRadius();
     std::vector<Position> edge;

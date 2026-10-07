@@ -138,6 +138,21 @@ void Application::foundryDeath(Monster& monster) {
     carries(MonsterType::OssuaryWarden, "hollow_map", "A map, drawn on bone, slips from the Warden's ashes.");
     carries(MonsterType::RotWitch, "witch_seed", "A black seed rolls from the witch's hand, still warm.");
     carries(MonsterType::BriarHound, "hound_collar", "A braided collar slips from the hound's neck.");
+    // A frozen thrall shatters: ice across the 8 tiles around it, and the shards cut whoever stands there.
+    if (monster.type() == MonsterType::FrozenThrall) {
+        const auto at = monster.position();
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx)
+                if (map_.isWalkable(at.x + dx, at.y + dy)) setSurface({at.x + dx, at.y + dy}, SurfaceType::Ice, 12);
+        if (visibleTile(at)) log(monster.name(), " shatters!");
+        const auto cut = [&](Actor& a) {
+            if (&a == &monster || a.stats().hp <= 0 || std::max(std::abs(a.position().x - at.x), std::abs(a.position().y - at.y)) > 1) return;
+            a.stats().hp -= 6; flashActor(a);
+        };
+        cut(player_);
+        if (player_.stats().hp <= 0) { harmSource_ = "a shattering thrall"; checkAndHandleDeath(player_); harmSource_.clear(); }
+        for (auto& m : monsters_) if (m.get() != &monster && m->stats().hp > 0) { cut(*m); if (m->stats().hp <= 0) checkAndHandleDeath(*m); }
+    }
     if (monster.type() == MonsterType::GoblinCaptain && monster.stats().hp <= 0 && !player_.knowsLore("foreman_key") &&
         std::none_of(loreDrops_.begin(), loreDrops_.end(), [](const LoreDrop& d) { return d.id == "foreman_key"; })) {
         loreDrops_.push_back({at, "foreman_key"});
