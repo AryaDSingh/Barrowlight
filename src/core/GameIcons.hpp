@@ -134,6 +134,8 @@ inline std::string talentIcon(const Talent& talent) {
         {"stonefist.fist", "fist"}, {"stonefist.slam", "punch-blast"}, {"stonefist.granite", "stone-block"}, {"stonefist.landslide", "falling-rocks"},
         {"warbanner.plant", "spear-feather"}, {"warbanner.rally", "shouting"}, {"warbanner.bash", "spear-hook"}, {"warbanner.hold", "bordered-shield"},
         {"warbanner.ranks", "impact-point"}, {"warbanner.last", "checked-shield"}, {"warbanner.charge", "charging-bull"},
+        {"forgeborn.stoke", "campfire"}, {"forgeborn.searing", "hammer-drop"}, {"forgeborn.plate", "magic-shield"}, {"forgeborn.tempered", "fist"},
+        {"forgeborn.heat_sink", "bordered-shield"}, {"forgeborn.vent", "meteor-impact"}, {"forgeborn.forgeheart", "fire-dash"},
         {"alchemy.oil", "round-bottom-flask"}, {"alchemy.firebomb", "molotov"}, {"alchemy.brews", "bubbling-flask"}, {"alchemy.acid", "fizzing-flask"},
     };
     if (const auto it = byId.find(talent.id); it != byId.end()) return it->second;
@@ -237,6 +239,8 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::Shaken: return "shouting";
         case StatusEffectType::Steadfast: return "checked-shield";
         case StatusEffectType::Heat: return "campfire";
+        case StatusEffectType::MoltenPlate: return "magic-shield";
+        case StatusEffectType::Forgeheart: return "fire-dash";
     }
     return "aura";
 }

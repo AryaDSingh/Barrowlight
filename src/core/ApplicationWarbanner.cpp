@@ -58,6 +58,9 @@ void Application::readLore(std::size_t index) {
         log("An iron key on a chain, stamped with a hammer and a flame.");
         log("It opens the Ashen Foundry. Choose it from the dungeon menu in town.");
     }
+    if (drop.id == "forgemaster_brand") {
+        log("A branding iron, still hot, its mark a hammer inside a flame. The heat runs up your arm and stays.");
+    }
     if (drop.id == "warlord_standard") {
         log("Torn goblin silk on a broken spear, stitched under the Warlord's mark:");
         log("\"Plant it where you stand. Let them break on it.\"");

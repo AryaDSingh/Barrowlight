@@ -17,6 +17,7 @@ enum class TalentTree {
     Earth, Tide, Hexes, Venom,
     Traps, Skirmish, Lamplighter, Stormlance, Hexblade, Saboteur, Stonefist,
     Warbanner, // the first deep tree
+    Forgeborn, // the Ashen Foundry's deep tree
 };
 
 // Abilities and talents have five ranks; rank 5 often adds a mastery effect
@@ -89,7 +90,7 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The third batch (Shadow, Radiance, Shield) and its resonances.
     Dread, Bulwark, Twilight, TemplarsEdge, HallowedGuard,
     // The fourth batch (Bow, Stealth, Daggers) and its resonances.
-    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, UnseenHand, AssassinsEdge,
+    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, UnseenHand, AssassinsEdge,
     // The fifth batch (Earth, Tide, Venom) and its resonances.
     Aftershock, Tidecaller, Virulence, Mire, FoulWater, EnvenomedBlades,
     // The sixth batch (Spear, Mace, Crossbow) and its resonances.
@@ -276,6 +277,11 @@ struct Talent {
     // damage. knockAside: a blitz also throws aside what it strikes.
     int plantBanner=0, crashStun=0;
     bool greatBanner=false, rallyCry=false, breakWindups=false, knockAside=false;
+    // Forgeborn. gainHeat: Heat you gain. spendHeat: damage per Heat spent
+    // (all of it; the hit also burns). ventHeat: an area hit that spends all
+    // your Heat for that much damage per point and sets the ground burning.
+    // moltenPlate / forgeheart: turns of each.
+    int gainHeat=0, spendHeat=0, ventHeat=0, moltenPlate=0, forgeheart=0;
     // The forked pilot trees. guardPerHit: Guard for each foe struck (Blade
     // Dance). markOnHit: also marks what it hits. stunOnImpact: a shoved foe
     // that slams into something is stunned. scatterSplash: the splash lands

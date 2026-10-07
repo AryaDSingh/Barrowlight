@@ -1211,6 +1211,13 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     const auto& affected = target.affected;
     const TalentTarget& aimed = target; // the loops below name each victim `target`
     const Position blinkDestination = target.destination;
+    // Forgeborn: a blow or a blast that spends all your Heat.
+    const int heldHeat=player_.statusEffects().magnitudeOf(StatusEffectType::Heat);
+    if (talent.spendHeat || talent.ventHeat) {
+        talent.power+=(talent.spendHeat+talent.ventHeat)*heldHeat;
+        if (talent.spendHeat && heldHeat) talent.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,std::max(1,heldHeat/2)};
+        if (!player_.statusEffects().has(StatusEffectType::Forgeheart)) addHeat(-heldHeat);
+    }
 
     const auto* equippedWeapon=player_.inventory().equipped(EquipmentSlot::Weapon);
     talent.committedBloodlust=equippedWeapon && equippedWeapon->definition()->weaponKind==WeaponKind::TwoHanded &&
@@ -1384,6 +1391,9 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             if (!talent.smokeBomb) log(lost?"You go limp. They lose track of you.":"You go limp and lie still.");
         }
         if (talent.plantBanner) plantBanner(talent.plantBanner,talent.greatBanner,player_.position());
+        if (talent.gainHeat) addHeat(talent.gainHeat);
+        if (talent.moltenPlate) player_.statusEffects().apply({StatusEffectType::MoltenPlate,talent.moltenPlate,3});
+        if (talent.forgeheart) player_.statusEffects().apply({StatusEffectType::Forgeheart,talent.forgeheart,1});
         if (talent.rallyCry) {
             const auto me=player_.position();
             int shaken=0;
@@ -1825,6 +1835,11 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         player_.stats().hp=std::min(player_.stats().maxHp,player_.stats().hp+hallowed);
         log("A warm light steadies you.");
     }
+    if (talent.ventHeat) {
+        const auto me=player_.position(); // everywhere but under you
+        for (const auto& p:target.area) if (map_.isWalkable(p.x,p.y) && !(p.x==me.x && p.y==me.y)) setSurface(p,SurfaceType::Fire,kSpilledFireTurns);
+        if (heldHeat) log("Your heat bursts out of you!");
+    }
     if (const Element element=talentElement(talent); element!=Element::None) {
         std::vector<Position> touched=target.area;
         if (!target.path.empty()) touched.push_back(target.path.back());
@@ -1855,6 +1870,8 @@ int Application::situationalBonus(const Talent& talent, const Actor& target) con
         if (player_.stats().hp*2<player_.stats().maxHp) bonus+=gear.affixTotal(BonusStat::LowLifeDamage);
         if (const auto* m=dynamic_cast<const Monster*>(&target); m && m->tactics.alert==0) bonus+=gear.affixTotal(BonusStat::UnawareDamage);
     }
+    if (const int tempered=kit.passiveValue(PassiveKind::Tempered,player_.stats());
+        tempered && isMeleeAttack(talent) && player_.statusEffects().magnitudeOf(StatusEffectType::Heat)>=4) bonus+=tempered;
     if (const int ranks=kit.passiveValue(PassiveKind::BreakRanks,player_.stats())) {
         const auto at=target.position();
         for (const auto& m:monsters_)
@@ -2543,6 +2560,15 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
 
             // A dodged hit lands no on-hit effect either -- avoiding the
             // blow avoids the poison that would have ridden in on it.
+            // Molten Plate: whoever strikes you in melee is burned for it, and you heat up.
+            if (!dodged && decision.target == &player_ && player_.statusEffects().has(StatusEffectType::MoltenPlate) &&
+                std::max(std::abs(actor.position().x-player_.position().x),std::abs(actor.position().y-player_.position().y))<=1) {
+                actor.stats().hp -= player_.statusEffects().magnitudeOf(StatusEffectType::MoltenPlate);
+                flashActor(actor);
+                log(actor.name(), " is burned by your molten plate.");
+                addHeat(1);
+                checkAndHandleDeath(actor);
+            }
             // The Foundry's smiths and imps heat you with every blow that lands.
             if (const auto* heater=dynamic_cast<const Monster*>(&actor); !dodged && decision.target == &player_ && heater &&
                 (heater->type() == MonsterType::OrcSmith || heater->type() == MonsterType::BellowsImp)) addHeat(2);

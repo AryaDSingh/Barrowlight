@@ -87,6 +87,7 @@ inline std::string hybridRequirement(const Player& p,const std::string& id) {
 struct DeepGate { std::vector<std::pair<Affinity,int>> needs; int level; const char* lore; const char* loreName; };
 inline std::optional<DeepGate> deepGate(const std::string& id) {
     if (id=="warbanner") return DeepGate{{{Affinity::Steel,8},{Affinity::Guard,6}},10,"warlord_standard","the Warlord's Standard"};
+    if (id=="forgeborn") return DeepGate{{{Affinity::Steel,8},{Affinity::Flame,6}},10,"forgemaster_brand","the Forgemaster's Brand"};
     return std::nullopt;
 }
 inline bool deepTreeKnown(const Player& p,const std::string& id) {

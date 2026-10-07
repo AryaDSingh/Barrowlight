@@ -1950,6 +1950,45 @@ struct ApplicationRewardsTestAccess {
                 for (int i=0;i<12;++i) app.tickBanner();
             }
 
+            // Forgeborn: the Foundry's deep tree, revealed by the Forgemaster's brand.
+            setup(PlayerClass::Warrior);
+            {
+                auto made=createMonster(MonsterType::Forgemaster,{12,10}); auto* smith=made.get(); app.monsters_.push_back(std::move(made));
+                app.onBossDefeated(*smith); clearFoes();
+                check(app.loreDrops_.size()==1 && app.loreDrops_[0].id=="forgemaster_brand","The Forgemaster drops its brand");
+                app.player_.setPosition(app.loreDrops_[0].at); app.pickupItem();
+                check(deepTreeKnown(app.player_,"forgeborn"),"Reading the brand reveals Forgeborn");
+                giveColour(app.player_,Affinity::Steel,8); giveColour(app.player_,Affinity::Flame,6); app.player_.level()=10; app.player_.treePoints()=1;
+                check(purchaseTree(app.player_,PlayerClass::Warrior,*findTree("forgeborn")),"With Steel 8, Flame 6 and level 10 Forgeborn opens");
+                arena(PlayerClass::Warrior);
+                const auto heat=[&]{ return app.player_.statusEffects().magnitudeOf(StatusEffectType::Heat); };
+                cast(ranked("forgeborn.stoke",1),app.player_.position());
+                check(heat()==4 && app.player_.statusEffects().magnitudeOf(StatusEffectType::Guard)>=3,"Stoke: 4 Heat and Guard");
+                auto* a=foe({11,10});
+                const int before=a->stats().hp;
+                cast(ranked("forgeborn.searing",1),{11,10});
+                check(heat()==0 && a->statusEffects().has(StatusEffectType::Burn) && before-a->stats().hp>=12,"Searing Blow spends the Heat for a burning blow");
+                ranked("forgeborn.tempered",1);
+                app.addHeat(5);
+                const int hot=app.situationalBonus(findTalentDefinition("one_handed.quick_strike")->ranks[0],*a);
+                app.addHeat(-5);
+                check(hot>=app.situationalBonus(findTalentDefinition("one_handed.quick_strike")->ranks[0],*a)+3,"Tempered: hot melee hits deal more");
+                ranked("forgeborn.heat_sink",1);
+                app.addHeat(12); const int hp=app.player_.stats().hp; app.player_.setPosition({10,10}); app.tickHeat();
+                check(app.player_.stats().hp==hp,"Heat Sink: Heat never burns you");
+                clearFoes(); app.addHeat(-20); app.addHeat(5);
+                auto* b=foe({11,11});
+                cast(ranked("forgeborn.vent",1),app.player_.position());
+                check(heat()==0 && b->stats().hp<90 && app.surfaceAt({11,10})==SurfaceType::Fire,"Vent: the Heat bursts out and the ground burns");
+                clearFoes(); app.addHeat(6);
+                cast(ranked("forgeborn.forgeheart",1),app.player_.position());
+                app.tickHeat();
+                check(heat()==6 && app.player_.statusEffects().has(StatusEffectType::Hasted),"Forgeheart: your Heat holds, and you are hastened");
+                cast(ranked("forgeborn.plate",1),app.player_.position());
+                check(app.player_.statusEffects().has(StatusEffectType::MoltenPlate),"Molten Plate wraps you");
+                clearFoes(); app.player_.statusEffects().active().clear();
+            }
+
             // Daggers.
             arena(PlayerClass::Thief);
             {

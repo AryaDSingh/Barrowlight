@@ -39,6 +39,11 @@ void Application::onBossDefeated(const Monster& boss) {
         log("The Warlord drops the ", trialSigil(1), "! It opens the ", trialName(1), " at the obelisk in town.");
     } else if (boss.type() == MonsterType::Forgemaster) {
         log("The Forgemaster cools and cracks, and the Foundry's fires gutter low.");
+        if (!player_.knowsLore("forgemaster_brand") &&
+            std::none_of(loreDrops_.begin(), loreDrops_.end(), [](const LoreDrop& d) { return d.id == "forgemaster_brand"; })) {
+            loreDrops_.push_back({boss.position(), "forgemaster_brand"});
+            log("Its brand, still glowing, falls from its chest.");
+        }
         grantUnique(boss.position());
         log("Its stairs lead back to town.");
     } else if (boss.type() == MonsterType::TheSleeper) {

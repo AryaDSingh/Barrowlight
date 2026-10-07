@@ -207,6 +207,7 @@ private:
     void fanFires(Position imp);
     void foundryDeath(Monster& monster);
     bool forgeSummoned_ = false; // the Forgemaster has called its slaglings
+    bool heatFresh_ = false;     // Heat gained since your last turn began: it doesn't cool yet
     // The Encounter Lab (ApplicationLab.cpp): a fixed, seeded run of three
     // rooms for comparing builds, logged turn by turn to encounter-lab/.
     bool labMode_ = false, labRun_ = false;

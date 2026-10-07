@@ -18,7 +18,7 @@ struct TreeDefinition {
     const char* description;
     const char* starterItem;
 };
-inline constexpr std::array<TreeDefinition, 38> kTalentTrees{{
+inline constexpr std::array<TreeDefinition, 39> kTalentTrees{{
     {"one_handed", "One-Handed", TalentTree::OneHanded, "Efficient strikes, defensive openings and finishing blows.", "iron_sword"},
     {"two_handed", "Two-Handed", TalentTree::TwoHanded, "Heavy swings, surrounding enemies and blood-fuelled attacks.", "greatsword"},
     {"shield", "Shield", TalentTree::Shield, "Block damage, interrupt attacks and control space.", "wooden_shield"},
@@ -57,6 +57,7 @@ inline constexpr std::array<TreeDefinition, 38> kTalentTrees{{
     {"saboteur", "Saboteur", TalentTree::Saboteur, "Stealth and Alchemy: caltrops, smoke and booby traps.", ""},
     {"stonefist", "Stonefist", TalentTree::Stonefist, "Brawling and Earth: fists of stone, and pillars to break foes against.", ""},
     {"warbanner", "Warbanner", TalentTree::Warbanner, "A deep tree: plant a war standard, hold your ground beside it, and break their packs.", ""},
+    {"forgeborn", "Forgeborn", TalentTree::Forgeborn, "A deep tree: burning plate. Struck, you heat up; hot, your blows sear.", ""},
 }};
 inline const TreeDefinition* findTree(const std::string& id) {
     for (const auto& t : kTalentTrees) if (id == t.id) return &t;
@@ -152,6 +153,11 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "stealth.vanish") { longer(); d.mastery = "Hide for four responses."; }
     if (id == "stealth.smoke_bomb") { m.cooldownTurns -= 4; d.mastery = "Ready again four turns sooner."; }
     if (id == "stealth.feign") { m.restoreHpPercent = 10; d.mastery = "You also recover 10% of your life."; }
+    if (id == "forgeborn.stoke") { m.gainHeat = 6; d.mastery = "Gain 6 Heat."; }
+    if (id == "forgeborn.searing") { m.shape = EffectShape::AreaAroundTarget; m.areaRadius = 1; d.mastery = "The blow also strikes the foes beside its target."; }
+    if (id == "forgeborn.plate") { m.moltenPlate = 6; d.mastery = "Lasts 6 turns."; }
+    if (id == "forgeborn.vent") { m.areaRadius = 3; d.mastery = "The blast reaches three tiles."; }
+    if (id == "forgeborn.forgeheart") { m.forgeheart = 7; if (m.selfBuffEffect) m.selfBuffEffect->turnsRemaining = 7; d.mastery = "Lasts 7 turns."; }
     if (id == "warbanner.plant") { m.plantBanner = 12; d.mastery = "The banner stands for 12 turns."; }
     if (id == "warbanner.rally") { m.breakWindups = true; d.mastery = "Shaken foes also lose whatever they were winding up."; }
     if (id == "warbanner.bash") { m.crashStun = 2; d.mastery = "The crash deals double damage."; }
@@ -932,6 +938,29 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t=move("Warlord's Charge","Charge up to five tiles, striking every foe along the way and throwing them aside. Your banner plants where you stop.",5,6,10);
         t.blitz=true; t.knockAside=true; t.power=6; t.plantBanner=8; add(37,"warbanner.charge",3,t);
         shape("warbanner.charge",3,"capstone",{});
+        // Forgeborn (STR), the Ashen Foundry's deep tree: Steel 8, Flame 6, level 10, and the Forgemaster's brand.
+        t=Talent{}; t.name="Stoke"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Draw the fire into your armour: gain 4 Heat, and Guard 3 for two enemy responses.";
+        t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Guard,2,3}; t.gainHeat=4; t.manaCost=2; t.cooldownTurns=5; add(38,"forgeborn.stoke",0,t);
+        shape("forgeborn.stoke",3,"",{});
+        t=attack("Searing Blow","Spend all your Heat on one blow: +3 damage for each point, and the target burns.",5,3,4);
+        t.spendHeat=3; add(38,"forgeborn.searing",1,t);
+        shape("forgeborn.searing",3,"path",{"forgeborn.stoke"});
+        t=Talent{}; t.name="Molten Plate"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="For 4 turns, foes that strike you in melee take 3 fire damage, and each blow heats you by 1.";
+        t.moltenPlate=4; t.manaCost=4; t.cooldownTurns=10; add(38,"forgeborn.plate",1,t);
+        shape("forgeborn.plate",3,"path",{"forgeborn.stoke"});
+        add(38,"forgeborn.tempered",2,passive("Tempered","While you hold 4 Heat or more, your melee hits deal +3.",PassiveKind::Tempered,3));
+        shape("forgeborn.tempered",1,"",{"forgeborn.searing"});
+        add(38,"forgeborn.heat_sink",2,passive("Heat Sink","Heat never burns you, and every 3 Heat you hold blunts direct hits on you by 1.",PassiveKind::HeatSink,1));
+        shape("forgeborn.heat_sink",1,"",{"forgeborn.plate"});
+        t=attack("Vent","Release all your Heat in a blast within two tiles: 2 damage for each point, and the ground there burns.",4,4,8,false,2);
+        t.ventHeat=2; add(38,"forgeborn.vent",3,t);
+        shape("forgeborn.vent",3,"capstone",{});
+        t=Talent{}; t.name="Forgeheart"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="For 5 turns your Heat can't fall and you are hastened. When it ends, your Heat vents in a blast within two tiles.";
+        t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Hasted,5,25}; t.forgeheart=5; t.manaCost=8; t.cooldownTurns=16; add(38,"forgeborn.forgeheart",3,t);
+        shape("forgeborn.forgeheart",3,"capstone",{});
         // Mace (STR, one hand): guards and bones.
         t=attack("Crush","A heavy blow that sunders: the target takes +2 damage from every hit for four enemy turns.",6,2,4);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Sundered,4,2}; add(24,"mace.crush",0,t);
@@ -1297,6 +1326,8 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="saboteur") d.affinity=Affinity::Guile;
             else if (d.treeId=="stonefist")
                 d.affinity=(d.id=="stonefist.tremor" || d.id=="stonefist.granite" || d.id=="stonefist.rockhide")?Affinity::Earth:Affinity::Motion;
+            else if (d.treeId=="forgeborn")
+                d.affinity=(d.id=="forgeborn.searing" || d.id=="forgeborn.tempered" || d.id=="forgeborn.forgeheart")?Affinity::Steel:Affinity::Flame;
             else if (d.treeId=="warbanner")
                 d.affinity=(d.id=="warbanner.bash" || d.id=="warbanner.ranks" || d.id=="warbanner.charge")?Affinity::Steel:Affinity::Guard;
             else if (d.treeId=="stormlance")
@@ -1319,7 +1350,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 case PassiveKind::FollowThrough: case PassiveKind::Stoneskin: case PassiveKind::HallowedGuard: case PassiveKind::Tidecaller:
                 case PassiveKind::Bulwark: case PassiveKind::FlowingMana: case PassiveKind::BladeWard: case PassiveKind::Transfusion:
                 case PassiveKind::GravePact: case PassiveKind::LongShadow: case PassiveKind::StaticEdge:
-                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks:
+                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered:
                     return 5;
                 case PassiveKind::FireArrows: case PassiveKind::Incendiary: case PassiveKind::WastingCurse: case PassiveKind::Witchfire:
                 case PassiveKind::FoulWater: case PassiveKind::EnvenomedBlades: case PassiveKind::GraveLight: case PassiveKind::BoilingBlood:

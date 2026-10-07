@@ -16,6 +16,7 @@ void Application::addHeat(int amount) {
     const int heat = std::clamp(player_.statusEffects().magnitudeOf(StatusEffectType::Heat) + amount, 0, kMaxHeat);
     player_.statusEffects().remove(StatusEffectType::Heat);
     if (heat > 0) player_.statusEffects().apply({StatusEffectType::Heat, 10000, heat});
+    if (amount > 0) heatFresh_ = true;
 }
 
 // As your turn begins: furnaces in the 8 tiles around you, or fire under your
@@ -31,9 +32,31 @@ void Application::tickHeat() {
     bool hot = surfaceAt(me) == SurfaceType::Fire;
     for (const auto& prop : props_)
         if (prop.kind == PropKind::Furnace && std::max(std::abs(prop.pos.x - me.x), std::abs(prop.pos.y - me.y)) <= 1) hot = true;
-    if (hot) addHeat(1);
-    else if (heat > 0) addHeat(-1);
-    if (player_.statusEffects().magnitudeOf(StatusEffectType::Heat) >= kBurningHeat) {
+    const auto held = std::find_if(player_.statusEffects().active().begin(), player_.statusEffects().active().end(),
+                                    [](const StatusEffectInstance& e) { return e.type == StatusEffectType::Forgeheart; });
+    const bool holding = held != player_.statusEffects().active().end();
+    const int heldTurns = holding ? held->turnsRemaining : 0; // read now: changing Heat rewrites the list
+    const bool fresh = heatFresh_;
+    heatFresh_ = false;
+    if (hot) { addHeat(1); heatFresh_ = false; } // the furnace's heat follows the usual rule
+    else if (heat > 0 && !holding && !fresh) addHeat(-1);
+    // Forgeheart's last turn: the heat it held comes out all at once.
+    if (holding && heldTurns <= 1) {
+        const int vent = player_.statusEffects().magnitudeOf(StatusEffectType::Heat);
+        addHeat(-vent);
+        if (vent) {
+            log("Your forgeheart bursts!");
+            for (auto& m : monsters_)
+                if (!m->allied && m->stats().hp > 0 && std::max(std::abs(m->position().x - me.x), std::abs(m->position().y - me.y)) <= 2) {
+                    m->stats().hp -= 2 * vent; flashActor(*m); checkAndHandleDeath(*m);
+                }
+            for (int dy = -2; dy <= 2; ++dy) for (int dx = -2; dx <= 2; ++dx)
+                if ((dx || dy) && map_.isWalkable(me.x + dx, me.y + dy)) setSurface({me.x + dx, me.y + dy}, SurfaceType::Fire, kSpilledFireTurns);
+            removeDeadMonsters();
+        }
+    }
+    if (player_.statusEffects().magnitudeOf(StatusEffectType::Heat) >= kBurningHeat &&
+        !player_.talents().passiveValue(PassiveKind::HeatSink, player_.stats())) {
         player_.stats().hp -= 2;
         flashActor(player_);
         harmSource_ = "the heat";
