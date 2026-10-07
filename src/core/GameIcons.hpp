@@ -136,6 +136,8 @@ inline std::string talentIcon(const Talent& talent) {
         {"warbanner.ranks", "impact-point"}, {"warbanner.last", "checked-shield"}, {"warbanner.charge", "charging-bull"},
         {"forgeknight.heat_engine", "campfire"}, {"forgeknight.slam", "meteor-impact"}, {"forgeknight.quench", "big-wave"},
         {"forgeknight.burning_plate", "magic-shield"}, {"forgeknight.overheat", "fire-dash"}, {"forgeknight.anvil", "bordered-shield"},
+        {"packmaster.call", "wolverine-claws"}, {"packmaster.sic", "target-arrows"}, {"packmaster.bond", "cut-palm"}, {"packmaster.tactics", "crossed-swords"},
+        {"packmaster.blooded", "bloody-sword"}, {"packmaster.howl", "shouting"}, {"packmaster.feral", "linked-rings"},
         {"briarheart.seed", "tree-branch"}, {"briarheart.lash", "barbed-coil"}, {"briarheart.blood", "cut-palm"}, {"briarheart.thornborn", "spiked-fence"},
         {"briarheart.snares", "wolf-trap"}, {"briarheart.overgrowth", "earth-spit"}, {"briarheart.heart", "bleeding-heart"},
         {"rimeheart.rime", "ice-spear"}, {"rimeheart.lance", "ice-spear"}, {"rimeheart.path", "fire-dash"}, {"rimeheart.brittle", "cracked-shield"},
@@ -261,6 +263,8 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::Thornguard: return "spiked-fence";
         case StatusEffectType::Overgrowth: return "tree-branch";
         case StatusEffectType::BriarHeart: return "bleeding-heart";
+        case StatusEffectType::AlphasHowl: return "shouting";
+        case StatusEffectType::FeralBond: return "linked-rings";
     }
     return "aura";
 }

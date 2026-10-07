@@ -1416,6 +1416,27 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         if (talent.plantBanner) plantBanner(talent.plantBanner,talent.greatBanner,player_.position());
         if (talent.gainHeat) addHeat(talent.gainHeat);
         if (talent.stormcall) { player_.statusEffects().apply({StatusEffectType::Stormcall,talent.stormcall,1}); log("A storm gathers over you."); }
+        if (talent.callPack) {
+            int alive=0;
+            for (auto& m:monsters_) if (packBeast(*m) && m->stats().hp>0) { ++alive; m->stats().hp=m->stats().maxHp; }
+            int called=0;
+            while (alive<talent.callPack && spawnHound(0)) { ++alive; ++called; }
+            log(called?"A hound answers your call.":"Your pack is whole again.");
+        }
+        if (talent.sicEm) {
+            for (Actor* t:affected) if (auto* foe=dynamic_cast<Monster*>(t); foe && !foe->allied) { quarry_=foe; quarryPin_=talent.sicPin; }
+            for (auto& m:monsters_) if (packBeast(*m) && m->stats().hp>0) m->statusEffects().apply({StatusEffectType::Hasted,talent.sicEm,30});
+            log("Your pack turns as one.");
+        }
+        if (talent.bloodBond) {
+            for (auto& m:monsters_) if (packBeast(*m) && m->stats().hp>0) {
+                m->stats().hp=std::min(m->stats().maxHp,m->stats().hp+talent.bloodBond);
+                m->statusEffects().apply({StatusEffectType::Empowered,4,3});
+            }
+            log("Your blood runs in your beasts.");
+        }
+        if (talent.alphasHowl) { player_.statusEffects().apply({StatusEffectType::AlphasHowl,talent.alphasHowl,1}); log("You howl, and your pack answers."); }
+        if (talent.feralBond) { player_.statusEffects().apply({StatusEffectType::FeralBond,talent.feralBond,talent.feralHeals?2:1}); log("Your life and your pack's are one."); }
         if (talent.bloodBriar) {
             const auto me=player_.position(); int pinned=0;
             for (int dy=-1;dy<=1;++dy) for (int dx=-1;dx<=1;++dx) if (dx||dy) growBriar({me.x+dx,me.y+dy});
@@ -1993,6 +2014,9 @@ int Application::situationalBonus(const Talent& talent, const Actor& target) con
         if (player_.stats().hp*2<player_.stats().maxHp) bonus+=gear.affixTotal(BonusStat::LowLifeDamage);
         if (const auto* m=dynamic_cast<const Monster*>(&target); m && m->tactics.alert==0) bonus+=gear.affixTotal(BonusStat::UnawareDamage);
     }
+    if (const int pack=kit.passiveValue(PassiveKind::PackTactics,player_.stats()))
+        for (const auto& m:monsters_)
+            if (packBeast(*m) && m->stats().hp>0 && std::max(std::abs(m->position().x-target.position().x),std::abs(m->position().y-target.position().y))<=1) { bonus+=pack; break; }
     if (const int brittle=kit.passiveValue(PassiveKind::BrittleCold,player_.stats()); brittle && target.statusEffects().has(StatusEffectType::Chill)) bonus+=brittle;
     if (const int charge=kit.passiveValue(PassiveKind::Overcharge,player_.stats());
         charge && (talent.tree==TalentTree::Lightning || talent.tree==TalentTree::Tempest || talent.tree==TalentTree::Stormlance) &&
@@ -2651,7 +2675,7 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     if (decision.target==&player_)
                         if (const int bones=player_.talents().passiveValue(PassiveKind::BoneArmour,player_.stats())) {
                             int skeletons=0;
-                            for (const auto& m:monsters_) skeletons+=m->allied && m->stats().hp>0;
+                            for (const auto& m:monsters_) skeletons+=m->allied && !packBeast(*m) && m->stats().hp>0;
                             guard+=bones*skeletons;
                         }
                     damage=afterArmour(damage,gearArmour(*decision.target));
@@ -2668,7 +2692,28 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                         player_.ward-=soaked; damage-=soaked;
                         if (soaked && !damage) log("Your ward drinks the blow.");
                     }
+                    // Feral Bond: half of the hit goes to your nearest beast.
+                    if (decision.target==&player_ && damage>1 && player_.statusEffects().has(StatusEffectType::FeralBond)) {
+                        Monster* beast=nullptr; int best=1000;
+                        for (auto& m:monsters_) if (packBeast(*m) && m->stats().hp>0) {
+                            const int d=std::max(std::abs(m->position().x-player_.position().x),std::abs(m->position().y-player_.position().y));
+                            if (d<best) { best=d; beast=m.get(); }
+                        }
+                        if (beast) {
+                            const int share=damage/2; damage-=share;
+                            beast->stats().hp-=share; flashActor(*beast);
+                            log(beast->name()," takes ",share," of the blow.");
+                            checkAndHandleDeath(*beast);
+                        }
+                    }
                     decision.target->stats().hp -= damage;
+                    if (auto* hound=dynamic_cast<Monster*>(&actor); hound && packBeast(*hound) && decision.target!=&player_ && damage>0) {
+                        if (player_.statusEffects().has(StatusEffectType::AlphasHowl)) decision.target->statusEffects().apply({StatusEffectType::Bleed,3,3});
+                        if (player_.statusEffects().magnitudeOf(StatusEffectType::FeralBond)>=2)
+                            player_.stats().hp=std::min(player_.stats().maxHp,player_.stats().hp+2);
+                        if (quarryPin_ && decision.target==quarry_) { decision.target->statusEffects().apply({StatusEffectType::Pinned,1,0}); quarryPin_=false; }
+                        if (decision.target->stats().hp<=0) packKill();
+                    }
                     if (const auto* raised=dynamic_cast<const Monster*>(&actor); raised && raised->allied && damage>0 && decision.target->stats().hp>0)
                         if (const int glow=player_.talents().passiveValue(PassiveKind::GraveLight,player_.stats()))
                             decision.target->statusEffects().apply({StatusEffectType::Burn,3,glow});
@@ -2869,6 +2914,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
     }
     if (defeated && defeated->allied) {
         scheduler_.remove(actor);
+        if (packBeast(*defeated)) packLoss();
         // Your slag: a slagling bursts into flame (and with Brittle Slag splits,
         // once); a golem breaks into two slaglings.
         if (defeated->type()==MonsterType::Slagling || defeated->type()==MonsterType::SlagGolem) {
@@ -3068,7 +3114,7 @@ void Application::raiseHarvestedSouls() {
     risingSouls_.clear();
     for (const auto& at:souls) {
         int permanent=0;
-        for (const auto& m:monsters_) permanent+=m->allied && m->stats().hp>0 && !m->remainingLife;
+        for (const auto& m:monsters_) permanent+=m->allied && !packBeast(*m) && m->stats().hp>0 && !m->remainingLife;
         if (permanent>=minionCap() || isOccupied(at,nullptr) || !map_.isWalkable(at.x,at.y)) continue;
         auto risen=createMonster(MonsterType::Skeleton,at);
         configureMinion(*risen,1,player_.stats().intelligence);
@@ -3291,7 +3337,7 @@ void Application::regenerateLevel(unsigned int seed) {
 
     map_ = dungeon.map;
     actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN; vfx_.clear(); hitFlash_.clear();
-    vfx_.clear(); hitFlash_.clear(); lightOrbs_.clear(); loreDrops_.clear(); banner_.reset(); forgeSummoned_=false; broodCalled_=false; briarTiles_.clear(); overgrowthPinned_.clear();
+    vfx_.clear(); hitFlash_.clear(); lightOrbs_.clear(); loreDrops_.clear(); banner_.reset(); forgeSummoned_=false; broodCalled_=false; briarTiles_.clear(); overgrowthPinned_.clear(); quarry_=nullptr; quarryPin_=false;
     setProps(dungeon.props); pillarTurns_.clear(); traps_.clear();
 
     player_.setPosition(dungeon.playerStart);
@@ -3417,7 +3463,7 @@ SaveGameState Application::captureState(bool includeFloors) {
     }
     for (const auto& t:torchToggles_) state.torchToggles.push_back({t.first,t.second});
     for (const auto& orb:lightOrbs_) state.lightOrbs.push_back({orb.at.x,orb.at.y,orb.turns});
-    state.lore=player_.lore;
+    state.lore=player_.lore; state.packBlood=player_.packBlood; state.packHp=player_.packHp;
     for (const auto& drop:loreDrops_) state.loreDrops.push_back({drop.at.x,drop.at.y,drop.id});
     state.map = map_;
     state.exploredMap = exploredMap_;
@@ -3602,7 +3648,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     for (const auto& t:state.torchToggles) torchToggles_.insert({t.x,t.y});
     lightOrbs_.clear();
     for (const auto& [x,y,turns]:state.lightOrbs) lightOrbs_.push_back({{x,y},turns});
-    player_.lore=state.lore;
+    player_.lore=state.lore; player_.packBlood=state.packBlood; player_.packHp=state.packHp;
     loreDrops_.clear(); banner_.reset();
     for (const auto& drop:state.loreDrops) loreDrops_.push_back({{drop.x,drop.y},drop.id});
     ascendancyMenu_=false; trialMenu_=false;

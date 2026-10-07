@@ -93,6 +93,7 @@ std::string Application::trialAvailability(int trial) const {
 // end, and the stairs home behind the player.
 bool Application::enterTrial(int trial) {
     if (mode_ != GameMode::Town || trial < 1 || trial > kTrialCount || !trialAvailability(trial).empty()) return false;
+    stablePack();
     dissolveMinions();
     floorCache_[currentFloor_] = captureState(false);
     trialReturnFloor_ = currentFloor_;

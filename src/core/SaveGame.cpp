@@ -46,7 +46,11 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 44;
+constexpr int kSaveFormatVersion = 45;
+// The creatures that can fight for you: skeletons, the bone guardian, slag, hounds.
+bool alliedKind(MonsterType t) {
+    return t==MonsterType::Skeleton || t==MonsterType::SkeletonGuard || t==MonsterType::Slagling || t==MonsterType::SlagGolem || t==MonsterType::BriarHound;
+}
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -345,7 +349,7 @@ bool readStatusEffects(std::istream& in, std::vector<StatusEffectInstance>& effe
         if (!(in >> type >> turnsRemaining >> magnitude)) {
             return false;
         }
-        if (type<0 || type>static_cast<int>(StatusEffectType::BriarHeart) || turnsRemaining<1 || turnsRemaining>10000 || magnitude<0 || magnitude>10000) return false;
+        if (type<0 || type>static_cast<int>(StatusEffectType::FeralBond) || turnsRemaining<1 || turnsRemaining>10000 || magnitude<0 || magnitude>10000) return false;
         if (type==static_cast<int>(StatusEffectType::Marked) && magnitude!=1) return false;
         effects.push_back(
             StatusEffectInstance{static_cast<StatusEffectType>(type), turnsRemaining, magnitude});
@@ -508,6 +512,11 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
         for (const auto& drop : state.loreDrops) out << ' ' << drop.x << ' ' << drop.y << ' ' << drop.id;
         out << '\n';
     }
+    if (version>=45) {
+        out << state.packBlood << ' ' << state.packHp.size();
+        for (const int hp : state.packHp) out << ' ' << hp;
+        out << '\n';
+    }
     return static_cast<bool>(out);
 }
 
@@ -668,8 +677,8 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         }
         if (version>=15) {
             if (!(in>>m.allied>>m.summonRank>>m.summonIntelligence>>m.remainingLife) || m.summonRank<1 || m.summonRank>3 ||
-                m.summonIntelligence<0 || m.summonIntelligence>100000 || m.remainingLife<0 || m.remainingLife>8 ||
-                (m.allied && (m.type!=MonsterType::Skeleton || m.isBoss || m.rewardsEligible || m.vaultGuard || m.intent)) ||
+                m.summonIntelligence<0 || m.summonIntelligence>100000 || m.remainingLife<0 || m.remainingLife>40 ||
+                (m.allied && (!alliedKind(m.type) || m.isBoss || m.rewardsEligible || m.vaultGuard || m.intent)) ||
                 (!m.allied && (m.summonRank!=1 || m.summonIntelligence || m.remainingLife))) return std::nullopt;
         }
         if(version>=22) {
@@ -870,6 +879,11 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
             if (!(in>>drop.x>>drop.y>>drop.id) || !state.map.inBounds(drop.x,drop.y) || drop.id.size()>64) return std::nullopt;
             state.loreDrops.push_back(drop);
         }
+    }
+    if (version>=45) {
+        std::size_t count=0;
+        if (!(in>>state.packBlood>>count) || state.packBlood<0 || state.packBlood>10 || count>2) return std::nullopt;
+        for (std::size_t i=0;i<count;++i) { int hp=0; if (!(in>>hp) || hp<1 || hp>100000) return std::nullopt; state.packHp.push_back(hp); }
     }
     if (state.landmark && (!state.map.inBounds(state.landmarkAltar.x,state.landmarkAltar.y) ||
         state.map.isWalkable(state.landmarkAltar.x,state.landmarkAltar.y))) return std::nullopt;

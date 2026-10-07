@@ -2276,6 +2276,129 @@ struct ApplicationRewardsTestAccess {
                 clearFoes(); app.clearSurfaces(); app.briarTiles_.clear(); app.player_.statusEffects().active().clear();
             }
 
+            // Packmaster: Thornwood Hollow's second deep tree, from the first Briar Hound's collar.
+            arena(PlayerClass::Thief);
+            {
+                auto made=createMonster(MonsterType::BriarHound,{12,10}); auto* wild=made.get();
+                app.scheduler_.add(*wild); app.monsters_.push_back(std::move(made));
+                wild->stats().hp=0; app.checkAndHandleDeath(*wild); app.removeDeadMonsters();
+                check(app.loreDrops_.size()==1 && app.loreDrops_[0].id=="hound_collar","The first Briar Hound slain drops its collar");
+                app.player_.setPosition(app.loreDrops_[0].at); app.pickupItem(); app.player_.setPosition({10,10});
+                check(deepTreeKnown(app.player_,"packmaster"),"The collar reveals Packmaster");
+                giveColour(app.player_,Affinity::Hunt,8); giveColour(app.player_,Affinity::Blood,4); app.player_.level()=14; app.player_.treePoints()=1;
+                check(purchaseTree(app.player_,PlayerClass::Thief,*findTree("packmaster")),"With Hunt 8, Blood 4 and level 14 Packmaster opens");
+                app.player_.packBlood=0;
+                const auto hounds=[&]{ int n=0; for (auto& m:app.monsters_) n+=app.packBeast(*m) && m->stats().hp>0; return n; };
+                const auto hound=[&]()->Monster* { for (auto& m:app.monsters_) if (app.packBeast(*m) && m->stats().hp>0) return m.get(); return nullptr; };
+                const auto call=ranked("packmaster.call",1);
+                cast(call,app.player_.position());
+                auto* h=hound();
+                check(hounds()==1 && h && h->allied,"Call the Pack: a hound bound to you comes to your side");
+                if (h) {
+                    h->stats().hp=5; cast(call,app.player_.position());
+                    check(hounds()==1 && h->stats().hp==h->stats().maxHp,"Calling again heals it to full, and doesn't call a second");
+                    app.enforceMinionCap();
+                    check(hounds()==1,"The skeleton cap leaves your hound alone");
+                    // Blood: your hound's kills make it stronger.
+                    const int life=h->stats().maxHp, strength=h->stats().strength;
+                    auto* prey=foe({h->position().x+1,h->position().y}); prey->stats().hp=1;
+                    for (int i=0;i<10 && prey->stats().hp>0;++i) { app.currentActor_=h; app.processMonsterTurns(); }
+                    app.removeDeadMonsters();
+                    check(app.player_.packBlood==1 && h->stats().maxHp==life+3 && h->stats().strength==strength+1,
+                          "A kill by your hound: 1 Blood, and it gains +1 Strength and +3 life");
+                    clearFoes(); cast(call,app.player_.position()); h=hound();
+                }
+                // Sic 'Em: your beasts hunt the foe you mark, hastened.
+                if (h) {
+                    h->setPosition({11,10});
+                    auto* nearFoe=foe({13,10}); auto* farFoe=foe({17,10});
+                    cast(ranked("packmaster.sic",1),{17,10});
+                    check(farFoe->statusEffects().has(StatusEffectType::Marked) && h->statusEffects().has(StatusEffectType::Hasted),"Sic 'Em marks the foe and hastens your hound");
+                    check(app.nearestOpponent(*h,false)==farFoe,"Your hound goes for the marked foe, not the nearer one");
+                    // Pack Tactics.
+                    ranked("packmaster.tactics",1);
+                    const auto& lash=findTalentDefinition("packmaster.sic")->ranks[0];
+                    h->setPosition({12,10});
+                    const int beside=app.situationalBonus(lash,*nearFoe), apart=app.situationalBonus(lash,*farFoe);
+                    check(beside>=apart+2,"Pack Tactics: +2 against a foe beside your hound");
+                    (void)nearFoe; clearFoes(); cast(call,app.player_.position()); h=hound();
+                }
+                // Blood Bond.
+                if (h) {
+                    h->stats().hp=5;
+                    cast(ranked("packmaster.bond",1),app.player_.position());
+                    check(app.player_.stats().hp==app.player_.stats().maxHp-8 && h->stats().hp==std::min(21,h->stats().maxHp) &&
+                          h->statusEffects().magnitudeOf(StatusEffectType::Empowered)==3,"Blood Bond: pay 8 life, your hound heals 16 and bites harder");
+                }
+                // A fallen hound halves your Blood; Blooded changes the cost.
+                if (h) {
+                    app.player_.packBlood=4;
+                    h->stats().hp=0; app.checkAndHandleDeath(*h); app.removeDeadMonsters();
+                    check(app.player_.packBlood==2 && hounds()==0,"Your hound falls, and your Blood halves");
+                    ranked("packmaster.blooded",1);
+                    app.packKill();
+                    check(app.player_.packBlood==4,"Blooded: a kill gives 2 Blood");
+                    cast(call,app.player_.position()); h=hound();
+                    if (h) { h->stats().hp=0; app.checkAndHandleDeath(*h); app.removeDeadMonsters(); }
+                    check(app.player_.packBlood==2,"Blooded: a fallen hound costs only 2");
+                }
+                // Alpha's Howl.
+                cast(call,app.player_.position()); h=hound();
+                auto* shaken=foe({11,11});
+                cast(ranked("packmaster.howl",1),app.player_.position());
+                app.tickStormcall();
+                check(h && h->statusEffects().has(StatusEffectType::Hasted) && shaken->statusEffects().has(StatusEffectType::Shaken),
+                      "Alpha's Howl: your hound is hastened and the foe beside you is shaken");
+                clearFoes(); app.player_.statusEffects().active().clear();
+                // Feral Bond: half of a hit on you goes to your hound.
+                cast(call,app.player_.position()); h=hound();
+                if (h) {
+                    h->stats().hp=h->stats().maxHp=500;
+                    cast(ranked("packmaster.feral",1),app.player_.position());
+                    auto* brute=foe({9,10}); brute->stats().strength=30; brute->stats().dexterity=10;
+                    const int life=app.player_.stats().hp;
+                    for (int i=0;i<10 && h->stats().hp==500;++i) { app.player_.stats().hp=life; app.currentActor_=brute; app.processMonsterTurns(); }
+                    check(h->stats().hp<500,"Feral Bond: your hound takes half of the blow");
+                    clearFoes(); // your hound goes with them
+                }
+                app.player_.statusEffects().active().clear(); app.player_.packBlood=0;
+            }
+            // Your hounds follow you from floor to floor, into town and back, and through a save.
+            {
+                setup(PlayerClass::Warrior); // the test setup gives a Thief a tree outside its pool, which no save accepts
+                app.mode_=GameMode::Playing; app.currentFloor_=2; app.regenerateLevel(81);
+                for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+                app.monsters_.clear(); app.boss_=nullptr;
+                auto* first=app.spawnHound(0);
+                check(first!=nullptr,"A hound at your side");
+                const auto count=[&]{ int n=0; for (auto& m:app.monsters_) n+=app.packBeast(*m) && m->stats().hp>0; return n; };
+                if (first) {
+                    first->stats().hp=first->stats().maxHp-7; const int hp=first->stats().hp;
+                    app.player_.setPosition(app.floorExit_); app.combatThisTurn_=false;
+                    app.travelFloor(3,false); 
+                    Monster* again=nullptr; for (auto& m:app.monsters_) if (app.packBeast(*m)) again=m.get();
+                    check(app.currentFloor_==3 && count()==1 && again && again->stats().hp==hp &&
+                          std::max(std::abs(again->position().x-app.player_.position().x),std::abs(again->position().y-app.player_.position().y))<=3,
+                          "Your hound follows you down the stairs, hurt as it was");
+                    const auto path=(output/"pack.txt").string();
+                    check(saveGame(app.captureState(false),path),"A floor with your hound on it saves");
+                    const auto loaded=loadGame(path);
+                    check(loaded && app.restoreState(*loaded) && count()==1,"And loads with your hound");
+                    for (auto& m:app.monsters_) if (!app.packBeast(*m) && !m->vaultGuard) { m->stats().hp=0; app.scheduler_.remove(*m); } // the vault keeps its guards
+                    app.removeDeadMonsters(); app.combatThisTurn_=false;
+                    app.returnToTown(true); 
+                    check(app.mode_==GameMode::Town && app.player_.packHp.size()==1,"In town, your hound waits");
+                    const bool townSaved=saveGame(app.captureState(false),path);
+                    const auto townLoaded=townSaved?loadGame(path):std::nullopt;
+                    check(townSaved,"A save in town writes");
+                    check(townLoaded && townLoaded->packHp.size()==1,"A save in town remembers your hound");
+                    app.travelFloor(4,true); 
+                    check(app.currentFloor_==4 && count()==1 && app.player_.packHp.empty(),"Back in the dungeon, it comes with you");
+                }
+                for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+                app.monsters_.clear(); app.player_.packHp.clear(); app.mode_=GameMode::Playing; app.currentFloor_=1;
+            }
+
             // Daggers.
             arena(PlayerClass::Thief);
             {

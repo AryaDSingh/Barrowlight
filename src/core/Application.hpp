@@ -223,6 +223,18 @@ private:
     void broodTurn(Monster& spider);
     void hatchTurn(Monster& egg);
     void tickBriars();
+    // Packmaster (ApplicationPack.cpp): hounds bound to you, Blood from their
+    // kills, and the foe you set them on.
+    static bool packBeast(const Monster& m) { return m.allied && m.type() == MonsterType::BriarHound; }
+    Monster* spawnHound(int hp);
+    void refreshPack();
+    void tickPack();
+    void stablePack();      // leaving a floor: your hounds wait to follow you
+    void callPackBack();    // arriving: they come to your side
+    void packKill();
+    void packLoss();
+    const Monster* quarry_ = nullptr;
+    bool quarryPin_ = false;
     bool broodCalled_ = false; // the Hollow Mother has called her brood
     void raiseSlag(MonsterType kind, Position at, int turns, bool shard, int rank = 1);
     bool forgeSummoned_ = false; // the Forgemaster has called its slaglings

@@ -23,6 +23,7 @@ enum class TalentTree {
     Bonewright, // the Deep Crypts' deep tree
     Rimeheart,  // the Deep Crypts' second deep tree
     Briarheart, // Thornwood Hollow's deep tree
+    Packmaster, // Thornwood Hollow's second deep tree
 };
 
 // Abilities and talents have five ranks; rank 5 often adds a mastery effect
@@ -95,7 +96,7 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The third batch (Shadow, Radiance, Shield) and its resonances.
     Dread, Bulwark, Twilight, TemplarsEdge, HallowedGuard,
     // The fourth batch (Bow, Stealth, Daggers) and its resonances.
-    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, BrittleSlag, Pyroclasm, Overcharge, EyeOfTheStorm, Marrow, GrownGuard, BrittleCold, CreepingFrost, Thornborn, BriarSnares, UnseenHand, AssassinsEdge,
+    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, BrittleSlag, Pyroclasm, Overcharge, EyeOfTheStorm, Marrow, GrownGuard, BrittleCold, CreepingFrost, Thornborn, BriarSnares, PackTactics, Blooded, UnseenHand, AssassinsEdge,
     // The fifth batch (Earth, Tide, Venom) and its resonances.
     Aftershock, Tidecaller, Virulence, Mire, FoulWater, EnvenomedBlades,
     // The sixth batch (Spear, Mace, Crossbow) and its resonances.
@@ -248,6 +249,12 @@ struct Talent {
     // are caught in thorns (heartHeals: and you heal from their bleeding).
     bool briarSeed=false, onThornsDouble=false, heartHeals=false;
     int lashPin=0, bloodBriar=0, overgrowth=0, heartOfBriars=0;
+    // Packmaster. callPack: how many hounds you keep. sicEm: turns your beasts
+    // are hastened hunting the foe you mark (sicPin: their first bite pins).
+    // bloodBond: life each beast heals. alphasHowl, feralBond: their turns
+    // (feralHeals: your beasts' bites heal you).
+    bool sicPin=false, feralHeals=false;
+    int callPack=0, sicEm=0, bloodBond=0, alphasHowl=0, feralBond=0;
     int drainPercent=0, stayHiddenPercent=0;
     bool huntersMark=false, returnConcealed=false;
     int committedRhythm=-1;

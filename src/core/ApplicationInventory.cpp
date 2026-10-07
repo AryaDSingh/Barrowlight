@@ -232,7 +232,8 @@ void Application::renderGroundItems() {
                                              drop.id == "bonecaller_journal" ? "A Bonecaller's journal" :
                                              drop.id == "acolyte_catechism" ? "A Frost Acolyte's catechism" :
                                              drop.id == "hollow_map" ? "A map drawn on bone" :
-                                             drop.id == "witch_seed" ? "A Rot Witch's seed" : "Lore") +
+                                             drop.id == "witch_seed" ? "A Rot Witch's seed" :
+                                             drop.id == "hound_collar" ? "A braided hound collar" : "Lore") +
                                  " at your feet. G: take it", ui::kUnique});
     }
     for (const auto& item : groundItems_) {

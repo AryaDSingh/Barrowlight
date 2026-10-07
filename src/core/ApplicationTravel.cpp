@@ -167,6 +167,7 @@ void Application::returnToTown(bool byStairs) {
         log("Waystone needs 10 quiet turns. Progress: ",quietTurns_,"/10. R: wait safely."); return;
     }
     cancelTargeting(); inventoryOpen_=false; vaultMenu_=0; shrineMenu_=false; exitMenu_=false; restTurns_=0;
+    stablePack();
     dissolveMinions();
     selling_=false; shopSelection_=0; merchantOpen_=false; dungeonMenu_=false; mode_=GameMode::Town;
     log("Waystone returns you to town. Your dungeon progress is preserved.");
@@ -207,6 +208,7 @@ void Application::travelFloor(int destination,bool fromTown,bool falling) {
     auto found=floorCache_.find(destination);
     if (!fromTown && !down && found==floorCache_.end()) { log("That depth has no saved floor. Choose it from town to explore it."); return; }
     if (!fromTown && !falling && down && !sameTile(player_.position(),floorExit_)) return;
+    stablePack();
     dissolveMinions();
     // A breach doesn't follow you: it closes behind you.
     if (breachTurns_>0) { closeBreach(false); removeDeadMonsters(); }
@@ -217,6 +219,7 @@ void Application::travelFloor(int destination,bool fromTown,bool falling) {
         currentFloor_=destination; mode_=GameMode::Playing; dungeonMenu_=false;
         regenerateLevel(freshSeed());
         log("Entered ",dungeonName(dungeonIndex(currentFloor_)),", depth ",floorInDungeon(currentFloor_),".");
+        callPackBack();
         return;
     }
     const auto& floor=found->second;
@@ -240,7 +243,7 @@ void Application::travelFloor(int destination,bool fromTown,bool falling) {
         candidates.push({p.x,p.y+1}); candidates.push({p.x,p.y-1});
     }
     if (!landed) { log("No free arrival tile on that floor."); return; }
-    if (restoreState(next,false)) { floorTurns_=0; log("Returned to preserved floor ",destination,"."); announceFloor(); }
+    if (restoreState(next,false)) { floorTurns_=0; log("Returned to preserved floor ",destination,"."); announceFloor(); callPackBack(); }
 }
 
 // Chasms drop you a floor, except in a trial arena or from the very bottom.

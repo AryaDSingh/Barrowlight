@@ -19,7 +19,7 @@ struct TreeDefinition {
     const char* description;
     const char* starterItem;
 };
-inline constexpr std::array<TreeDefinition, 44> kTalentTrees{{
+inline constexpr std::array<TreeDefinition, 45> kTalentTrees{{
     {"one_handed", "One-Handed", TalentTree::OneHanded, "Efficient strikes, defensive openings and finishing blows.", "iron_sword"},
     {"two_handed", "Two-Handed", TalentTree::TwoHanded, "Heavy swings, surrounding enemies and blood-fuelled attacks.", "greatsword"},
     {"shield", "Shield", TalentTree::Shield, "Block damage, interrupt attacks and control space.", "wooden_shield"},
@@ -64,6 +64,7 @@ inline constexpr std::array<TreeDefinition, 44> kTalentTrees{{
     {"bonewright", "Bonewright", TalentTree::Bonewright, "A deep tree: build from the dead. Bone walls, bone armour, and a guardian that grows.", ""},
     {"rimeheart", "Rimeheart", TalentTree::Rimeheart, "A deep tree: freeze the ground itself. Ice that spreads, and blows that shatter it.", ""},
     {"briarheart", "Briarheart", TalentTree::Briarheart, "A deep tree: thorns that grow from your traps and your blood.", ""},
+    {"packmaster", "Packmaster", TalentTree::Packmaster, "A deep tree: hounds bound to you, that follow you down and grow with every kill.", ""},
 }};
 inline const TreeDefinition* findTree(const std::string& id) {
     for (const auto& t : kTalentTrees) if (id == t.id) return &t;
@@ -159,6 +160,11 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "stealth.vanish") { longer(); d.mastery = "Hide for four responses."; }
     if (id == "stealth.smoke_bomb") { m.cooldownTurns -= 4; d.mastery = "Ready again four turns sooner."; }
     if (id == "stealth.feign") { m.restoreHpPercent = 10; d.mastery = "You also recover 10% of your life."; }
+    if (id == "packmaster.call") { m.callPack = 2; d.mastery = "Two hounds."; }
+    if (id == "packmaster.sic") { m.sicPin = true; d.mastery = "Their first bite on it pins it for a turn."; }
+    if (id == "packmaster.bond") { m.hpCost = 4; d.mastery = "Costs 4 life."; }
+    if (id == "packmaster.howl") { m.alphasHowl = 8; d.mastery = "Lasts 8 turns."; }
+    if (id == "packmaster.feral") { m.feralHeals = true; d.mastery = "Your beasts' bites also heal you 2."; }
     if (id == "briarheart.seed") { m.areaRadius = 2; d.mastery = "The patch is 5 by 5."; }
     if (id == "briarheart.lash") { m.lashPin = 2; d.mastery = "Pins for two turns."; }
     if (id == "briarheart.blood") { m.hpCost = 3; d.mastery = "Costs 3 life."; }
@@ -397,7 +403,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             if (tree == 32) t.scalingStat=ScalingStat::Intelligence;
             if (tree == 33 || tree == 34 || tree == 36) t.scalingStat=ScalingStat::Strength;
             if (tree >= 39 && tree <= 42) t.scalingStat=ScalingStat::Intelligence;
-            if (tree == 43) t.scalingStat=ScalingStat::Dexterity;
+            if (tree == 43 || tree == 44) t.scalingStat=ScalingStat::Dexterity;
             if (tree == 33) t.weaponRequirement=WeaponRequirement::Spear;
             if (tree == 34) t.weaponRequirement=WeaponRequirement::OneHanded;
             if (tree == 10) t.armourRequirement=ArmourRequirement::Cloth;
@@ -1105,6 +1111,30 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t.description="For 8 turns, whatever hits you has thorns grow beneath it and bleeds 3.";
         t.heartOfBriars=8; t.manaCost=8; t.cooldownTurns=18; add(43,"briarheart.heart",3,t);
         shape("briarheart.heart",3,"capstone",{});
+        // Packmaster (DEX), Thornwood Hollow's second deep tree: Hunt 8, Blood 4, level 14, and a braided hound collar.
+        t=Talent{}; t.name="Call the Pack"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="A Briar Hound bound to you comes to your side and stays until it falls; it follows you from floor to floor. Call again while it lives and it heals to full.";
+        t.callPack=1; t.manaCost=6; t.cooldownTurns=10; add(44,"packmaster.call",0,t);
+        shape("packmaster.call",3,"",{});
+        t=buff("Sic 'Em","Mark a foe in sight: your beasts all hunt it, hastened, for 3 turns.",StatusEffectType::Marked,3,1,3,6);
+        t.targeting=TargetingMode::RangedEnemyInSight; t.sicEm=3; add(44,"packmaster.sic",1,t);
+        shape("packmaster.sic",3,"path",{"packmaster.call"});
+        t=Talent{}; t.name="Blood Bond"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Pay 8 life: each of your beasts heals 16, and for 4 turns its bites deal +3.";
+        t.hpCost=8; t.bloodBond=16; t.manaCost=2; t.cooldownTurns=8; add(44,"packmaster.bond",1,t);
+        shape("packmaster.bond",3,"path",{"packmaster.call"});
+        add(44,"packmaster.tactics",2,passive("Pack Tactics","Your hits deal +2 to a foe in the 8 tiles around one of your beasts.",PassiveKind::PackTactics,2));
+        shape("packmaster.tactics",1,"",{"packmaster.sic"});
+        add(44,"packmaster.blooded",2,passive("Blooded","A kill by your beasts gives 2 Blood instead of 1, and a fallen beast costs you 2 Blood instead of half.",PassiveKind::Blooded,1));
+        shape("packmaster.blooded",1,"",{"packmaster.bond"});
+        t=Talent{}; t.name="Alpha's Howl"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="For 6 turns your beasts are hastened and their bites make foes bleed, and foes in the 8 tiles around you are shaken.";
+        t.alphasHowl=6; t.manaCost=10; t.cooldownTurns=16; add(44,"packmaster.howl",3,t);
+        shape("packmaster.howl",3,"capstone",{});
+        t=Talent{}; t.name="Feral Bond"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="For 8 turns, half of every hit on you goes to your nearest beast instead.";
+        t.feralBond=8; t.manaCost=8; t.cooldownTurns=18; add(44,"packmaster.feral",3,t);
+        shape("packmaster.feral",3,"capstone",{});
         // Mace (STR, one hand): guards and bones.
         t=attack("Crush","A heavy blow that sunders: the target takes +2 damage from every hit for four enemy turns.",6,2,4);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Sundered,4,2}; add(24,"mace.crush",0,t);
@@ -1481,6 +1511,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="stonefist")
                 d.affinity=(d.id=="stonefist.tremor" || d.id=="stonefist.granite" || d.id=="stonefist.rockhide")?Affinity::Earth:Affinity::Motion;
             else if (d.treeId=="tempest") d.affinity=Affinity::Storm;
+            else if (d.treeId=="packmaster") d.affinity=(d.id=="packmaster.bond" || d.id=="packmaster.blooded" || d.id=="packmaster.feral")?Affinity::Blood:Affinity::Hunt;
             else if (d.treeId=="briarheart") d.affinity=(d.id=="briarheart.lash" || d.id=="briarheart.thornborn" || d.id=="briarheart.heart")?Affinity::Hunt:Affinity::Rot;
             else if (d.treeId=="rimeheart") d.affinity=(d.id=="rimeheart.path" || d.id=="rimeheart.freeze")?Affinity::Water:Affinity::Frost;
             else if (d.treeId=="bonewright") d.affinity=(d.id=="bonewright.wall" || d.id=="bonewright.marrow")?Affinity::Earth:Affinity::Death;
@@ -1510,7 +1541,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 case PassiveKind::FollowThrough: case PassiveKind::Stoneskin: case PassiveKind::HallowedGuard: case PassiveKind::Tidecaller:
                 case PassiveKind::Bulwark: case PassiveKind::FlowingMana: case PassiveKind::BladeWard: case PassiveKind::Transfusion:
                 case PassiveKind::GravePact: case PassiveKind::LongShadow: case PassiveKind::StaticEdge:
-                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered: case PassiveKind::Overcharge: case PassiveKind::Marrow: case PassiveKind::BrittleCold: case PassiveKind::Thornborn:
+                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered: case PassiveKind::Overcharge: case PassiveKind::Marrow: case PassiveKind::BrittleCold: case PassiveKind::Thornborn: case PassiveKind::PackTactics:
                     return 5;
                 case PassiveKind::BurningPlate:
                     return 10;

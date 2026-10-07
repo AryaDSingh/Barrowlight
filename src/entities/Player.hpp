@@ -78,6 +78,8 @@ public:
     bool sandbox=false; // transient: the sandbox lifts tree rules (never saved)
     // Lore found this run (format 42): each piece can reveal a deep tree.
     std::vector<std::string> lore;
+    int packBlood=0;           // Packmaster: Blood, 0-10, from your beasts' kills
+    std::vector<int> packHp;   // Packmaster: hounds following you to the next floor (their life)
     bool knowsLore(const std::string& id) const { return std::find(lore.begin(), lore.end(), id) != lore.end(); }
     // Cloth's ward: a shield over your life. Transient: it refills on load.
     int ward=0, wardRest=0;
