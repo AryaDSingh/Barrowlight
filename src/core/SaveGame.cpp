@@ -46,7 +46,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 40;
+constexpr int kSaveFormatVersion = 41;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -72,7 +72,8 @@ bool validItems(const SaveGameState& state) {
     if (state.nextItemId == 0 || state.items.size() > 100000 || state.unspentAttributePoints < 0)
         return false;
     if (!state.lootRngState || state.ordinaryDrops < 0 || state.ordinaryDrops > 2 ||
-        (state.chestExists && !state.map.isWalkable(state.chestPosition.x, state.chestPosition.y))) return false;
+        (state.chestExists && (!state.map.inBounds(state.chestPosition.x, state.chestPosition.y) ||
+         state.map.tileAt(state.chestPosition.x, state.chestPosition.y).type != TileType::Floor))) return false;
     for (const auto& item : state.items) {
         const auto* definition = findItemDefinition(item.definitionId);
         if (!definition || item.instanceId == 0 || item.instanceId >= state.nextItemId ||
@@ -144,10 +145,65 @@ void migrateForkedTrees(SaveGameState& s) {
     s.treePoints=std::max(0,earnedTreePoints(s.playerLevel)-static_cast<int>(s.trees.size()));
 }
 
+// Format 41 split ability points into class and utility pools, moved
+// Stealth's killing blows into Daggers and made Stealth a utility tree.
+// Stealth and Daggers points come back, both pools are recounted, and a pool
+// spent past its new budget is refunded whole.
+void migrateUtilityPoints(SaveGameState& s) {
+    const auto treeOf=[](const std::string& id) {
+        if (const auto* d=findTalentDefinition(id)) return std::string(d->treeId);
+        const auto dot=id.find('.');
+        return dot==std::string::npos ? std::string() : id.substr(0,dot);
+    };
+    const auto basic=[](const std::string& id) { return id.rfind("basic.",0)==0; };
+    const auto pooled=[&](const std::string& id) {
+        const auto* d=findTalentDefinition(id);
+        return !basic(id) && d && !isAscendancyTree(d->treeId) && !isImbueVariant(id);
+    };
+    std::vector<SaveGameState::TalentSaveData> kept;
+    for (const auto& t:s.playerTalents) {
+        const auto tree=treeOf(t.id);
+        if (!basic(t.id) && (tree=="stealth" || tree=="daggers" || !findTalentDefinition(t.id))) continue;
+        kept.push_back(t);
+    }
+    // Resonances whose colours no longer reach the threshold fade.
+    const auto rankOf=[&](const std::string& id) { for (const auto& t:kept) if (t.id==id) return t.rank; return 0; };
+    kept.erase(std::remove_if(kept.begin(),kept.end(),[&](const auto& t) {
+        const auto* d=findTalentDefinition(t.id);
+        return d && d->treeId=="resonance" && (affinityPoints(rankOf,d->resonance[0])<kResonancePoints || affinityPoints(rankOf,d->resonance[1])<kResonancePoints);
+    }),kept.end());
+    const auto spent=[&](bool utility) {
+        int total=0;
+        for (const auto& t:kept) if (pooled(t.id) && utilityTree(treeOf(t.id))==utility) total+=t.rank;
+        return total;
+    };
+    for (const bool utility:{false,true}) {
+        const int budget=utility ? earnedUtilityPoints(s.playerLevel) : earnedAbilityPoints(s.playerLevel);
+        if (spent(utility)>budget)
+            kept.erase(std::remove_if(kept.begin(),kept.end(),[&](const auto& t) { return pooled(t.id) && utilityTree(treeOf(t.id))==utility; }),kept.end());
+    }
+    s.abilityPoints=earnedAbilityPoints(s.playerLevel)-spent(false);
+    s.utilityPoints=earnedUtilityPoints(s.playerLevel)-spent(true);
+    s.playerTalents=std::move(kept);
+    for (auto& id:s.hotbar)
+        if (!id.empty() && std::none_of(s.playerTalents.begin(),s.playerTalents.end(),[&](const auto& t){ return t.id==id; })) id.clear();
+    // A class tree from the starting pool leads; a thief who began in
+    // Stealth chooses a class tree when the run resumes.
+    const auto first=std::find_if(s.trees.begin(),s.trees.end(),[&](const auto& t) {
+        const auto* d=findTree(t.id); return d && !utilityTree(t.id) && startingTreeAllowed(s.playerClass,d->tree);
+    });
+    if (first!=s.trees.end()) std::rotate(s.trees.begin(),first,first+1);
+    else s.trees.erase(std::remove_if(s.trees.begin(),s.trees.end(),[](const auto& t) { return !utilityTree(t.id); }),s.trees.end());
+    int classTrees=0;
+    for (const auto& t:s.trees) classTrees+=!utilityTree(t.id);
+    if (!classTrees) s.progressionReviewPending=true;
+    s.treePoints=std::max(0,earnedTreePoints(s.playerLevel)-classTrees);
+}
+
 bool validProgression(const SaveGameState& s) {
-    if (s.playerLevel<1 || s.playerLevel>kRunMaxLevel || s.treePoints<0 || s.abilityPoints<0 || s.trees.size()>kTalentTrees.size() || s.hotbar.size()>18) return false;
+    if (s.playerLevel<1 || s.playerLevel>kRunMaxLevel || s.treePoints<0 || s.abilityPoints<0 || s.utilityPoints<0 || s.trees.size()>kTalentTrees.size() || s.hotbar.size()>18) return false;
     if (s.playerClass==PlayerClass::Spellblade) return false;
-    int treeSpent=0,abilitySpent=0,ascendancyNodes=0;
+    int treeSpent=0,abilitySpent=0,utilitySpent=0,ascendancyNodes=0;
     const int fullTrials=(1<<kTrialCount)-1;
     if (s.trialKeys<0 || s.trialKeys>fullTrials || s.trialsCleared<0 || (s.trialsCleared & ~s.trialKeys) ||
         ((s.trialsCleared & 2) && !(s.trialsCleared & 1)) || s.ascendancyPoints<0) return false;
@@ -157,12 +213,17 @@ bool validProgression(const SaveGameState& s) {
         if (!a || !ascendancyAllowed(*a,s.playerClass)) return false;
     }
     std::unordered_set<std::string> trees,known,bound;
-    for (std::size_t i=0;i<s.trees.size();++i) {
-        const auto& access=s.trees[i]; const auto* d=findTree(access.id);
-        if (!d || !trees.insert(access.id).second || (i==0 && !startingTreeAllowed(s.playerClass,d->tree))) return false;
-        if (access.specialized || (i>0 && s.playerLevel<5)) return false;
+    int utilityTrees=0;
+    for (const auto& access:s.trees) {
+        const auto* d=findTree(access.id);
+        if (!d || !trees.insert(access.id).second || access.specialized) return false;
+        if (utilityTree(access.id)) { ++utilityTrees; continue; }
+        // The first class tree comes from the starting pool; more wait for level 5.
+        if (!treeSpent && !startingTreeAllowed(s.playerClass,d->tree)) return false;
+        if (treeSpent && s.playerLevel<5) return false;
         ++treeSpent;
     }
+    if (utilityTrees>utilityTreeSlots(s.playerLevel)) return false;
     // Characters from before format 40 may hold more trees than they would earn now.
     if (s.treePoints != std::max(0,earnedTreePoints(s.playerLevel)-treeSpent)) return false;
     // Hidden trees are locked to new purchases, but saves that already own
@@ -198,11 +259,12 @@ bool validProgression(const SaveGameState& s) {
             return 0;
         };
         if (!nodeRequirementReason(*d,s.playerLevel,rankOf).empty()) return false;
-        abilitySpent+=t.rank;
+        (utilityTree(d->treeId) ? utilitySpent : abilitySpent)+=t.rank;
     }
     if (ascendancyNodes+s.ascendancyPoints!=static_cast<int>(std::bitset<8>(static_cast<unsigned>(s.trialsCleared)).count())) return false;
-    if (s.trees.empty() && !s.progressionReviewPending) return false;
-    if (!known.count("basic.attack") || !known.count("basic.cleanse") || abilitySpent+s.abilityPoints!=earnedAbilityPoints(s.playerLevel)) return false;
+    if (!treeSpent && !s.progressionReviewPending) return false;
+    if (!known.count("basic.attack") || !known.count("basic.cleanse") || abilitySpent+s.abilityPoints!=earnedAbilityPoints(s.playerLevel) ||
+        utilitySpent+s.utilityPoints!=earnedUtilityPoints(s.playerLevel)) return false;
     for (const auto& id:s.hotbar) if (!id.empty()) {
         const auto* d=findTalentDefinition(id);
         if (!known.count(id) || !bound.insert(id).second || (d && d->ranks[0].passive)) return false;
@@ -298,7 +360,7 @@ bool readStatusEffects(std::istream& in, std::vector<StatusEffectInstance>& effe
 // kSaveFormatVersion.
 static bool writeSaveState(std::ostream& out, const SaveGameState& state, int depth=0, int version=kSaveFormatVersion) {
     if (state.extraLives<0 || state.extraLives>2 || (!state.adventureMode && state.extraLives!=0)) return false;
-    if (!validDungeonLevels(state.dungeonLevels) || !validItems(state) || !validProgression(state) || state.savedFloors.size()>=kMaxFloorId ||
+    if (!validDungeonLevels(state.dungeonLevels) || !validItems(state) || (version>=kSaveFormatVersion && !validProgression(state)) || state.savedFloors.size()>=kMaxFloorId ||
         (depth>0 && !state.savedFloors.empty())) return false;
 
     out << "ROGUELIKE_SAVE " << version << '\n';
@@ -376,10 +438,14 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
         out << '\n';
     }
     out << state.lootRngState << ' ' << state.ordinaryDrops << ' ' << state.chestExists << ' '
-        << state.chestClaimed << ' ' << state.chestPosition.x << ' ' << state.chestPosition.y << '\n';
+        << state.chestClaimed << ' ' << state.chestPosition.x << ' ' << state.chestPosition.y;
+    if (version>=41) out << ' ' << state.chestMimic;
+    out << '\n';
     // Older layouts predate format 27's larger ability point budget.
     const int abilityPoints=version<27 ? state.abilityPoints-(earnedAbilityPoints(state.playerLevel)-(state.playerLevel+2)) : state.abilityPoints;
-    out << state.treePoints << ' ' << abilityPoints << ' ' << state.trees.size() << '\n';
+    out << state.treePoints << ' ' << abilityPoints << ' ';
+    if (version>=41) out << state.utilityPoints << ' ';
+    out << state.trees.size() << '\n';
     for (const auto& tree:state.trees) out << tree.id << ' ' << tree.specialized << '\n';
     out << state.hotbar.size() << '\n';
     for (const auto& id:state.hotbar) out << (id.empty()?"-":id) << '\n';
@@ -442,7 +508,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
 
     std::string tag;
     int version = 0;
-    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || (version != kSaveFormatVersion && version != 35 && version != 34 && version != 33 && version != 32 && version != 31 && version != 30 && version != 29 && version != 28 && version != 27 && version != 26 && version != 25 && version != 24 && version != 23 && version != 22 && version != 21 && version != 20 && version != 19 && version != 18 && version != 17 && version != 16 && version != 15 && version != 14 && version != 13 && version != 12 && version != 11 && version != 10 && version != 9)) {
+    if (!(in >> tag >> version) || tag != "ROGUELIKE_SAVE" || version < 9 || version > kSaveFormatVersion) {
         return std::nullopt;
     }
 
@@ -525,7 +591,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         int isBoss = 0;
         int tier = 0;
         if (!(in >> type >> m.position.x >> m.position.y >> m.hp >> m.maxHp >> isBoss >> tier >> m.rewardsEligible) ||
-            tier < 0 || tier > 2 || type < 0 || type > static_cast<int>(version>=35?MonsterType::TheSleeper:version>=31?MonsterType::DrownedOne:version>=22?MonsterType::FrostAcolyte:version>=16?MonsterType::OssuaryWarden:MonsterType::Skeleton) ||
+            tier < 0 || tier > 2 || type < 0 || type > static_cast<int>(version>=41?MonsterType::Mimic:version>=35?MonsterType::TheSleeper:version>=31?MonsterType::DrownedOne:version>=22?MonsterType::FrostAcolyte:version>=16?MonsterType::OssuaryWarden:MonsterType::Skeleton) ||
             !state.map.isWalkable(m.position.x, m.position.y) || m.maxHp <= 0 || m.hp <= 0 || m.hp > m.maxHp) {
             return std::nullopt;
         }
@@ -628,8 +694,11 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
     }
     if (!(in >> state.lootRngState >> state.ordinaryDrops >> state.chestExists >> state.chestClaimed >> state.chestPosition.x >> state.chestPosition.y))
         return std::nullopt;
+    if (version>=41 && !(in >> state.chestMimic)) return std::nullopt;
     std::size_t treeCount=0,barCount=0;
-    if (!(in >> state.treePoints >> state.abilityPoints >> treeCount) || treeCount>kTalentTrees.size()) return std::nullopt;
+    if (!(in >> state.treePoints >> state.abilityPoints)) return std::nullopt;
+    if (version>=41 && !(in >> state.utilityPoints)) return std::nullopt;
+    if (!(in >> treeCount) || treeCount>kTalentTrees.size()) return std::nullopt;
     // Format 27 raised the ability point budget; older characters get the difference.
     if (version<27) state.abilityPoints+=earnedAbilityPoints(state.playerLevel)-(state.playerLevel+2);
     for (std::size_t i=0;i<treeCount;++i) {
@@ -788,6 +857,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         state.map.isWalkable(state.landmarkAltar.x,state.landmarkAltar.y))) return std::nullopt;
     if (version>=15 && !state.trial && state.currentFloor<kRunFinalFloor && !state.map.isWalkable(state.floorExit.x,state.floorExit.y)) return std::nullopt;
     if (version<40) migrateForkedTrees(state);
+    if (version<41) migrateUtilityPoints(state);
     if (!validProgression(state)) return std::nullopt;
     if (!validItems(state)) return std::nullopt;
     const auto& stats = state.playerStats;

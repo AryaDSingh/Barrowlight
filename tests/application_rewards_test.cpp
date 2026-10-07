@@ -87,7 +87,7 @@ struct ApplicationRewardsTestAccess {
             app.player_.stats() = app.player_.baseStats();
             const auto tree=cls==PlayerClass::Mage ? "arcane" : "one_handed";
             const auto id=cls==PlayerClass::Mage ? "arcane.bolt" : "one_handed.quick_strike";
-            app.player_.trees()={{tree,false}}; app.player_.treePoints()=0; app.player_.abilityPoints()=earnedAbilityPoints(1)-3;
+            app.player_.trees()={{tree,false}}; app.player_.treePoints()=0; app.player_.abilityPoints()=earnedAbilityPoints(1)-3; app.player_.utilityPoints()=earnedUtilityPoints(1);
             app.player_.talents()=TalentSet({basicAttack(),findTalentDefinition(id)->ranks[0],basicCleanse()});
             app.player_.talents().setRank(1,3);
             app.player_.statusEffects().active().clear();
@@ -167,29 +167,64 @@ struct ApplicationRewardsTestAccess {
         }
 
         setup(PlayerClass::Mage);
-        app.chestExists_ = true; app.chestPosition_ = app.player_.position();
+        app.chestExists_ = true; app.chestMimic_ = false; app.chestPosition_ = {11,10};
         app.player_.talents().setCooldownRemaining(1,4);
         app.player_.statusEffects().apply({StatusEffectType::Poison,3,1});
-        app.pickupItem();
-        check(app.chestClaimed_ && app.player_.inventory().items().size()==1,
-              "Opening first chest grants one equipment item");
-        check(app.player_.inventory().items()[0]->rarity()!=ItemRarity::Normal &&
+        check(app.isOccupied({11,10},nullptr),"A chest stands in the way of everyone");
+        app.tryMovePlayer(1,0);
+        check(app.chestClaimed_ && app.player_.position().x==10 && app.groundItems_.size()==1 && app.player_.inventory().items().empty(),
+              "Walking into a chest opens it, and its loot spills onto the floor");
+        const auto spill=app.groundItems_[0]->position();
+        check(std::max(std::abs(spill.x-11),std::abs(spill.y-10))==1 && !(spill.x==11 && spill.y==10),"The loot lands in the 8 tiles around the chest");
+        check(app.groundItems_[0]->rarity()!=ItemRarity::Normal &&
               app.player_.stats().hp==99 && app.player_.talents().cooldownRemaining(1)==3,
               "Chest guarantees magic or rare gear and advances exactly one player turn");
-        const auto chestItem = itemRecord(*app.player_.inventory().items()[0]);
+        const auto chestItem = itemRecord(*app.groundItems_[0]);
         const auto chestRng = app.loot_.state();
-        app.pickupItem();
-        check(app.loot_.state()==chestRng && app.player_.stats().hp==99 && app.player_.inventory().items().size()==1,
-              "Claiming an opened chest again spends nothing and grants nothing");
+        app.pickupItem(); app.tryMovePlayer(1,0);
+        check(app.loot_.state()==chestRng && app.player_.stats().hp==99 && app.groundItems_.size()==1 && app.player_.position().x==10,
+              "An open chest spends nothing, grants nothing, and still stands in the way");
         roundTrip();
-        check(app.chestClaimed_ && app.loot_.state()==chestRng &&
-              itemRecord(*app.player_.inventory().items()[0])==chestItem && app.player_.stats().hp==99,
-              "Real application save/load preserves claimed chest, actual affixes and RNG");
+        check(app.chestClaimed_ && app.chestExists_ && app.loot_.state()==chestRng && app.groundItems_.size()==1 &&
+              itemRecord(*app.groundItems_[0])==chestItem && app.player_.stats().hp==99,
+              "Real application save/load preserves the open chest, its spilled loot and RNG");
         app.pickupItem();
-        check(app.player_.inventory().items().size()==1 && app.loot_.state()==chestRng,
-              "Loading cannot reopen the claimed chest");
+        check(app.groundItems_.size()==1 && app.loot_.state()==chestRng,"Loading cannot reopen the claimed chest");
+        app.player_.setPosition(spill); app.pickupItem();
+        check(app.player_.inventory().items().size()==1,"The spilled loot can be picked up");
         app.openInventory(); app.inventorySelection_=kEquipmentSlotCount;
         snapshot("rolled-affixes.png");
+        // Some chests are hungry.
+        setup(PlayerClass::Mage);
+        app.chestExists_ = true; app.chestMimic_ = true; app.chestPosition_ = {11,10};
+        roundTrip();
+        check(app.chestMimic_,"A mimic stays a mimic across a save");
+        app.tryMovePlayer(1,0);
+        Monster* mimic=nullptr;
+        for (auto& m:app.monsters_) if (m->type()==MonsterType::Mimic) mimic=m.get();
+        check(mimic && !app.chestExists_ && mimic->position().x==11 && mimic->tactics.alert>0,"Opening a mimic wakes it where the chest stood");
+        if (mimic) {
+            mimic->stats().hp=0; app.checkAndHandleDeath(*mimic);
+            bool rare=false;
+            for (const auto& item:app.groundItems_) rare=rare || item->rarity()==ItemRarity::Rare;
+            check(rare && app.groundItems_.size()==2,"A slain mimic spills better loot than a chest: a rare and a magic item");
+        }
+        {
+            // Mimics wait below the first floors, and chests never wall anything off.
+            int mimics=0, chests=0; bool safe=true;
+            for (int floor:{1,2,6,12}) for (int run=0; run<30; ++run) {
+                setup(PlayerClass::Mage); app.currentFloor_=floor; app.loot_.restore(1000+run*7+floor);
+                for (int y=1;y<21;++y) if (y!=10) app.map_.setTile(16,y,Tile{TileType::Wall,false,false}); // two rooms joined by one gap
+                app.spawnFloorChest();
+                chests+=app.chestExists_;
+                if (floor<=2) safe=safe && !app.chestMimic_;
+                mimics+=app.chestMimic_;
+                safe=safe && !(app.chestPosition_.x==16 && app.chestPosition_.y==10) && !(app.chestPosition_.x==15 && app.chestPosition_.y==10) &&
+                     !(app.chestPosition_.x==17 && app.chestPosition_.y==10);
+            }
+            check(chests==120 && safe,"No mimics on floors 1-2, and a chest never blocks the way between rooms");
+            check(mimics>0 && mimics<15,"Deeper down, now and then a chest is a mimic");
+        }
 
         setup(PlayerClass::Mage);
         AIDecision summon; summon.type=AIActionType::Summon; summon.summonType=MonsterType::Skeleton; summon.movePosition={13,10};
@@ -1586,7 +1621,7 @@ struct ApplicationRewardsTestAccess {
                       "Each rank adds a point of its node's colour");
                 check(resonanceGlimpsed(app.player_,*edge) && !resonanceAwake(app.player_,*edge) &&
                       abilityPurchaseReason(app.player_,*edge)=="Not yet.","With one colour, a resonance is only a dim shape");
-                app.player_.level()=5; app.player_.trees().push_back({"fire",false});
+                app.player_.level()=6; app.player_.utilityPoints()=earnedUtilityPoints(6); app.player_.trees().push_back({"fire",false});
                 app.player_.abilityPoints()=6;
                 for (const char* id:{"one_handed.pommel","fire.ember_bolt","fire.ember_bolt","fire.ember_bolt","fire.flame_wall"})
                     purchaseAbility(app.player_,*findTalentDefinition(id));
@@ -1594,7 +1629,7 @@ struct ApplicationRewardsTestAccess {
                       resonanceAwake(app.player_,*edge) && !resonanceAwake(app.player_,*sword),"Steel 4 and Flame 4 wake Searing Edge, not Spellsword");
                 check(purchaseAbility(app.player_,*edge) && app.player_.abilityPoints()==0 && app.player_.talents().rankOf(edge->id)==1,
                       "An awake resonance costs one ability point");
-                app.player_.treePoints()=0; app.player_.abilityPoints()=earnedAbilityPoints(5)-9; // 3+1+3+1 in trees, 1 in the resonance
+                app.player_.treePoints()=0; app.player_.abilityPoints()=earnedAbilityPoints(6)-9; // 3+1+3+1 in trees, 1 in the resonance
                 roundTrip();
                 check(app.player_.talents().rankOf("resonance.searing_edge")==1,"A learned resonance survives a save");
                 // The talent screen: colours beside the points, the resonance above the details.
@@ -1835,7 +1870,7 @@ struct ApplicationRewardsTestAccess {
                 cast(feign,app.player_.position());
                 check(a->tactics.alert==0 && app.player_.statusEffects().has(StatusEffectType::Concealed),"Feign Death: you hide and they lose track of you");
                 clearFoes();
-                const auto& killer=findTalentDefinition("stealth.assassinate")->ranks[0];
+                const auto& killer=findTalentDefinition("daggers.assassinate")->ranks[0];
                 auto* b=foe({11,10});
                 const int healthy=estimateTalentDamage(killer,app.player_,*b).normal;
                 b->stats().hp=40;
@@ -1844,7 +1879,9 @@ struct ApplicationRewardsTestAccess {
                 // Unseen Hand: attacking from the dark keeps you hidden. Assassin's Edge: +50% from hiding.
                 app.player_.talents().learnTalent(findTalentDefinition("resonance.unseen_hand")->ranks[0]);
                 app.player_.talents().learnTalent(findTalentDefinition("resonance.assassins_edge")->ranks[0]);
-                const auto ambush=ranked("stealth.strike",1);
+                app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition("steel_dagger"),app.nextItemId_++));
+                app.player_.equip(app.player_.inventory().items().size()-1);
+                const auto ambush=ranked("daggers.assassinate",1);
                 app.darknessEnabled_=true; app.player_.lightLit=false;
                 foe({11,10}); app.updateFieldOfView();
                 app.player_.statusEffects().apply({StatusEffectType::Concealed,3,3});
@@ -1859,13 +1896,13 @@ struct ApplicationRewardsTestAccess {
             {
                 app.player_.inventory().add(std::make_unique<Item>(*findItemDefinition("steel_dagger"),app.nextItemId_++));
                 check(app.player_.equip(app.player_.inventory().items().size()-1),"Take up a dagger");
-                ranked("daggers.cut_deep",1);
+                ranked("daggers.hemorrhage",1);
                 const auto knife=ranked("daggers.throw",1);
                 auto* a=foe({14,10}); app.updateFieldOfView();
                 cast(knife,{14,10});
                 int bleedTurns=0;
                 for (const auto& e:a->statusEffects().active()) if (e.type==StatusEffectType::Bleed) bleedTurns=e.turnsRemaining;
-                check(a->stats().hp<90 && bleedTurns>=4,"Throwing Knife bleeds, and Cut Deep makes it last longer");
+                check(a->stats().hp<90 && bleedTurns>=4,"Throwing Knife bleeds, and Hemorrhage makes it last longer");
                 clearFoes();
                 const auto rip=ranked("daggers.eviscerate",1);
                 auto* b=foe({11,10}); b->statusEffects().apply({StatusEffectType::Bleed,4,3}); app.updateFieldOfView();
@@ -2727,7 +2764,7 @@ struct ApplicationRewardsTestAccess {
                   "A locked hybrid tree says what it needs");
             invest("bow.quick_shot",5);
             check(!hiddenTreeAvailable(app.player_,"shadow_archer"),"One parent is not enough");
-            invest("stealth.conceal",3); invest("stealth.strike",2);
+            invest("stealth.conceal",3); invest("stealth.shadow_step",2);
             check(hiddenTreeAvailable(app.player_,"shadow_archer"),"Shadow Archer opens with 5 ranks in Bow and in Stealth");
             invest("fire.ember_bolt",5);
             check(!hiddenTreeAvailable(app.player_,"spellblade"),"Spellblade needs a melee tree too");
@@ -2876,11 +2913,11 @@ struct ApplicationRewardsTestAccess {
         {
             bool all=true;
             for (const char* family:{"slash","pierce","blunt","fire","frost","lightning","water","arcane","shadow","light","earth","rot","blood",
-                                     "crit_gore","crit_bone","crit_fire","crit_frost","crit_storm","crit_magic","dodge","levelup","death"})
+                                     "crit_gore","crit_bone","crit_fire","crit_frost","crit_storm","crit_magic","dodge","levelup","death","chest_open","mimic"})
                 all&=app.soundManager_.hasFamily(family);
             check(all,"Every combat sound family loads");
             bool voiced=true;
-            for (int t=0; t<=static_cast<int>(MonsterType::TheSleeper); ++t)
+            for (int t=0; t<=static_cast<int>(MonsterType::Mimic); ++t)
                 for (const char* event:{"alert","hurt","death"})
                     voiced&=app.soundManager_.hasFamily(std::string("voice_")+monsterVoice(static_cast<MonsterType>(t))+"_"+event);
             check(voiced,"Every monster has a voice for spotting you, pain and death");
@@ -2987,10 +3024,17 @@ struct ApplicationRewardsTestAccess {
                 if (app.player_.talents().knownTalents()[i].id==(*treeNodes(fire)[0]).id) app.player_.talents().setRank(i,1);
             app.player_.abilityPoints()=pointsBefore; (void)oldRank;
             Player probe({0,0},statsForClass(PlayerClass::Mage),TalentSet{});
-            probe.abilityPoints()=0; grantXp(probe,xpForNextLevel(1));
-            check(probe.level()==2 && probe.abilityPoints()==2,"Even levels grant an extra ability point");
+            probe.abilityPoints()=0; probe.utilityPoints()=0; grantXp(probe,xpForNextLevel(1));
+            check(probe.level()==2 && probe.abilityPoints()==1 && probe.utilityPoints()==1,"A level brings one ability point and one utility point");
             grantXp(probe,xpForNextLevel(2));
-            check(probe.level()==3 && probe.abilityPoints()==3,"Odd levels grant the usual one");
+            check(probe.level()==3 && probe.abilityPoints()==2 && probe.utilityPoints()==2,"Every level does");
+            // Utility trees open without tree points and take utility points.
+            probe.trees()={{"bow",false}}; probe.treePoints()=0; probe.abilityPoints()=0;
+            const auto* plate=findTree("heavy_armour");
+            check(purchaseTree(probe,PlayerClass::Mage,*plate) && probe.treePoints()==0,"A utility tree opens at level 3 without a tree point");
+            check(!treePurchaseReason(probe,PlayerClass::Mage,*findTree("acrobatics")).empty(),"A second utility tree waits for level 5");
+            const auto& brace=*treeNodes("heavy_armour")[0];
+            check(purchaseAbility(probe,brace) && probe.utilityPoints()==1 && probe.abilityPoints()==0,"Utility ranks spend utility points, not ability points");
         }
         click(950,628); snapshot("ui-binding.png");
         check(app.bindingTalent_,"Assign button opens the binding picker");
@@ -3580,7 +3624,7 @@ struct ApplicationRewardsTestAccess {
         snapshot("ui-dungeon-selection.png"); clickOn(screen::kDungeonBack);
         check(!app.dungeonMenu_,"Cancelling dungeon selection spends nothing");
         const auto raiseLevel=[&](int level) {
-            app.player_.level()=level; app.player_.abilityPoints()=earnedAbilityPoints(level)-3;
+            app.player_.level()=level; app.player_.abilityPoints()=earnedAbilityPoints(level)-3; app.player_.utilityPoints()=earnedUtilityPoints(level);
             app.player_.treePoints()=earnedTreePoints(level)-1;
         };
         raiseLevel(12); app.player_.stats().hp=60; app.player_.stats().mana=40;

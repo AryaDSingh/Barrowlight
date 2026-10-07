@@ -10,10 +10,14 @@ inline constexpr int kCathedralFirst=21, kCathedralLast=26, kMaxFloorId=26;
 inline bool cathedralFloor(int floor) { return floor>=kCathedralFirst && floor<=kCathedralLast; }
 // How deep a floor is for difficulty, loot and rewards.
 inline int floorDepth(int floor) { return cathedralFloor(floor) ? floor-kCathedralFirst+7 : floor; }
-// Ability points: four at level 1, one per level after, and one more on every even level.
-inline int earnedAbilityPoints(int level) { return level+3+level/2; }
-inline bool grantsExtraAbilityPoint(int level) { return level%2==0; }
-// Tree points open trees: one to start, then one at levels 5, 10 and 15.
+// Two pools, like ToME's class and generic points: ability points (four at
+// level 1, then one a level) for the class trees, and utility points (two
+// at level 1, then one a level) for the utility trees.
+inline int earnedAbilityPoints(int level) { return level+3; }
+inline int earnedUtilityPoints(int level) { return level+1; }
+// Tree points open class trees: one to start, then one at levels 5, 10 and 15.
+// Utility trees open freely, as many as you have tree points earned in all.
 inline int earnedTreePoints(int level) { return 1+(level>=5)+(level>=10)+(level>=15); }
 inline bool grantsTreePoint(int level) { return level==5 || level==10 || level==15; }
+inline int utilityTreeSlots(int level) { return earnedTreePoints(level); }
 }

@@ -57,7 +57,7 @@ int main() {
     original.playerXp = 37;   // deliberately not the default (0)
     original.floorEntrance={1,1}; original.floorExit={3,2};
     original.currentFloor = 6; // deliberately not the default (1)
-    original.trees={{"one_handed",false}}; original.treePoints=0; original.abilityPoints=4; // level 4 earns 9; 5 are spent below
+    original.trees={{"one_handed",false}}; original.treePoints=0; original.abilityPoints=2; original.utilityPoints=5; // level 4 earns 7 ability and 5 utility points; 5 ability points are spent below
     original.playerStats.hp = 17;
     original.playerStats.maxHp = 30;
     original.playerStats.mana = 9;
@@ -100,6 +100,24 @@ int main() {
 
     // --- Round-trip.
     check(saveGame(original, path), "saveGame() succeeds");
+    {
+        // Format 41: a level-6 thief who began in Stealth, with Bow second.
+        auto thief=original; thief.playerClass=PlayerClass::Thief; thief.playerLevel=6;
+        thief.trees={{"stealth",false},{"bow",false}};
+        thief.playerTalents={{"basic.attack",0,1},{"stealth.conceal",0,3},{"stealth.strike",0,1},{"bow.quick_shot",0,2},{"basic.cleanse",0,1}};
+        thief.hotbar={"basic.attack","stealth.strike","bow.quick_shot"};
+        thief.treePoints=0; thief.abilityPoints=6+3+3-6;
+        const std::string legacy=path+".v40";
+        check(saveGameAsVersion(thief,legacy,40),"Write a format-40 thief");
+        const auto loaded=loadGame(legacy);
+        check(loaded && loaded->trees.size()==2 && loaded->trees[0].id=="bow" && loaded->treePoints==1 &&
+              loaded->abilityPoints==earnedAbilityPoints(6)-2 && loaded->utilityPoints==earnedUtilityPoints(6) && loaded->hotbar[1].empty(),
+              "Format 41: Stealth points come back as utility points, Bow leads, and the old strike leaves the hotbar");
+        std::remove(legacy.c_str());
+        saveGameAsVersion(original,"dbg40.txt",40); saveGame(original,"dbg41.txt");
+        check(saveGameAsVersion(original,legacy,40) && loadGame(legacy).has_value(),"A format-40 save still loads");
+        std::remove(legacy.c_str());
+    }
 
     const std::optional<SaveGameState> loadedOpt = loadGame(path);
     check(loadedOpt.has_value(), "loadGame() succeeds and returns a value");

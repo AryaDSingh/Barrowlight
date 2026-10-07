@@ -34,6 +34,7 @@ enum class MonsterType {
     DeepLurker,       // hides in water, and drags you in after it
     DrownedChorister, // a singing spirit whose bolts charge the water you stand in
     TheSleeper,       // the Cathedral's boss: floods, charges the water, heals in it
+    Mimic,            // a chest that bites (save format 41)
 };
 
 // Darkvision: goblinkind, orcs, beasts and the undead see without light.
@@ -52,7 +53,7 @@ inline bool bleeds(MonsterType type) {
     switch (type) {
         case MonsterType::Skeleton: case MonsterType::SkeletonArcher: case MonsterType::SkeletonGuard:
         case MonsterType::CryptShade: case MonsterType::CryptSentinel: case MonsterType::Lich:
-        case MonsterType::Gloomstalker: case MonsterType::DrownedOne: case MonsterType::DrownedChorister: case MonsterType::TheSleeper: return false;
+        case MonsterType::Gloomstalker: case MonsterType::DrownedOne: case MonsterType::DrownedChorister: case MonsterType::TheSleeper: case MonsterType::Mimic: return false;
         default: return true;
     }
 }

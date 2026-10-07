@@ -1,4 +1,5 @@
 #include "core/Application.hpp"
+#include "entities/MonsterFactory.hpp"
 #include "core/GameIcons.hpp"
 #include "core/PlayLayout.hpp"
 #include "world/FloorTheme.hpp"
@@ -41,22 +42,64 @@ void Application::finishInventoryTurn(bool keepOpen) {
     updateFieldOfView();
 }
 
-void Application::pickupItem() {
-    if (interactVault()) return;
-    const auto position = player_.position();
-    if (chestExists_ && !chestClaimed_ && position.x == chestPosition_.x && position.y == chestPosition_.y &&
-        nextItemId_ < std::numeric_limits<std::uint64_t>::max()) {
-        if (player_.inventory().full()) { log("Bag full (50). Drop or sell an item first."); return; }
-        chestClaimed_ = true;
-        const auto region=floorTheme(currentFloor_).region;
-        const auto theme=region==FloorRegion::Barracks ? LootTheme::Barracks :
-            region==FloorRegion::Sanctum ? LootTheme::Sanctum : LootTheme::Crypts;
-        auto reward = loot_.generate(floorDepth(currentFloor_), 0, nextItemId_++, position, ItemRarity::Magic,theme);
-        log(floorTheme(currentFloor_).name, " chest: ", reward->name(), " (in your bag).");
-        player_.inventory().add(std::move(reward));
+bool Application::besideChest() const {
+    const auto p = player_.position();
+    return chestExists_ && std::max(std::abs(p.x - chestPosition_.x), std::abs(p.y - chestPosition_.y)) == 1;
+}
+
+// The lid creaks up and the loot tumbles out onto the floor around it --
+// unless the chest was never a chest.
+void Application::openChest() {
+    if (!chestExists_ || chestClaimed_ || nextItemId_ == std::numeric_limits<std::uint64_t>::max()) return;
+    const auto at = chestPosition_;
+    if (chestMimic_) {
+        chestExists_ = false; chestMimic_ = false;
+        map_.setTile(at.x, at.y, Tile{TileType::Floor, true, true});
+        auto mimic = createMonster(MonsterType::Mimic, at, floorDepth(currentFloor_) >= 8 ? MonsterTier::Elite : MonsterTier::Base);
+        scaleDungeonMonster(*mimic, floorDepth(currentFloor_));
+        mimic->lastObservedHp = mimic->stats().hp;
+        mimic->tactics.alert = 8; mimic->tactics.lastKnown = player_.position();
+        mimic->voicedAlert = true;
+        soundManager_.playFamily("mimic", 100.f);
+        flashActor(*mimic);
+        log("The chest's lid splits into a mouth full of teeth!");
+        scheduler_.add(*mimic);
+        monsters_.push_back(std::move(mimic));
+        combatThisTurn_ = true;
         finishInventoryTurn();
         return;
     }
+    chestClaimed_ = true;
+    soundManager_.playFamily("chest_open", 95.f);
+    spillLoot(at, ItemRarity::Magic, 0);
+    log("The chest creaks open.");
+    finishInventoryTurn();
+}
+
+// Loot spills out of a chest (or a mimic's gut) onto free floor beside it.
+void Application::spillLoot(Position from, ItemRarity rarity, int quality) {
+    const auto region = floorTheme(currentFloor_).region;
+    const auto theme = region == FloorRegion::Barracks ? LootTheme::Barracks :
+        region == FloorRegion::Sanctum ? LootTheme::Sanctum : LootTheme::Crypts;
+    std::vector<Position> open;
+    for (int r = 1; r <= 2 && open.empty(); ++r)
+        for (int dy = -r; dy <= r; ++dy)
+            for (int dx = -r; dx <= r; ++dx) {
+                const Position p{from.x + dx, from.y + dy};
+                if (std::max(std::abs(dx), std::abs(dy)) != r || !map_.isWalkable(p.x, p.y) || chestAt(p)) continue;
+                if (std::any_of(groundItems_.begin(), groundItems_.end(), [&](const auto& item) {
+                        return item->position().x == p.x && item->position().y == p.y; })) continue;
+                open.push_back(p);
+            }
+    const Position spot = open.empty() ? from : open[loot_.roll(static_cast<unsigned>(open.size()))];
+    groundItems_.push_back(loot_.generate(floorDepth(currentFloor_), quality, nextItemId_++, spot, rarity, theme));
+    spawnVfx({Vfx::Kind::Sparkle, {spot.x + .5f, spot.y + .5f}, {spot.x + .5f, spot.y + .5f}, sf::Color(255, 215, 120), 0, .5f, .6f}, .1f);
+}
+
+void Application::pickupItem() {
+    if (interactVault()) return;
+    const auto position = player_.position();
+    if (besideChest() && !chestClaimed_) { openChest(); return; }
     const auto found = std::find_if(groundItems_.begin(), groundItems_.end(), [&](const auto& item) {
         return item->position().x == position.x && item->position().y == position.y;
     });
@@ -144,11 +187,16 @@ void Application::spawnFixedItems() {
 }
 
 void Application::renderGroundItems() {
-    if (chestExists_ && !chestClaimed_ && exploredMap_.at(chestPosition_.x, chestPosition_.y) == Visibility::Visible) {
-        const auto screen = worldToScreen(chestPosition_.x, chestPosition_.y);
+    if (chestExists_ && exploredMap_.at(chestPosition_.x, chestPosition_.y) != Visibility::Hidden) {
+        auto screen = worldToScreen(chestPosition_.x, chestPosition_.y);
+        // A mimic breathes: now and then it rises a hair and settles.
+        if (chestMimic_ && exploredMap_.at(chestPosition_.x, chestPosition_.y) == Visibility::Visible) {
+            const float t = std::fmod(animationClock_.getElapsedTime().asSeconds(), 3.4f);
+            if (t < .6f) screen.y -= 1.5f * std::sin(t / .6f * 3.14159f);
+        }
         if (onMap(screen)) {
-            static constexpr SpriteFrame kChestFrame{"calciumtrice/tiles/dungeon_tileset_calciumtrice.png",
-                                                     sf::IntRect({32, 304}, {16, 16})};
+            const SpriteFrame kChestFrame{"calciumtrice/tiles/dungeon_tileset_calciumtrice.png",
+                                          sf::IntRect({chestClaimed_ ? 48 : 32, 304}, {16, 16})};
             if (!sprites_.draw(window_, kChestFrame, screen, static_cast<float>(playLayout::tileSize))) {
                 sf::RectangleShape chest({18.f, 14.f}); chest.setPosition({screen.x+5.f, screen.y+7.f});
                 chest.setFillColor(sf::Color(210,145,55)); chest.setOutlineThickness(2.f);
@@ -174,8 +222,8 @@ void Application::renderGroundItems() {
             break;
         }
     }
-    if (chestExists_ && !chestClaimed_ && chestPosition_.x == player_.position().x && chestPosition_.y == player_.position().y)
-        mapHints_.push_back({"A chest. G to open it", ui::kGold});
+    if (!chestClaimed_ && besideChest())
+        mapHints_.push_back({"A chest. G or walk into it to open it", ui::kGold});
 }
 
 

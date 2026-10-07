@@ -84,7 +84,7 @@ struct SaveGameState {
     std::uint64_t nextItemId = 1;
     std::uint64_t lootRngState = 1;
     Position chestPosition;
-    bool chestExists = false, chestClaimed = false;
+    bool chestExists = false, chestClaimed = false, chestMimic = false;
     int ordinaryDrops = 0;
     bool vaultExists=false, vaultOpened=false, vaultClaimed=false;
     Position vaultCenter{}, vaultEntrance{};
@@ -115,7 +115,7 @@ struct SaveGameState {
         bool operator==(const TalentSaveData& other) const { return id == other.id && cooldown == other.cooldown && rank == other.rank; }
     };
     std::vector<TalentSaveData> playerTalents; // learned order, identity and running cooldown
-    int treePoints=1, abilityPoints=4;
+    int treePoints=1, abilityPoints=4, utilityPoints=2;
     std::vector<Player::TreeAccess> trees;
     std::vector<std::string> hotbar;
     bool progressionReviewPending=false, pendingFinalVictory=false;

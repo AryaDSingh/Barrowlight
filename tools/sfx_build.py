@@ -62,15 +62,15 @@ def punch(x, drive=2.2):
 def norm(x, db=-1.0):
     return x / (np.max(np.abs(x)) + 1e-12) * 10 ** (db / 20)
 
-LOUDNESS = {'voice': -17.0, 'levelup': -13.0, 'death': -10.0, 'crit': -9.0, 'dodge': -24.0, 'light': -14.0, 'water': -14.0, 'rot': -14.0}
-LENGTH = {'voice': 1.3, 'levelup': 4.2, 'death': 1.4, 'crit': .75, 'dodge': .3, 'slash': .32, 'pierce': .26, 'blunt': .42}
+LOUDNESS = {'chest_open': -15.0, 'mimic': -11.0, 'voice': -17.0, 'levelup': -13.0, 'death': -10.0, 'crit': -9.0, 'dodge': -24.0, 'light': -14.0, 'water': -14.0, 'rot': -14.0}
+LENGTH = {'chest_open': 1.3, 'mimic': 1.4, 'voice': 1.3, 'levelup': 4.2, 'death': 1.4, 'crit': .75, 'dodge': .3, 'slash': .32, 'pierce': .26, 'blunt': .42}
 PEAK = {'levelup': -2.0, 'death': -3.0}   # swells and long tails: level by peak, not by the first 200 ms
 
 def save(name, x, db=-1.0):
     family = name.rsplit('_', 1)[0]
     key = 'crit' if family.startswith('crit') else 'voice' if family.startswith('voice') else family
     length = LENGTH.get(key, .7)
-    s = 0 if key in ('dodge', 'levelup') else max(0, onset(x, .5) - int(.012 * RATE))  # the hit, not the build-up (a whoosh is all build-up)
+    s = 0 if key in ('dodge', 'levelup', 'chest_open') else max(0, onset(x, .5) - int(.012 * RATE))  # the hit, not the build-up (a whoosh is all build-up)
     y = x[s:s + int(length * RATE)]
     head = y[: int(.2 * RATE)]
     rms = np.sqrt(np.mean(head ** 2)) + 1e-12
@@ -222,5 +222,15 @@ for i in range(3):
     v(f'voice_bones_alert_{i}', rattle(10 + i, 7, .35))
     v(f'voice_bones_hurt_{i}', mix((pitch(cut(wood_h[i], .25), 1.6), 0, 0), (rattle(20 + i, 4, .15), -4, .03)))
     v(f'voice_bones_death_{i}', mix((pitch(cut(wood_h[i + 1], .4), 1.2), 0, 0), (rattle(30 + i, 16, .7, .8), -2, .05)))
+
+
+# --- Chests: a latch, a creaking lid, and coin as the loot spills; mimics bite.
+R = lambda n: load(f'rpg/Audio/{n}.ogg')
+for i, (creak, coins) in enumerate((('creak1', 'handleCoins'), ('creak2', 'handleCoins2'), ('creak3', 'handleCoins'))):
+    save(f'chest_open_{i}', mix((R('metalLatch'), -2, 0), (pitch(R(creak), .8 + .08 * i), 0, .06),
+                                (R(coins), -6, .45 + .05 * i), (pitch(cut(wood_h[i], .3), .9), -10, .5)))
+for i, (roar, r) in enumerate((('roar_02', .7), ('monster_04', .75), ('troll_02', .65))):
+    save(f'mimic_{i}', punch(mix((pitch(R('creak2'), 1.3), -4, 0), (pitch(cut(wood_h[i], .4), .7), 0, .05),
+                                 (pitch(C(roar), r), -1, .08), (pitch(cut(punch_h[i], .3), .8), -4, .05)), 1.8))
 
 print(len(glob.glob(os.path.join(OUT, '*.ogg'))), 'files,', sum(os.path.getsize(p) for p in glob.glob(os.path.join(OUT, '*.ogg'))) // 1024, 'KB')

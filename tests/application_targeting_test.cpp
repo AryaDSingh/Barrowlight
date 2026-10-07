@@ -171,7 +171,7 @@ struct ApplicationTargetingTestAccess {
             "A hybrid self-buff on the second page remains usable");
         app.player_.talents().resetCooldowns(); app.requestTalent(6);
         app.player_.trees()={{"one_handed",false},{"arcane",false}};
-        app.player_.treePoints()=1; app.player_.abilityPoints()=earnedAbilityPoints(10)-6; // level 10: three tree points; six ability points spent below
+        app.player_.treePoints()=1; app.player_.abilityPoints()=earnedAbilityPoints(10)-6; app.player_.utilityPoints()=earnedUtilityPoints(10); // level 10: three tree points; six ability points spent below
         app.player_.talents()=TalentSet({basicAttack(),findTalentDefinition("one_handed.quick_strike")->ranks[0],findTalentDefinition("arcane.bolt")->ranks[0],basicCleanse()});
         app.player_.talents().setRank(1,3); app.player_.talents().setRank(2,3);
         std::filesystem::current_path(outputPath);

@@ -1,6 +1,7 @@
 #pragma once
 #include "entities/Player.hpp"
 #include "entities/HiddenTrees.hpp"
+#include "entities/RunProgression.hpp"
 
 namespace engine {
 inline const Player::TreeAccess* treeAccess(const Player& p, const std::string& id) {
@@ -32,17 +33,33 @@ inline int treeInvestment(const Player& p,const std::string& tree) {
     }
     return count;
 }
+inline int openTrees(const Player& p,bool utility) {
+    int count=0;
+    for (const auto& t:p.trees()) count+=utilityTree(t.id)==utility;
+    return count;
+}
 inline std::string treePurchaseReason(const Player& p, PlayerClass cls, const TreeDefinition& t) {
     if (!hiddenTreeAvailable(p,t.id)) { const auto need=hybridRequirement(t.id); return need.empty() ? "This tree is locked for now." : need; }
-    if (p.treePoints()<=0) return "No tree points available.";
     if (treeAccess(p,t.id)) return "Already open.";
-    if ((p.trees().empty() || p.level()<5) && !startingTreeAllowed(cls,t.tree)) return "Outside your starting class pool. Available at level 5.";
+    if (utilityTree(t.id)) {
+        if (openTrees(p,true)>=utilityTreeSlots(p.level())) {
+            for (int level=p.level()+1;level<=kRunMaxLevel;++level)
+                if (utilityTreeSlots(level)>openTrees(p,true)) return "Another utility tree opens at level "+std::to_string(level)+".";
+            return "No more utility trees.";
+        }
+        return {};
+    }
+    if (p.treePoints()<=0) return "No tree points available.";
+    if ((!openTrees(p,false) || p.level()<5) && !startingTreeAllowed(cls,t.tree)) return "Outside your starting class pool. Available at level 5.";
     return {};
 }
 inline bool purchaseTree(Player& p,PlayerClass cls,const TreeDefinition& t) {
     if (!treePurchaseReason(p,cls,t).empty()) return false;
-    p.trees().push_back({t.id,false}); --p.treePoints(); synchronizeImbues(p); return true;
+    p.trees().push_back({t.id,false}); if (!utilityTree(t.id)) --p.treePoints(); synchronizeImbues(p); return true;
 }
+// The pool a node's ranks come from.
+inline int& pointsFor(Player& p,const TalentDefinition& d) { return utilityTree(d.treeId) ? p.utilityPoints() : p.abilityPoints(); }
+inline int pointsFor(const Player& p,const TalentDefinition& d) { return utilityTree(d.treeId) ? p.utilityPoints() : p.abilityPoints(); }
 inline std::string abilityPurchaseReason(const Player& p,const TalentDefinition& d) {
     if (d.treeId=="resonance") {
         if (p.talents().rankOf(d.id)) return "Maximum rank (1).";
@@ -54,7 +71,7 @@ inline std::string abilityPurchaseReason(const Player& p,const TalentDefinition&
     if (!access) return "Unlock this tree first.";
     const int rank=p.talents().rankOf(d.id);
     if (rank>=d.maxRank()) return "Maximum rank ("+std::to_string(d.maxRank())+").";
-    if (p.abilityPoints()<=0) return "No ability points available.";
+    if (pointsFor(p,d)<=0) return utilityTree(d.treeId) ? "No utility points available." : "No ability points available.";
     if (!rank) return nodeRequirementReason(d,p.level(),[&](const std::string& id){ return p.talents().rankOf(id); });
     return {};
 }
@@ -65,7 +82,7 @@ inline bool purchaseAbility(Player& p,const TalentDefinition& d) {
     if (!upgrading) p.talents().learnTalent(d.ranks[0]);
     else for (std::size_t i=0;i<p.talents().knownTalents().size();++i)
         if (p.talents().knownTalents()[i].id==d.id) p.talents().setRank(i,p.talents().rank(i)+1);
-    --p.abilityPoints(); synchronizeImbues(p);
+    --pointsFor(p,d); synchronizeImbues(p);
     if (upgrading) p.talents().hotbar()=bindings;
     return true;
 }

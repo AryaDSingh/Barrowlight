@@ -276,7 +276,7 @@ void Application::fallToNextFloor() {
 void Application::importFloor(SaveGameState& next, const SaveGameState& floor) {
     next.map=floor.map; next.exploredMap=floor.exploredMap; next.monsters=floor.monsters;
     next.floorEntrance=floor.floorEntrance; next.floorExit=floor.floorExit;
-    next.chestPosition=floor.chestPosition; next.chestExists=floor.chestExists; next.chestClaimed=floor.chestClaimed;
+    next.chestPosition=floor.chestPosition; next.chestExists=floor.chestExists; next.chestClaimed=floor.chestClaimed; next.chestMimic=floor.chestMimic;
     next.ordinaryDrops=floor.ordinaryDrops;
     next.vaultExists=floor.vaultExists; next.vaultOpened=floor.vaultOpened; next.vaultClaimed=floor.vaultClaimed;
     next.vaultCenter=floor.vaultCenter; next.vaultEntrance=floor.vaultEntrance;

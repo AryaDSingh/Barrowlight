@@ -105,6 +105,10 @@ public:
     int treePoints() const { return treePoints_; }
     int& abilityPoints() { return abilityPoints_; }
     int abilityPoints() const { return abilityPoints_; }
+    // Utility points buy ranks in the utility trees (armour, Acrobatics,
+    // Stealth, Alchemy, Traps); ability points, the class points, buy the rest.
+    int& utilityPoints() { return utilityPoints_; }
+    int utilityPoints() const { return utilityPoints_; }
     // How many attribute points this character has earned (2 per
     // level, see PlayerLeveling.hpp) but not yet spent. Decremented as
     // each point is allocated to Strength/Dexterity/Intelligence via
@@ -118,7 +122,7 @@ private:
     int level_ = 1;
     int xp_ = 0;
     std::vector<TreeAccess> trees_;
-    int treePoints_ = 1, abilityPoints_ = 4;
+    int treePoints_ = 1, abilityPoints_ = 4, utilityPoints_ = 2;
     int unspentAttributePoints_ = 0;
 };
 

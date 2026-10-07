@@ -23,15 +23,15 @@ inline constexpr std::array<TreeDefinition, 37> kTalentTrees{{
     {"two_handed", "Two-Handed", TalentTree::TwoHanded, "Heavy swings, surrounding enemies and blood-fuelled attacks.", "greatsword"},
     {"shield", "Shield", TalentTree::Shield, "Block damage, interrupt attacks and control space.", "wooden_shield"},
     {"bow", "Bow", TalentTree::Bow, "Ranged pressure, clustered targets and critical shots.", "hunting_bow"},
-    {"stealth", "Stealth", TalentTree::Stealth, "Concealment and ambush. Rank, DEX and distance oppose enemy detection rolls.", ""},
+    {"stealth", "Stealth", TalentTree::Stealth, "Hide, slip away and go unnoticed. Rank, DEX and distance oppose enemy detection rolls.", ""},
     {"acrobatics", "Acrobatics", TalentTree::Acrobatics, "Reposition, disengage and evade after movement abilities.", ""},
     {"fire", "Fire", TalentTree::Fire, "Burn enemies, spread fire and ignite movement abilities.", ""},
     {"ice", "Ice", TalentTree::Ice, "Chill slows your foes; shatter chilled enemies.", ""},
     {"lightning", "Lightning", TalentTree::Lightning, "Burst, chaining and consuming Shock for a decisive hit.", ""},
     {"arcane", "Arcane", TalentTree::Arcane, "Flexible force, Blink and efficient spellcasting.", ""},
-    {"cloth", "Cloth / Unarmoured", TalentTree::Cloth, "Requires cloth or no armour. Recover mana, evade and exploit elemental ailments. Available from level 5.", ""},
-    {"light_armour", "Light Armour", TalentTree::LightArmour, "Requires light armour. Reposition for Opening, dodge and critical hits. Available from level 5.", ""},
-    {"heavy_armour", "Heavy Armour", TalentTree::HeavyArmour, "Requires heavy armour. Wait to brace, withstand stuns and recover in battle. Available from level 5.", ""},
+    {"cloth", "Cloth / Unarmoured", TalentTree::Cloth, "Requires cloth or no armour. Recover mana, evade and exploit elemental ailments.", ""},
+    {"light_armour", "Light Armour", TalentTree::LightArmour, "Requires light armour. Reposition for Opening, dodge and critical hits.", ""},
+    {"heavy_armour", "Heavy Armour", TalentTree::HeavyArmour, "Requires heavy armour. Wait to brace, withstand stuns and recover in battle.", ""},
     {"spellblade", "Spellblade", TalentTree::Spellblade, "Imbue melee weapons and weave spells into strikes.", ""},
     {"animation", "Animation", TalentTree::Animation, "Raise undead allies and command the battlefield.", ""},
     {"blood_magic", "Blood Magic", TalentTree::BloodMagic, "Spend life to cast, drain enemies and defy death.", ""},
@@ -42,7 +42,7 @@ inline constexpr std::array<TreeDefinition, 37> kTalentTrees{{
     {"radiance", "Radiance", TalentTree::Radiance, "Light magic: sear the undead, blind with flares and bring back the dawn.", ""},
     {"alchemy", "Alchemy", TalentTree::Alchemy, "Thrown flasks of oil, fire and acid: make the ground fight for you.", ""},
     {"spear", "Spear", TalentTree::Spear, "Reach and footing: strike from two tiles, brace for the charge, vault over trouble.", "iron_spear"},
-    {"daggers", "Daggers", TalentTree::Daggers, "Open wounds and finish the helpless: bleeding, backstabs and a whirl of blades.", "steel_dagger"},
+    {"daggers", "Daggers", TalentTree::Daggers, "Open wounds and finish the helpless: bleeding, backstabs and the killing blow from hiding.", "steel_dagger"},
     {"mace", "Mace", TalentTree::Mace, "Break guards and bones: sunder armour, stagger the wind-up, shatter the frozen.", "iron_mace"},
     {"crossbow", "Crossbow", TalentTree::Crossbow, "Heavy bolts that knock back, pierce lines and pin foes in place.", "light_crossbow"},
     {"earth", "Earth", TalentTree::Earth, "Shape the ground: spikes that pin, pillars to block or shove into, and quakes.", ""},
@@ -63,8 +63,13 @@ inline const TreeDefinition* findTree(const std::string& id) {
 }
 inline bool startingTreeAllowed(PlayerClass cls, TalentTree tree) {
     if (cls == PlayerClass::Warrior) return tree == TalentTree::OneHanded || tree == TalentTree::TwoHanded || tree == TalentTree::Shield || tree == TalentTree::Brawling;
-    if (cls == PlayerClass::Thief) return tree == TalentTree::Stealth || tree == TalentTree::Bow || tree == TalentTree::Acrobatics || tree == TalentTree::Whip;
+    if (cls == PlayerClass::Thief) return tree == TalentTree::Daggers || tree == TalentTree::Bow || tree == TalentTree::Whip;
     return cls == PlayerClass::Mage && (tree == TalentTree::Fire || tree == TalentTree::Ice || tree == TalentTree::Lightning || tree == TalentTree::Arcane);
+}
+// Utility trees: how you survive rather than how you kill. They take
+// utility points, and open without tree points.
+inline bool utilityTree(const std::string& id) {
+    return id=="cloth" || id=="light_armour" || id=="heavy_armour" || id=="acrobatics" || id=="stealth" || id=="alchemy" || id=="traps";
 }
 // The colours a talent carries. Each rank bought in a node adds one point of
 // its colour; two colours held deeply enough wake the resonance between them.
@@ -142,10 +147,11 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "bow.rain") { m.lingerTurns = 4; d.mastery = "The arrows fall two turns longer."; }
     if (id == "bow.piercing_shot") { m.bonusCritChance += .2f; d.mastery = "A further +20% critical chance."; }
     if (id == "stealth.conceal") { longer(); d.mastery = "Hide for four responses."; }
-    if (id == "stealth.strike") { m.retreatDistance = 2; d.mastery = "Slip up to two tiles away after striking."; }
-    if (id == "stealth.vanish_strike") { longer(); d.mastery = "Stay concealed for three responses."; }
+    if (id == "stealth.shadow_step") { m.moveDistance += 2; d.mastery = "Slip two tiles further."; }
+    if (id == "stealth.vanish") { longer(); d.mastery = "Hide for four responses."; }
+    if (id == "stealth.smoke_bomb") { m.cooldownTurns -= 4; d.mastery = "Ready again four turns sooner."; }
     if (id == "stealth.feign") { m.restoreHpPercent = 10; d.mastery = "You also recover 10% of your life."; }
-    if (id == "stealth.assassinate") { m.conditionalHpFraction = .6f; d.mastery = "Triple damage below 60% life instead of half."; }
+    if (id == "daggers.assassinate") { m.conditionalHpFraction = .6f; d.mastery = "Triple damage below 60% life instead of half."; }
     if (id == "acrobatics.tumble") { dodge(15); d.mastery = "+15% dodge for one enemy response after tumbling."; }
     if (id == "acrobatics.vault_kick") { stun(1); d.mastery = "The kick stuns for one enemy turn."; }
     if (id == "acrobatics.leap") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 30; d.mastery = "+30% dodge instead of +20%."; }
@@ -226,7 +232,6 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "spear.throw") { m.pushDistance = 1; d.mastery = "Knocks everything it hits back a tile."; }
     if (id == "daggers.lacerate") { if (m.onHitEffect) m.onHitEffect->magnitude = 3; d.mastery = "Bleed deals 3 damage per turn."; }
     if (id == "daggers.backstab") { m.selfBuffEffect = StatusEffectInstance{StatusEffectType::Concealed, 1, 2}; d.mastery = "You melt back into the shadows: Concealed for one response."; }
-    if (id == "daggers.whirl") { if (m.onHitEffect) m.onHitEffect->turnsRemaining += 2; d.mastery = "Bleed lasts two turns longer."; }
     if (id == "daggers.throw") { m.pierceBehind = true; d.mastery = "Also hits whoever stands right behind the target."; }
     if (id == "daggers.eviscerate") { m.statusBonusPercent = 1; d.mastery = "Triple the bleed, not double."; }
     if (id == "mace.crush") { m.pushDistance = 1; d.mastery = "Also knocks the foe back a tile."; }
@@ -511,20 +516,22 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         shape("bow.rain",3,"capstone",{});
         add(4,"stealth.conceal",0,buff("Conceal","Hide for three responses. Nearby enemies roll to detect you: rank, your DEX and distance help; enemy DEX increases risk. Detection, attacks and damage reveal you.",StatusEffectType::Concealed,3,1,3,7));
         shape("stealth.conceal",3,"",{});
-        t=attack("Ambush Strike","A melee strike requiring Concealment; attacking reveals you.",9,2,4); t.requiresStealth=true; add(4,"stealth.strike",1,t);
-        shape("stealth.strike",3,"path",{"stealth.conceal"});
+        t=move("Shadow Step","While concealed, slip up to four tiles. End in darkness and you stay hidden two responses longer.",4,2,5); t.requiresStealth=true;
+        add(4,"stealth.shadow_step",1,t);
+        shape("stealth.shadow_step",3,"path",{"stealth.conceal"});
         t=buff("Feign Death","Drop as if dead and hide: Concealed for three responses, and every foe within five tiles loses track of you.",StatusEffectType::Concealed,3,2,3,12);
         t.shakeOff=true; add(4,"stealth.feign",1,t);
         shape("stealth.feign",3,"path",{"stealth.conceal"});
-        add(4,"stealth.ambush",2,passive("Ambush","Direct damage from Concealment gains +6 damage, including spells and ranged attacks.",PassiveKind::Ambush,6));
-        shape("stealth.ambush",1,"",{"stealth.strike"});
+        add(4,"stealth.soft_steps",2,passive("Soft Steps","Enemies are 25% less likely to spot you while you hide, and those that haven't noticed you only do once you're in the 8 tiles around them.",PassiveKind::SoftSteps,25));
+        shape("stealth.soft_steps",1,"",{"stealth.shadow_step"});
         add(4,"stealth.phantom",2,passive("Phantom","Attacking from concealment has a 35% chance not to reveal you.",PassiveKind::LingeringShadow,35));
         shape("stealth.phantom",1,"",{"stealth.feign"});
-        t=attack("Vanish Strike","Strike, then retreat up to three tiles and gain Concealment for two enemy responses, using this ability's rank for detection.",8,5,7); t.retreatDistance=3; t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Concealed,2,1}; add(4,"stealth.vanish_strike",3,t);
-        shape("stealth.vanish_strike",3,"capstone",{});
-        t=attack("Assassinate","A strike from hiding: triple damage against a foe below half its life.",9,5,9); t.requiresStealth=true;
-        t.conditionalHpFraction=.5f; t.conditionalMultiplier=3; add(4,"stealth.assassinate",3,t);
-        shape("stealth.assassinate",3,"capstone",{});
+        t=move("Vanish","Even while seen: slip up to three tiles away and hide for three responses. Every foe within five tiles loses track of you.",3,5,12);
+        t.selfBuffEffect=StatusEffectInstance{StatusEffectType::Concealed,3,1}; t.shakeOff=true; add(4,"stealth.vanish",3,t);
+        shape("stealth.vanish",3,"capstone",{});
+        t=buff("Smoke Bomb","Smoke bursts around you: every foe in the 24 tiles within two of you is Blinded for two turns and loses track of you.",StatusEffectType::Concealed,2,1,4,12);
+        t.smokeBomb=true; t.shakeOff=true; add(4,"stealth.smoke_bomb",3,t);
+        shape("stealth.smoke_bomb",3,"capstone",{});
         add(5,"acrobatics.tumble",0,move("Tumble","Move up to three visible tiles, stopping before obstacles and actors.",3,2,4));
         shape("acrobatics.tumble",3,"",{});
         t=attack("Vault Kick","Kick, then retreat up to three tiles even if the hit is dodged.",4,3,4); t.retreatDistance=3; add(5,"acrobatics.vault_kick",1,t);
@@ -886,13 +893,13 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t=attack("Throwing Knife","Throw a dagger at a foe in sight: it bleeds for 2 a turn over three turns.",5,2,3,true);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Bleed,3,2}; add(23,"daggers.throw",1,t);
         shape("daggers.throw",3,"path",{"daggers.lacerate"});
-        add(23,"daggers.hemorrhage",2,passive("Hemorrhage","Your attacks deal +4 damage to bleeding enemies.",PassiveKind::Hemorrhage,4));
-        shape("daggers.hemorrhage",1,"",{"daggers.backstab"});
-        add(23,"daggers.cut_deep",2,passive("Cut Deep","Bleeding you cause lasts two turns longer.",PassiveKind::CutDeep,2));
-        shape("daggers.cut_deep",1,"",{"daggers.throw"});
-        t=attack("Whirling Blades","Spin through everything within two tiles, leaving each one bleeding for three enemy turns.",5,5,7,false,2);
-        t.onHitEffect=StatusEffectInstance{StatusEffectType::Bleed,3,2}; add(23,"daggers.whirl",3,t);
-        shape("daggers.whirl",3,"capstone",{});
+        add(23,"daggers.ambush",2,passive("Ambush","Direct damage from concealment gains +6, spells and ranged attacks included.",PassiveKind::Ambush,6));
+        shape("daggers.ambush",1,"",{"daggers.backstab"});
+        add(23,"daggers.hemorrhage",2,passive("Hemorrhage","Your attacks deal +4 damage to bleeding enemies, and bleeding you cause lasts two turns longer.",PassiveKind::Hemorrhage,4));
+        shape("daggers.hemorrhage",1,"",{"daggers.throw"});
+        t=attack("Assassinate","A strike from hiding: triple damage against a foe below half its life.",9,5,9); t.requiresStealth=true;
+        t.conditionalHpFraction=.5f; t.conditionalMultiplier=3; add(23,"daggers.assassinate",3,t);
+        shape("daggers.assassinate",3,"capstone",{});
         t=attack("Eviscerate","Tear the wound open: the target's whole bleed comes due at once, doubled.",6,4,8); t.consumeBleed=true;
         add(23,"daggers.eviscerate",3,t);
         shape("daggers.eviscerate",3,"capstone",{});
@@ -1236,7 +1243,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="shield") d.affinity=Affinity::Guard;
             else if (d.treeId=="bow") d.affinity=Affinity::Hunt;
             else if (d.treeId=="stealth") d.affinity=Affinity::Guile;
-            else if (d.treeId=="daggers") d.affinity=Affinity::Steel;
+            else if (d.treeId=="daggers") d.affinity=(d.id=="daggers.ambush" || d.id=="daggers.assassinate")?Affinity::Guile:Affinity::Steel;
             else if (d.treeId=="earth") d.affinity=Affinity::Earth;
             else if (d.treeId=="tide") d.affinity=Affinity::Water;
             else if (d.treeId=="venom") d.affinity=Affinity::Rot;

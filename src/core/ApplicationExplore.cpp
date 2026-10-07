@@ -171,7 +171,7 @@ void Application::stepAutoExplore() {
     const bool onItem=std::any_of(groundItems_.begin(),groundItems_.end(),[&](const auto& item) {
         return sameExploreTile(item->position(),p);
     });
-    if (newInterest() || onItem || (chestExists_ && !chestClaimed_ && sameExploreTile(p,chestPosition_)) ||
+    if (newInterest() || onItem || (!chestClaimed_ && besideChest()) ||
         sameExploreTile(p,floorEntrance_) || sameExploreTile(p,floorExit_) || map_.tileAt(p.x,p.y).type==TileType::Door ||
         (vaultExists_ && !vaultClaimed_ && (sameExploreTile(p,vaultEntrance_) || sameExploreTile(p,vaultCenter_))))
         stopAutoExplore("loot, a chest, stairs or a vault needs your attention. Z continues.");

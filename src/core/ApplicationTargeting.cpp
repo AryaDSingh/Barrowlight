@@ -878,7 +878,7 @@ void Application::renderHudTooltips() {
         if (pointsToSpend() && kLevelBadge().contains(*mouse)) {
             std::string detail;
             const auto add=[&](int n,const char* what){ if(n>0) detail+=(detail.empty()?"":", ")+std::to_string(n)+" "+what; };
-            add(player_.unspentAttributePoints(),"attribute"); add(player_.abilityPoints(),"ability"); add(player_.treePoints(),"tree");
+            add(player_.unspentAttributePoints(),"attribute"); add(player_.abilityPoints(),"ability"); add(player_.utilityPoints(),"utility"); add(player_.treePoints(),"tree");
             hint("Points to spend",detail+" point(s). Click or press P to spend them; they keep until you do.");
             return;
         }

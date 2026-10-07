@@ -149,7 +149,20 @@ void Application::renderVault() {
 
 void Application::spawnFloorChest() {
     ordinaryDrops_ = 0;
-    chestExists_ = false; chestClaimed_ = false;
+    chestExists_ = false; chestClaimed_ = false; chestMimic_ = false;
+    // The chest blocks its tile, so it only stands where it can't wall
+    // anything off: a dead end, or a room tile with floor all around it.
+    const auto safe = [&](Position p) {
+        int sides = 0, around = 0;
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx) {
+                if (!dx && !dy) continue;
+                const bool open = map_.isWalkable(p.x + dx, p.y + dy) && map_.tileAt(p.x + dx, p.y + dy).type == TileType::Floor;
+                around += open;
+                if (!dx || !dy) sides += map_.isWalkable(p.x + dx, p.y + dy);
+            }
+        return sides == 1 || around == 8;
+    };
     std::queue<Position> frontier;
     std::vector<bool> seen(static_cast<std::size_t>(map_.width()) * map_.height());
     auto enqueue = [&](Position p) {
@@ -161,16 +174,28 @@ void Application::spawnFloorChest() {
     enqueue(player_.position());
     while (!frontier.empty()) {
         const auto p = frontier.front(); frontier.pop();
-        if (map_.tileAt(p.x, p.y).type == TileType::Floor && !isOccupied(p, nullptr)) {
+        if (map_.tileAt(p.x, p.y).type == TileType::Floor && !isOccupied(p, nullptr) && safe(p) &&
+            std::abs(p.x - player_.position().x) + std::abs(p.y - player_.position().y) > 2) {
             chestPosition_ = p; chestExists_ = true;
         }
         enqueue({p.x+1,p.y}); enqueue({p.x-1,p.y}); enqueue({p.x,p.y+1}); enqueue({p.x,p.y-1});
     }
+    // Below the first floors, now and then the chest is hungry.
+    const int depth = floorDepth(currentFloor_);
+    const unsigned mimicChance = depth <= 2 ? 0u : static_cast<unsigned>(std::min(12, 2 + (depth - 3) * 3 / 2));
+    if (chestExists_ && mimicChance && loot_.roll(100) < mimicChance) chestMimic_ = true;
+    // Solid: nothing paths, spawns or spills onto it.
+    if (chestExists_) map_.setTile(chestPosition_.x, chestPosition_.y, Tile{TileType::Floor, false, true});
 }
 
 void Application::rewardMonster(Monster& monster, bool boss) {
     if (monster.vaultGuard && vaultCleared()) log("The vault falls silent.");
     if (!monster.rewardsEligible()) return;
+    if (monster.type() == MonsterType::Mimic && nextItemId_ < std::numeric_limits<std::uint64_t>::max() - 2) {
+        spillLoot(monster.position(), ItemRarity::Rare, 2);
+        spillLoot(monster.position(), ItemRarity::Magic, 1);
+        return;
+    }
     if (monster.eventChampion && !trialGuardianChampion(monster.eventChampion)) grantUnique(monster.position());
     const bool unique=isUniqueMonster(monster.type());
     const bool special=unique || monster.tier()!=MonsterTier::Base;

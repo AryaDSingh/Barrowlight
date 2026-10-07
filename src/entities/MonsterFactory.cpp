@@ -385,6 +385,15 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
                 makeStats(scaledHp(lurker ? 30 : 22, tier), lurker ? 12 : 4, lurker ? 16 : 10, lurker ? 2 : 14), std::move(ai));
             break;
         }
+        case MonsterType::Mimic: {
+            // A chest that bites: slow to wake, hard to shift, and its bite tears.
+            MonsterAttackProfile bite;
+            bite.power = scaledPower(7, 3, tier);
+            bite.onHitEffect = StatusEffectInstance{StatusEffectType::Bleed, 3, 2}; bite.onHitChance = .5f;
+            monster = std::make_unique<Monster>(type, tieredName("Mimic", tier), 'm', position,
+                makeStats(scaledHp(44, tier), 14, 4, 6), std::make_unique<Chaser>(bite));
+            break;
+        }
         case MonsterType::TheSleeper: {
             // A drowned god's eye: bolts from range, never backs away. Its
             // flood, its charged water and its call live in Application.
@@ -484,6 +493,7 @@ int xpRewardForType(MonsterType type, MonsterTier tier) {
         case MonsterType::DeepLurker: baseReward=20; break;
         case MonsterType::DrownedChorister: baseReward=18; break;
         case MonsterType::TheSleeper: return 250;
+        case MonsterType::Mimic: baseReward=40; break;
         case MonsterType::SkeletonArcher: baseReward=16; break;
         case MonsterType::SkeletonGuard: baseReward=22; break;
         case MonsterType::Bonecaller: baseReward=18; break;

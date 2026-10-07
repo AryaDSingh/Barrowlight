@@ -168,6 +168,11 @@ private:
     void handleInventoryMouse(const sf::Event& event);
     void renderGroundItems();
     void pickupItem();
+    // The floor's chest stands in the way; bumping it (or G beside it) opens it.
+    bool chestAt(Position p) const { return chestExists_ && p.x == chestPosition_.x && p.y == chestPosition_.y; }
+    bool besideChest() const;
+    void spillLoot(Position from, ItemRarity rarity, int quality);
+    void openChest();
     // keepOpen: an inventory action (equip, remove, drop) that takes a turn
     // but leaves the inventory open, so you can equip more.
     void finishInventoryTurn(bool keepOpen = false);
@@ -177,7 +182,7 @@ private:
     void spawnFixedItems();
     LootGenerator loot_;
     Position chestPosition_;
-    bool chestExists_ = false, chestClaimed_ = false;
+    bool chestExists_ = false, chestClaimed_ = false, chestMimic_ = false;
     int ordinaryDrops_ = 0;
     void rewardMonster(Monster& monster, bool boss);
     void spawnFloorChest();

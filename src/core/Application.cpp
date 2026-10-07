@@ -126,6 +126,7 @@ sf::Color monsterColor(MonsterType type) {
         case MonsterType::DeepLurker: return sf::Color(70, 140, 120);
         case MonsterType::DrownedChorister: return sf::Color(150, 210, 230);
         case MonsterType::TheSleeper: return sf::Color(120, 230, 200);
+        case MonsterType::Mimic: return sf::Color(190, 130, 70);
     }
     return sf::Color(190, 190, 190); // unreachable -- all enum values handled above
 }
@@ -373,6 +374,8 @@ MonsterLook monsterLook(MonsterType type) {
         case MonsterType::DeepLurker: return {{"dcss/electric_eel.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color(200, 225, 220), 1.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
         case MonsterType::DrownedChorister: return {{"dcss/phantom.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color(220, 245, 255, 225), 1.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
         case MonsterType::TheSleeper: return {{"dcss/kraken_head.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color(170, 205, 200), 2.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
+        // The open chest, flushed red: its lid is a jaw now.
+        case MonsterType::Mimic: return {{"calciumtrice/tiles/dungeon_tileset_calciumtrice.png", sf::IntRect({48, 304}, {16, 16})}, sf::Color(240, 175, 160), 1.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
         case MonsterType::GoblinWarlord: return {idleFrame("calciumtrice/monsters/GreyMinotaur.png", 0, 48, 52)};
         case MonsterType::Lich: return {idleFrame("calciumtrice/monsters/Death.png")};
         case MonsterType::GoblinCaptain: return {idleFrame("calciumtrice/monsters/ArmourPsionicGoblin.png")};
@@ -1050,7 +1053,7 @@ void Application::handleEvent(const sf::Event& input) {
 }
 
 bool Application::isOccupied(Position pos, const Actor* exclude) {
-    return actorAt(pos, exclude) != nullptr;
+    return actorAt(pos, exclude) != nullptr || chestAt(pos);
 }
 
 Actor* Application::actorAt(Position pos, const Actor* exclude) {
@@ -1083,6 +1086,11 @@ bool Application::tryMovePlayer(int dx, int dy) {
     const Position current = player_.position();
     const Position target{current.x + dx, current.y + dy};
 
+    if (chestAt(target)) {
+        if (autoExploring_ || chestClaimed_) return false; // an open chest is just in the way
+        openChest();
+        return true;
+    }
     if (!map_.isWalkable(target.x, target.y)) {
         // Walking into a brazier or an oil barrel knocks it over.
         if (!autoExploring_ && knockOver(target, {dx, dy})) { combatThisTurn_ = true; finishInventoryTurn(); return true; }
@@ -1198,6 +1206,18 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     } else if (talent.summonCount) {
         summonMinions(talent);
     } else if (talent.shape == EffectShape::Movement) {
+        // Vanish: every foe within five tiles loses you as you slip away.
+        if (talent.shakeOff) {
+            for (auto& m:monsters_)
+                if (!m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-beforeMovement.x),std::abs(m->position().y-beforeMovement.y))<=5) {
+                    m->tactics.alert=0; m->tactics.lastKnown=m->tactics.home;
+                }
+            spawnVfx({Vfx::Kind::Smoke,{beforeMovement.x+.5f,beforeMovement.y+.5f},{beforeMovement.x+.5f,beforeMovement.y+.5f},sf::Color(70,70,85),0,.6f,1.f});
+            log("You vanish.");
+        }
+        // Shadow Step: ending in darkness keeps you hidden longer.
+        if (talent.id=="stealth.shadow_step" && !tileLit(blinkDestination))
+            for (auto& e:player_.statusEffects().active()) if (e.type==StatusEffectType::Concealed) e.turnsRemaining+=2;
         player_.setPosition(blinkDestination);
         if (talent.tree==TalentTree::Arcane && player_.talents().passiveValue(PassiveKind::Afterimage,player_.stats())) afterimages_.push_back(beforeMovement);
         if (talent.landingSlam) {
@@ -1316,7 +1336,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     if (m->tactics.alert>0) ++lost;
                     m->tactics.alert=0; m->tactics.lastKnown=m->tactics.home;
                 }
-            log(lost?"You go limp. They lose track of you.":"You go limp and lie still.");
+            if (!talent.smokeBomb) log(lost?"You go limp. They lose track of you.":"You go limp and lie still.");
         }
         if (talent.smokeBomb) {
             const auto me=player_.position();
@@ -1962,6 +1982,9 @@ void Application::processMonsterTurns() {
                         gainFavor(Patron::Whisperer, -3, "you were seen");
                     }
                 }
+                // Soft Steps: a monster that hasn't noticed you only does in the 8 tiles around it.
+                if (monster && !hidden && monster->tactics.alert==0 && player_.talents().passiveValue(PassiveKind::SoftSteps,player_.stats()) &&
+                    std::max(std::abs(monster->position().x-player_.position().x),std::abs(monster->position().y-player_.position().y))>1) hidden=true;
                 if (monster) {
                     auto* opponent=nearestOpponent(*actor,hidden);
                     AIDecision decision=enemyDecision(*monster,opponent);
@@ -2673,7 +2696,7 @@ void Application::grantXpAndAnnounce(int amount) {
 }
 
 bool Application::pointsToSpend() const {
-    return player_.unspentAttributePoints() > 0 || player_.abilityPoints() > 0 || player_.treePoints() > 0 ||
+    return player_.unspentAttributePoints() > 0 || player_.abilityPoints() > 0 || player_.utilityPoints() > 0 || player_.treePoints() > 0 ||
            player_.ascendancyPoints > 0;
 }
 
@@ -2898,7 +2921,7 @@ void Application::selectClass(PlayerClass cls) {
     nextItemId_ = 1;
     player_.trees().clear();
     player_.bloodRelic=false; player_.animationRelic=false; player_.deathlessSpentFloors.clear();
-    player_.treePoints()=1; player_.abilityPoints()=earnedAbilityPoints(1);
+    player_.treePoints()=1; player_.abilityPoints()=earnedAbilityPoints(1); player_.utilityPoints()=earnedUtilityPoints(1);
     player_.ascendancy.clear(); player_.ascendancyPoints=0; player_.trialKeys=0; player_.trialsCleared=0;
     player_.lightSource=1; player_.lightLit=true; // everyone starts with a torch
     trial_=0; trialReturnFloor_=0; ascendancyMenu_=false; trialMenu_=false;
@@ -3105,7 +3128,7 @@ SaveGameState Application::captureState(bool includeFloors) {
     state.unspentAttributePoints = player_.unspentAttributePoints();
     state.nextItemId = nextItemId_;
     state.lootRngState = loot_.state();
-    state.chestPosition = chestPosition_; state.chestExists = chestExists_; state.chestClaimed = chestClaimed_;
+    state.chestPosition = chestPosition_; state.chestExists = chestExists_; state.chestClaimed = chestClaimed_; state.chestMimic = chestMimic_;
     state.ordinaryDrops = ordinaryDrops_;
     state.landmark=static_cast<int>(landmark_); state.landmarkAltar=landmarkAltar_; state.landmarkUsed=landmarkUsed_;
     for (const auto& e:extraLandmarks_) state.extraLandmarks.push_back({static_cast<int>(e.kind),e.altar.x,e.altar.y,e.used?1:0});
@@ -3129,7 +3152,7 @@ SaveGameState Application::captureState(bool includeFloors) {
     const auto& talents = player_.talents().knownTalents();
     for (std::size_t i = 0; i < talents.size(); ++i)
         state.playerTalents.push_back({talents[i].id, player_.talents().cooldownRemaining(i), player_.talents().rank(i)});
-    state.treePoints=player_.treePoints(); state.abilityPoints=player_.abilityPoints();
+    state.treePoints=player_.treePoints(); state.abilityPoints=player_.abilityPoints(); state.utilityPoints=player_.utilityPoints();
     state.trees=player_.trees(); state.hotbar=player_.talents().hotbar();
     state.progressionReviewPending=progressionReviewPending_; state.pendingFinalVictory=pendingFinalVictory_;
     state.defeatedBossName=defeatedBossName_;
@@ -3255,7 +3278,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     player_.setPosition(state.playerPosition);
     playerClass_ = state.playerClass;
     player_.talents() = std::move(restoredTalents);
-    player_.trees()=state.trees; player_.treePoints()=state.treePoints; player_.abilityPoints()=state.abilityPoints;
+    player_.trees()=state.trees; player_.treePoints()=state.treePoints; player_.abilityPoints()=state.abilityPoints; player_.utilityPoints()=state.utilityPoints;
     progressionReviewPending_=state.progressionReviewPending;
     defeatedBossName_=state.defeatedBossName;
     adventureMode_=state.adventureMode; extraLives_=state.extraLives;
@@ -3284,7 +3307,8 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     groundItems_.clear();
     nextItemId_ = state.nextItemId;
     loot_.restore(state.lootRngState);
-    chestPosition_ = state.chestPosition; chestExists_ = state.chestExists; chestClaimed_ = state.chestClaimed;
+    chestPosition_ = state.chestPosition; chestExists_ = state.chestExists; chestClaimed_ = state.chestClaimed; chestMimic_ = state.chestMimic;
+    if (chestExists_ && map_.inBounds(chestPosition_.x, chestPosition_.y)) map_.setTile(chestPosition_.x, chestPosition_.y, Tile{TileType::Floor, false, true});
     ordinaryDrops_ = state.ordinaryDrops;
     landmark_=static_cast<LandmarkKind>(state.landmark); landmarkAltar_=state.landmarkAltar; landmarkUsed_=state.landmarkUsed;
     extraLandmarks_.clear();

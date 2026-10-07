@@ -159,11 +159,11 @@ struct PlaytestBot {
             while (app.player_.unspentAttributePoints() > 0) app.allocateAttribute(primary);
             app.mode_ = GameMode::Playing;
         }
-        if (app.player_.treePoints() <= 0 && app.player_.abilityPoints() <= 0) return;
+        if (app.player_.treePoints() <= 0 && app.player_.abilityPoints() <= 0 && app.player_.utilityPoints() <= 0) return;
         app.openTalentTrees();
         const auto plan = treePlan(cls);
-        // Trees: open the next one in the plan.
-        for (int guard = 0; guard < 10 && app.player_.treePoints() > 0; ++guard) {
+        // Trees: open the next one in the plan (utility trees need no tree point).
+        for (int guard = 0; guard < 10; ++guard) {
             bool bought = false;
             for (const char* id : plan) {
                 app.treeSelection_ = treeIndex(id); app.abilitySelection_ = 0;
@@ -174,7 +174,7 @@ struct PlaytestBot {
             if (!bought) break;
         }
         // Abilities: learn what's new first, then rank up the cheapest.
-        for (int guard = 0; guard < 40 && app.player_.abilityPoints() > 0; ++guard) {
+        for (int guard = 0; guard < 40 && (app.player_.abilityPoints() > 0 || app.player_.utilityPoints() > 0); ++guard) {
             bool bought = false;
             for (int pass = 0; pass < 2 && !bought; ++pass)
                 for (const char* id : plan) {
@@ -411,7 +411,7 @@ struct PlaytestBot {
                     if (stepToward(p, false)) { goal = p; pick = true; break; }
                 }
                 if (!acted && !goal && !app.player_.inventory().full() && app.chestExists_ && !app.chestClaimed_ && app.exploredMap_.at(app.chestPosition_.x, app.chestPosition_.y) != Visibility::Hidden) {
-                    if (same(app.chestPosition_, me)) { app.pickupItem(); acted = true; } else if (stepToward(app.chestPosition_, false)) { goal = app.chestPosition_; pick = true; }
+                    if (app.besideChest()) { app.openChest(); acted = true; } else if (stepToward(app.chestPosition_, false)) { goal = app.chestPosition_; pick = true; }
                 }
                 // The landmark, once.
                 if (!acted && !goal && app.landmark_ != LandmarkKind::None && !app.landmarkUsed_ && !landmarkTried[app.currentFloor_] &&

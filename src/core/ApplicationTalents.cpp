@@ -250,7 +250,7 @@ void Application::openTalentTrees() {
     bindingTalent_=false; treeFeedback_.clear(); mode_=GameMode::AbilityChoice;
 }
 void Application::closeTalentTrees() {
-    if (player_.trees().empty()) { treeFeedback_="Unlock your first tree with the Unlock button or Enter before continuing."; return; }
+    if (!openTrees(player_,false)) { treeFeedback_="Unlock your first class tree with the Unlock button or Enter before continuing."; return; }
     if (player_.abilityPoints()==earnedAbilityPoints(1) && player_.level()==1) { treeFeedback_="Learn at least one ability with the Learn button or A before continuing."; return; }
     progressionReviewPending_=false;
     mode_=GameMode::Playing; resumeLevelUpSequence();
@@ -337,7 +337,7 @@ void Application::renderTalentTrees() {
     // Point counters, like ToME's boxed "Class points: 0" tabs.
     float x=200;
     for(const auto& [label,value]:{std::pair<std::string,int>{"Level",player_.level()},{"Tree points",player_.treePoints()},
-                                   {"Ability points",player_.abilityPoints()}}) {
+                                   {"Ability points",player_.abilityPoints()},{"Utility points",player_.utilityPoints()}}) {
         const std::string text=label+": "+std::to_string(value);
         const sf::FloatRect box{{x,20},{ui_.textWidth(text,16,ui::Font::Bold)+24,30}};
         ui_.inset(window_,box,sf::Color(140,108,62));
@@ -558,6 +558,7 @@ float Application::enemyStealthDetectionChance(const Actor& enemy) const {
     const auto visible=computeFieldOfView(map_,enemy.position(),kStealthDetectionRadius);
     if (std::none_of(visible.begin(),visible.end(),[&](Position p){return p.x==target.x && p.y==target.y;})) return 0.f;
     if (enemy.statusEffects().has(StatusEffectType::HuntersMark)) chance=std::max(.05f,chance*.5f);
+    if (const int soft=player_.talents().passiveValue(PassiveKind::SoftSteps,player_.stats())) chance*=(100-soft)/100.f;
     // Hiding in the dark: invisible to those who need light, and harder to spot for the rest.
     if (!tileLit(target)) {
         if (!canSee(enemy,target)) return 0.f;
