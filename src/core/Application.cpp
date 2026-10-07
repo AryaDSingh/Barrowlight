@@ -1489,6 +1489,39 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 maw->doubleBite=true; wardenFoe_=foe;
                 log("Thornmaw leaps at ",foe->name(),"!");
             }
+        if (talent.rallyDead) {
+            const auto me=player_.position(); int came=0;
+            for (auto& m:monsters_) {
+                if (!m->allied || !raisedDead(m->type()) || m->stats().hp<=0) continue;
+                const int d=std::max(std::abs(m->position().x-me.x),std::abs(m->position().y-me.y));
+                if (d<=1 || d>talent.rallyDead) continue;
+                bool placed=false;
+                for (int r=1;r<=2 && !placed;++r)
+                    for (int dy=-r;dy<=r && !placed;++dy) for (int dx=-r;dx<=r && !placed;++dx) {
+                        const Position p{me.x+dx,me.y+dy};
+                        if (std::max(std::abs(dx),std::abs(dy))!=r || !map_.isWalkable(p.x,p.y) || isOccupied(p,m.get())) continue;
+                        m->setPosition(p); placed=true; ++came;
+                    }
+            }
+            log(came?"Your dead answer, and gather around you.":"Your dead are already at your side.");
+        }
+        if (talent.lastRites) {
+            const auto me=player_.position(); const int blast=8+player_.stats().intelligence/5;
+            std::vector<Monster*> dead;
+            for (auto& m:monsters_)
+                if (m->allied && raisedDead(m->type()) && m->stats().hp>0 &&
+                    std::max(std::abs(m->position().x-me.x),std::abs(m->position().y-me.y))<=6) dead.push_back(m.get());
+            for (auto* d:dead) {
+                const auto at=d->position();
+                for (auto& m:monsters_)
+                    if (!m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-at.x),std::abs(m->position().y-at.y))<=1) {
+                        m->stats().hp-=blast; flashActor(*m); checkAndHandleDeath(*m); }
+                d->stats().hp=0; scheduler_.remove(*d);
+                player_.stats().hp=std::min(player_.stats().maxHp,player_.stats().hp+4);
+            }
+            removeDeadMonsters();
+            log(dead.empty()?"You have no dead here to give their last rites.":"Your dead burst apart, and their last breath is yours.");
+        }
         if (talent.flashFreeze) {
             const auto me=player_.position(); const int r=talent.flashFreeze; int frozen=0;
             for (int dy=-r;dy<=r;++dy) for (int dx=-r;dx<=r;++dx)
@@ -2251,7 +2284,8 @@ void Application::advanceEnemyIntents() {
         player_.statusEffects().apply({StatusEffectType::Evasion,1,10});
     tickSurfaces();
     for (auto& m:monsters_) {
-        if (m->allied && m->remainingLife>0 && --m->remainingLife==0) { m->stats().hp=0; scheduler_.remove(*m); log("A temporary skeleton dissolves."); }
+        const bool held=m->allied && raisedDead(m->type()) && player_.talents().passiveValue(PassiveKind::StandingLegion,player_.stats()); // Standing Legion
+        if (m->allied && m->remainingLife>0 && !held && --m->remainingLife==0) { m->stats().hp=0; scheduler_.remove(*m); log("A temporary skeleton dissolves."); }
         if (m->intent() && m->intent()->playerActionsRemaining>0) --m->intent()->playerActionsRemaining;
         if (m->recoveryActions>0) --m->recoveryActions;
     }
@@ -2896,6 +2930,10 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     decision.target->stats().hp -= damage;
                     if (auto* striker=dynamic_cast<Monster*>(&actor); striker && !striker->allied && decision.target==&player_ && damage>0)
                         striker->harmToPlayer+=damage;
+                    // Death's Due: your raised dead mend on a kill.
+                    if (auto* risen=dynamic_cast<Monster*>(&actor); risen && risen->allied && raisedDead(risen->type()) && decision.target->stats().hp<=0)
+                        if (const int due=player_.talents().passiveValue(PassiveKind::DeathsDue,player_.stats()))
+                            risen->stats().hp=std::min(risen->stats().maxHp,risen->stats().hp+due);
                     // Grave Chill: the blows of your raised dead chill.
                     if (const auto* risen=dynamic_cast<const Monster*>(&actor); risen && risen->allied && raisedDead(risen->type()) && damage>0 &&
                         decision.target->stats().hp>0 && player_.talents().passiveValue(PassiveKind::GraveChill,player_.stats()))
@@ -3147,6 +3185,11 @@ void Application::checkAndHandleDeath(Actor& actor) {
     }
     if (defeated && defeated->allied) {
         scheduler_.remove(actor);
+        if (raisedDead(defeated->type()))
+            if (const int tithe=player_.talents().passiveValue(PassiveKind::BoneTithe,player_.stats())) {
+                player_.stats().hp=std::min(player_.stats().maxHp,player_.stats().hp+tithe);
+                player_.stats().mana=std::min(player_.stats().maxMana,player_.stats().mana+tithe);
+            }
         if (isThornmaw(*defeated)) { thornmawDown_=true; log("Thornmaw falls. It will find you again on the next floor."); }
         else if (packBeast(*defeated)) packLoss();
         // Your slag: a slagling bursts into flame (and with Brittle Slag splits,

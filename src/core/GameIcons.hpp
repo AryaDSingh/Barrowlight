@@ -136,6 +136,8 @@ inline std::string talentIcon(const Talent& talent) {
         {"warbanner.ranks", "impact-point"}, {"warbanner.last", "checked-shield"}, {"warbanner.charge", "charging-bull"},
         {"forgeknight.heat_engine", "campfire"}, {"forgeknight.slam", "meteor-impact"}, {"forgeknight.quench", "big-wave"},
         {"forgeknight.burning_plate", "magic-shield"}, {"forgeknight.overheat", "fire-dash"}, {"forgeknight.anvil", "bordered-shield"},
+        {"gravelord.standing_legion", "tombstone"}, {"gravelord.tithe", "healing"}, {"gravelord.rally", "shouting"},
+        {"gravelord.deaths_due", "skull-slices"}, {"gravelord.shield", "bordered-shield"}, {"gravelord.last_rites", "death-zone"},
         {"wintercaller.flash_freeze", "frozen-orb"}, {"wintercaller.shatterpoint", "shatter"}, {"wintercaller.cold_blood", "snowflake-1"},
         {"wintercaller.glacial_armour", "magic-shield"}, {"wintercaller.rime_tide", "big-wave"}, {"wintercaller.absolute_zero", "ice-spear"},
         {"plaguebringer.patient_zero", "virus"}, {"plaguebringer.contagion", "plague-doctor-profile"}, {"plaguebringer.outbreak", "death-zone"},
@@ -282,6 +284,7 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::WinterMarch: return "footprint";
         case StatusEffectType::Lichfrost: return "tombstone";
         case StatusEffectType::GlacialGuard: return "magic-shield";
+        case StatusEffectType::DeadGuard: return "bordered-shield";
     }
     return "aura";
 }

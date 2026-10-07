@@ -142,6 +142,7 @@ sf::Color buffColor(StatusEffectType type) {
         case StatusEffectType::RimePlate: case StatusEffectType::Hoarfrost: case StatusEffectType::WinterMarch: return sf::Color(160, 200, 240);
         case StatusEffectType::Lichfrost: return sf::Color(150, 170, 220);
         case StatusEffectType::GlacialGuard: return sf::Color(170, 215, 250);
+        case StatusEffectType::DeadGuard: return sf::Color(200, 195, 175);
         default: return kHoly;
     }
 }

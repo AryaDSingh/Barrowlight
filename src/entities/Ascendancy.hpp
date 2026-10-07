@@ -31,7 +31,7 @@ struct AscendancyDefinition {
 
 // Each class chooses among four: its own, the two hybrids it shares with
 // the other classes, and the Paragon.
-inline constexpr std::array<AscendancyDefinition, 11> kAscendancies{{
+inline constexpr std::array<AscendancyDefinition, 12> kAscendancies{{
     {"juggernaut", "Juggernaut", kWarrior, "STR", "An unstoppable frontline fighter who shrugs off control.", "hammer-drop",
      {"juggernaut.unstoppable", "juggernaut.earthshaker", "juggernaut.rampage", "juggernaut.last_stand", "juggernaut.iron_skin",
       "juggernaut.crushing_blows"}},
@@ -61,6 +61,8 @@ inline constexpr std::array<AscendancyDefinition, 11> kAscendancies{{
     // Born of Rimeholt.
     {"wintercaller", "Wintercaller", kWarrior | kMage | kThief, "INT", "A caller of the cold: freeze the water, and shatter what stands on it.", "snowflake-1",
      {"wintercaller.flash_freeze", "wintercaller.shatterpoint", "wintercaller.cold_blood", "wintercaller.glacial_armour", "wintercaller.rime_tide", "wintercaller.absolute_zero"}},
+    {"gravelord", "Gravelord", kWarrior | kMage | kThief, "INT", "A lord of the grave: the dead you raise stand until they fall.", "tombstone",
+     {"gravelord.standing_legion", "gravelord.tithe", "gravelord.rally", "gravelord.deaths_due", "gravelord.shield", "gravelord.last_rites"}},
 }};
 
 inline const AscendancyDefinition* findAscendancy(const std::string& id) {

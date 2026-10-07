@@ -98,7 +98,7 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The third batch (Shadow, Radiance, Shield) and its resonances.
     Dread, Bulwark, Twilight, TemplarsEdge, HallowedGuard,
     // The fourth batch (Bow, Stealth, Daggers) and its resonances.
-    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, BrittleSlag, Pyroclasm, Overcharge, EyeOfTheStorm, Marrow, GrownGuard, BrittleCold, CreepingFrost, Thornborn, BriarSnares, PackTactics, Blooded, Thornmaw, PackOfTwo, RunningMate, GuardianInstinct, Contagion, Outbreak, Miasma, Wasting, Permafrost, BitterCold, GraveChill, Unrotting, Shatterpoint, ColdBlood, GlacialArmour, UnseenHand, AssassinsEdge,
+    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, BrittleSlag, Pyroclasm, Overcharge, EyeOfTheStorm, Marrow, GrownGuard, BrittleCold, CreepingFrost, Thornborn, BriarSnares, PackTactics, Blooded, Thornmaw, PackOfTwo, RunningMate, GuardianInstinct, Contagion, Outbreak, Miasma, Wasting, Permafrost, BitterCold, GraveChill, Unrotting, Shatterpoint, ColdBlood, GlacialArmour, StandingLegion, BoneTithe, DeathsDue, ShieldOfDead, UnseenHand, AssassinsEdge,
     // The fifth batch (Earth, Tide, Venom) and its resonances.
     Aftershock, Tidecaller, Virulence, Mire, FoulWater, EnvenomedBlades,
     // The sixth batch (Spear, Mace, Crossbow) and its resonances.
@@ -279,6 +279,9 @@ struct Talent {
     // floods round you freezes. absoluteZero: every foe on ice in sight.
     bool rimeTide=false, absoluteZero=false;
     int flashFreeze=0;
+    // Gravelord. rallyDead: reach your raised dead return from. lastRites: they burst.
+    bool lastRites=false;
+    int rallyDead=0;
     int drainPercent=0, stayHiddenPercent=0;
     bool huntersMark=false, returnConcealed=false;
     int committedRhythm=-1;

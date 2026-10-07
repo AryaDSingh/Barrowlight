@@ -5218,6 +5218,65 @@ struct ApplicationRewardsTestAccess {
             clear(); app.player_.statusEffects().active().clear(); app.player_.ascendancy.clear();
         }
 
+        // The Gravelord.
+        {
+            setup(PlayerClass::Mage);
+            app.player_.trialKeys=app.player_.trialsCleared=16; app.player_.ascendancyPoints=1;
+            check(!ascendancyQualified(app.player_,"gravelord"),"The Gravelord waits for its colours");
+            giveColour(app.player_,Affinity::Death,6); giveColour(app.player_,Affinity::Dark,6);
+            check(ascendancyQualified(app.player_,"gravelord"),"Death 6 and Dark 6 allow the Gravelord");
+            app.chooseAscendancy("gravelord"); app.ascendancyMenu_=false; app.ascendancyChoice_=false;
+            check(app.player_.ascendancy=="gravelord","You become a Gravelord");
+            app.player_.statusEffects().active().clear(); app.updateFieldOfView();
+            const auto learn=[&](const char* id) { app.player_.talents().learnTalent(findTalentDefinition(id)->ranks[0]); return app.player_.talents().knownTalents().size()-1; };
+            const auto ready=[&] { app.player_.talents().resetCooldowns(); app.player_.stats().mana=app.player_.stats().maxMana; app.currentActor_=&app.player_; };
+            const auto clear=[&] { for (auto& m:app.monsters_) app.scheduler_.remove(*m); app.monsters_.clear(); app.clearSurfaces(); };
+            const auto standing=[&] { int n=0; for (auto& m:app.monsters_) n+=m->allied && raisedDead(m->type()) && m->stats().hp>0; return n; };
+            // Without the legion, the risen fade; with it, they stay.
+            app.raiseFrozenDead(MonsterType::RimeWight,{12,10},2);
+            for (int i=0;i<4;++i) app.advanceEnemyIntents();
+            check(standing()==0,"Without Standing Legion, the risen fade in time");
+            learn("gravelord.standing_legion");
+            app.raiseFrozenDead(MonsterType::RimeWight,{12,10},2);
+            for (int i=0;i<6;++i) app.advanceEnemyIntents();
+            check(standing()==1,"Standing Legion: they no longer fade");
+            for (int i=0;i<7;++i) app.raiseFrozenDead(MonsterType::RimeWight,{3+i,15},5);
+            app.tickStormcall();
+            check(standing()==6,"The legion holds 6, and the oldest past that crumbles");
+            // Shield of the Dead.
+            learn("gravelord.shield");
+            clear();
+            app.raiseFrozenDead(MonsterType::RimeWight,{11,10},5); app.raiseFrozenDead(MonsterType::RimeWight,{9,10},5);
+            app.tickStormcall();
+            check(ascendancyGuardBonus(app.player_)>=3,"Shield of the Dead: with your dead close, hits on you deal 3 less");
+            // Rally the Dead.
+            clear(); app.player_.statusEffects().active().clear();
+            auto* far=app.raiseFrozenDead(MonsterType::RimeWight,{18,10},5);
+            const auto rally=learn("gravelord.rally"); ready(); app.tryUseTalent(rally,app.player_.position());
+            check(std::max(std::abs(far->position().x-10),std::abs(far->position().y-10))<=2,"Rally the Dead: they gather around you");
+            // Bone Tithe.
+            learn("gravelord.tithe");
+            app.player_.stats().hp=50; app.player_.stats().mana=10;
+            far->stats().hp=0; app.checkAndHandleDeath(*far); app.removeDeadMonsters();
+            check(app.player_.stats().hp==55 && app.player_.stats().mana==15,"Bone Tithe: one of your dead falls, and you regain life and mana");
+            // Death's Due.
+            learn("gravelord.deaths_due");
+            auto* risen=app.raiseFrozenDead(MonsterType::RimeWight,{11,10},5);
+            auto f=createMonster(MonsterType::Goblin,{12,10}); auto* prey=f.get(); prey->stats().hp=1; prey->stats().dexterity=0; prey->setXpReward(0);
+            app.scheduler_.add(*prey); app.monsters_.push_back(std::move(f));
+            risen->stats().hp=5;
+            for (int i=0;i<10 && prey->stats().hp>0;++i) app.actMinion(*risen);
+            check(prey->stats().hp<=0 && risen->stats().hp>=13,"Death's Due: a kill mends your raised dead");
+            app.removeDeadMonsters();
+            // Last Rites.
+            auto g=createMonster(MonsterType::Goblin,{12,11}); auto* near=g.get(); near->stats().hp=near->stats().maxHp=90; near->setXpReward(0);
+            app.scheduler_.add(*near); app.monsters_.push_back(std::move(g));
+            app.player_.stats().hp=50;
+            const auto rites=learn("gravelord.last_rites"); ready(); app.tryUseTalent(rites,app.player_.position());
+            check(standing()==0 && near->stats().hp<90 && app.player_.stats().hp>50,"Last Rites: your dead burst, hurting the foes beside them, and you heal");
+            clear(); app.player_.statusEffects().active().clear(); app.player_.ascendancy.clear();
+        }
+
         app.window_.close();
         std::cout << checks << " reward checks, " << failures << " failures.\n";
         return failures ? 1 : 0;

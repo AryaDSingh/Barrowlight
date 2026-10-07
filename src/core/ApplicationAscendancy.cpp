@@ -431,7 +431,7 @@ void Application::renderTrialMenu() {
         const auto status = trialAvailability(trial);
         const bool won = player_.trialsCleared & (1 << i);
         ui_.inset(window_, r, status.empty() ? ui::kUnique : won ? ui::kGood : sf::Color::Transparent);
-        ui_.text(window_, std::to_string(trial) + ".  " + trialName(trial), {r.position.x + 12, r.position.y + 14}, 17,
+        ui_.text(window_, std::to_string(trial) + ".  " + trialName(trial), {r.position.x + 12, r.position.y + 14}, 16,
                  status.empty() ? ui::kUnique : ui::kGold, ui::Font::Title);
         ui_.text(window_, std::string("Guardian: ") + trialGuardian(trial), {r.position.x + 14, r.position.y + 44}, 13, ui::kText, ui::Font::Bold);
         float y = r.position.y + 72;

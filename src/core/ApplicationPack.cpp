@@ -113,6 +113,24 @@ void Application::tickPack() {
     tickContagion();
     tickVampirism();
     tickCold();
+    // Gravelord: the legion holds so many, the oldest fading first; and the dead close by shield you.
+    {
+        if (const int legion = player_.talents().passiveValue(PassiveKind::StandingLegion, player_.stats())) {
+            int held = 0;
+            for (const auto& m : monsters_) held += m->allied && raisedDead(m->type()) && m->remainingLife > 0 && m->stats().hp > 0;
+            for (auto& m : monsters_)
+                if (held > legion && m->allied && raisedDead(m->type()) && m->remainingLife > 0 && m->stats().hp > 0) {
+                    m->stats().hp = 0; scheduler_.remove(*m); --held; log("The oldest of your legion crumbles.");
+                }
+        }
+        if (const int shield = player_.talents().passiveValue(PassiveKind::ShieldOfDead, player_.stats())) {
+            int near = 0;
+            const auto me = player_.position();
+            for (const auto& m : monsters_)
+                near += m->allied && raisedDead(m->type()) && m->stats().hp > 0 && std::max(std::abs(m->position().x - me.x), std::abs(m->position().y - me.y)) <= 2;
+            if (near >= 2) player_.statusEffects().apply({StatusEffectType::DeadGuard, 2, shield});
+        }
+    }
     // Wintercaller: cold blood, and armour of ice while you stand on it.
     {
         const bool onIce = surfaceAt(player_.position()) == SurfaceType::Ice;

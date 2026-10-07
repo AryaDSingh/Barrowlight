@@ -1523,6 +1523,17 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         node("paragon","paragon.resilience",Str,passive("Resilience","Direct hits on you deal 2 less.",PassiveKind::Resilience,2));
         node("paragon","paragon.wellspring",Int,passive("Wellspring","+10% maximum life and maximum mana.",PassiveKind::Wellspring,10));
         // Forgeknight (STR): heat as armour.
+        // Gravelord (Death 6, Dark 6): a standing legion.
+        node("gravelord","gravelord.standing_legion",Int,passive("Standing Legion","Your raised dead no longer fade with time. The legion holds 6; past that, the oldest fades.",PassiveKind::StandingLegion,6));
+        node("gravelord","gravelord.tithe",Int,passive("Bone Tithe","When one of your raised dead falls, you regain 5 life and 5 mana.",PassiveKind::BoneTithe,5));
+        t=Talent{}; t.name="Rally the Dead"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Your raised dead within 8 tiles return to the tiles around you.";
+        t.rallyDead=8; t.manaCost=3; t.cooldownTurns=8; node("gravelord","gravelord.rally",Int,t);
+        node("gravelord","gravelord.deaths_due",Int,passive("Death's Due","When your raised dead kill a foe, they mend 8.",PassiveKind::DeathsDue,8));
+        node("gravelord","gravelord.shield",Int,passive("Shield of the Dead","While 2 or more of your raised dead stand within 2 tiles of you, direct hits on you deal 3 less.",PassiveKind::ShieldOfDead,3));
+        t=Talent{}; t.name="Last Rites"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Your raised dead within 6 tiles burst: each deals 8, and 1 more for every 5 Intelligence, to the foes beside it, and you heal 4 for each.";
+        t.lastRites=true; t.manaCost=8; t.cooldownTurns=16; node("gravelord","gravelord.last_rites",Int,t);
         // Wintercaller (Frost 6, Water 6): command the cold.
         t=Talent{}; t.name="Flash Freeze"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
         t.description="The water within 4 tiles freezes at once, and every foe standing on ice within 4 tiles is frozen in place for a turn. Bosses resist repeated stuns.";
@@ -1637,7 +1648,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 case PassiveKind::FollowThrough: case PassiveKind::Stoneskin: case PassiveKind::HallowedGuard: case PassiveKind::Tidecaller:
                 case PassiveKind::Bulwark: case PassiveKind::FlowingMana: case PassiveKind::BladeWard: case PassiveKind::Transfusion:
                 case PassiveKind::GravePact: case PassiveKind::LongShadow: case PassiveKind::StaticEdge:
-                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered: case PassiveKind::Overcharge: case PassiveKind::Marrow: case PassiveKind::BrittleCold: case PassiveKind::Thornborn: case PassiveKind::PackTactics: case PassiveKind::PackOfTwo: case PassiveKind::Permafrost: case PassiveKind::Unrotting: case PassiveKind::GlacialArmour:
+                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered: case PassiveKind::Overcharge: case PassiveKind::Marrow: case PassiveKind::BrittleCold: case PassiveKind::Thornborn: case PassiveKind::PackTactics: case PassiveKind::PackOfTwo: case PassiveKind::Permafrost: case PassiveKind::Unrotting: case PassiveKind::GlacialArmour: case PassiveKind::ShieldOfDead:
                     return 5;
                 case PassiveKind::BurningPlate:
                     return 10;
