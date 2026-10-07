@@ -56,6 +56,10 @@ enum class MonsterType {
     FrozenThrall,     // slow and tough; shatters into ice that cuts what's beside it
     WinterKing,       // Rimeholt's boss
 };
+// The dead you can raise (Bonewright, Gravecold): Grave Chill and Unrotting are theirs.
+inline bool raisedDead(MonsterType t) {
+    return t == MonsterType::Skeleton || t == MonsterType::SkeletonGuard || t == MonsterType::FrozenThrall || t == MonsterType::RimeWight;
+}
 // Rimeholt's own walk on ice unchilled.
 inline bool rimeNative(MonsterType t) {
     return t == MonsterType::RimeWight || t == MonsterType::IceWraith || t == MonsterType::FrostBear || t == MonsterType::FrozenThrall || t == MonsterType::WinterKing;

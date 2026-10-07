@@ -239,6 +239,9 @@ private:
     void callCourt(Monster& king);
     bool courtCalled_ = false;
     void goOn(); // after the Lich: the run goes on
+    // Gravecold (ApplicationRime.cpp): the frozen dead that rise for you.
+    Monster* raiseFrozenDead(MonsterType kind, Position at, int turns);
+    static bool frozenThrall(const Monster& m) { return m.allied && m.type() == MonsterType::FrozenThrall && !m.remainingLife; }
     void stablePack();      // leaving a floor: your hounds wait to follow you
     void callPackBack();    // arriving: they come to your side
     void packKill();

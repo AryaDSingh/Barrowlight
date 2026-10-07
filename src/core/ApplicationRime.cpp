@@ -66,4 +66,20 @@ void Application::goOn() {
     }
 }
 
+// Gravecold: one of the frozen dead rises to fight for you (turns 0: until it falls).
+Monster* Application::raiseFrozenDead(MonsterType kind, Position at, int turns) {
+    auto made = createMonster(kind, at);
+    const int mind = player_.stats().intelligence;
+    configureMinion(*made, 2, mind);
+    if (kind == MonsterType::FrozenThrall) { made->stats().maxHp = 40 + 2 * mind; made->stats().strength += 4; made->stats().speed = 70; }
+    else { made->stats().maxHp = 24 + mind; made->stats().strength += 2; }
+    made->stats().hp = made->stats().maxHp;
+    made->remainingLife = turns ? turns + 1 : 0;
+    made->lastObservedHp = made->stats().hp;
+    auto* risen = made.get();
+    scheduler_.add(*risen);
+    monsters_.push_back(std::move(made));
+    return risen;
+}
+
 } // namespace engine

@@ -171,8 +171,8 @@ void Application::raiseSlag(MonsterType kind,Position at,int turns,bool shard,in
 }
 int Application::minionCap() const { return std::clamp(1+player_.stats().intelligence/10,1,5); }
 void Application::enforceMinionCap() {
-    int count=0; for (const auto& m:monsters_) if (m->allied && !packBeast(*m) && m->stats().hp>0 && !m->remainingLife) ++count;
-    for (auto& m:monsters_) if (count>minionCap() && m->allied && !packBeast(*m) && m->stats().hp>0 && !m->remainingLife) {
+    int count=0; for (const auto& m:monsters_) if (m->allied && !packBeast(*m) && !frozenThrall(*m) && m->stats().hp>0 && !m->remainingLife) ++count;
+    for (auto& m:monsters_) if (count>minionCap() && m->allied && !packBeast(*m) && !frozenThrall(*m) && m->stats().hp>0 && !m->remainingLife) {
         m->stats().hp=0; scheduler_.remove(*m); --count; log("Your oldest skeleton dissolves: minion cap fell.");
     }
     removeDeadMonsters();
@@ -183,7 +183,7 @@ void Application::dissolveMinions() {
 }
 void Application::summonMinions(const Talent& t) {
     int permanent=0; bool army=false;
-    for (const auto& m:monsters_) if (m->allied && !packBeast(*m) && m->stats().hp>0) { if (m->remainingLife) army=true; else ++permanent; }
+    for (const auto& m:monsters_) if (m->allied && !packBeast(*m) && !frozenThrall(*m) && m->stats().hp>0) { if (m->remainingLife) army=true; else ++permanent; }
     const bool slag=t.summonKind>=0;
     if (t.summonDuration && army && !slag) { log("Your existing army prevents another army. Cast spent."); return; }
     int remaining=t.summonDuration?t.summonCount:std::min(t.summonCount,minionCap()-permanent);

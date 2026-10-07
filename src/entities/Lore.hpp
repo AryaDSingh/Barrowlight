@@ -33,6 +33,8 @@ inline const std::vector<LoreEntry>& loreEntries() {
          {"Beneath the Lich's throne the stone is white with frost, and a cold wind climbs from far below: a road north, to a court the winter kept."}, "Rimeholt"},
         {"wight_oath", "A Rime Wight's frozen oath",
          {"An oath scratched into a shield of black ice: to hold the king's road while the winter lasts. The winter is still lasting."}, "Wintermarch"},
+        {"thrall_binding", "A Frozen Thrall's binding",
+         {"A ring of black iron, frozen into the thrall's chest: whoever wears the other ring, the dead will answer. The other ring is cold on your finger."}, "Gravecold"},
         {"hound_collar", "A braided hound collar",
          {"A collar of braided thorn-bark, worn smooth. Someone kept these hounds once."}, "Packmaster"},
     };

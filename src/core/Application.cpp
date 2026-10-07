@@ -1254,6 +1254,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     const int heldHeat=player_.statusEffects().magnitudeOf(StatusEffectType::Heat);
     // Shatter Lance: twice as hard against a foe standing on ice.
     if (talent.onIceDouble && surfaceAt(cursor)==SurfaceType::Ice) talent.damagePercent*=2;
+    if (talent.coldGrasp) for (auto& m:monsters_) if (!m->allied && m->position().x==cursor.x && m->position().y==cursor.y) m->riseOnDeath=talent.coldGrasp;
     // Vampirism: +25% in darkness, 25% less in light.
     if (player_.statusEffects().has(StatusEffectType::Vampirism) && talent.effectKind==TalentEffectKind::Damage)
         talent.damagePercent=talent.damagePercent*(tileLit(player_.position())?75:125)/100;
@@ -1484,6 +1485,44 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 maw->doubleBite=true; wardenFoe_=foe;
                 log("Thornmaw leaps at ",foe->name(),"!");
             }
+        if (talent.raiseFrozen) {
+            int standing=0;
+            for (auto& m:monsters_) if (frozenThrall(*m) && m->stats().hp>0) { ++standing; m->stats().hp=m->stats().maxHp; }
+            int raised=0;
+            for (int r=1;r<=2 && standing<talent.raiseFrozen;++r)
+                for (int dy=-r;dy<=r && standing<talent.raiseFrozen;++dy) for (int dx=-r;dx<=r && standing<talent.raiseFrozen;++dx) {
+                    const Position p{player_.position().x+dx,player_.position().y+dy};
+                    if (std::max(std::abs(dx),std::abs(dy))!=r || !map_.isWalkable(p.x,p.y) || isOccupied(p,nullptr)) continue;
+                    raiseFrozenDead(MonsterType::FrozenThrall,p,0); ++standing; ++raised;
+                }
+            log(raised?"A Frozen Thrall climbs out of the cold beside you.":"Your thralls mend.");
+        }
+        if (talent.shatterPercent) {
+            const int blast=(10+player_.stats().intelligence/5)*talent.shatterPercent/100;
+            std::vector<Monster*> thralls;
+            for (auto& m:monsters_) if (frozenThrall(*m) && m->stats().hp>0) thralls.push_back(m.get());
+            for (auto* thrall:thralls) {
+                const auto at=thrall->position();
+                for (int dy=-1;dy<=1;++dy) for (int dx=-1;dx<=1;++dx) if (map_.isWalkable(at.x+dx,at.y+dy)) setSurface({at.x+dx,at.y+dy},SurfaceType::Ice,12);
+                for (auto& m:monsters_)
+                    if (!m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-at.x),std::abs(m->position().y-at.y))<=1) {
+                        m->stats().hp-=blast; flashActor(*m); checkAndHandleDeath(*m); }
+                thrall->stats().hp=0; scheduler_.remove(*thrall);
+            }
+            removeDeadMonsters();
+            log(thralls.empty()?"You have no thralls to shatter.":"Your thralls burst into shards of ice!");
+        }
+        if (talent.wintersHost) {
+            int raised=0;
+            for (int r=1;r<=2 && raised<3;++r)
+                for (int dy=-r;dy<=r && raised<3;++dy) for (int dx=-r;dx<=r && raised<3;++dx) {
+                    const Position p{player_.position().x+dx,player_.position().y+dy};
+                    if (std::max(std::abs(dx),std::abs(dy))!=r || !map_.isWalkable(p.x,p.y) || isOccupied(p,nullptr)) continue;
+                    raiseFrozenDead(MonsterType::RimeWight,p,talent.wintersHost); ++raised;
+                }
+            log("The winter's host climbs out of the ice around you.");
+        }
+        if (talent.lichfrost) { player_.statusEffects().apply({StatusEffectType::Lichfrost,talent.lichfrost,1}); log("The cold of the grave settles around you."); }
         if (talent.rimePlate) { player_.statusEffects().apply({StatusEffectType::RimePlate,talent.rimePlate,1}); log("Frost hardens over your armour."); }
         if (talent.hoarfrost) { player_.statusEffects().apply({StatusEffectType::Hoarfrost,talent.hoarfrost,talent.hoarReach}); log("The cold pours off you."); }
         if (talent.winterMarch) { player_.statusEffects().apply({StatusEffectType::WinterMarch,talent.winterMarch,1}); log("Winter marches with you."); }
@@ -2806,6 +2845,9 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                             damage+=two;
                         if (wardenPin_ && decision.target==wardenFoe_) { decision.target->statusEffects().apply({StatusEffectType::Pinned,1,0}); wardenPin_=false; }
                     }
+                    // Unrotting: your raised dead shrug off part of each hit.
+                    if (const auto* risen=dynamic_cast<const Monster*>(decision.target); risen && risen->allied && raisedDead(risen->type()))
+                        if (const int tough=player_.talents().passiveValue(PassiveKind::Unrotting,player_.stats())) damage=std::max(0,damage-tough);
                     // Feral Bond: half of the hit goes to your nearest beast.
                     if (decision.target==&player_ && damage>1 && player_.statusEffects().has(StatusEffectType::FeralBond)) {
                         Monster* beast=nullptr; int best=1000;
@@ -2823,6 +2865,10 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     decision.target->stats().hp -= damage;
                     if (auto* striker=dynamic_cast<Monster*>(&actor); striker && !striker->allied && decision.target==&player_ && damage>0)
                         striker->harmToPlayer+=damage;
+                    // Grave Chill: the blows of your raised dead chill.
+                    if (const auto* risen=dynamic_cast<const Monster*>(&actor); risen && risen->allied && raisedDead(risen->type()) && damage>0 &&
+                        decision.target->stats().hp>0 && player_.talents().passiveValue(PassiveKind::GraveChill,player_.stats()))
+                        decision.target->statusEffects().apply({StatusEffectType::Chill,2,30});
                     if (auto* hound=dynamic_cast<Monster*>(&actor); hound && packBeast(*hound) && decision.target!=&player_ && damage>0) {
                         if (player_.statusEffects().has(StatusEffectType::AlphasHowl)) decision.target->statusEffects().apply({StatusEffectType::Bleed,3,3});
                         if (player_.statusEffects().magnitudeOf(StatusEffectType::FeralBond)>=2)
@@ -3032,6 +3078,24 @@ void Application::checkAndHandleDeath(Actor& actor) {
         log(defeated->name()," falls. It won't follow you again.");
         spillLoot(ItemRarity::Rare,1,defeated->position());
         player_.nemesis={};
+    }
+    // Gravecold: Cold Grasp's mark, or Lichfrost near you, and the dead rise for you.
+    if (defeated && !defeated->allied && defeated!=boss_ && !trialGuardianChampion(defeated->eventChampion)) {
+        const auto at=defeated->position();
+        const bool nearYou=std::max(std::abs(at.x-player_.position().x),std::abs(at.y-player_.position().y))<=4;
+        const int turns=defeated->riseOnDeath ? defeated->riseOnDeath
+                       : nearYou && player_.statusEffects().has(StatusEffectType::Lichfrost) ? 8 : 0;
+        if (turns) {
+            defeated->riseOnDeath=0;
+            // It rises where it fell, once the body is gone; beside it if the tile is taken.
+            Position spot{-1,-1};
+            for (int r=0;r<=2 && spot.x<0;++r)
+                for (int dy=-r;dy<=r && spot.x<0;++dy) for (int dx=-r;dx<=r && spot.x<0;++dx) {
+                    const Position p{at.x+dx,at.y+dy};
+                    if (std::max(std::abs(dx),std::abs(dy))==r && map_.isWalkable(p.x,p.y) && !isOccupied(p,defeated)) spot=p;
+                }
+            if (spot.x>=0) { raiseFrozenDead(MonsterType::RimeWight,spot,turns); if (visibleTile(spot)) log(defeated->name()," rises again, cold and yours."); }
+        }
     }
     // Call of the Wild: every foe that falls heals you and Thornmaw.
     if (defeated && !defeated->allied && player_.statusEffects().has(StatusEffectType::CallOfTheWild)) {

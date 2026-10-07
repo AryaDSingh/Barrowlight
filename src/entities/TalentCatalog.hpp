@@ -19,7 +19,7 @@ struct TreeDefinition {
     const char* description;
     const char* starterItem;
 };
-inline constexpr std::array<TreeDefinition, 46> kTalentTrees{{
+inline constexpr std::array<TreeDefinition, 47> kTalentTrees{{
     {"one_handed", "One-Handed", TalentTree::OneHanded, "Efficient strikes, defensive openings and finishing blows.", "iron_sword"},
     {"two_handed", "Two-Handed", TalentTree::TwoHanded, "Heavy swings, surrounding enemies and blood-fuelled attacks.", "greatsword"},
     {"shield", "Shield", TalentTree::Shield, "Block damage, interrupt attacks and control space.", "wooden_shield"},
@@ -66,6 +66,7 @@ inline constexpr std::array<TreeDefinition, 46> kTalentTrees{{
     {"briarheart", "Briarheart", TalentTree::Briarheart, "A deep tree: thorns that grow from your traps and your blood.", ""},
     {"packmaster", "Packmaster", TalentTree::Packmaster, "A deep tree: hounds bound to you, that follow you down and grow with every kill.", ""},
     {"wintermarch", "Wintermarch", TalentTree::Wintermarch, "A deep tree: an armoured winter. Slow everything near you to a crawl.", ""},
+    {"gravecold", "Gravecold", TalentTree::Gravecold, "A deep tree: the frozen dead rise for you, and do not rot.", ""},
 }};
 inline const TreeDefinition* findTree(const std::string& id) {
     for (const auto& t : kTalentTrees) if (id == t.id) return &t;
@@ -161,6 +162,11 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "stealth.vanish") { longer(); d.mastery = "Hide for four responses."; }
     if (id == "stealth.smoke_bomb") { m.cooldownTurns -= 4; d.mastery = "Ready again four turns sooner."; }
     if (id == "stealth.feign") { m.restoreHpPercent = 10; d.mastery = "You also recover 10% of your life."; }
+    if (id == "gravecold.raise") { m.raiseFrozen = 2; d.mastery = "Two thralls."; }
+    if (id == "gravecold.grasp") { m.coldGrasp = 16; d.mastery = "The risen stay 16 turns."; }
+    if (id == "gravecold.shatter") { m.shatterPercent = 150; d.mastery = "Each thrall's burst deals half again as much."; }
+    if (id == "gravecold.host") { m.wintersHost = 14; d.mastery = "They stay 14 turns."; }
+    if (id == "gravecold.lichfrost") { m.lichfrost = 12; d.mastery = "Lasts 12 turns."; }
     if (id == "wintermarch.plate") { m.rimePlate = 8; if (m.selfBuffEffect) m.selfBuffEffect->turnsRemaining = 8; d.mastery = "Lasts 8 turns."; }
     if (id == "wintermarch.advance") { m.moveDistance += 1; d.mastery = "Step up to 3 tiles."; }
     if (id == "wintermarch.hoarfrost") { m.hoarReach = 2; d.mastery = "Reaches 2 tiles."; }
@@ -411,6 +417,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             if (tree >= 39 && tree <= 42) t.scalingStat=ScalingStat::Intelligence;
             if (tree == 43 || tree == 44) t.scalingStat=ScalingStat::Dexterity;
             if (tree == 45) t.scalingStat=ScalingStat::Strength;
+            if (tree == 46) t.scalingStat=ScalingStat::Intelligence;
             if (tree == 33) t.weaponRequirement=WeaponRequirement::Spear;
             if (tree == 34) t.weaponRequirement=WeaponRequirement::OneHanded;
             if (tree == 10) t.armourRequirement=ArmourRequirement::Cloth;
@@ -1165,6 +1172,30 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t=attack("Avalanche","Ice crashes down on a 3 by 3 patch in sight: heavy damage, the ground freezes, and those it hits are stunned for a turn. Bosses resist repeated stuns.",14,9,14,true,1);
         t.projectile=false; t.rime=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Stun,1,0}; add(45,"wintermarch.avalanche",3,t);
         shape("wintermarch.avalanche",3,"capstone",{});
+        // Gravecold (INT), Rimeholt's second deep tree: Death 10, Frost 6, level 24, and a Frozen Thrall's binding.
+        t=Talent{}; t.name="Raise the Frozen"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="A Frozen Thrall climbs out of the cold beside you and stays until it falls; it doesn't count against your skeletons. Raise it again while it stands and it mends.";
+        t.raiseFrozen=1; t.manaCost=8; t.cooldownTurns=12; add(46,"gravecold.raise",0,t);
+        shape("gravecold.raise",3,"",{});
+        t=attack("Cold Grasp","A grave-cold hand closes on a foe in sight and chills it. If it dies, it rises as a Rime Wight that fights for you for 10 turns.",8,5,5,true);
+        t.projectile=false; t.coldGrasp=10; t.onHitEffect=StatusEffectInstance{StatusEffectType::Chill,2,30}; add(46,"gravecold.grasp",1,t);
+        shape("gravecold.grasp",3,"path",{"gravecold.raise"});
+        t=Talent{}; t.name="Shatter"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Your Frozen Thralls burst: each deals 10, and 1 more for every 5 Intelligence, to the foes in the 8 tiles around it, and leaves ice. Their shards never cut you.";
+        t.shatterPercent=100; t.manaCost=6; t.cooldownTurns=10; add(46,"gravecold.shatter",1,t);
+        shape("gravecold.shatter",3,"path",{"gravecold.raise"});
+        add(46,"gravecold.chill",2,passive("Grave Chill","The hits of your raised dead chill.",PassiveKind::GraveChill,1));
+        shape("gravecold.chill",1,"",{"gravecold.grasp"});
+        add(46,"gravecold.unrotting",2,passive("Unrotting","Your raised dead take 3 less from each hit.",PassiveKind::Unrotting,3));
+        shape("gravecold.unrotting",1,"",{"gravecold.shatter"});
+        t=Talent{}; t.name="Winter's Host"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Three Rime Wights climb out of the ice around you and fight for you for 10 turns.";
+        t.wintersHost=10; t.manaCost=12; t.cooldownTurns=20; add(46,"gravecold.host",3,t);
+        shape("gravecold.host",3,"capstone",{});
+        t=Talent{}; t.name="Lichfrost"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="For 8 turns, every foe that dies within 4 tiles of you rises as a Rime Wight that fights for you for 8 turns.";
+        t.lichfrost=8; t.manaCost=10; t.cooldownTurns=18; add(46,"gravecold.lichfrost",3,t);
+        shape("gravecold.lichfrost",3,"capstone",{});
         // Mace (STR, one hand): guards and bones.
         t=attack("Crush","A heavy blow that sunders: the target takes +2 damage from every hit for four enemy turns.",6,2,4);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Sundered,4,2}; add(24,"mace.crush",0,t);
@@ -1561,6 +1592,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="stonefist")
                 d.affinity=(d.id=="stonefist.tremor" || d.id=="stonefist.granite" || d.id=="stonefist.rockhide")?Affinity::Earth:Affinity::Motion;
             else if (d.treeId=="tempest") d.affinity=Affinity::Storm;
+            else if (d.treeId=="gravecold") d.affinity=(d.id=="gravecold.shatter" || d.id=="gravecold.unrotting" || d.id=="gravecold.lichfrost")?Affinity::Frost:Affinity::Death;
             else if (d.treeId=="wintermarch") d.affinity=(d.id=="wintermarch.hoarfrost" || d.id=="wintermarch.bitter" || d.id=="wintermarch.avalanche")?Affinity::Frost:Affinity::Guard;
             else if (d.treeId=="packmaster") d.affinity=(d.id=="packmaster.bond" || d.id=="packmaster.blooded" || d.id=="packmaster.feral")?Affinity::Blood:Affinity::Hunt;
             else if (d.treeId=="briarheart") d.affinity=(d.id=="briarheart.lash" || d.id=="briarheart.thornborn" || d.id=="briarheart.heart")?Affinity::Hunt:Affinity::Rot;
@@ -1592,7 +1624,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 case PassiveKind::FollowThrough: case PassiveKind::Stoneskin: case PassiveKind::HallowedGuard: case PassiveKind::Tidecaller:
                 case PassiveKind::Bulwark: case PassiveKind::FlowingMana: case PassiveKind::BladeWard: case PassiveKind::Transfusion:
                 case PassiveKind::GravePact: case PassiveKind::LongShadow: case PassiveKind::StaticEdge:
-                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered: case PassiveKind::Overcharge: case PassiveKind::Marrow: case PassiveKind::BrittleCold: case PassiveKind::Thornborn: case PassiveKind::PackTactics: case PassiveKind::PackOfTwo: case PassiveKind::Permafrost:
+                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered: case PassiveKind::Overcharge: case PassiveKind::Marrow: case PassiveKind::BrittleCold: case PassiveKind::Thornborn: case PassiveKind::PackTactics: case PassiveKind::PackOfTwo: case PassiveKind::Permafrost: case PassiveKind::Unrotting:
                     return 5;
                 case PassiveKind::BurningPlate:
                     return 10;

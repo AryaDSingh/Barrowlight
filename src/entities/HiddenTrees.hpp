@@ -88,6 +88,7 @@ struct DeepGate { std::vector<std::pair<Affinity,int>> needs; int level; const c
 inline std::optional<DeepGate> deepGate(const std::string& id) {
     if (id=="warbanner") return DeepGate{{{Affinity::Steel,8},{Affinity::Guard,6}},10,"warlord_standard","the Warlord's Standard"};
     if (id=="forgeborn") return DeepGate{{{Affinity::Steel,8},{Affinity::Flame,6}},10,"forgemaster_brand","the Forgemaster's Brand"};
+    if (id=="gravecold") return DeepGate{{{Affinity::Death,10},{Affinity::Frost,6}},24,"thrall_binding","a Frozen Thrall's binding"};
     if (id=="wintermarch") return DeepGate{{{Affinity::Frost,10},{Affinity::Guard,6}},22,"wight_oath","a Rime Wight's frozen oath"};
     if (id=="packmaster") return DeepGate{{{Affinity::Hunt,8},{Affinity::Blood,4}},14,"hound_collar","a braided hound collar"};
     if (id=="briarheart") return DeepGate{{{Affinity::Rot,8},{Affinity::Hunt,6}},14,"witch_seed","a Rot Witch's seed"};

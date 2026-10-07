@@ -38,6 +38,7 @@ public:
     int eggTimer=0;         // Brood Spider: turns until it lays; Egg Sac: turns until it hatches
     bool doubleBite=false;  // transient: Thornmaw's next bite on the foe you pointed at doubles
     int harmToPlayer=0;     // transient: damage it has done to you on this floor (a nemesis in the making)
+    int riseOnDeath=0;      // transient: Cold Grasp's mark; slain, it rises for you for this many turns
     EnemyTactics tactics;
     bool allied=false;
     int summonRank=1, summonIntelligence=0, remainingLife=0; // 0 permanent; positive temporary

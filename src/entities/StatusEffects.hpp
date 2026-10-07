@@ -46,6 +46,7 @@ enum class StatusEffectType {
     RimePlate,       // foes that strike you in melee are chilled (Wintermarch)
     Hoarfrost,       // the foes around you are chilled each turn; magnitude is the reach (Wintermarch)
     WinterMarch,     // foes within 3 tiles crawl; hits on you deal less (Wintermarch)
+    Lichfrost,       // the foes that die near you rise for you (Gravecold)
 };
 
 struct StatusEffectInstance {
@@ -158,6 +159,7 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::RimePlate: return "Rime Plate";
     case StatusEffectType::Hoarfrost: return "Hoarfrost";
     case StatusEffectType::WinterMarch: return "Winter's March";
+    case StatusEffectType::Lichfrost: return "Lichfrost";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

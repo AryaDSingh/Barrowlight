@@ -49,7 +49,8 @@ namespace {
 constexpr int kSaveFormatVersion = 47;
 // The creatures that can fight for you: skeletons, the bone guardian, slag, hounds.
 bool alliedKind(MonsterType t) {
-    return t==MonsterType::Skeleton || t==MonsterType::SkeletonGuard || t==MonsterType::Slagling || t==MonsterType::SlagGolem || t==MonsterType::BriarHound;
+    return t==MonsterType::Skeleton || t==MonsterType::SkeletonGuard || t==MonsterType::Slagling || t==MonsterType::SlagGolem || t==MonsterType::BriarHound ||
+           t==MonsterType::FrozenThrall || t==MonsterType::RimeWight;
 }
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
@@ -349,7 +350,7 @@ bool readStatusEffects(std::istream& in, std::vector<StatusEffectInstance>& effe
         if (!(in >> type >> turnsRemaining >> magnitude)) {
             return false;
         }
-        if (type<0 || type>static_cast<int>(StatusEffectType::WinterMarch) || turnsRemaining<1 || turnsRemaining>10000 || magnitude<0 || magnitude>10000) return false;
+        if (type<0 || type>static_cast<int>(StatusEffectType::Lichfrost) || turnsRemaining<1 || turnsRemaining>10000 || magnitude<0 || magnitude>10000) return false;
         if (type==static_cast<int>(StatusEffectType::Marked) && magnitude!=1) return false;
         effects.push_back(
             StatusEffectInstance{static_cast<StatusEffectType>(type), turnsRemaining, magnitude});

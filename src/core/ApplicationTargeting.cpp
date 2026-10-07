@@ -136,6 +136,7 @@ std::string statusTooltip(const StatusEffectInstance& e) {
     case StatusEffectType::RimePlate: return "Foes that strike you in melee are chilled.";
     case StatusEffectType::Hoarfrost: return "Foes within "+n+" tile"+(e.magnitude==1?"":"s")+" of you are chilled each turn.";
     case StatusEffectType::WinterMarch: return "Foes within 3 tiles are slowed by half, and hits on you deal 3 less.";
+    case StatusEffectType::Lichfrost: return "Every foe that dies within 4 tiles of you rises as a Rime Wight that fights for you.";
     case StatusEffectType::Vampirism: return "You see in the dark up to 6 tiles away. In darkness your hits deal +25%; in light, 25% less. Your melee hits heal you a fifth of the damage they deal. Light burns you 1 a turn, your own torch too; blood pools heal you 2 a turn, and water hurts you 2.";
     case StatusEffectType::Heat: return "Heat "+n+". It builds near furnaces and fire and fades away from them; water quenches it. At 10 or more it burns you for 2 a turn.";
     case StatusEffectType::Shock: return "Enables Lightning follow-ups. Certain talents consume Shock for an additional effect.";

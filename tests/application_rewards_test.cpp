@@ -2472,6 +2472,75 @@ struct ApplicationRewardsTestAccess {
                 clearFoes(); app.player_.statusEffects().active().clear();
             }
 
+            // Gravecold: Rimeholt's second deep tree, from the first Frozen Thrall's binding.
+            arena(PlayerClass::Mage);
+            {
+                auto made=createMonster(MonsterType::FrozenThrall,{15,10}); auto* thrall=made.get();
+                app.scheduler_.add(*thrall); app.monsters_.push_back(std::move(made));
+                thrall->stats().hp=0; app.checkAndHandleDeath(*thrall); app.removeDeadMonsters();
+                check(app.loreDrops_.size()==1 && app.loreDrops_[0].id=="thrall_binding","The first Frozen Thrall slain drops its binding");
+                app.player_.setPosition(app.loreDrops_[0].at); app.pickupItem(); app.player_.setPosition({10,10});
+                check(deepTreeKnown(app.player_,"gravecold"),"The binding reveals Gravecold");
+                giveColour(app.player_,Affinity::Death,10); giveColour(app.player_,Affinity::Frost,6); app.player_.level()=24; app.player_.treePoints()=1;
+                check(purchaseTree(app.player_,PlayerClass::Mage,*findTree("gravecold")),"With Death 10, Frost 6 and level 24 Gravecold opens");
+                clearFoes();
+                const auto risen=[&](MonsterType t,bool lasting) { int n=0; for (auto& m:app.monsters_) n+=m->allied && m->type()==t && m->stats().hp>0 && (lasting ? !m->remainingLife : m->remainingLife>0); return n; };
+                // Raise the Frozen.
+                const auto raise=ranked("gravecold.raise",1);
+                cast(raise,app.player_.position());
+                Monster* mine=nullptr; for (auto& m:app.monsters_) if (app.frozenThrall(*m)) mine=m.get();
+                check(risen(MonsterType::FrozenThrall,true)==1 && mine,"Raise the Frozen: a thrall rises beside you and stays");
+                if (mine) {
+                    mine->stats().hp=3; cast(raise,app.player_.position());
+                    check(risen(MonsterType::FrozenThrall,true)==1 && mine->stats().hp==mine->stats().maxHp,"Raising again mends it, and calls no second");
+                    app.enforceMinionCap();
+                    check(risen(MonsterType::FrozenThrall,true)==1,"Your thrall doesn't count against your skeletons");
+                }
+                // Cold Grasp: the foe it kills rises for you.
+                auto* doomed=foe({14,12}); doomed->stats().hp=1;
+                cast(ranked("gravecold.grasp",1),{14,12});
+                app.removeDeadMonsters();
+                check(risen(MonsterType::RimeWight,false)==1,"Cold Grasp: the foe it kills rises as your Rime Wight, for a while");
+                // Grave Chill: your risen chill what they hit.
+                ranked("gravecold.chill",1);
+                Monster* wight=nullptr; for (auto& m:app.monsters_) if (m->allied && m->type()==MonsterType::RimeWight) wight=m.get();
+                if (wight) {
+                    auto* target=foe({wight->position().x+1,wight->position().y}); target->stats().hp=target->stats().maxHp=300;
+                    for (int i=0;i<10 && target->stats().hp==300;++i) app.actMinion(*wight);
+                    check(target->stats().hp<300 && target->statusEffects().has(StatusEffectType::Chill),"Grave Chill: the blows of your raised dead chill");
+                    target->stats().hp=0; app.scheduler_.remove(*target); app.removeDeadMonsters();
+                }
+                // Unrotting.
+                ranked("gravecold.unrotting",1);
+                if (mine) {
+                    auto* gnaw=foe({mine->position().x+1,mine->position().y}); gnaw->stats().strength=0;
+                    mine->stats().hp=mine->stats().maxHp;
+                    AIDecision bite; bite.type=AIActionType::Attack; bite.target=mine; bite.attackPower=2;
+                    for (int i=0;i<5;++i) app.executeAIDecision(*gnaw,bite,0);
+                    check(mine->stats().hp==mine->stats().maxHp,"Unrotting: small blows don't wound your raised dead");
+                    gnaw->stats().hp=0; app.scheduler_.remove(*gnaw); app.removeDeadMonsters();
+                }
+                // Shatter: your thralls burst, and never cut you.
+                if (mine) {
+                    const auto at=mine->position();
+                    auto* beside=foe({at.x+1,at.y+1}); const int life=app.player_.stats().hp;
+                    cast(ranked("gravecold.shatter",1),app.player_.position());
+                    check(beside->stats().hp<90 && risen(MonsterType::FrozenThrall,true)==0 && app.surfaceAt(at)==SurfaceType::Ice && app.player_.stats().hp>=life,
+                          "Shatter: your thralls burst into ice that cuts your foes, never you");
+                }
+                clearFoes();
+                // Winter's Host.
+                cast(ranked("gravecold.host",1),app.player_.position());
+                check(risen(MonsterType::RimeWight,false)==3,"Winter's Host: three Rime Wights rise around you, for a while");
+                clearFoes();
+                // Lichfrost.
+                cast(ranked("gravecold.lichfrost",1),app.player_.position());
+                auto* near=foe({13,10});
+                near->stats().hp=0; app.checkAndHandleDeath(*near); app.removeDeadMonsters();
+                check(risen(MonsterType::RimeWight,false)==1,"Lichfrost: a foe that dies near you rises for you");
+                clearFoes(); app.player_.statusEffects().active().clear();
+            }
+
             // Daggers.
             arena(PlayerClass::Thief);
             {
