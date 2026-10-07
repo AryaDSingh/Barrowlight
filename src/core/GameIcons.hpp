@@ -136,6 +136,8 @@ inline std::string talentIcon(const Talent& talent) {
         {"warbanner.ranks", "impact-point"}, {"warbanner.last", "checked-shield"}, {"warbanner.charge", "charging-bull"},
         {"forgeknight.heat_engine", "campfire"}, {"forgeknight.slam", "meteor-impact"}, {"forgeknight.quench", "big-wave"},
         {"forgeknight.burning_plate", "magic-shield"}, {"forgeknight.overheat", "fire-dash"}, {"forgeknight.anvil", "bordered-shield"},
+        {"beastwarden.thornmaw", "wolverine-claws"}, {"beastwarden.point", "target-arrows"}, {"beastwarden.pack_of_two", "crossed-swords"},
+        {"beastwarden.running_mate", "run"}, {"beastwarden.guardian", "shield-reflect"}, {"beastwarden.call_wild", "shouting"},
         {"packmaster.call", "wolverine-claws"}, {"packmaster.sic", "target-arrows"}, {"packmaster.bond", "cut-palm"}, {"packmaster.tactics", "crossed-swords"},
         {"packmaster.blooded", "bloody-sword"}, {"packmaster.howl", "shouting"}, {"packmaster.feral", "linked-rings"},
         {"briarheart.seed", "tree-branch"}, {"briarheart.lash", "barbed-coil"}, {"briarheart.blood", "cut-palm"}, {"briarheart.thornborn", "spiked-fence"},
@@ -265,6 +267,7 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::BriarHeart: return "bleeding-heart";
         case StatusEffectType::AlphasHowl: return "shouting";
         case StatusEffectType::FeralBond: return "linked-rings";
+        case StatusEffectType::CallOfTheWild: return "run";
     }
     return "aura";
 }

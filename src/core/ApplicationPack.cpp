@@ -37,18 +37,54 @@ void Application::refreshPack() {
     for (auto& m : monsters_) {
         if (!packBeast(*m) || m->stats().hp <= 0) continue;
         auto& s = m->stats();
-        const int maxHp = 24 + 4 * player_.level() + 3 * blood;
+        const bool maw = isThornmaw(*m); // Thornmaw grows with your level
+        const int maxHp = (maw ? 30 + 8 * player_.level() : 24 + 4 * player_.level()) + 3 * blood;
         if (maxHp > s.maxHp) s.hp += maxHp - s.maxHp;
         s.maxHp = maxHp; s.hp = std::min(s.hp, s.maxHp);
-        s.strength = 6 + player_.stats().dexterity / 5 + blood;
+        s.strength = (maw ? 6 + player_.level() / 2 : 6 + player_.stats().dexterity / 5) + blood;
         s.dexterity = 14; s.speed = 125;
-        if (m->name() != "Your Hound") m->setName("Your Hound"); // a reloaded hound keeps its name
+        const char* name = maw ? "Thornmaw" : "Your Hound";
+        if (m->name() != name) m->setName(name); // a reloaded hound keeps its name
     }
 }
 
 // Each of your turns: your quarry, if it's gone, is forgotten; Alpha's Howl
 // drives your beasts and shakes the foes beside you.
+Monster* Application::thornmaw() {
+    for (auto& m : monsters_) if (isThornmaw(*m) && m->stats().hp > 0) return m.get();
+    return nullptr;
+}
+
+// Thornmaw comes to your side (Beastwarden).
+void Application::spawnThornmaw() {
+    const auto me = player_.position();
+    for (int r = 1; r <= 3; ++r)
+        for (int dy = -r; dy <= r; ++dy)
+            for (int dx = -r; dx <= r; ++dx) {
+                const Position p{me.x + dx, me.y + dy};
+                if (std::max(std::abs(dx), std::abs(dy)) != r || !map_.isWalkable(p.x, p.y) || isOccupied(p, nullptr)) continue;
+                auto made = createMonster(MonsterType::BriarHound, p);
+                configureMinion(*made, 3, 0);
+                made->setName("Thornmaw");
+                auto* maw = made.get();
+                scheduler_.add(*maw);
+                monsters_.push_back(std::move(made));
+                refreshPack();
+                maw->stats().hp = maw->stats().maxHp; maw->lastObservedHp = maw->stats().hp;
+                return;
+            }
+}
+
 void Application::tickPack() {
+    if (wardenFoe_ && std::none_of(monsters_.begin(), monsters_.end(), [&](const auto& m) { return m.get() == wardenFoe_ && m->stats().hp > 0; }))
+        wardenFoe_ = nullptr, wardenPin_ = false;
+    // Thornmaw walks with you, unless it fell on this floor.
+    if (mode_ == GameMode::Playing && !thornmawDown_ && !thornmaw() && player_.talents().passiveValue(PassiveKind::Thornmaw, player_.stats()))
+        spawnThornmaw();
+    if (player_.statusEffects().has(StatusEffectType::CallOfTheWild)) {
+        player_.statusEffects().apply({StatusEffectType::Hasted, 2, 30});
+        if (auto* maw = thornmaw()) maw->statusEffects().apply({StatusEffectType::Hasted, 2, 30});
+    }
     if (quarry_ && std::none_of(monsters_.begin(), monsters_.end(), [&](const auto& m) { return m.get() == quarry_ && m->stats().hp > 0; }))
         quarry_ = nullptr, quarryPin_ = false;
     refreshPack();
@@ -66,11 +102,12 @@ void Application::tickPack() {
 // Leaving a floor: your living hounds wait to follow you down.
 void Application::stablePack() {
     for (const auto& m : monsters_)
-        if (packBeast(*m) && m->stats().hp > 0 && player_.packHp.size() < 2) player_.packHp.push_back(m->stats().hp);
+        if (packBeast(*m) && !isThornmaw(*m) && m->stats().hp > 0 && player_.packHp.size() < 2) player_.packHp.push_back(m->stats().hp);
 }
 
 // Arriving on a floor: they come to your side.
 void Application::callPackBack() {
+    thornmawDown_ = false; // a new floor: Thornmaw finds you again
     if (player_.packHp.empty()) return;
     const auto waiting = std::move(player_.packHp);
     player_.packHp.clear();

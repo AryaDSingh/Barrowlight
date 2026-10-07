@@ -52,6 +52,10 @@ void Application::onBossDefeated(const Monster& boss) {
         log("Its stairs lead back to town.");
     } else if (boss.type() == MonsterType::HollowMother) {
         log("The Hollow Mother curls up and is still, and the thorns begin to wither.");
+        if (!(player_.trialKeys & (1 << (kHollowTrial - 1)))) {
+            player_.trialKeys |= 1 << (kHollowTrial - 1);
+            log("She drops the ", trialSigil(kHollowTrial), "! It opens the ", trialName(kHollowTrial), " at the obelisk in town.");
+        }
         grantUnique(boss.position());
         log("Its stairs lead back to town.");
     } else if (boss.type() == MonsterType::TheSleeper) {
@@ -84,7 +88,8 @@ std::string Application::trialAvailability(int trial) const {
     if (player_.trialsCleared & bit) return "Won.";
     if (!(player_.trialKeys & bit))
         return std::string("Sealed: needs the ") + trialSigil(trial) +
-               (trial == 1 ? ", carried by the Goblin Warlord." : trial == 3 ? ", carried by the Forgemaster." : ", carried by the Lich.");
+               (trial == 1 ? ", carried by the Goblin Warlord." : trial == 3 ? ", carried by the Forgemaster." :
+                trial == 4 ? ", carried by the Hollow Mother." : ", carried by the Lich.");
     if (trial == 2 && !(player_.trialsCleared & 1)) return std::string("Win the ") + trialName(1) + " first.";
     return {};
 }
@@ -132,10 +137,10 @@ bool Application::enterTrial(int trial) {
 
     boss_ = nullptr;
     monsters_.clear();
-    const bool stone = trial == 1, forge = trial == kForgeTrial;
-    auto guardian = createMonster(forge ? MonsterType::Forgemaster : stone ? MonsterType::GoblinWarlord : MonsterType::Lich, {cx, 3});
+    const bool stone = trial == 1, forge = trial == kForgeTrial, hollow = trial == kHollowTrial;
+    auto guardian = createMonster(hollow ? MonsterType::HollowMother : forge ? MonsterType::Forgemaster : stone ? MonsterType::GoblinWarlord : MonsterType::Lich, {cx, 3});
     scaleDungeonMonster(*guardian, currentFloor_);
-    guardian->eventChampion = forge ? kChampionAnvilBorn : stone ? kChampionStoneWarden : kChampionFallenSaint;
+    guardian->eventChampion = hollow ? kChampionThornQueen : forge ? kChampionAnvilBorn : stone ? kChampionStoneWarden : kChampionFallenSaint;
     guardian->setName(championName(guardian->eventChampion));
     guardian->stats().maxHp = guardian->stats().maxHp * (stone ? 3 : 4) / 2;
     guardian->stats().hp = guardian->stats().maxHp;
@@ -149,7 +154,12 @@ bool Application::enterTrial(int trial) {
         for (auto& p : props) if (p.kind == PropKind::Brazier || p.kind == PropKind::ColdBrazier) p.kind = PropKind::Furnace;
         setProps(props);
     }
-    forgeSummoned_ = false;
+    forgeSummoned_ = false; broodCalled_ = false; thornmawDown_ = false;
+    if (hollow) // the Hollow's arena is overgrown: brambles between the pillars
+        for (const Position p : {Position{cx - 5, cy}, Position{cx + 5, cy}, Position{cx - 3, cy - 3}, Position{cx + 3, cy - 3}, Position{cx, cy + 2}})
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx)
+                    if ((dx + dy) % 2 == 0 && map_.isWalkable(p.x + dx, p.y + dy)) setSurface({p.x + dx, p.y + dy}, SurfaceType::Thorns, 0);
 
     exploredMap_ = ExploredMap(map_);
     scheduler_ = TurnScheduler{};
@@ -290,9 +300,9 @@ void Application::renderAscendancyChoice() {
         const bool selected = i == ascendancyChoiceSelection_, open = ascendancyQualified(player_, a.id);
         ui_.inset(window_, r, selected ? ui::kUnique : hovered(r) ? ui::kBronze : sf::Color::Transparent);
         const sf::Color tone = open ? (selected ? ui::kUnique : ui::kGold) : sf::Color(110, 104, 96);
-        ui_.icon(window_, a.icon, {{r.position.x + 10, r.position.y + 9}, {38, 38}}, open ? ui::kText : sf::Color(80, 76, 72));
-        ui_.text(window_, std::to_string(i + 1) + ".  " + a.name, {r.position.x + 58, r.position.y + 6}, 20, tone, ui::Font::Title);
-        ui_.text(window_, ascendancyNeedText(player_, a.id), {r.position.x + 60, r.position.y + 33}, 13, open ? ui::kGood : ui::kMuted, ui::Font::Bold);
+        ui_.icon(window_, a.icon, {{r.position.x + 9, r.position.y + 7}, {32, 32}}, open ? ui::kText : sf::Color(80, 76, 72));
+        ui_.text(window_, std::to_string(i + 1) + ".  " + a.name, {r.position.x + 52, r.position.y + 3}, 18, tone, ui::Font::Title);
+        ui_.text(window_, ascendancyNeedText(player_, a.id), {r.position.x + 54, r.position.y + 27}, 12, open ? ui::kGood : ui::kMuted, ui::Font::Bold);
     }
     const auto& chosen = kAscendancies[std::min(ascendancyChoiceSelection_, kAscendancies.size() - 1)];
     const bool open = ascendancyQualified(player_, chosen.id);
@@ -369,6 +379,7 @@ void Application::handleTrialMenuKey(sf::Keyboard::Key key) {
     if (key == sf::Keyboard::Key::Num1) enterTrial(1);
     if (key == sf::Keyboard::Key::Num2) enterTrial(2);
     if (key == sf::Keyboard::Key::Num3) enterTrial(3);
+    if (key == sf::Keyboard::Key::Num4) enterTrial(4);
 }
 
 void Application::handleTrialMenuMouse(const sf::Event& event) {
@@ -393,28 +404,29 @@ void Application::renderTrialMenu() {
     ui_.textCentered(window_, std::string("Sigils from the great bosses open its trials. Win them to ascend") +
                      (a ? std::string(" further as a ") + a->name + "." : "; the first lets you choose how."), {{x, top + 64}, {w, 22}}, 16, ui::kMuted);
     const char* rewards[]{"Reward: an ascendancy point, and your ascendancy if you have none.", "Reward: an ascendancy point, and your ascendancy if you have none.",
-                          "Reward: an ascendancy point, and your ascendancy if you have none."};
+                          "Reward: an ascendancy point, and your ascendancy if you have none.", "Reward: an ascendancy point, and your ascendancy if you have none."};
     const char* fights[]{"A living statue that slams the ground and quakes the arena. Its blows grow wilder as it cracks.",
                          "A saint who fell to the Lich: bolts, curses and rituals that raise the dead.",
-                         "The forge's own champion, among furnaces: a hammer you see coming, and blasts of heat that set the floor alight."};
+                         "The forge's own champion, among furnaces: a hammer you see coming, and blasts of heat that set the floor alight.",
+                         "The Hollow's queen among her brambles: webs that pin, thorns that spread, and a brood that pours out at half her life."};
     for (int i = 0; i < kTrialCount; ++i) {
         const int trial = i + 1;
         const auto r = trialCard(i);
         const auto status = trialAvailability(trial);
         const bool won = player_.trialsCleared & (1 << i);
         ui_.inset(window_, r, status.empty() ? ui::kUnique : won ? ui::kGood : sf::Color::Transparent);
-        ui_.text(window_, std::to_string(trial) + ".  " + trialName(trial), {r.position.x + 18, r.position.y + 14}, 24,
+        ui_.text(window_, std::to_string(trial) + ".  " + trialName(trial), {r.position.x + 14, r.position.y + 14}, 20,
                  status.empty() ? ui::kUnique : ui::kGold, ui::Font::Title);
-        ui_.text(window_, std::string("Guardian: ") + trialGuardian(trial), {r.position.x + 20, r.position.y + 50}, 15, ui::kText, ui::Font::Bold);
-        float y = r.position.y + 78;
-        ui_.paragraph(window_, fights[i], r.position.x + 20, y, r.size.x - 40, 15, ui::kText);
-        y += 8;
-        ui_.paragraph(window_, rewards[i], r.position.x + 20, y, r.size.x - 40, 15, ui::kRare);
-        y += 8;
+        ui_.text(window_, std::string("Guardian: ") + trialGuardian(trial), {r.position.x + 16, r.position.y + 46}, 14, ui::kText, ui::Font::Bold);
+        float y = r.position.y + 72;
+        ui_.paragraph(window_, fights[i], r.position.x + 16, y, r.size.x - 32, 14, ui::kText);
+        y += 6;
+        ui_.paragraph(window_, rewards[i], r.position.x + 16, y, r.size.x - 32, 14, ui::kRare);
+        y += 6;
         ui_.paragraph(window_, status.empty() ? "Ready. Once inside, there is no leaving while the guardian lives." : status,
-                      r.position.x + 20, y, r.size.x - 40, 14, status.empty() ? ui::kInfo : won ? ui::kGood : ui::kBad);
-        ui_.button(window_, trialEnter(i), status.empty() ? std::string("Enter the trial (") + std::to_string(trial) + ")" : won ? "Won" : "Sealed",
-                   hovered(trialEnter(i)), status.empty(), 16);
+                      r.position.x + 16, y, r.size.x - 32, 13, status.empty() ? ui::kInfo : won ? ui::kGood : ui::kBad);
+        ui_.button(window_, trialEnter(i), status.empty() ? std::string("Enter (") + std::to_string(trial) + ")" : won ? "Won" : "Sealed",
+                   hovered(trialEnter(i)), status.empty(), 15);
     }
     ui_.button(window_, kTrialClose, "Leave (Esc)", hovered(kTrialClose), true, 16);
 }

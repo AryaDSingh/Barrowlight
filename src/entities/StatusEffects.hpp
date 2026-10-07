@@ -39,6 +39,7 @@ enum class StatusEffectType {
     BriarHeart,      // whatever hits you is caught in thorns (Briarheart)
     AlphasHowl,      // your beasts are hastened and their bites bleed (Packmaster)
     FeralBond,       // half of each hit on you goes to your nearest beast (Packmaster)
+    CallOfTheWild,   // you and Thornmaw are hastened; each kill heals you both (Beastwarden)
 };
 
 struct StatusEffectInstance {
@@ -146,6 +147,7 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::BriarHeart: return "Heart of Briars";
     case StatusEffectType::AlphasHowl: return "Alpha's Howl";
     case StatusEffectType::FeralBond: return "Feral Bond";
+    case StatusEffectType::CallOfTheWild: return "Call of the Wild";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

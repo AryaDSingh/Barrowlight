@@ -235,6 +235,14 @@ private:
     void packLoss();
     const Monster* quarry_ = nullptr;
     bool quarryPin_ = false;
+    // Beastwarden: Thornmaw is your great hound (an allied Briar Hound of summon
+    // rank 3, so a save needs nothing new); the foe it's set on; whether it fell
+    // on this floor.
+    static bool isThornmaw(const Monster& m) { return packBeast(m) && m.summonRank == 3; }
+    Monster* thornmaw();
+    void spawnThornmaw();
+    const Actor* wardenFoe_ = nullptr;
+    bool wardenPin_ = false, thornmawDown_ = false;
     bool broodCalled_ = false; // the Hollow Mother has called her brood
     void raiseSlag(MonsterType kind, Position at, int turns, bool shard, int rank = 1);
     bool forgeSummoned_ = false; // the Forgemaster has called its slaglings

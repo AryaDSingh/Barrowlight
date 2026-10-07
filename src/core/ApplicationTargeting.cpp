@@ -132,6 +132,7 @@ std::string statusTooltip(const StatusEffectInstance& e) {
     case StatusEffectType::BriarHeart: return "Whatever hits you is caught in thorns and bleeds.";
     case StatusEffectType::AlphasHowl: return "Your beasts are hastened and their bites make foes bleed; foes beside you are shaken.";
     case StatusEffectType::FeralBond: return "Half of every hit on you goes to your nearest beast instead.";
+    case StatusEffectType::CallOfTheWild: return "You and Thornmaw are hastened, and every foe that falls heals you both 10.";
     case StatusEffectType::Heat: return "Heat "+n+". It builds near furnaces and fire and fades away from them; water quenches it. At 10 or more it burns you for 2 a turn.";
     case StatusEffectType::Shock: return "Enables Lightning follow-ups. Certain talents consume Shock for an additional effect.";
     case StatusEffectType::Concealed: return "Enemies roll detection using distance, Dexterity and concealment rank. Most attacks and taking damage reveal you.";

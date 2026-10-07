@@ -31,7 +31,7 @@ struct AscendancyDefinition {
 
 // Each class chooses among four: its own, the two hybrids it shares with
 // the other classes, and the Paragon.
-inline constexpr std::array<AscendancyDefinition, 8> kAscendancies{{
+inline constexpr std::array<AscendancyDefinition, 9> kAscendancies{{
     {"juggernaut", "Juggernaut", kWarrior, "STR", "An unstoppable frontline fighter who shrugs off control.", "hammer-drop",
      {"juggernaut.unstoppable", "juggernaut.earthshaker", "juggernaut.rampage", "juggernaut.last_stand", "juggernaut.iron_skin",
       "juggernaut.crushing_blows"}},
@@ -53,6 +53,9 @@ inline constexpr std::array<AscendancyDefinition, 8> kAscendancies{{
     // Born of the Ashen Foundry.
     {"forgeknight", "Forgeknight", kWarrior | kMage | kThief, "STR", "A knight of the forge: heat is your armour, and the fire answers every blow.", "hammer-drop",
      {"forgeknight.heat_engine", "forgeknight.slam", "forgeknight.quench", "forgeknight.burning_plate", "forgeknight.overheat", "forgeknight.anvil"}},
+    // Born of Thornwood Hollow.
+    {"beastwarden", "Beastwarden", kWarrior | kMage | kThief, "DEX", "A warden of the wild, never alone: Thornmaw grows with you and fights where you point.", "wolverine-claws",
+     {"beastwarden.thornmaw", "beastwarden.point", "beastwarden.pack_of_two", "beastwarden.running_mate", "beastwarden.guardian", "beastwarden.call_wild"}},
 }};
 
 inline const AscendancyDefinition* findAscendancy(const std::string& id) {
@@ -70,13 +73,14 @@ inline bool isAscendancyTree(const std::string& treeId) { return findAscendancy(
 // The two trials. Their sigils drop from the Goblin Warlord and the Lich;
 // the second trial also needs the first one cleared. Bit n-1 of the
 // player's trialKeys/trialsCleared is trial n.
-// The third, the Trial of the Forge, is opened by the Forgemaster's sigil and
-// stands alone. Any trial won lets you take any ascendancy your colours allow.
-inline constexpr int kTrialCount = 3, kForgeTrial = 3;
-inline const char* trialName(int trial) { return trial == 3 ? "Trial of the Forge" : trial == 1 ? "Trial of Stone" : "Trial of the Fallen"; }
-inline const char* trialSigil(int trial) { return trial == 3 ? "Forge Sigil" : trial == 1 ? "Stone Sigil" : "Bone Sigil"; }
-inline const char* trialGuardian(int trial) { return trial == 3 ? "The Anvil-Born" : trial == 1 ? "The Stone Warden" : "The Fallen Saint"; }
+// The third, the Trial of the Forge, is opened by the Forgemaster's sigil, and
+// the fourth, the Trial of the Hollow, by the Hollow Mother's; both stand
+// alone. Any trial won lets you take any ascendancy your colours allow.
+inline constexpr int kTrialCount = 4, kForgeTrial = 3, kHollowTrial = 4;
+inline const char* trialName(int trial) { return trial == 4 ? "Trial of the Hollow" : trial == 3 ? "Trial of the Forge" : trial == 1 ? "Trial of Stone" : "Trial of the Fallen"; }
+inline const char* trialSigil(int trial) { return trial == 4 ? "Thorn Sigil" : trial == 3 ? "Forge Sigil" : trial == 1 ? "Stone Sigil" : "Bone Sigil"; }
+inline const char* trialGuardian(int trial) { return trial == 4 ? "The Thorn Queen" : trial == 3 ? "The Anvil-Born" : trial == 1 ? "The Stone Warden" : "The Fallen Saint"; }
 // The floor whose difficulty the trial arena uses.
-inline int trialDifficultyFloor(int trial) { return trial == 3 ? 10 : trial == 1 ? 8 : 16; }
+inline int trialDifficultyFloor(int trial) { return trial == 4 ? 16 : trial == 3 ? 10 : trial == 1 ? 8 : 16; }
 
 } // namespace engine

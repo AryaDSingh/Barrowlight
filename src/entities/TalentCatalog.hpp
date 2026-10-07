@@ -1462,6 +1462,16 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         node("paragon","paragon.resilience",Str,passive("Resilience","Direct hits on you deal 2 less.",PassiveKind::Resilience,2));
         node("paragon","paragon.wellspring",Int,passive("Wellspring","+10% maximum life and maximum mana.",PassiveKind::Wellspring,10));
         // Forgeknight (STR): heat as armour.
+        // Beastwarden (Hunt 6, Motion 6): Thornmaw, a great hound that grows with you.
+        node("beastwarden","beastwarden.thornmaw",Dex,passive("Thornmaw","Thornmaw, a great hound, walks with you from floor to floor. It has 30 life and 8 more per level, and 6 Strength and 1 more for every 2 levels. If it falls, it finds you again on the next floor.",PassiveKind::Thornmaw,1));
+        t=buff("Point","Point at a foe in sight: it is marked, Thornmaw leaps to its side, and its next bite on it deals double.",StatusEffectType::Marked,3,1,4,8);
+        t.targeting=TargetingMode::RangedEnemyInSight; t.pointLeap=true; node("beastwarden","beastwarden.point",Dex,t);
+        node("beastwarden","beastwarden.pack_of_two",Dex,passive("Pack of Two","Foes in the 8 tiles around Thornmaw take +3 from your hits, and foes in the 8 tiles around you take +3 from its bites.",PassiveKind::PackOfTwo,3));
+        node("beastwarden","beastwarden.running_mate",Dex,passive("Running Mate","When you use a movement ability, Thornmaw lands beside you and is hastened for 2 turns.",PassiveKind::RunningMate,1));
+        node("beastwarden","beastwarden.guardian",Dex,passive("Guardian Instinct","When a foe hits you, Thornmaw turns on it, and its next bite on that foe pins it for a turn.",PassiveKind::GuardianInstinct,1));
+        t=Talent{}; t.name="Call of the Wild"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="For 5 turns you and Thornmaw are both hastened, and every foe that falls heals you both 10.";
+        t.callWild=5; t.manaCost=8; t.cooldownTurns=18; node("beastwarden","beastwarden.call_wild",Dex,t);
         node("forgeknight","forgeknight.heat_engine",Str,passive("Heat Engine","Each blow that lands on you gives you 1 Heat, and every 2 Heat you hold is 1 armour.",PassiveKind::HeatEngine,1));
         t=move("Furnace Slam","Leap up to three tiles and slam everything beside where you land, spending all your Heat for +2 damage each point. The ground around you burns.",3,5,8);
         t.vault=true; t.landingSlam=6; t.ventHeat=2; node("forgeknight","forgeknight.slam",Str,t);
@@ -1541,7 +1551,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 case PassiveKind::FollowThrough: case PassiveKind::Stoneskin: case PassiveKind::HallowedGuard: case PassiveKind::Tidecaller:
                 case PassiveKind::Bulwark: case PassiveKind::FlowingMana: case PassiveKind::BladeWard: case PassiveKind::Transfusion:
                 case PassiveKind::GravePact: case PassiveKind::LongShadow: case PassiveKind::StaticEdge:
-                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered: case PassiveKind::Overcharge: case PassiveKind::Marrow: case PassiveKind::BrittleCold: case PassiveKind::Thornborn: case PassiveKind::PackTactics:
+                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered: case PassiveKind::Overcharge: case PassiveKind::Marrow: case PassiveKind::BrittleCold: case PassiveKind::Thornborn: case PassiveKind::PackTactics: case PassiveKind::PackOfTwo:
                     return 5;
                 case PassiveKind::BurningPlate:
                     return 10;

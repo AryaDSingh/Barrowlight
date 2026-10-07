@@ -4579,6 +4579,113 @@ struct ApplicationRewardsTestAccess {
             app.clearSurfaces(); app.player_.statusEffects().active().clear(); app.currentFloor_=1;
         }
 
+        // The Trial of the Hollow and the Beastwarden.
+        {
+            setup(PlayerClass::Warrior);
+            auto made=createMonster(MonsterType::HollowMother,{12,10}); auto* mother=made.get(); app.monsters_.push_back(std::move(made));
+            app.onBossDefeated(*mother);
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.groundItems_.clear(); app.loreDrops_.clear();
+            check((app.player_.trialKeys & 8) && app.trialAvailability(4).empty(),"The Hollow Mother's sigil opens the Trial of the Hollow, on its own");
+            app.mode_=GameMode::Town; app.trialMenu_=true;
+            snapshot("ui-trials.png");
+            app.trialMenu_=false;
+            check(app.enterTrial(4) && app.boss_ && app.boss_->type()==MonsterType::HollowMother && app.boss_->name()=="The Thorn Queen",
+                  "The Trial of the Hollow pits you against the Thorn Queen");
+            int thorns=0; for (int y=0;y<app.map_.height();++y) for (int x=0;x<app.map_.width();++x) thorns+=app.surfaceAt({x,y})==SurfaceType::Thorns;
+            check(thorns>0,"Its arena is overgrown with thorns");
+            check(!ascendancyQualified(app.player_,"beastwarden"),"The Beastwarden waits for its colours");
+            giveColour(app.player_,Affinity::Hunt,6); giveColour(app.player_,Affinity::Motion,6);
+            check(ascendancyQualified(app.player_,"beastwarden"),"Hunt 6 and Motion 6 allow the Beastwarden");
+            app.boss_->stats().hp=0; app.checkAndHandleDeath(*app.boss_); app.removeDeadMonsters();
+            check((app.player_.trialsCleared & 8) && app.player_.ascendancyPoints==1,"Winning the trial gives a point");
+            snapshot("ui-ascendancy-hollow.png");
+            app.chooseAscendancy("beastwarden");
+            check(app.player_.ascendancy=="beastwarden","You become a Beastwarden");
+            app.ascendancyMenu_=false; app.leaveTrialState(); app.mode_=GameMode::Playing;
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.boss_=nullptr; app.clearSurfaces();
+            for (int y=1;y<app.map_.height()-1;++y) for (int x=1;x<app.map_.width()-1;++x) app.map_.setTile(x,y,Tile{TileType::Floor,true,true});
+            app.player_.setPosition({10,10}); app.updateFieldOfView();
+            const auto learn=[&](const char* id) { app.player_.talents().learnTalent(findTalentDefinition(id)->ranks[0]); return app.player_.talents().knownTalents().size()-1; };
+            const auto ready=[&] { app.player_.talents().resetCooldowns(); app.player_.stats().mana=app.player_.stats().maxMana; app.currentActor_=&app.player_; };
+            const auto foeAt=[&](Position p) { auto f=createMonster(MonsterType::Goblin,p); f->stats().hp=f->stats().maxHp=90; f->stats().dexterity=0; f->setXpReward(0);
+                auto* g=f.get(); app.scheduler_.add(*g); app.monsters_.push_back(std::move(f)); return g; };
+            // Thornmaw.
+            learn("beastwarden.thornmaw"); app.tickStormcall();
+            auto* maw=app.thornmaw();
+            check(maw && maw->allied && maw->name()=="Thornmaw" && maw->stats().maxHp==30+8*app.player_.level(),"Thornmaw comes to your side, its life set by your level");
+            if (maw) {
+                const auto call=learn("packmaster.call"); ready(); app.tryUseTalent(call,app.player_.position());
+                int hounds=0; for (auto& m:app.monsters_) hounds+=app.packBeast(*m) && !app.isThornmaw(*m) && m->stats().hp>0;
+                check(hounds==1,"Thornmaw doesn't take a hound's place");
+                for (auto& m:app.monsters_) if (app.packBeast(*m) && !app.isThornmaw(*m)) { m->stats().hp=0; app.scheduler_.remove(*m); }
+                app.removeDeadMonsters(); maw=app.thornmaw();
+            }
+            // Point.
+            if (maw) {
+                auto* far=foeAt({18,10});
+                const auto point=learn("beastwarden.point"); ready(); app.tryUseTalent(point,{18,10});
+                // Thornmaw may already have bitten (spending the doubled bite) before your next turn.
+                check(std::max(std::abs(maw->position().x-18),std::abs(maw->position().y-10))==1 && (maw->doubleBite || far->stats().hp<90),
+                      "Point: Thornmaw leaps beside the foe and goes for it");
+                far->stats().hp=far->stats().maxHp=500; maw->doubleBite=true; app.wardenFoe_=far;
+                // Bite until one lands (a bite can miss), then again for a plain one.
+                for (int i=0;i<10 && far->stats().hp==500;++i) { app.currentActor_=maw; app.processMonsterTurns(); }
+                const int doubled=500-far->stats().hp;
+                far->stats().hp=500;
+                for (int i=0;i<10 && far->stats().hp==500;++i) { app.currentActor_=maw; app.processMonsterTurns(); }
+                const int plain=500-far->stats().hp;
+                // A critical on the plain bite is half again: the doubled one still beats it.
+                check(!maw->doubleBite && plain>0 && doubled*10>=plain*13,"Its next bite on that foe deals double");
+                check(app.nearestOpponent(*maw,false)==far,"Thornmaw goes for the foe you pointed at");
+                for (auto& m:app.monsters_) if (!m->allied) { m->stats().hp=0; app.scheduler_.remove(*m); }
+                app.removeDeadMonsters(); maw->doubleBite=false; app.wardenFoe_=nullptr;
+            }
+            // Pack of Two.
+            if (maw) {
+                learn("beastwarden.pack_of_two");
+                maw->setPosition({14,10});
+                auto* beside=foeAt({15,10}); auto* apart=foeAt({15,14});
+                const auto& any=findTalentDefinition("beastwarden.point")->ranks[0];
+                check(app.situationalBonus(any,*beside)>=app.situationalBonus(any,*apart)+3,"Pack of Two: +3 to your hits on a foe beside Thornmaw");
+                for (auto& m:app.monsters_) if (!m->allied) { m->stats().hp=0; app.scheduler_.remove(*m); }
+                app.removeDeadMonsters();
+            }
+            // Running Mate.
+            if (maw) {
+                learn("beastwarden.running_mate");
+                maw->setPosition({4,4}); app.lastMoveDirection_={1,0};
+                const auto roll=learn("acrobatics.somersault"); ready(); app.tryUseTalent(roll,{12,10});
+                const auto me=app.player_.position();
+                check(std::max(std::abs(maw->position().x-me.x),std::abs(maw->position().y-me.y))<=1,"Running Mate: Thornmaw lands beside you when you move");
+            }
+            // Guardian Instinct.
+            if (maw) {
+                learn("beastwarden.guardian");
+                const auto me=app.player_.position();
+                auto* brute=foeAt({me.x,me.y+1}); brute->stats().strength=30; brute->stats().dexterity=10;
+                const int life=app.player_.stats().hp;
+                for (int i=0;i<10 && app.player_.stats().hp==life;++i) { app.currentActor_=brute; app.processMonsterTurns(); }
+                check(app.wardenFoe_==brute && app.wardenPin_,"Guardian Instinct: Thornmaw turns on whatever hits you");
+                // Call of the Wild.
+                const auto wild=learn("beastwarden.call_wild"); ready(); app.tryUseTalent(wild,app.player_.position());
+                app.tickStormcall();
+                check(app.player_.statusEffects().has(StatusEffectType::Hasted) && maw->statusEffects().has(StatusEffectType::Hasted),"Call of the Wild hastens you both");
+                app.player_.stats().hp=50; maw->stats().hp=20;
+                brute->stats().hp=0; app.checkAndHandleDeath(*brute); app.removeDeadMonsters();
+                check(app.player_.stats().hp==60 && maw->stats().hp==30,"Every foe that falls heals you both 10");
+                // It falls, and finds you again on the next floor.
+                maw->stats().hp=0; app.checkAndHandleDeath(*maw); app.removeDeadMonsters();
+                app.tickStormcall();
+                check(!app.thornmaw() && app.thornmawDown_,"When Thornmaw falls, it stays down on this floor");
+                app.callPackBack(); app.tickStormcall();
+                check(app.thornmaw()!=nullptr,"On the next floor it finds you again");
+            }
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.player_.statusEffects().active().clear(); app.player_.ascendancy.clear(); app.wardenFoe_=nullptr;
+        }
+
         app.window_.close();
         std::cout << checks << " reward checks, " << failures << " failures.\n";
         return failures ? 1 : 0;

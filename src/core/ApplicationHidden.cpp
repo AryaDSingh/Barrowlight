@@ -215,6 +215,7 @@ Actor* Application::nearestOpponent(Actor& actor,bool playerHidden) {
         if (!canSee(actor,p)) return; // humans need light to see past arm's reach
         int distance=std::abs(p.x-actor.position().x)+std::abs(p.y-actor.position().y);
         if (monster && packBeast(*monster) && &target==quarry_) distance-=100; // Sic 'Em
+        if (monster && isThornmaw(*monster) && &target==wardenFoe_) distance-=200; // Point, Guardian Instinct
         if (distance<best) { best=distance; nearest=&target; }
     };
     if (!allied && !playerHidden) consider(player_);

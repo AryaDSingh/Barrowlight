@@ -351,6 +351,8 @@ MonsterLook monsterLook(const Monster& monster) {
                               static_cast<std::uint8_t>(look.tint.b * b / 255), look.tint.a);
     };
     if (monster.rift) { mix(200, 140, 255); if (monster.rift == 2) look.scale *= 1.25f; }
+    if (monster.allied && monster.type() == MonsterType::BriarHound && monster.summonRank == 3) { look.scale *= 1.4f; mix(255, 225, 190); } // Thornmaw
+    if (monster.eventChampion == kChampionThornQueen) mix(220, 150, 255);
     if (monster.essence) { const auto& e = essenceInfo(static_cast<Essence>(monster.essence)); mix(e.r, e.g, e.b); look.scale *= 1.15f; }
     return look;
 }
@@ -1418,7 +1420,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         if (talent.stormcall) { player_.statusEffects().apply({StatusEffectType::Stormcall,talent.stormcall,1}); log("A storm gathers over you."); }
         if (talent.callPack) {
             int alive=0;
-            for (auto& m:monsters_) if (packBeast(*m) && m->stats().hp>0) { ++alive; m->stats().hp=m->stats().maxHp; }
+            for (auto& m:monsters_) if (packBeast(*m) && m->stats().hp>0) { if (!isThornmaw(*m)) ++alive; m->stats().hp=m->stats().maxHp; }
             int called=0;
             while (alive<talent.callPack && spawnHound(0)) { ++alive; ++called; }
             log(called?"A hound answers your call.":"Your pack is whole again.");
@@ -1427,6 +1429,23 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             for (Actor* t:affected) if (auto* foe=dynamic_cast<Monster*>(t); foe && !foe->allied) { quarry_=foe; quarryPin_=talent.sicPin; }
             for (auto& m:monsters_) if (packBeast(*m) && m->stats().hp>0) m->statusEffects().apply({StatusEffectType::Hasted,talent.sicEm,30});
             log("Your pack turns as one.");
+        }
+        if (talent.pointLeap)
+            for (Actor* t:affected) if (auto* foe=dynamic_cast<Monster*>(t); foe && !foe->allied) if (auto* maw=thornmaw()) {
+                const auto at=foe->position(); Position best{-1,-1}; int bestD=1000;
+                for (int dy=-1;dy<=1;++dy) for (int dx=-1;dx<=1;++dx) {
+                    const Position p{at.x+dx,at.y+dy};
+                    if ((!dx && !dy) || !map_.isWalkable(p.x,p.y) || isOccupied(p,maw)) continue;
+                    const int d=std::abs(p.x-maw->position().x)+std::abs(p.y-maw->position().y);
+                    if (d<bestD) { bestD=d; best=p; }
+                }
+                if (best.x>=0) maw->setPosition(best);
+                maw->doubleBite=true; wardenFoe_=foe;
+                log("Thornmaw leaps at ",foe->name(),"!");
+            }
+        if (talent.callWild) {
+            player_.statusEffects().apply({StatusEffectType::CallOfTheWild,talent.callWild,1});
+            log("The wild answers. You run together.");
         }
         if (talent.bloodBond) {
             for (auto& m:monsters_) if (packBeast(*m) && m->stats().hp>0) {
@@ -1957,6 +1976,16 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             if (talent.briarSeed) growBriar(p); else freezeGround(p,creep);
         }
     }
+    // Running Mate: Thornmaw lands beside you when you move.
+    if (talent.shape==EffectShape::Movement && player_.talents().passiveValue(PassiveKind::RunningMate,player_.stats()))
+        if (auto* maw=thornmaw()) {
+            const auto me=player_.position();
+            for (int dy=-1;dy<=1;++dy) for (int dx=-1;dx<=1;++dx) {
+                const Position p{me.x+dx,me.y+dy};
+                if ((dx||dy) && map_.isWalkable(p.x,p.y) && !isOccupied(p,maw) && std::max(std::abs(maw->position().x-me.x),std::abs(maw->position().y-me.y))>1) maw->setPosition(p);
+            }
+            maw->statusEffects().apply({StatusEffectType::Hasted,2,30});
+        }
     if (talent.iceTrail) {
         const int creep=player_.talents().passiveValue(PassiveKind::CreepingFrost,player_.stats());
         freezeGround(beforeMovement,creep);
@@ -2014,6 +2043,10 @@ int Application::situationalBonus(const Talent& talent, const Actor& target) con
         if (player_.stats().hp*2<player_.stats().maxHp) bonus+=gear.affixTotal(BonusStat::LowLifeDamage);
         if (const auto* m=dynamic_cast<const Monster*>(&target); m && m->tactics.alert==0) bonus+=gear.affixTotal(BonusStat::UnawareDamage);
     }
+    // Pack of Two: your hits on a foe beside Thornmaw.
+    if (const int two=kit.passiveValue(PassiveKind::PackOfTwo,player_.stats()))
+        for (const auto& m:monsters_)
+            if (isThornmaw(*m) && m->stats().hp>0 && std::max(std::abs(m->position().x-target.position().x),std::abs(m->position().y-target.position().y))<=1) { bonus+=two; break; }
     if (const int pack=kit.passiveValue(PassiveKind::PackTactics,player_.stats()))
         for (const auto& m:monsters_)
             if (packBeast(*m) && m->stats().hp>0 && std::max(std::abs(m->position().x-target.position().x),std::abs(m->position().y-target.position().y))<=1) { bonus+=pack; break; }
@@ -2692,6 +2725,14 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                         player_.ward-=soaked; damage-=soaked;
                         if (soaked && !damage) log("Your ward drinks the blow.");
                     }
+                    // Thornmaw: the bite you pointed it at doubles; Pack of Two; Guardian Instinct's pin.
+                    if (auto* maw=dynamic_cast<Monster*>(&actor); maw && isThornmaw(*maw) && decision.target!=&player_) {
+                        if (maw->doubleBite && decision.target==wardenFoe_) { damage*=2; maw->doubleBite=false; }
+                        if (const int two=player_.talents().passiveValue(PassiveKind::PackOfTwo,player_.stats());
+                            two && std::max(std::abs(decision.target->position().x-player_.position().x),std::abs(decision.target->position().y-player_.position().y))<=1)
+                            damage+=two;
+                        if (wardenPin_ && decision.target==wardenFoe_) { decision.target->statusEffects().apply({StatusEffectType::Pinned,1,0}); wardenPin_=false; }
+                    }
                     // Feral Bond: half of the hit goes to your nearest beast.
                     if (decision.target==&player_ && damage>1 && player_.statusEffects().has(StatusEffectType::FeralBond)) {
                         Monster* beast=nullptr; int best=1000;
@@ -2736,6 +2777,9 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                         log(actor.name()," is cut by thorns for ",thorns,".");
                         checkAndHandleDeath(actor);
                     }
+                    // Guardian Instinct: Thornmaw turns on whatever hits you.
+                    if (decision.target==&player_ && damage>0 && actor.stats().hp>0 && player_.talents().passiveValue(PassiveKind::GuardianInstinct,player_.stats()))
+                        if (const auto* foe=dynamic_cast<const Monster*>(&actor); foe && !foe->allied) { wardenFoe_=&actor; wardenPin_=true; }
                     // Heart of Briars: whatever hits you is caught in thorns.
                     if (decision.target==&player_ && damage>0 && actor.stats().hp>0 && player_.statusEffects().has(StatusEffectType::BriarHeart)) {
                         growBriar(actor.position());
@@ -2900,6 +2944,11 @@ void Application::checkAndHandleDeath(Actor& actor) {
     if (defeated && exploredMap_.at(defeated->position().x,defeated->position().y)==Visibility::Visible)
         soundManager_.playVoice(monsterVoice(defeated->type()),"death");
     if (defeated && !defeated->allied) foundryDeath(*defeated);
+    // Call of the Wild: every foe that falls heals you and Thornmaw.
+    if (defeated && !defeated->allied && player_.statusEffects().has(StatusEffectType::CallOfTheWild)) {
+        player_.stats().hp=std::min(player_.stats().maxHp,player_.stats().hp+10);
+        if (auto* maw=thornmaw()) maw->stats().hp=std::min(maw->stats().maxHp,maw->stats().hp+10);
+    }
     if (defeated && !defeated->allied && std::max(std::abs(defeated->position().x-player_.position().x),std::abs(defeated->position().y-player_.position().y))<=2)
         if (const int marrow=player_.talents().passiveValue(PassiveKind::Marrow,player_.stats()))
             player_.statusEffects().apply({StatusEffectType::Guard,2,player_.statusEffects().magnitudeOf(StatusEffectType::Guard)+marrow});
@@ -2914,7 +2963,8 @@ void Application::checkAndHandleDeath(Actor& actor) {
     }
     if (defeated && defeated->allied) {
         scheduler_.remove(actor);
-        if (packBeast(*defeated)) packLoss();
+        if (isThornmaw(*defeated)) { thornmawDown_=true; log("Thornmaw falls. It will find you again on the next floor."); }
+        else if (packBeast(*defeated)) packLoss();
         // Your slag: a slagling bursts into flame (and with Brittle Slag splits,
         // once); a golem breaks into two slaglings.
         if (defeated->type()==MonsterType::Slagling || defeated->type()==MonsterType::SlagGolem) {
@@ -3337,7 +3387,7 @@ void Application::regenerateLevel(unsigned int seed) {
 
     map_ = dungeon.map;
     actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN; vfx_.clear(); hitFlash_.clear();
-    vfx_.clear(); hitFlash_.clear(); lightOrbs_.clear(); loreDrops_.clear(); banner_.reset(); forgeSummoned_=false; broodCalled_=false; briarTiles_.clear(); overgrowthPinned_.clear(); quarry_=nullptr; quarryPin_=false;
+    vfx_.clear(); hitFlash_.clear(); lightOrbs_.clear(); loreDrops_.clear(); banner_.reset(); forgeSummoned_=false; broodCalled_=false; briarTiles_.clear(); overgrowthPinned_.clear(); quarry_=nullptr; quarryPin_=false; wardenFoe_=nullptr; wardenPin_=false;
     setProps(dungeon.props); pillarTurns_.clear(); traps_.clear();
 
     player_.setPosition(dungeon.playerStart);
