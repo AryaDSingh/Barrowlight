@@ -74,8 +74,8 @@ inline constexpr float kRareEventChance = 0.08f;
 // The rare events' champions (Monster::eventChampion); saved, append only.
 // The trial guardians (entities/Ascendancy.hpp) use the same marker.
 inline constexpr int kChampionRevenant = 1, kChampionDemon = 2, kChampionStoneWarden = 3, kChampionFallenSaint = 4,
-                     kChampionVampire = 5, kChampionAnvilBorn = 6, kChampionThornQueen = 7, kEventChampionKinds = 7;
-inline bool trialGuardianChampion(int champion) { return champion == kChampionStoneWarden || champion == kChampionFallenSaint || champion == kChampionAnvilBorn || champion == kChampionThornQueen; }
+                     kChampionVampire = 5, kChampionAnvilBorn = 6, kChampionThornQueen = 7, kChampionFrostRegent = 8, kEventChampionKinds = 8;
+inline bool trialGuardianChampion(int champion) { return champion == kChampionStoneWarden || champion == kChampionFallenSaint || champion == kChampionAnvilBorn || champion == kChampionThornQueen || champion == kChampionFrostRegent; }
 inline const char* championName(int champion) {
     switch (champion) {
         case kChampionRevenant: return "The Risen King";
@@ -85,6 +85,7 @@ inline const char* championName(int champion) {
         case kChampionVampire: return "The Vampire Lord";
         case kChampionAnvilBorn: return "The Anvil-Born";
         case kChampionThornQueen: return "The Thorn Queen";
+        case kChampionFrostRegent: return "The Frost Regent";
         default: return "";
     }
 }

@@ -31,7 +31,7 @@ struct AscendancyDefinition {
 
 // Each class chooses among four: its own, the two hybrids it shares with
 // the other classes, and the Paragon.
-inline constexpr std::array<AscendancyDefinition, 10> kAscendancies{{
+inline constexpr std::array<AscendancyDefinition, 11> kAscendancies{{
     {"juggernaut", "Juggernaut", kWarrior, "STR", "An unstoppable frontline fighter who shrugs off control.", "hammer-drop",
      {"juggernaut.unstoppable", "juggernaut.earthshaker", "juggernaut.rampage", "juggernaut.last_stand", "juggernaut.iron_skin",
       "juggernaut.crushing_blows"}},
@@ -58,6 +58,9 @@ inline constexpr std::array<AscendancyDefinition, 10> kAscendancies{{
      {"beastwarden.thornmaw", "beastwarden.point", "beastwarden.pack_of_two", "beastwarden.running_mate", "beastwarden.guardian", "beastwarden.call_wild"}},
     {"plaguebringer", "Plaguebringer", kWarrior | kMage | kThief, "INT", "A carrier of sickness: one foe infected, and the plague walks from room to room.", "virus",
      {"plaguebringer.patient_zero", "plaguebringer.contagion", "plaguebringer.outbreak", "plaguebringer.miasma", "plaguebringer.wasting", "plaguebringer.pandemic"}},
+    // Born of Rimeholt.
+    {"wintercaller", "Wintercaller", kWarrior | kMage | kThief, "INT", "A caller of the cold: freeze the water, and shatter what stands on it.", "snowflake-1",
+     {"wintercaller.flash_freeze", "wintercaller.shatterpoint", "wintercaller.cold_blood", "wintercaller.glacial_armour", "wintercaller.rime_tide", "wintercaller.absolute_zero"}},
 }};
 
 inline const AscendancyDefinition* findAscendancy(const std::string& id) {
@@ -78,11 +81,12 @@ inline bool isAscendancyTree(const std::string& treeId) { return findAscendancy(
 // The third, the Trial of the Forge, is opened by the Forgemaster's sigil, and
 // the fourth, the Trial of the Hollow, by the Hollow Mother's; both stand
 // alone. Any trial won lets you take any ascendancy your colours allow.
-inline constexpr int kTrialCount = 4, kForgeTrial = 3, kHollowTrial = 4;
-inline const char* trialName(int trial) { return trial == 4 ? "Trial of the Hollow" : trial == 3 ? "Trial of the Forge" : trial == 1 ? "Trial of Stone" : "Trial of the Fallen"; }
-inline const char* trialSigil(int trial) { return trial == 4 ? "Thorn Sigil" : trial == 3 ? "Forge Sigil" : trial == 1 ? "Stone Sigil" : "Bone Sigil"; }
-inline const char* trialGuardian(int trial) { return trial == 4 ? "The Thorn Queen" : trial == 3 ? "The Anvil-Born" : trial == 1 ? "The Stone Warden" : "The Fallen Saint"; }
+inline constexpr int kTrialCount = 5, kForgeTrial = 3, kHollowTrial = 4, kWinterTrial = 5;
+inline const char* trialName(int trial) { return trial == 5 ? "Trial of Winter" : trial == 4 ? "Trial of the Hollow" : trial == 3 ? "Trial of the Forge" : trial == 1 ? "Trial of Stone" : "Trial of the Fallen"; }
+inline const char* trialSigil(int trial) { return trial == 5 ? "Frost Sigil" : trial == 4 ? "Thorn Sigil" : trial == 3 ? "Forge Sigil" : trial == 1 ? "Stone Sigil" : "Bone Sigil"; }
+inline const char* trialGuardian(int trial) { return trial == 5 ? "The Frost Regent" : trial == 4 ? "The Thorn Queen" : trial == 3 ? "The Anvil-Born" : trial == 1 ? "The Stone Warden" : "The Fallen Saint"; }
 // The floor whose difficulty the trial arena uses.
-inline int trialDifficultyFloor(int trial) { return trial == 4 ? 16 : trial == 3 ? 10 : trial == 1 ? 8 : 16; }
+// (Winter's arena is a Rimeholt floor: as deep as 26.)
+inline int trialDifficultyFloor(int trial) { return trial == 5 ? 42 : trial == 4 ? 16 : trial == 3 ? 10 : trial == 1 ? 8 : 16; }
 
 } // namespace engine

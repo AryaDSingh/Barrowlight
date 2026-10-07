@@ -47,6 +47,7 @@ enum class StatusEffectType {
     Hoarfrost,       // the foes around you are chilled each turn; magnitude is the reach (Wintermarch)
     WinterMarch,     // foes within 3 tiles crawl; hits on you deal less (Wintermarch)
     Lichfrost,       // the foes that die near you rise for you (Gravecold)
+    GlacialGuard,    // standing on ice: direct hits deal less (Wintercaller)
 };
 
 struct StatusEffectInstance {
@@ -160,6 +161,7 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::Hoarfrost: return "Hoarfrost";
     case StatusEffectType::WinterMarch: return "Winter's March";
     case StatusEffectType::Lichfrost: return "Lichfrost";
+    case StatusEffectType::GlacialGuard: return "Glacial Armour";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

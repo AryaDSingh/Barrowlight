@@ -1254,6 +1254,10 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     const int heldHeat=player_.statusEffects().magnitudeOf(StatusEffectType::Heat);
     // Shatter Lance: twice as hard against a foe standing on ice.
     if (talent.onIceDouble && surfaceAt(cursor)==SurfaceType::Ice) talent.damagePercent*=2;
+    // Shatterpoint: +50% against a foe standing on ice.
+    if (const int shatter=player_.talents().passiveValue(PassiveKind::Shatterpoint,player_.stats());
+        shatter && talent.effectKind==TalentEffectKind::Damage && surfaceAt(cursor)==SurfaceType::Ice)
+        talent.damagePercent=talent.damagePercent*(100+shatter)/100;
     if (talent.coldGrasp) for (auto& m:monsters_) if (!m->allied && m->position().x==cursor.x && m->position().y==cursor.y) m->riseOnDeath=talent.coldGrasp;
     // Vampirism: +25% in darkness, 25% less in light.
     if (player_.statusEffects().has(StatusEffectType::Vampirism) && talent.effectKind==TalentEffectKind::Damage)
@@ -1485,6 +1489,33 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 maw->doubleBite=true; wardenFoe_=foe;
                 log("Thornmaw leaps at ",foe->name(),"!");
             }
+        if (talent.flashFreeze) {
+            const auto me=player_.position(); const int r=talent.flashFreeze; int frozen=0;
+            for (int dy=-r;dy<=r;++dy) for (int dx=-r;dx<=r;++dx)
+                if (surfaceAt({me.x+dx,me.y+dy})==SurfaceType::Water) setSurface({me.x+dx,me.y+dy},SurfaceType::Ice,12);
+            for (auto& m:monsters_)
+                if (!m->allied && m->stats().hp>0 && surfaceAt(m->position())==SurfaceType::Ice &&
+                    std::max(std::abs(m->position().x-me.x),std::abs(m->position().y-me.y))<=r && m->statusEffects().canReceiveStun()) {
+                    m->statusEffects().apply({StatusEffectType::Stun,1,0}); ++frozen; }
+            log(frozen?"Everything on the ice freezes where it stands.":"The water around you freezes.");
+        }
+        if (talent.rimeTide) {
+            const auto me=player_.position();
+            for (int dy=-1;dy<=1;++dy) for (int dx=-1;dx<=1;++dx)
+                if ((dx||dy) && map_.isWalkable(me.x+dx,me.y+dy)) setSurface({me.x+dx,me.y+dy},SurfaceType::Ice,12);
+            log("Water rushes out around you and freezes.");
+        }
+        if (talent.absoluteZero) {
+            const int cold=12+player_.stats().intelligence/3; int struck=0;
+            for (auto& m:monsters_) {
+                if (m->allied || m->stats().hp<=0 || surfaceAt(m->position())!=SurfaceType::Ice || !visibleTile(m->position())) continue;
+                m->stats().hp-=cold; flashActor(*m); ++struck;
+                if (m->stats().hp>0 && m->statusEffects().canReceiveStun()) m->statusEffects().apply({StatusEffectType::Stun,2,0});
+                checkAndHandleDeath(*m);
+            }
+            removeDeadMonsters();
+            log(struck?"The cold reaches absolute zero.":"There is nothing on the ice to freeze.");
+        }
         if (talent.raiseFrozen) {
             int standing=0;
             for (auto& m:monsters_) if (frozenThrall(*m) && m->stats().hp>0) { ++standing; m->stats().hp=m->stats().maxHp; }

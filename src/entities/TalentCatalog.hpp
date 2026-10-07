@@ -1523,6 +1523,19 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         node("paragon","paragon.resilience",Str,passive("Resilience","Direct hits on you deal 2 less.",PassiveKind::Resilience,2));
         node("paragon","paragon.wellspring",Int,passive("Wellspring","+10% maximum life and maximum mana.",PassiveKind::Wellspring,10));
         // Forgeknight (STR): heat as armour.
+        // Wintercaller (Frost 6, Water 6): command the cold.
+        t=Talent{}; t.name="Flash Freeze"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="The water within 4 tiles freezes at once, and every foe standing on ice within 4 tiles is frozen in place for a turn. Bosses resist repeated stuns.";
+        t.flashFreeze=4; t.manaCost=8; t.cooldownTurns=14; node("wintercaller","wintercaller.flash_freeze",Int,t);
+        node("wintercaller","wintercaller.shatterpoint",Int,passive("Shatterpoint","Your hits on a foe standing on ice deal +50%.",PassiveKind::Shatterpoint,50));
+        node("wintercaller","wintercaller.cold_blood",Int,passive("Cold Blood","The cold can't chill you, and on ice you are hastened.",PassiveKind::ColdBlood,20));
+        node("wintercaller","wintercaller.glacial_armour",Int,passive("Glacial Armour","While you stand on ice, direct hits on you deal 3 less.",PassiveKind::GlacialArmour,3));
+        t=Talent{}; t.name="Rime Tide"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Water floods the 8 tiles around you and freezes at once.";
+        t.rimeTide=true; t.manaCost=4; t.cooldownTurns=8; node("wintercaller","wintercaller.rime_tide",Int,t);
+        t=Talent{}; t.name="Absolute Zero"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Every foe standing on ice in sight takes 12 frost damage, and 1 more for every 3 Intelligence, and is frozen for 2 turns. Bosses resist repeated stuns.";
+        t.absoluteZero=true; t.manaCost=12; t.cooldownTurns=20; node("wintercaller","wintercaller.absolute_zero",Int,t);
         // Plaguebringer (Rot 6, Dark 6): sickness that spreads on death, room to room.
         t=buff("Patient Zero","Infect a foe in sight with Plague for 6 turns: it loses 3 life a turn, and 1 more for every 10 Intelligence you have. When it dies, the plague spreads.",StatusEffectType::Plague,6,3,4,8);
         t.targeting=TargetingMode::RangedEnemyInSight; t.patientZero=true; node("plaguebringer","plaguebringer.patient_zero",Int,t);
@@ -1624,7 +1637,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 case PassiveKind::FollowThrough: case PassiveKind::Stoneskin: case PassiveKind::HallowedGuard: case PassiveKind::Tidecaller:
                 case PassiveKind::Bulwark: case PassiveKind::FlowingMana: case PassiveKind::BladeWard: case PassiveKind::Transfusion:
                 case PassiveKind::GravePact: case PassiveKind::LongShadow: case PassiveKind::StaticEdge:
-                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered: case PassiveKind::Overcharge: case PassiveKind::Marrow: case PassiveKind::BrittleCold: case PassiveKind::Thornborn: case PassiveKind::PackTactics: case PassiveKind::PackOfTwo: case PassiveKind::Permafrost: case PassiveKind::Unrotting:
+                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered: case PassiveKind::Overcharge: case PassiveKind::Marrow: case PassiveKind::BrittleCold: case PassiveKind::Thornborn: case PassiveKind::PackTactics: case PassiveKind::PackOfTwo: case PassiveKind::Permafrost: case PassiveKind::Unrotting: case PassiveKind::GlacialArmour:
                     return 5;
                 case PassiveKind::BurningPlate:
                     return 10;

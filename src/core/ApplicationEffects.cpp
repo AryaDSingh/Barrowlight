@@ -141,6 +141,7 @@ sf::Color buffColor(StatusEffectType type) {
         case StatusEffectType::Vampirism: return sf::Color(190, 40, 60);
         case StatusEffectType::RimePlate: case StatusEffectType::Hoarfrost: case StatusEffectType::WinterMarch: return sf::Color(160, 200, 240);
         case StatusEffectType::Lichfrost: return sf::Color(150, 170, 220);
+        case StatusEffectType::GlacialGuard: return sf::Color(170, 215, 250);
         default: return kHoly;
     }
 }

@@ -136,6 +136,8 @@ inline std::string talentIcon(const Talent& talent) {
         {"warbanner.ranks", "impact-point"}, {"warbanner.last", "checked-shield"}, {"warbanner.charge", "charging-bull"},
         {"forgeknight.heat_engine", "campfire"}, {"forgeknight.slam", "meteor-impact"}, {"forgeknight.quench", "big-wave"},
         {"forgeknight.burning_plate", "magic-shield"}, {"forgeknight.overheat", "fire-dash"}, {"forgeknight.anvil", "bordered-shield"},
+        {"wintercaller.flash_freeze", "frozen-orb"}, {"wintercaller.shatterpoint", "shatter"}, {"wintercaller.cold_blood", "snowflake-1"},
+        {"wintercaller.glacial_armour", "magic-shield"}, {"wintercaller.rime_tide", "big-wave"}, {"wintercaller.absolute_zero", "ice-spear"},
         {"plaguebringer.patient_zero", "virus"}, {"plaguebringer.contagion", "plague-doctor-profile"}, {"plaguebringer.outbreak", "death-zone"},
         {"plaguebringer.miasma", "poison-gas"}, {"plaguebringer.wasting", "broken-bone"}, {"plaguebringer.pandemic", "cursed-star"},
         {"beastwarden.thornmaw", "wolverine-claws"}, {"beastwarden.point", "target-arrows"}, {"beastwarden.pack_of_two", "crossed-swords"},
@@ -279,6 +281,7 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::Hoarfrost: return "snowflake-1";
         case StatusEffectType::WinterMarch: return "footprint";
         case StatusEffectType::Lichfrost: return "tombstone";
+        case StatusEffectType::GlacialGuard: return "magic-shield";
     }
     return "aura";
 }

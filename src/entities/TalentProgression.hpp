@@ -100,6 +100,7 @@ inline AscendancyNeed ascendancyNeed(const std::string& id) {
     if (id=="forgeknight") return {{{Affinity::Steel,6},{Affinity::Flame,6}},{},0,0};
     if (id=="beastwarden") return {{{Affinity::Hunt,6},{Affinity::Motion,6}},{},0,0};
     if (id=="plaguebringer") return {{{Affinity::Rot,6},{Affinity::Dark,6}},{},0,0};
+    if (id=="wintercaller") return {{{Affinity::Frost,6},{Affinity::Water,6}},{},0,0};
     std::vector<Affinity> every;
     for (int a=1;a<=static_cast<int>(Affinity::Rot);++a) every.push_back(static_cast<Affinity>(a));
     return {{},every,5,3}; // the Paragon: any five colours

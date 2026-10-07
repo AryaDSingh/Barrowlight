@@ -113,6 +113,16 @@ void Application::tickPack() {
     tickContagion();
     tickVampirism();
     tickCold();
+    // Wintercaller: cold blood, and armour of ice while you stand on it.
+    {
+        const bool onIce = surfaceAt(player_.position()) == SurfaceType::Ice;
+        if (const int quick = player_.talents().passiveValue(PassiveKind::ColdBlood, player_.stats())) {
+            player_.statusEffects().remove(StatusEffectType::Chill);
+            if (onIce) player_.statusEffects().apply({StatusEffectType::Hasted, 2, quick});
+        }
+        if (const int armour = player_.talents().passiveValue(PassiveKind::GlacialArmour, player_.stats()); armour && onIce)
+            player_.statusEffects().apply({StatusEffectType::GlacialGuard, 2, armour});
+    }
     // Wintermarch: Hoarfrost chills those around you, Bitter Cold slows the chilled beside you, Winter's March slows all near.
     {
         const auto me = player_.position();

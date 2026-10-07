@@ -98,7 +98,7 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The third batch (Shadow, Radiance, Shield) and its resonances.
     Dread, Bulwark, Twilight, TemplarsEdge, HallowedGuard,
     // The fourth batch (Bow, Stealth, Daggers) and its resonances.
-    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, BrittleSlag, Pyroclasm, Overcharge, EyeOfTheStorm, Marrow, GrownGuard, BrittleCold, CreepingFrost, Thornborn, BriarSnares, PackTactics, Blooded, Thornmaw, PackOfTwo, RunningMate, GuardianInstinct, Contagion, Outbreak, Miasma, Wasting, Permafrost, BitterCold, GraveChill, Unrotting, UnseenHand, AssassinsEdge,
+    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, BrittleSlag, Pyroclasm, Overcharge, EyeOfTheStorm, Marrow, GrownGuard, BrittleCold, CreepingFrost, Thornborn, BriarSnares, PackTactics, Blooded, Thornmaw, PackOfTwo, RunningMate, GuardianInstinct, Contagion, Outbreak, Miasma, Wasting, Permafrost, BitterCold, GraveChill, Unrotting, Shatterpoint, ColdBlood, GlacialArmour, UnseenHand, AssassinsEdge,
     // The fifth batch (Earth, Tide, Venom) and its resonances.
     Aftershock, Tidecaller, Virulence, Mire, FoulWater, EnvenomedBlades,
     // The sixth batch (Spear, Mace, Crossbow) and its resonances.
@@ -275,6 +275,10 @@ struct Talent {
     // blast, in percent). wintersHost: turns three wights rise for. lichfrost:
     // turns the dead near you rise.
     int raiseFrozen=0, coldGrasp=0, shatterPercent=0, wintersHost=0, lichfrost=0;
+    // Wintercaller. flashFreeze: reach of the freeze. rimeTide: the water that
+    // floods round you freezes. absoluteZero: every foe on ice in sight.
+    bool rimeTide=false, absoluteZero=false;
+    int flashFreeze=0;
     int drainPercent=0, stayHiddenPercent=0;
     bool huntersMark=false, returnConcealed=false;
     int committedRhythm=-1;

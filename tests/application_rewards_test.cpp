@@ -5149,6 +5149,75 @@ struct ApplicationRewardsTestAccess {
             app.player_.lore.clear(); app.currentFloor_=1;
         }
 
+        // The Trial of Winter and the Wintercaller.
+        {
+            setup(PlayerClass::Mage);
+            auto made=createMonster(MonsterType::WinterKing,{12,10}); auto* king=made.get(); app.monsters_.push_back(std::move(made));
+            app.onBossDefeated(*king);
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.groundItems_.clear(); app.loreDrops_.clear();
+            check((app.player_.trialKeys & 16) && app.trialAvailability(5).empty(),"The Winter King's sigil opens the Trial of Winter, on its own");
+            app.mode_=GameMode::Town; app.trialMenu_=true;
+            snapshot("ui-trials-five.png");
+            app.trialMenu_=false;
+            check(app.enterTrial(5) && app.boss_ && app.boss_->type()==MonsterType::WinterKing && app.boss_->name()=="The Frost Regent",
+                  "The Trial of Winter pits you against the Frost Regent");
+            int ice=0; for (int y=0;y<app.map_.height();++y) for (int x=0;x<app.map_.width();++x) ice+=app.surfaceAt({x,y})==SurfaceType::Ice;
+            check(ice>20,"Its arena is sheeted in ice");
+            check(!ascendancyQualified(app.player_,"wintercaller"),"The Wintercaller waits for its colours");
+            giveColour(app.player_,Affinity::Frost,6); giveColour(app.player_,Affinity::Water,6);
+            check(ascendancyQualified(app.player_,"wintercaller"),"Frost 6 and Water 6 allow the Wintercaller");
+            app.boss_->stats().hp=0; app.checkAndHandleDeath(*app.boss_); app.removeDeadMonsters();
+            check((app.player_.trialsCleared & 16) && app.player_.ascendancyPoints==1,"Winning the trial gives a point");
+            snapshot("ui-ascendancy-twelve.png");
+            app.chooseAscendancy("wintercaller");
+            check(app.player_.ascendancy=="wintercaller","You become a Wintercaller");
+            app.ascendancyMenu_=false; app.leaveTrialState(); app.mode_=GameMode::Playing;
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.boss_=nullptr; app.clearSurfaces();
+            for (int y=1;y<app.map_.height()-1;++y) for (int x=1;x<app.map_.width()-1;++x) app.map_.setTile(x,y,Tile{TileType::Floor,true,true});
+            app.player_.setPosition({10,10}); app.updateFieldOfView();
+            const auto learn=[&](const char* id) { app.player_.talents().learnTalent(findTalentDefinition(id)->ranks[0]); return app.player_.talents().knownTalents().size()-1; };
+            const auto ready=[&] { app.player_.talents().resetCooldowns(); app.player_.stats().mana=app.player_.stats().maxMana; app.currentActor_=&app.player_; };
+            const auto foeAt=[&](Position p) { auto f=createMonster(MonsterType::Goblin,p); f->stats().hp=f->stats().maxHp=300; f->stats().dexterity=0; f->setXpReward(0);
+                auto* g=f.get(); app.scheduler_.add(*g); app.monsters_.push_back(std::move(f)); return g; };
+            const auto clear=[&] { for (auto& m:app.monsters_) app.scheduler_.remove(*m); app.monsters_.clear(); app.clearSurfaces(); };
+            // Rime Tide.
+            const auto tide=learn("wintercaller.rime_tide"); ready(); app.tryUseTalent(tide,app.player_.position());
+            check(app.surfaceAt({9,9})==SurfaceType::Ice && app.surfaceAt({11,11})==SurfaceType::Ice,"Rime Tide: the 8 tiles around you flood and freeze");
+            app.clearSurfaces();
+            // Flash Freeze.
+            auto* onIce=foeAt({12,10}); auto* dry=foeAt({10,13});
+            app.setSurface({12,10},SurfaceType::Ice,0); app.setSurface({13,12},SurfaceType::Water,0);
+            const auto freeze=learn("wintercaller.flash_freeze"); ready(); app.tryUseTalent(freeze,app.player_.position());
+            check(app.surfaceAt({13,12})==SurfaceType::Ice && onIce->statusEffects().has(StatusEffectType::Stun) && !dry->statusEffects().has(StatusEffectType::Stun),
+                  "Flash Freeze: the water freezes, and the foe on ice is frozen where it stands");
+            clear();
+            // Shatterpoint.
+            learn("wintercaller.shatterpoint");
+            auto* target=foeAt({11,10}); target->stats().hp=target->stats().maxHp=3000;
+            int plain=0, shattered=0;
+            for (int i=0;i<4;++i) { ready(); const int b=target->stats().hp; app.tryUseTalent(0,{11,10}); plain+=b-target->stats().hp; }
+            app.setSurface({11,10},SurfaceType::Ice,0);
+            for (int i=0;i<4;++i) { ready(); const int b=target->stats().hp; app.tryUseTalent(0,{11,10}); shattered+=b-target->stats().hp; }
+            check(plain>0 && shattered*10>=plain*12,"Shatterpoint: your hits land harder on a foe standing on ice");
+            clear();
+            // Cold Blood and Glacial Armour.
+            learn("wintercaller.cold_blood"); learn("wintercaller.glacial_armour");
+            app.player_.statusEffects().apply({StatusEffectType::Chill,3,30});
+            app.setSurface(app.player_.position(),SurfaceType::Ice,0);
+            app.tickStormcall();
+            check(!app.player_.statusEffects().has(StatusEffectType::Chill) && app.player_.statusEffects().has(StatusEffectType::Hasted),"Cold Blood: no chill takes you, and on ice you are quick");
+            check(ascendancyGuardBonus(app.player_)>=3,"Glacial Armour: on ice, hits on you deal 3 less");
+            clear(); app.player_.statusEffects().active().clear();
+            // Absolute Zero.
+            auto* frozen=foeAt({13,10}); auto* warm=foeAt({13,12});
+            app.setSurface({13,10},SurfaceType::Ice,0); app.updateFieldOfView();
+            const auto zero=learn("wintercaller.absolute_zero"); ready(); app.tryUseTalent(zero,app.player_.position());
+            check(frozen->stats().hp<300 && frozen->statusEffects().has(StatusEffectType::Stun) && warm->stats().hp==300,"Absolute Zero: every foe on ice in sight is struck and frozen");
+            clear(); app.player_.statusEffects().active().clear(); app.player_.ascendancy.clear();
+        }
+
         app.window_.close();
         std::cout << checks << " reward checks, " << failures << " failures.\n";
         return failures ? 1 : 0;
