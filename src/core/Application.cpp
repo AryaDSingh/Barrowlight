@@ -1229,6 +1229,10 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     const int heldHeat=player_.statusEffects().magnitudeOf(StatusEffectType::Heat);
     // Shatter Lance: twice as hard against a foe standing on ice.
     if (talent.onIceDouble && surfaceAt(cursor)==SurfaceType::Ice) talent.damagePercent*=2;
+    // Bramble Lash: twice as hard against a foe in thorns, and it pins.
+    if (talent.onThornsDouble && surfaceAt(cursor)==SurfaceType::Thorns) {
+        talent.damagePercent*=2; talent.onHitEffect=StatusEffectInstance{StatusEffectType::Pinned,talent.lashPin,0};
+    }
     // Overheat: at 10 Heat or more, every hit lands half again as hard.
     if (heldHeat>=10 && player_.talents().passiveValue(PassiveKind::Overheat,player_.stats())) talent.damagePercent=talent.damagePercent*3/2;
     if (talent.landingSlam && talent.ventHeat) talent.landingSlam+=talent.ventHeat*heldHeat;
@@ -1412,6 +1416,23 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         if (talent.plantBanner) plantBanner(talent.plantBanner,talent.greatBanner,player_.position());
         if (talent.gainHeat) addHeat(talent.gainHeat);
         if (talent.stormcall) { player_.statusEffects().apply({StatusEffectType::Stormcall,talent.stormcall,1}); log("A storm gathers over you."); }
+        if (talent.bloodBriar) {
+            const auto me=player_.position(); int pinned=0;
+            for (int dy=-1;dy<=1;++dy) for (int dx=-1;dx<=1;++dx) if (dx||dy) growBriar({me.x+dx,me.y+dy});
+            for (auto& m:monsters_)
+                if (!m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-me.x),std::abs(m->position().y-me.y))<=1) {
+                    m->statusEffects().apply({StatusEffectType::Pinned,talent.bloodBriar,0}); ++pinned; }
+            log(pinned?"Thorns burst from your blood and hold them fast.":"Thorns burst from your blood.");
+        }
+        if (talent.overgrowth) {
+            player_.statusEffects().apply({StatusEffectType::Overgrowth,talent.overgrowth,4});
+            overgrowthPinned_.clear();
+            log("Your thorns stir and begin to creep.");
+        }
+        if (talent.heartOfBriars) {
+            player_.statusEffects().apply({StatusEffectType::BriarHeart,talent.heartOfBriars,talent.heartHeals?2:0});
+            log("Briars twist through your veins.");
+        }
         if (talent.deepFreeze) {
             const auto me=player_.position(); const int r=talent.deepFreeze; int frozen=0;
             for (int dy=-r;dy<=r;++dy) for (int dx=-r;dx<=r;++dx)
@@ -1904,9 +1925,16 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         player_.stats().hp=std::min(player_.stats().maxHp,player_.stats().hp+hallowed);
         log("A warm light steadies you.");
     }
-    if (talent.rime) {
-        const int creep=player_.talents().passiveValue(PassiveKind::CreepingFrost,player_.stats());
-        for (const auto& p:target.area) freezeGround(p,creep);
+    // Seed the Briar and Rime cover the whole square around where they land
+    // (3 by 3, or 5 by 5 mastered), corners too.
+    if (talent.briarSeed || talent.rime) {
+        const int creep=talent.rime?player_.talents().passiveValue(PassiveKind::CreepingFrost,player_.stats()):0;
+        const int r=talent.areaRadius;
+        for (int dy=-r;dy<=r;++dy) for (int dx=-r;dx<=r;++dx) {
+            const Position p{cursor.x+dx,cursor.y+dy};
+            if (!map_.inBounds(p.x,p.y)) continue;
+            if (talent.briarSeed) growBriar(p); else freezeGround(p,creep);
+        }
     }
     if (talent.iceTrail) {
         const int creep=player_.talents().passiveValue(PassiveKind::CreepingFrost,player_.stats());
@@ -2663,6 +2691,12 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                         log(actor.name()," is cut by thorns for ",thorns,".");
                         checkAndHandleDeath(actor);
                     }
+                    // Heart of Briars: whatever hits you is caught in thorns.
+                    if (decision.target==&player_ && damage>0 && actor.stats().hp>0 && player_.statusEffects().has(StatusEffectType::BriarHeart)) {
+                        growBriar(actor.position());
+                        actor.statusEffects().apply({StatusEffectType::Bleed,3,3});
+                        log(actor.name()," is caught in your briars.");
+                    }
                     if (marked) { decision.target->statusEffects().consumeMark(); log("The mark flares."); }
                     if (guard) log("Your guard takes some of the blow.");
                     if (damage>0) decision.target->statusEffects().remove(StatusEffectType::Concealed);
@@ -3257,7 +3291,7 @@ void Application::regenerateLevel(unsigned int seed) {
 
     map_ = dungeon.map;
     actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN; vfx_.clear(); hitFlash_.clear();
-    vfx_.clear(); hitFlash_.clear(); lightOrbs_.clear(); loreDrops_.clear(); banner_.reset(); forgeSummoned_=false; broodCalled_=false;
+    vfx_.clear(); hitFlash_.clear(); lightOrbs_.clear(); loreDrops_.clear(); banner_.reset(); forgeSummoned_=false; broodCalled_=false; briarTiles_.clear(); overgrowthPinned_.clear();
     setProps(dungeon.props); pillarTurns_.clear(); traps_.clear();
 
     player_.setPosition(dungeon.playerStart);

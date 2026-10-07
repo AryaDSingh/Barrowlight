@@ -58,6 +58,7 @@ inline HitSound talentSound(const Talent& t, WeaponKind weapon) {
     switch (t.tree) {
         case TalentTree::Fire: case TalentTree::Lamplighter: return HitSound::Fire;
         case TalentTree::Ice: case TalentTree::Rimeheart: return HitSound::Frost;
+        case TalentTree::Briarheart: return HitSound::Rot;
         case TalentTree::Lightning: case TalentTree::Stormlance: case TalentTree::Tempest: return HitSound::Lightning;
         case TalentTree::Tide: return HitSound::Water;
         case TalentTree::Arcane: case TalentTree::Cloth: return HitSound::Arcane;

@@ -2148,7 +2148,7 @@ struct ApplicationRewardsTestAccess {
                 check(purchaseTree(app.player_,PlayerClass::Mage,*findTree("rimeheart")),"With Frost 8, Water 4 and level 12 Rimeheart opens");
                 auto* a=foe({14,10});
                 cast(ranked("rimeheart.rime",1),{14,10});
-                check(app.surfaceAt({14,10})==SurfaceType::Ice && app.surfaceAt({15,10})==SurfaceType::Ice && a->statusEffects().has(StatusEffectType::Chill),
+                check(app.surfaceAt({14,10})==SurfaceType::Ice && app.surfaceAt({15,10})==SurfaceType::Ice && app.surfaceAt({15,11})==SurfaceType::Ice && a->statusEffects().has(StatusEffectType::Chill),
                       "Rime freezes the ground and chills those on it");
                 a->stats().hp=a->stats().maxHp=200;
                 cast(ranked("rimeheart.lance",1),{14,10});
@@ -2191,6 +2191,89 @@ struct ApplicationRewardsTestAccess {
                 check(c->stats().hp<90 && c->statusEffects().has(StatusEffectType::Chill) && app.surfaceAt({11,11})==SurfaceType::Ice,
                       "When the ice bursts, it hits and chills everything near you, and the ground freezes");
                 clearFoes(); app.clearSurfaces(); app.player_.statusEffects().active().clear();
+            }
+
+            // Briarheart: Thornwood Hollow's deep tree, from the first Rot Witch's seed.
+            arena(PlayerClass::Thief);
+            {
+                auto made=createMonster(MonsterType::RotWitch,{12,10}); auto* witch=made.get();
+                app.scheduler_.add(*witch); app.monsters_.push_back(std::move(made));
+                witch->stats().hp=0; app.checkAndHandleDeath(*witch); app.removeDeadMonsters();
+                check(app.loreDrops_.size()==1 && app.loreDrops_[0].id=="witch_seed","The first Rot Witch slain drops her seed");
+                app.player_.setPosition(app.loreDrops_[0].at); app.pickupItem(); app.player_.setPosition({10,10});
+                check(deepTreeKnown(app.player_,"briarheart"),"The seed reveals Briarheart");
+                giveColour(app.player_,Affinity::Rot,8); giveColour(app.player_,Affinity::Hunt,6); app.player_.level()=13; app.player_.treePoints()=1;
+                check(!purchaseTree(app.player_,PlayerClass::Thief,*findTree("briarheart")),"Briarheart waits for level 14");
+                app.player_.level()=14;
+                check(purchaseTree(app.player_,PlayerClass::Thief,*findTree("briarheart")),"With Rot 8, Hunt 6 and level 14 Briarheart opens");
+                // Seed the Briar.
+                auto* a=foe({14,10});
+                cast(ranked("briarheart.seed",1),{14,10});
+                check(app.surfaceAt({14,10})==SurfaceType::Thorns,"Seed the Briar: thorns grow where it lands");
+                check(app.surfaceAt({15,11})==SurfaceType::Thorns && app.surfaceAt({13,9})==SurfaceType::Thorns,"Seed the Briar: a 3 by 3 patch");
+                check(a->statusEffects().has(StatusEffectType::Bleed),"Seed the Briar: the foe in it bleeds");
+                clearFoes();
+                // Bramble Lash: three tiles' reach; twice as hard on thorns, and it pins.
+                auto* b=foe({13,10}); b->stats().hp=b->stats().maxHp=300;
+                const auto lash=ranked("briarheart.lash",1);
+                cast(lash,{13,10});
+                const int plain=300-b->stats().hp;
+                check(plain>0 && !b->statusEffects().has(StatusEffectType::Pinned),"Bramble Lash reaches a foe 3 tiles away");
+                b->stats().hp=300; app.setSurface({13,10},SurfaceType::Thorns,0);
+                cast(lash,{13,10});
+                check(300-b->stats().hp>=plain*2-2 && b->statusEffects().has(StatusEffectType::Pinned),"On thorns, Bramble Lash hits twice as hard and pins");
+                clearFoes();
+                // Blood Briar.
+                auto* c=foe({11,10});
+                cast(ranked("briarheart.blood",1),app.player_.position());
+                check(app.player_.stats().hp==app.player_.stats().maxHp-6,"Blood Briar costs 6 life");
+                check(app.surfaceAt({9,9})==SurfaceType::Thorns && app.surfaceAt({11,11})==SurfaceType::Thorns && app.surfaceAt({10,10})!=SurfaceType::Thorns &&
+                      c->statusEffects().has(StatusEffectType::Pinned),"Thorns burst on the 8 tiles around you, and the foe beside you is pinned");
+                clearFoes(); app.player_.statusEffects().active().clear();
+                // Your own thorns cut you, until Thornborn.
+                app.setSurface({10,10},SurfaceType::Thorns,0); app.tickSurfaces();
+                check(app.player_.statusEffects().has(StatusEffectType::Bleed),"Your own thorns cut you too");
+                app.player_.statusEffects().active().clear();
+                ranked("briarheart.thornborn",1);
+                app.setSurface({10,10},SurfaceType::Thorns,0); app.tickSurfaces(); app.tickStormcall();
+                check(!app.player_.statusEffects().has(StatusEffectType::Bleed) && !app.player_.statusEffects().has(StatusEffectType::Slowed) &&
+                      app.player_.statusEffects().magnitudeOf(StatusEffectType::Thornguard)>=3 && ascendancyGuardBonus(app.player_)>=3,
+                      "Thornborn: thorns don't cut you, and among them hits deal 3 less");
+                app.clearSurfaces(); app.player_.statusEffects().active().clear();
+                // Briar Snares.
+                ranked("briarheart.snares",1);
+                auto* d=foe({14,12});
+                app.traps_.push_back({{14,12},1,0,0});
+                app.triggerTrap(app.traps_.size()-1,*d,{0,0});
+                check(app.surfaceAt({13,11})==SurfaceType::Thorns && app.surfaceAt({15,13})==SurfaceType::Thorns,"Briar Snares: thorns grow around a trap that goes off");
+                clearFoes(); app.briarTiles_.clear();
+                // Overgrowth: your thorns creep, and pin a foe they reach once.
+                app.growBriar({12,10});
+                auto* e=foe({14,10});
+                cast(ranked("briarheart.overgrowth",1),app.player_.position());
+                int before=0, after=0;
+                for (int y=0;y<22;++y) for (int x=0;x<32;++x) before+=app.surfaceAt({x,y})==SurfaceType::Thorns;
+                for (int i=0;i<3;++i) app.tickStormcall();
+                bool far=false;
+                for (int y=0;y<22;++y) for (int x=0;x<32;++x) if (app.surfaceAt({x,y})==SurfaceType::Thorns) {
+                    ++after; far=far || std::max(std::abs(x-10),std::abs(y-10))>4; }
+                check(after>before && !far,"Overgrowth: your thorns spread, but never past 4 tiles from you");
+                check(e->statusEffects().has(StatusEffectType::Pinned),"A foe the thorns reach is pinned");
+                clearFoes(); app.briarTiles_.clear(); app.player_.statusEffects().active().clear();
+                // Heart of Briars: whatever hits you is caught in thorns.
+                cast(ranked("briarheart.heart",1),app.player_.position());
+                auto* f=foe({11,10}); f->stats().dexterity=10; f->stats().strength=20;
+                const int life=app.player_.stats().hp;
+                for (int i=0;i<10 && app.player_.stats().hp==life;++i) { app.currentActor_=f; app.processMonsterTurns(); }
+                check(app.player_.stats().hp<life && f->statusEffects().has(StatusEffectType::Bleed) && app.surfaceAt(f->position())==SurfaceType::Thorns,
+                      "Heart of Briars: whatever hits you bleeds, with thorns beneath it");
+                clearFoes(); app.player_.statusEffects().active().clear();
+                cast(ranked("briarheart.heart",3),app.player_.position());
+                auto* g=foe({12,10}); g->statusEffects().apply({StatusEffectType::Bleed,3,2});
+                app.updateFieldOfView();
+                app.player_.stats().hp=100; app.tickStormcall();
+                check(app.player_.stats().hp==102,"Its mastery heals you 2 a turn for each bleeding foe in view");
+                clearFoes(); app.clearSurfaces(); app.briarTiles_.clear(); app.player_.statusEffects().active().clear();
             }
 
             // Daggers.

@@ -54,6 +54,9 @@ void Application::readLore(std::size_t index) {
     if (player_.knowsLore(drop.id)) return;
     player_.lore.push_back(drop.id);
     soundManager_.playFamily("levelup", 70.f);
+    if (drop.id == "witch_seed") {
+        log("A black seed, still warm. Hold it and you can feel the thorns wanting to grow.");
+    }
     if (drop.id == "hollow_map") {
         log("A map scratched into a flat bone: a way down to a cloister the forest swallowed.");
         log("It leads to Thornwood Hollow. Choose it from the dungeon menu in town.");

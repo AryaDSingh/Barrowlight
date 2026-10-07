@@ -136,6 +136,7 @@ void Application::foundryDeath(Monster& monster) {
     carries(MonsterType::Bonecaller, "bonecaller_journal", "A Bonecaller's journal slips from its robes.");
     carries(MonsterType::FrostAcolyte, "acolyte_catechism", "A frost-rimed catechism falls from the Acolyte's hands.");
     carries(MonsterType::OssuaryWarden, "hollow_map", "A map, drawn on bone, slips from the Warden's ashes.");
+    carries(MonsterType::RotWitch, "witch_seed", "A black seed rolls from the witch's hand, still warm.");
     if (monster.type() == MonsterType::GoblinCaptain && monster.stats().hp <= 0 && !player_.knowsLore("foreman_key") &&
         std::none_of(loreDrops_.begin(), loreDrops_.end(), [](const LoreDrop& d) { return d.id == "foreman_key"; })) {
         loreDrops_.push_back({at, "foreman_key"});
@@ -149,6 +150,7 @@ void Application::tickStormcall() {
     const auto me = player_.position();
     if (const int eye = player_.talents().passiveValue(PassiveKind::EyeOfTheStorm, player_.stats()); eye && surfaceAt(me) == SurfaceType::Electrified)
         player_.statusEffects().apply({StatusEffectType::Hasted, 2, eye});
+    tickBriars();
     // Rimeheart: ice that creeps; and inside Winter's Heart, nothing reaches you.
     if (!frostCreep_.empty()) {
         auto creeping = std::move(frostCreep_); frostCreep_.clear();

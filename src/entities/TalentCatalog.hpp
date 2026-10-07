@@ -19,7 +19,7 @@ struct TreeDefinition {
     const char* description;
     const char* starterItem;
 };
-inline constexpr std::array<TreeDefinition, 43> kTalentTrees{{
+inline constexpr std::array<TreeDefinition, 44> kTalentTrees{{
     {"one_handed", "One-Handed", TalentTree::OneHanded, "Efficient strikes, defensive openings and finishing blows.", "iron_sword"},
     {"two_handed", "Two-Handed", TalentTree::TwoHanded, "Heavy swings, surrounding enemies and blood-fuelled attacks.", "greatsword"},
     {"shield", "Shield", TalentTree::Shield, "Block damage, interrupt attacks and control space.", "wooden_shield"},
@@ -63,6 +63,7 @@ inline constexpr std::array<TreeDefinition, 43> kTalentTrees{{
     {"tempest", "Tempest", TalentTree::Tempest, "A deep tree: lightning that stays. Storms that follow you, and bolts that leap.", ""},
     {"bonewright", "Bonewright", TalentTree::Bonewright, "A deep tree: build from the dead. Bone walls, bone armour, and a guardian that grows.", ""},
     {"rimeheart", "Rimeheart", TalentTree::Rimeheart, "A deep tree: freeze the ground itself. Ice that spreads, and blows that shatter it.", ""},
+    {"briarheart", "Briarheart", TalentTree::Briarheart, "A deep tree: thorns that grow from your traps and your blood.", ""},
 }};
 inline const TreeDefinition* findTree(const std::string& id) {
     for (const auto& t : kTalentTrees) if (id == t.id) return &t;
@@ -158,6 +159,11 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "stealth.vanish") { longer(); d.mastery = "Hide for four responses."; }
     if (id == "stealth.smoke_bomb") { m.cooldownTurns -= 4; d.mastery = "Ready again four turns sooner."; }
     if (id == "stealth.feign") { m.restoreHpPercent = 10; d.mastery = "You also recover 10% of your life."; }
+    if (id == "briarheart.seed") { m.areaRadius = 2; d.mastery = "The patch is 5 by 5."; }
+    if (id == "briarheart.lash") { m.lashPin = 2; d.mastery = "Pins for two turns."; }
+    if (id == "briarheart.blood") { m.hpCost = 3; d.mastery = "Costs 3 life."; }
+    if (id == "briarheart.overgrowth") { m.overgrowth = 8; d.mastery = "Lasts 8 turns."; }
+    if (id == "briarheart.heart") { m.heartHeals = true; d.mastery = "You also heal 2 a turn for each bleeding foe in view."; }
     if (id == "rimeheart.rime") { m.areaRadius = 2; d.mastery = "Freezes 5 by 5."; }
     if (id == "rimeheart.lance") { m.onHitEffect = StatusEffectInstance{StatusEffectType::Stun, 1, 0}; d.mastery = "It also stuns."; }
     if (id == "rimeheart.path") { m.moveDistance += 2; d.mastery = "Slide two tiles further."; }
@@ -391,6 +397,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             if (tree == 32) t.scalingStat=ScalingStat::Intelligence;
             if (tree == 33 || tree == 34 || tree == 36) t.scalingStat=ScalingStat::Strength;
             if (tree >= 39 && tree <= 42) t.scalingStat=ScalingStat::Intelligence;
+            if (tree == 43) t.scalingStat=ScalingStat::Dexterity;
             if (tree == 33) t.weaponRequirement=WeaponRequirement::Spear;
             if (tree == 34) t.weaponRequirement=WeaponRequirement::OneHanded;
             if (tree == 10) t.armourRequirement=ArmourRequirement::Cloth;
@@ -1075,6 +1082,29 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t.description="Ice encases you for 3 turns: you can't act, but nothing can hurt or move you. Then it bursts: everything within 2 tiles takes heavy frost damage and is chilled, and the ground turns to ice.";
         t.wintersHeart=3; t.manaCost=8; t.cooldownTurns=18; add(42,"rimeheart.heart",3,t);
         shape("rimeheart.heart",3,"capstone",{});
+        // Briarheart (DEX), Thornwood Hollow's deep tree: Rot 8, Hunt 6, level 14, and a Rot Witch's seed.
+        t=attack("Seed the Briar","Throw a seed anywhere in sight: thorns grow on a 3 by 3 patch there, and whoever stands in it starts to bleed.",3,4,5,true,1);
+        t.projectile=false; t.briarSeed=true; t.onHitEffect=StatusEffectInstance{StatusEffectType::Bleed,3,2}; add(43,"briarheart.seed",0,t);
+        shape("briarheart.seed",3,"",{});
+        t=attack("Bramble Lash","A thorned whip that strikes a foe up to 3 tiles away in a straight line. Against a foe standing in thorns it hits twice as hard and pins it for a turn.",5,3,3);
+        t.reach=3; t.onThornsDouble=true; t.lashPin=1; add(43,"briarheart.lash",1,t);
+        shape("briarheart.lash",3,"path",{"briarheart.seed"});
+        t=Talent{}; t.name="Blood Briar"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Pay 6 life: thorns burst from the 8 tiles around you, and every foe on them is pinned for a turn.";
+        t.hpCost=6; t.bloodBriar=1; t.manaCost=4; t.cooldownTurns=8; add(43,"briarheart.blood",1,t);
+        shape("briarheart.blood",3,"path",{"briarheart.seed"});
+        add(43,"briarheart.thornborn",2,passive("Thornborn","Thorns no longer cut or slow you, and while you stand in them direct hits deal 3 less.",PassiveKind::Thornborn,3));
+        shape("briarheart.thornborn",1,"",{"briarheart.lash"});
+        add(43,"briarheart.snares",2,passive("Briar Snares","When one of your traps goes off, thorns grow on the 8 tiles around it.",PassiveKind::BriarSnares,1));
+        shape("briarheart.snares",1,"",{"briarheart.blood"});
+        t=Talent{}; t.name="Overgrowth"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="For 6 turns your thorns spread a tile each turn, never more than 4 tiles from you. A foe they reach is pinned, once.";
+        t.overgrowth=6; t.manaCost=10; t.cooldownTurns=16; add(43,"briarheart.overgrowth",3,t);
+        shape("briarheart.overgrowth",3,"capstone",{});
+        t=Talent{}; t.name="Heart of Briars"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="For 8 turns, whatever hits you has thorns grow beneath it and bleeds 3.";
+        t.heartOfBriars=8; t.manaCost=8; t.cooldownTurns=18; add(43,"briarheart.heart",3,t);
+        shape("briarheart.heart",3,"capstone",{});
         // Mace (STR, one hand): guards and bones.
         t=attack("Crush","A heavy blow that sunders: the target takes +2 damage from every hit for four enemy turns.",6,2,4);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Sundered,4,2}; add(24,"mace.crush",0,t);
@@ -1451,6 +1481,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="stonefist")
                 d.affinity=(d.id=="stonefist.tremor" || d.id=="stonefist.granite" || d.id=="stonefist.rockhide")?Affinity::Earth:Affinity::Motion;
             else if (d.treeId=="tempest") d.affinity=Affinity::Storm;
+            else if (d.treeId=="briarheart") d.affinity=(d.id=="briarheart.lash" || d.id=="briarheart.thornborn" || d.id=="briarheart.heart")?Affinity::Hunt:Affinity::Rot;
             else if (d.treeId=="rimeheart") d.affinity=(d.id=="rimeheart.path" || d.id=="rimeheart.freeze")?Affinity::Water:Affinity::Frost;
             else if (d.treeId=="bonewright") d.affinity=(d.id=="bonewright.wall" || d.id=="bonewright.marrow")?Affinity::Earth:Affinity::Death;
             else if (d.treeId=="slagcaller")
@@ -1479,7 +1510,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 case PassiveKind::FollowThrough: case PassiveKind::Stoneskin: case PassiveKind::HallowedGuard: case PassiveKind::Tidecaller:
                 case PassiveKind::Bulwark: case PassiveKind::FlowingMana: case PassiveKind::BladeWard: case PassiveKind::Transfusion:
                 case PassiveKind::GravePact: case PassiveKind::LongShadow: case PassiveKind::StaticEdge:
-                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered: case PassiveKind::Overcharge: case PassiveKind::Marrow: case PassiveKind::BrittleCold:
+                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered: case PassiveKind::Overcharge: case PassiveKind::Marrow: case PassiveKind::BrittleCold: case PassiveKind::Thornborn:
                     return 5;
                 case PassiveKind::BurningPlate:
                     return 10;

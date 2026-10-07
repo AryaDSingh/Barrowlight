@@ -210,6 +210,11 @@ private:
     std::vector<std::pair<Position, int>> frostCreep_;
     int encasedHp_ = 0;
     void winterBurst(int radius, bool freeze);
+    // Briarheart: thorns you grew (they spread under Overgrowth), and the foes
+    // Overgrowth has already pinned.
+    void growBriar(Position p);
+    std::vector<Position> briarTiles_;
+    std::vector<const Monster*> overgrowthPinned_;
     void fanFires(Position imp);
     void foundryDeath(Monster& monster);
     // Thornwood Hollow (ApplicationThornwood.cpp).
@@ -217,6 +222,7 @@ private:
     void growThorns(Position witch);
     void broodTurn(Monster& spider);
     void hatchTurn(Monster& egg);
+    void tickBriars();
     bool broodCalled_ = false; // the Hollow Mother has called her brood
     void raiseSlag(MonsterType kind, Position at, int turns, bool shard, int rank = 1);
     bool forgeSummoned_ = false; // the Forgemaster has called its slaglings

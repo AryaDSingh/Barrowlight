@@ -625,6 +625,10 @@ void Application::triggerTrap(std::size_t index, Monster& victim, Position headi
     if (index >= traps_.size()) return;
     const Trap trap = traps_[index];
     traps_.erase(traps_.begin() + static_cast<std::ptrdiff_t>(index));
+    // Briar Snares: thorns spring up around a trap that goes off.
+    if (player_.talents().passiveValue(PassiveKind::BriarSnares, player_.stats()))
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx) if (dx || dy) growBriar({trap.at.x + dx, trap.at.y + dy});
     const int bonus = player_.talents().passiveValue(PassiveKind::Trapper,player_.stats());
     const auto hurt = [&](Actor& a, int amount) { a.stats().hp -= amount; flashActor(a); };
     switch (trap.kind) {

@@ -136,6 +136,7 @@ sf::Color buffColor(StatusEffectType type) {
         case StatusEffectType::Stormcall: return sf::Color(120, 170, 255);
         case StatusEffectType::BoneStorm: case StatusEffectType::BoneLord: return sf::Color(220, 214, 196);
         case StatusEffectType::Encased: return sf::Color(150, 210, 250);
+        case StatusEffectType::Thornguard: case StatusEffectType::Overgrowth: case StatusEffectType::BriarHeart: return sf::Color(140, 170, 70);
         default: return kHoly;
     }
 }

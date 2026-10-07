@@ -34,6 +34,9 @@ enum class StatusEffectType {
     BoneStorm,       // bone shards whirl around you, cutting the foes beside you (Bonewright)
     BoneLord,        // your minions are hastened and hit harder (Bonewright)
     Encased,         // sealed in ice: can't act, can't be hurt; bursts when it ends (Rimeheart)
+    Thornguard,      // standing in your thorns: armour (Briarheart)
+    Overgrowth,      // your thorns spread each turn (Briarheart)
+    BriarHeart,      // whatever hits you is caught in thorns (Briarheart)
 };
 
 struct StatusEffectInstance {
@@ -136,6 +139,9 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::BoneStorm: return "Bone Storm";
     case StatusEffectType::BoneLord: return "Bone Lord";
     case StatusEffectType::Encased: return "Encased";
+    case StatusEffectType::Thornguard: return "Thornguard";
+    case StatusEffectType::Overgrowth: return "Overgrowth";
+    case StatusEffectType::BriarHeart: return "Heart of Briars";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

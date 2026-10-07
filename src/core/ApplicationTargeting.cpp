@@ -127,6 +127,9 @@ std::string statusTooltip(const StatusEffectInstance& e) {
     case StatusEffectType::BoneStorm: return "Bone shards whirl around you: each turn the foes beside you are cut and bleed.";
     case StatusEffectType::BoneLord: return "Your minions are hastened and deal +3.";
     case StatusEffectType::Encased: return "Sealed in ice: you can't act, and nothing can hurt or move you. When it ends, the ice bursts.";
+    case StatusEffectType::Thornguard: return "Among your thorns: direct hits deal "+n+" less.";
+    case StatusEffectType::Overgrowth: return "Your thorns spread a tile a turn, up to "+n+" tiles from you.";
+    case StatusEffectType::BriarHeart: return "Whatever hits you is caught in thorns and bleeds.";
     case StatusEffectType::Heat: return "Heat "+n+". It builds near furnaces and fire and fades away from them; water quenches it. At 10 or more it burns you for 2 a turn.";
     case StatusEffectType::Shock: return "Enables Lightning follow-ups. Certain talents consume Shock for an additional effect.";
     case StatusEffectType::Concealed: return "Enemies roll detection using distance, Dexterity and concealment rank. Most attacks and taking damage reveal you.";

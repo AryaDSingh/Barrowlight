@@ -22,6 +22,7 @@ enum class TalentTree {
     Tempest,    // the Drowned Cathedral's deep tree
     Bonewright, // the Deep Crypts' deep tree
     Rimeheart,  // the Deep Crypts' second deep tree
+    Briarheart, // Thornwood Hollow's deep tree
 };
 
 // Abilities and talents have five ranks; rank 5 often adds a mastery effect
@@ -94,7 +95,7 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The third batch (Shadow, Radiance, Shield) and its resonances.
     Dread, Bulwark, Twilight, TemplarsEdge, HallowedGuard,
     // The fourth batch (Bow, Stealth, Daggers) and its resonances.
-    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, BrittleSlag, Pyroclasm, Overcharge, EyeOfTheStorm, Marrow, GrownGuard, BrittleCold, CreepingFrost, UnseenHand, AssassinsEdge,
+    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, BrittleSlag, Pyroclasm, Overcharge, EyeOfTheStorm, Marrow, GrownGuard, BrittleCold, CreepingFrost, Thornborn, BriarSnares, UnseenHand, AssassinsEdge,
     // The fifth batch (Earth, Tide, Venom) and its resonances.
     Aftershock, Tidecaller, Virulence, Mire, FoulWater, EnvenomedBlades,
     // The sixth batch (Spear, Mace, Crossbow) and its resonances.
@@ -240,6 +241,13 @@ struct Talent {
     // radius frozen around you. wintersHeart: turns encased in ice.
     bool rime=false, onIceDouble=false, iceTrail=false;
     int deepFreeze=0, wintersHeart=0;
+    // Briarheart. briarSeed: thorns grow where it lands. onThornsDouble: double
+    // damage to a foe standing in thorns, pinning it for lashPin turns.
+    // bloodBriar: thorns burst around you, pinning for this many turns.
+    // overgrowth: turns your thorns spread. heartOfBriars: turns your attackers
+    // are caught in thorns (heartHeals: and you heal from their bleeding).
+    bool briarSeed=false, onThornsDouble=false, heartHeals=false;
+    int lashPin=0, bloodBriar=0, overgrowth=0, heartOfBriars=0;
     int drainPercent=0, stayHiddenPercent=0;
     bool huntersMark=false, returnConcealed=false;
     int committedRhythm=-1;
