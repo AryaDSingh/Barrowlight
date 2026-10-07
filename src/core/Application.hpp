@@ -230,6 +230,9 @@ private:
     void refreshPack();
     void tickPack();
     void tickContagion();
+    // Nemeses (ApplicationNemesis.cpp): the foe you fled follows you down.
+    void rememberFoe();
+    void spawnNemesis();
     void tickVampirism(); // light burns, blood heals, water hurts (ApplicationPack.cpp)
     void stablePack();      // leaving a floor: your hounds wait to follow you
     void callPackBack();    // arriving: they come to your side

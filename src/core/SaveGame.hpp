@@ -107,6 +107,7 @@ struct SaveGameState {
     std::vector<LoreDrop> loreDrops;        // format 42: lore lying on this floor
     int packBlood=0;                        // format 45: Packmaster's Blood
     std::vector<int> packHp;                // format 45: hounds waiting to follow you onto the next floor
+    int nemesisType=-1, nemesisDepth=0, nemesisRank=0; std::string nemesisName; // format 46: the foe that follows you
     int patron=0, favor=0;                 // format 34
     std::vector<std::array<int, 4>> extraLandmarks; // format 36: kind, altar x, altar y, used
     // Format 29: ground surfaces (x, y, type, turns) and wall torches lit or put out.

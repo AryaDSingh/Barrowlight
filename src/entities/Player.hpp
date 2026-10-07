@@ -80,6 +80,9 @@ public:
     std::vector<std::string> lore;
     int packBlood=0;           // Packmaster: Blood, 0-10, from your beasts' kills
     std::vector<int> packHp;   // Packmaster: hounds following you to the next floor (their life)
+    // A foe you fled: it follows you down, named, and comes for you (format 46).
+    struct Nemesis { int type = -1; std::string name; int depth = 0; int rank = 0; };
+    Nemesis nemesis;
     bool knowsLore(const std::string& id) const { return std::find(lore.begin(), lore.end(), id) != lore.end(); }
     // Cloth's ward: a shield over your life. Transient: it refills on load.
     int ward=0, wardRest=0;

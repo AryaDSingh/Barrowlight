@@ -15,8 +15,9 @@ inline bool enemyBackline(MonsterType t) {
 //   Patrol: a pack that walks the whole floor, room to room.
 //   Champion: a wandering brute with an escort, named on arrival.
 //   Hunter: sent after you when you linger; always knows where you are.
-enum class Roam : int { None = 0, Patrol = 1, Champion = 2, Hunter = 3 };
-inline constexpr int kRoamKinds = 3;
+// Nemesis (format 46): a foe you fled, named, that follows you down and hunts you.
+enum class Roam : int { None = 0, Patrol = 1, Champion = 2, Hunter = 3, Nemesis = 4 };
+inline constexpr int kRoamKinds = 4;
 struct EnemyTactics {
     Position home{}, lastKnown{};
     int alert=0, patrol=0, retreat=0, heals=3;

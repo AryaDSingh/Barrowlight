@@ -2785,6 +2785,8 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                         }
                     }
                     decision.target->stats().hp -= damage;
+                    if (auto* striker=dynamic_cast<Monster*>(&actor); striker && !striker->allied && decision.target==&player_ && damage>0)
+                        striker->harmToPlayer+=damage;
                     if (auto* hound=dynamic_cast<Monster*>(&actor); hound && packBeast(*hound) && decision.target!=&player_ && damage>0) {
                         if (player_.statusEffects().has(StatusEffectType::AlphasHowl)) decision.target->statusEffects().apply({StatusEffectType::Bleed,3,3});
                         if (player_.statusEffects().magnitudeOf(StatusEffectType::FeralBond)>=2)
@@ -2986,6 +2988,11 @@ void Application::checkAndHandleDeath(Actor& actor) {
     if (defeated && exploredMap_.at(defeated->position().x,defeated->position().y)==Visibility::Visible)
         soundManager_.playVoice(monsterVoice(defeated->type()),"death");
     if (defeated && !defeated->allied) foundryDeath(*defeated);
+    if (defeated && !defeated->allied && defeated->roam==Roam::Nemesis) {
+        log(defeated->name()," falls. It won't follow you again.");
+        spillLoot(ItemRarity::Rare,1,defeated->position());
+        player_.nemesis={};
+    }
     // Call of the Wild: every foe that falls heals you and Thornmaw.
     if (defeated && !defeated->allied && player_.statusEffects().has(StatusEffectType::CallOfTheWild)) {
         player_.stats().hp=std::min(player_.stats().maxHp,player_.stats().hp+10);
@@ -3540,6 +3547,7 @@ void Application::regenerateLevel(unsigned int seed) {
     currentActor_ = &scheduler_.nextTurn();
     // Arrival is not a wait action: no healing, cooldown ticks or quiet turns.
     updateFieldOfView();
+    spawnNemesis();
 
     announceFloor();
     std::cout << "Generated dungeon (seed " << seed << ", floor " << currentFloor_
@@ -3572,6 +3580,7 @@ SaveGameState Application::captureState(bool includeFloors) {
     for (const auto& t:torchToggles_) state.torchToggles.push_back({t.first,t.second});
     for (const auto& orb:lightOrbs_) state.lightOrbs.push_back({orb.at.x,orb.at.y,orb.turns});
     state.lore=player_.lore; state.packBlood=player_.packBlood; state.packHp=player_.packHp;
+    state.nemesisType=player_.nemesis.type; state.nemesisName=player_.nemesis.name; state.nemesisDepth=player_.nemesis.depth; state.nemesisRank=player_.nemesis.rank;
     for (const auto& drop:loreDrops_) state.loreDrops.push_back({drop.at.x,drop.at.y,drop.id});
     state.map = map_;
     state.exploredMap = exploredMap_;
@@ -3708,6 +3717,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
         monster->essence = savedMonster.essence; monster->corrupted = savedMonster.corrupted; monster->rift = savedMonster.rift;
         if (monster->essence || monster->rift) dressEventMonster(*monster);
         if (monster->roam == Roam::Champion) monster->setName(wandererName(*monster));
+        if (monster->roam == Roam::Nemesis && !state.nemesisName.empty()) monster->setName(state.nemesisName);
         monster->recoveryActions=savedMonster.recoveryActions; monster->summonsCommitted=savedMonster.summonsCommitted;
         if (auto* behavior=dynamic_cast<BossBehavior*>(monster->ai())) behavior->restoreState(savedMonster.announcedPhase,savedMonster.enraged);
         monster->stats().hp = savedMonster.hp;
@@ -3757,6 +3767,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     lightOrbs_.clear();
     for (const auto& [x,y,turns]:state.lightOrbs) lightOrbs_.push_back({{x,y},turns});
     player_.lore=state.lore; player_.packBlood=state.packBlood; player_.packHp=state.packHp;
+    player_.nemesis={state.nemesisType,state.nemesisName,state.nemesisDepth,state.nemesisRank};
     loreDrops_.clear(); banner_.reset();
     for (const auto& drop:state.loreDrops) loreDrops_.push_back({{drop.x,drop.y},drop.id});
     ascendancyMenu_=false; trialMenu_=false;

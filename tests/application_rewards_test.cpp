@@ -2224,9 +2224,13 @@ struct ApplicationRewardsTestAccess {
                 cast(lash,{13,10});
                 const int plain=300-b->stats().hp;
                 check(plain>0 && !b->statusEffects().has(StatusEffectType::Pinned),"Bramble Lash reaches a foe 3 tiles away");
-                b->stats().hp=300; app.setSurface({13,10},SurfaceType::Thorns,0);
-                cast(lash,{13,10});
-                check(300-b->stats().hp>=plain*2-2 && b->statusEffects().has(StatusEffectType::Pinned),"On thorns, Bramble Lash hits twice as hard and pins");
+                // Four lashes each way, so a critical can't decide it.
+                b->stats().hp=b->stats().maxHp=3000;
+                int dry=0, thorned=0;
+                for (int i=0;i<4;++i) { const int before=b->stats().hp; cast(lash,{13,10}); dry+=before-b->stats().hp; }
+                app.setSurface({13,10},SurfaceType::Thorns,0);
+                for (int i=0;i<4;++i) { const int before=b->stats().hp; cast(lash,{13,10}); thorned+=before-b->stats().hp; }
+                check(dry>0 && thorned*10>=dry*16 && b->statusEffects().has(StatusEffectType::Pinned),"On thorns, Bramble Lash hits twice as hard and pins");
                 clearFoes();
                 // Blood Briar.
                 auto* c=foe({11,10});
@@ -2774,7 +2778,7 @@ struct ApplicationRewardsTestAccess {
                 auto* a=foe({11,10});
                 const int hp=app.player_.stats().hp, ward=app.player_.spellWard;
                 AIDecision claw; claw.type=AIActionType::Attack; claw.target=&app.player_; claw.attackPower=4;
-                app.executeAIDecision(*a,claw,0);
+                for (int i=0;i<10 && app.player_.spellWard==ward;++i) app.executeAIDecision(*a,claw,0); // a claw can miss
                 check(app.player_.stats().hp==hp && app.player_.spellWard<ward,"...and it soaks the blows that land");
                 clearFoes();
                 const auto surge=ranked("cloth.surge",1);
@@ -4863,6 +4867,70 @@ struct ApplicationRewardsTestAccess {
             app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Escape});
             check(!app.journalOpen_,"Esc closes the journal");
             app.player_.lore.clear();
+        }
+
+        // Nemeses: the foe you flee follows you down, named.
+        {
+            setup(PlayerClass::Warrior);
+            app.mode_=GameMode::Playing; app.currentFloor_=2; app.regenerateLevel(91);
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.boss_=nullptr;
+            const auto farFrom=[&](Position from) {
+                Position best=from; int bestD=-1;
+                for (int y=0;y<app.map_.height();++y) for (int x=0;x<app.map_.width();++x) {
+                    const int d=std::max(std::abs(x-from.x),std::abs(y-from.y));
+                    if (app.map_.isWalkable(x,y) && !app.isOccupied({x,y},nullptr) && d>bestD) { bestD=d; best={x,y}; }
+                }
+                return best;
+            };
+            const auto addFoe=[&](Position p,int harm) {
+                auto f=createMonster(MonsterType::Goblin,p); auto* g=f.get();
+                g->tactics.alert=8; g->harmToPlayer=harm;
+                app.scheduler_.add(*g); app.monsters_.push_back(std::move(f)); return g;
+            };
+            const auto nemesisHere=[&]()->Monster* { for (auto& m:app.monsters_) if (m->roam==Roam::Nemesis && m->stats().hp>0) return m.get(); return nullptr; };
+            const auto leave=[&](int to) { app.player_.setPosition(app.floorExit_); app.combatThisTurn_=false; app.travelFloor(to,false); };
+            // A scratch is forgotten.
+            addFoe(farFrom(app.floorExit_),2);
+            leave(3);
+            check(app.currentFloor_==3 && app.player_.nemesis.type<0,"A foe that barely touched you doesn't remember you");
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.boss_=nullptr;
+            // A foe that hurt you badly, and still hunts you, does.
+            addFoe(farFrom(app.floorExit_),40);
+            leave(4);
+            check(app.currentFloor_==4 && app.player_.nemesis.type==static_cast<int>(MonsterType::Goblin) && !app.player_.nemesis.name.empty() &&
+                  app.player_.nemesis.depth==3,"Flee a foe that hurt you badly, and it becomes your nemesis");
+            auto* nemesis=nemesisHere();
+            check(nemesis && nemesis->name()==app.player_.nemesis.name && nemesis->tier()==MonsterTier::Nightmare && nemesis->tactics.alert>0,
+                  "On the next floor down it is waiting, named, and it hunts you");
+            check(app.floorNotice_.find(app.player_.nemesis.name+" has followed you here")!=std::string::npos,"The floor tells you it has followed you");
+            if (nemesis) {
+                const int life=nemesis->stats().maxHp;
+                const auto path=(output/"nemesis.txt").string();
+                check(saveGame(app.captureState(false),path),"A floor with your nemesis saves");
+                const auto loaded=loadGame(path);
+                check(loaded && app.restoreState(*loaded) && nemesisHere() && nemesisHere()->name()==app.player_.nemesis.name,"And loads with it, still named");
+                // Flee it again: it grows bolder.
+                for (auto& m:app.monsters_) if (m->roam!=Roam::Nemesis && !m->vaultGuard) { m->stats().hp=0; app.scheduler_.remove(*m); }
+                app.removeDeadMonsters();
+                nemesisHere()->setPosition(farFrom(app.floorExit_)); nemesisHere()->tactics.alert=8;
+                leave(5); // the Warlord's floor: a nemesis never intrudes on a boss
+                check(app.currentFloor_==5 && app.player_.nemesis.rank==2 && !nemesisHere(),"Flee it again: it grows bolder, but leaves a boss's floor alone");
+                for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+                app.monsters_.clear(); app.boss_=nullptr;
+                leave(6);
+                nemesis=nemesisHere();
+                check(app.currentFloor_==6 && nemesis && nemesis->stats().maxHp>life,"On the floor after, it comes back stronger");
+                // Kill it, and it's over.
+                if (nemesis) {
+                    const auto drops=app.groundItems_.size();
+                    nemesis->stats().hp=0; app.checkAndHandleDeath(*nemesis); app.removeDeadMonsters();
+                    check(app.player_.nemesis.type<0 && app.groundItems_.size()>drops,"Kill it and the grudge is over, and it leaves you something fine");
+                }
+            }
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.player_.nemesis={}; app.currentFloor_=1; app.boss_=nullptr;
         }
 
         app.window_.close();

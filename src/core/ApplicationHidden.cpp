@@ -45,7 +45,7 @@ AIDecision Application::enemyDecision(Monster& m,Actor* opponent) {
         }
     } else if(t.alert>0) --t.alert;
     // Hunters follow your scent: they always know where you are.
-    if(!opponent && m.roam==Roam::Hunter) { t.alert=8; t.lastKnown=player_.position(); }
+    if(!opponent && (m.roam==Roam::Hunter || m.roam==Roam::Nemesis)) { t.alert=8; t.lastKnown=player_.position(); } // a nemesis too
     auto moveToward=[&](Position goal) {
         AIDecision d;
         const auto path=findPath(map_,here,goal);

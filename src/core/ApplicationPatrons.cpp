@@ -70,6 +70,7 @@ void Application::announceFloor() {
     for (const auto& m : monsters_) {
         if (m->stats().hp <= 0 || m->allied) continue;
         if (m.get() == boss_) events.push_back(m->name() + " awaits");
+        else if (m->roam == Roam::Nemesis) events.push_back(m->name() + " has followed you here");
         else if (isUniqueMonster(m->type()) || m->eventChampion) events.push_back(m->name() + " lurks here");
         else if (m->roam == Roam::Champion) events.push_back(m->name() + " roams these halls");
         patrol |= m->roam == Roam::Patrol;

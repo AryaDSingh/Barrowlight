@@ -46,7 +46,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 45;
+constexpr int kSaveFormatVersion = 46;
 // The creatures that can fight for you: skeletons, the bone guardian, slag, hounds.
 bool alliedKind(MonsterType t) {
     return t==MonsterType::Skeleton || t==MonsterType::SkeletonGuard || t==MonsterType::Slagling || t==MonsterType::SlagGolem || t==MonsterType::BriarHound;
@@ -517,6 +517,11 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
         for (const int hp : state.packHp) out << ' ' << hp;
         out << '\n';
     }
+    if (version>=46) {
+        std::string name = state.nemesisName.empty() ? "-" : state.nemesisName;
+        std::replace(name.begin(), name.end(), ' ', '_');
+        out << state.nemesisType << ' ' << state.nemesisDepth << ' ' << state.nemesisRank << ' ' << name << '\n';
+    }
     return static_cast<bool>(out);
 }
 
@@ -884,6 +889,14 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
         std::size_t count=0;
         if (!(in>>state.packBlood>>count) || state.packBlood<0 || state.packBlood>10 || count>2) return std::nullopt;
         for (std::size_t i=0;i<count;++i) { int hp=0; if (!(in>>hp) || hp<1 || hp>100000) return std::nullopt; state.packHp.push_back(hp); }
+    }
+    if (version>=46) {
+        std::string name;
+        if (!(in>>state.nemesisType>>state.nemesisDepth>>state.nemesisRank>>name) || state.nemesisType<-1 ||
+            state.nemesisType>static_cast<int>(MonsterType::HollowMother) || state.nemesisRank<0 || state.nemesisRank>3 || name.size()>64) return std::nullopt;
+        if (name=="-") name.clear();
+        std::replace(name.begin(), name.end(), '_', ' ');
+        state.nemesisName=name;
     }
     if (state.landmark && (!state.map.inBounds(state.landmarkAltar.x,state.landmarkAltar.y) ||
         state.map.isWalkable(state.landmarkAltar.x,state.landmarkAltar.y))) return std::nullopt;
