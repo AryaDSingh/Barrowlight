@@ -54,6 +54,10 @@ void Application::readLore(std::size_t index) {
     if (player_.knowsLore(drop.id)) return;
     player_.lore.push_back(drop.id);
     soundManager_.playFamily("levelup", 70.f);
+    if (drop.id == "hollow_map") {
+        log("A map scratched into a flat bone: a way down to a cloister the forest swallowed.");
+        log("It leads to Thornwood Hollow. Choose it from the dungeon menu in town.");
+    }
     if (drop.id == "foreman_key") {
         log("An iron key on a chain, stamped with a hammer and a flame.");
         log("It opens the Ashen Foundry. Choose it from the dungeon menu in town.");

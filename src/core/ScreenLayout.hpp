@@ -72,7 +72,7 @@ inline sf::FloatRect trialEnter(int i) { return {{96.f + 374.f * i, 476}, {340, 
 inline const sf::FloatRect kTrialClose{{560, 566}, {160, 40}};
 
 // --- Dungeon selection ------------------------------------------------------------
-inline sf::FloatRect dungeonCard(int i) { return {{40.f + 302.f * i, 100}, {292, 156}}; }
+inline sf::FloatRect dungeonCard(int i) { return {{40.f + 242.f * i, 100}, {232, 160}}; }
 inline sf::FloatRect depthCard(int depth) { return {{40.f + 121.f * (depth - 1), 306}, {112, 80}}; }
 inline const sf::FloatRect kDungeonEnter{{40, 604}, {280, 46}}, kDungeonBack{{336, 604}, {240, 46}};
 

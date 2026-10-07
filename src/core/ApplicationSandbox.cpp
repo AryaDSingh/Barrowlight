@@ -19,11 +19,12 @@ sf::FloatRect sandboxToggle(int i, int count, float y = 86) {
 }
 sf::FloatRect sandboxRarity(int i) { return sandboxToggle(i, 3, 118); }
 sf::FloatRect sandboxItemCell(int i) { return {{806.f + 222.f * (i % 2), 154.f + 26.f * (i / 2)}, {216, 24}}; }
-sf::FloatRect sandboxCell(int i) { return {{806.f + 222.f * (i % 2), 124.f + 26.f * (i / 2)}, {216, 24}}; }
+// Every kind of foe, in 3 columns.
+sf::FloatRect sandboxCell(int i) { return {{806.f + 148.f * (i % 3), 124.f + 22.f * (i / 3)}, {144, 20}}; }
 sf::FloatRect sandboxButton(int i) { return {{806.f + 222.f * (i % 2), 130.f + 40.f * (i / 2)}, {216, 34}}; }
 const sf::FloatRect kPagePrev{{806, 640}, {60, 30}}, kPageNext{{1184, 640}, {60, 30}};
 constexpr int kItemsPerPage = 36; // 18 rows of 2, from y 154 to 622
-constexpr int kMonsterTypes = static_cast<int>(MonsterType::Mimic) + 1;
+constexpr int kMonsterTypes = static_cast<int>(MonsterType::HollowMother) + 1;
 
 const char* itemGroupName(int g) { return g == 0 ? "Weapons" : g == 1 ? "Armour" : g == 2 ? "Jewellery" : "Uniques"; }
 bool inItemGroup(const ItemDefinition& d, int group) {
@@ -230,7 +231,7 @@ void Application::renderSandbox() {
         for (int t = 0; t < kMonsterTypes; ++t) {
             const auto cell = sandboxCell(t);
             if (hovered(cell)) ui_.inset(window_, cell, ui::kBronze);
-            ui_.text(window_, monsterName(t), {cell.position.x + 6, cell.position.y + 3}, 14, hovered(cell) ? ui::kGold : ui::kText);
+            ui_.text(window_, monsterName(t), {cell.position.x + 4, cell.position.y + 2}, 13, hovered(cell) ? ui::kGold : ui::kText);
         }
         ui_.text(window_, "Click a foe: it appears beside you.", {806, 576}, 14, ui::kMuted);
     }

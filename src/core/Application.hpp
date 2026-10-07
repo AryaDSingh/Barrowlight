@@ -212,6 +212,12 @@ private:
     void winterBurst(int radius, bool freeze);
     void fanFires(Position imp);
     void foundryDeath(Monster& monster);
+    // Thornwood Hollow (ApplicationThornwood.cpp).
+    void thornsCut(Actor& actor);
+    void growThorns(Position witch);
+    void broodTurn(Monster& spider);
+    void hatchTurn(Monster& egg);
+    bool broodCalled_ = false; // the Hollow Mother has called her brood
     void raiseSlag(MonsterType kind, Position at, int turns, bool shard, int rank = 1);
     bool forgeSummoned_ = false; // the Forgemaster has called its slaglings
     bool heatFresh_ = false;     // Heat gained since your last turn began: it doesn't cool yet
@@ -544,6 +550,7 @@ private:
     void travelFloor(int destination,bool fromTown=false,bool falling=false);
     bool cathedralOpen() const { return (player_.trialKeys & 1) != 0; } // the Warlord's sigil opens it
     bool foundryOpen() const { return player_.knowsLore("foreman_key"); } // Grik's key opens it
+    bool thornwoodOpen() const { return player_.knowsLore("hollow_map"); } // Veyra's map opens it
     bool interactStairs();
     void handleTownKey(sf::Keyboard::Key key);
     void handleTownMouse(const sf::Event& event);

@@ -4240,6 +4240,139 @@ struct ApplicationRewardsTestAccess {
             app.player_.statusEffects().active().clear(); app.player_.ascendancy.clear();
         }
 
+        // Thornwood Hollow: Veyra's map opens it; thorns cut and slow; the
+        // witches grow them, the spiders lay eggs, and the Hollow Mother waits.
+        {
+            setup(PlayerClass::Warrior);
+            app.mode_=GameMode::Town;
+            app.travelFloor(kThornFirst,true);
+            check(app.mode_==GameMode::Town && app.currentFloor_!=kThornFirst,"Thornwood Hollow is lost without the map");
+            app.mode_=GameMode::Playing; app.currentFloor_=10; app.regenerateLevel(78);
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.boss_=nullptr; app.loreDrops_.clear();
+            auto made=createMonster(MonsterType::OssuaryWarden,{app.player_.position().x+1,app.player_.position().y}); auto* veyra=made.get();
+            app.scheduler_.add(*veyra); app.monsters_.push_back(std::move(made));
+            veyra->stats().hp=0; app.checkAndHandleDeath(*veyra); app.removeDeadMonsters();
+            bool map=false; for (const auto& d:app.loreDrops_) map=map || d.id=="hollow_map";
+            check(map,"Veyra drops a map drawn on bone");
+            for (const auto& d:app.loreDrops_) if (d.id=="hollow_map") { app.player_.setPosition(d.at); app.pickupItem(); break; }
+            check(app.thornwoodOpen(),"Taking the map opens Thornwood Hollow");
+            bool thorny=true, saves=true, boss=false;
+            for (int floor=kThornFirst; floor<=kThornLast; ++floor) {
+                app.currentFloor_=floor; app.regenerateLevel(950+floor);
+                int thorns=0;
+                for (int y=0;y<app.map_.height();++y) for (int x=0;x<app.map_.width();++x) thorns+=app.surfaceAt({x,y})==SurfaceType::Thorns;
+                thorny=thorny && thorns>=6;
+                for (const auto& m:app.monsters_) boss=boss || m->type()==MonsterType::HollowMother;
+                if (floor==kThornFirst+1 || floor==kThornLast) {
+                    if (floor==kThornLast && app.boss_) app.player_.setPosition({app.boss_->position().x,app.boss_->position().y+3});
+                    if (floor==kThornFirst+1) {
+                        // A witch's patch beside you, so the snapshot shows the thorns.
+                        const auto at=app.player_.position();
+                        for (int dx=1;dx<=3;++dx) for (int dy=0;dy<=1;++dy)
+                            if (app.map_.isWalkable(at.x+dx,at.y+dy) && app.surfaceAt({at.x+dx,at.y+dy})==SurfaceType::None) app.setSurface({at.x+dx,at.y+dy},SurfaceType::Thorns,0);
+                    }
+                    app.updateFieldOfView();
+                    snapshot(floor==kThornLast?"thornwood-boss.png":"thornwood.png");
+                }
+                const auto path=(output/"thornwood.txt").string();
+                saves=saves && saveGame(app.captureState(false),path) && loadGame(path).has_value();
+            }
+            check(thorny,"Every Hollow floor is overgrown with thorns");
+            check(boss && app.boss_ && app.boss_->type()==MonsterType::HollowMother,"The Hollow Mother waits on the Hollow's last floor");
+            check(saves,"Every Hollow floor saves and loads");
+            app.mode_=GameMode::Town; app.travelFloor(kThornFirst,true);
+            check(app.mode_==GameMode::Playing && app.currentFloor_==kThornFirst,"With the map, the Hollow can be entered from town");
+
+            // Thorns cut and slow you; the Hollow's own walk through unharmed; fire burns them.
+            setup(PlayerClass::Warrior);
+            app.currentFloor_=kThornFirst;
+            app.setSurface(app.player_.position(),SurfaceType::Thorns,0);
+            auto houndMade=createMonster(MonsterType::BriarHound,{14,10}); auto* hound=houndMade.get();
+            app.scheduler_.add(*hound); app.monsters_.push_back(std::move(houndMade));
+            app.setSurface({14,10},SurfaceType::Thorns,0);
+            app.tickSurfaces();
+            check(app.player_.statusEffects().has(StatusEffectType::Bleed) && app.player_.statusEffects().has(StatusEffectType::Slowed),
+                  "Standing in thorns, you bleed and slow");
+            check(!hound->statusEffects().has(StatusEffectType::Bleed),"A Briar Hound runs through thorns unharmed");
+            app.player_.statusEffects().active().clear();
+            app.setSurface({16,10},SurfaceType::Thorns,0); app.setSurface({17,10},SurfaceType::Fire,3);
+            app.tickSurfaces(); app.tickSurfaces();
+            check(app.surfaceAt({16,10})!=SurfaceType::Thorns,"Fire burns thorns away");
+            app.clearSurfaces();
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear();
+
+            // A Rot Witch grows thorns around her.
+            app.growThorns({8,10});
+            int grown=0; for (int y=7;y<=13;++y) for (int x=5;x<=11;++x) grown+=app.surfaceAt({x,y})==SurfaceType::Thorns;
+            check(grown==3,"A Rot Witch grows 3 tiles of thorns a turn around her");
+            for (int i=0;i<6;++i) app.growThorns({8,10});
+            grown=0; bool far=false;
+            for (int y=0;y<app.map_.height();++y) for (int x=0;x<app.map_.width();++x) if (app.surfaceAt({x,y})==SurfaceType::Thorns) {
+                ++grown; far=far || std::max(std::abs(x-8),std::abs(y-10))>3; }
+            check(grown>3 && !far,"Her thorns creep outward, but never past 3 tiles from her");
+            app.clearSurfaces();
+
+            // Brood spiders lay eggs; eggs hatch unless broken.
+            auto spiderMade=createMonster(MonsterType::BroodSpider,{8,6}); auto* spider=spiderMade.get();
+            app.scheduler_.add(*spider); app.monsters_.push_back(std::move(spiderMade));
+            const auto eggs=[&]{ std::vector<Monster*> out; for (auto& m:app.monsters_) if (m->type()==MonsterType::EggSac && m->stats().hp>0) out.push_back(m.get()); return out; };
+            const auto spiderlings=[&]{ int n=0; for (auto& m:app.monsters_) n+=m->type()==MonsterType::Spiderling && m->stats().hp>0; return n; };
+            for (int i=0;i<4;++i) app.broodTurn(*spider);
+            check(eggs().empty(),"A Brood Spider doesn't lay every turn");
+            app.broodTurn(*spider);
+            check(eggs().size()==1,"Every 5 turns, a Brood Spider lays an egg sac");
+            if (!eggs().empty()) {
+                auto* egg=eggs().front();
+                const int level=app.player_.level(), xp=app.player_.xp();
+                for (int i=0;i<3;++i) app.hatchTurn(*egg);
+                check(egg->stats().hp>0 && spiderlings()==0,"An egg sac waits a few turns");
+                app.hatchTurn(*egg); app.removeDeadMonsters();
+                check(eggs().empty() && spiderlings()==2,"Then it splits into two spiderlings");
+                check(app.player_.level()==level && app.player_.xp()==xp,"A hatched egg gives nothing");
+            }
+            for (int i=0;i<5;++i) app.broodTurn(*spider);
+            if (!eggs().empty()) {
+                auto* second=eggs().front(); second->stats().hp=0; app.checkAndHandleDeath(*second); app.removeDeadMonsters();
+            }
+            check(eggs().empty() && spiderlings()==2,"An egg broken before it hatches is gone for good");
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear();
+
+            // A Thornback's spines cut whoever strikes it in melee.
+            auto backMade=createMonster(MonsterType::Thornback,{app.player_.position().x+1,app.player_.position().y}); auto* back=backMade.get();
+            back->stats().hp=back->stats().maxHp=999;
+            app.scheduler_.add(*back); app.monsters_.push_back(std::move(backMade));
+            // Strike until a blow lands (a swing can miss).
+            int hp=0; std::size_t since=0;
+            for (int i=0;i<10 && back->stats().hp==999;++i) {
+                app.player_.stats().hp=app.player_.stats().maxHp; hp=app.player_.stats().hp; since=app.logTotal_;
+                app.player_.talents().resetCooldowns(); app.player_.stats().mana=app.player_.stats().maxMana;
+                app.currentActor_=&app.player_; app.tryUseTalent(0,back->position());
+            }
+            bool spines=false;
+            const std::size_t fresh=std::min(app.logMessages_.size(),app.logTotal_-since);
+            for (std::size_t i=app.logMessages_.size()-fresh;i<app.logMessages_.size();++i) {
+                spines=spines || app.logMessages_[i].find("Its spines cut you for 3")!=std::string::npos;
+            }
+            check(back->stats().hp<999 && spines && app.player_.stats().hp<=hp-3,"Striking a Thornback in melee, its spines cut you for 3");
+
+            // At half life the Hollow Mother calls her brood.
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear();
+            auto motherMade=createMonster(MonsterType::HollowMother,{app.player_.position().x+4,app.player_.position().y}); auto* mother=motherMade.get();
+            mother->stats().hp=mother->stats().maxHp/2; app.boss_=mother;
+            app.scheduler_.add(*mother); app.monsters_.push_back(std::move(motherMade));
+            app.broodCalled_=false;
+            mother->tactics.alert=8; mother->tactics.lastKnown=app.player_.position();
+            for (int i=0;i<4 && !app.broodCalled_;++i) { app.player_.stats().hp=app.player_.stats().maxHp; app.currentActor_=mother; app.processMonsterTurns(); }
+            check(app.broodCalled_ && spiderlings()>=3,"At half her life the Hollow Mother calls her brood");
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear(); app.boss_=nullptr;
+            app.clearSurfaces(); app.player_.statusEffects().active().clear(); app.currentFloor_=1;
+        }
+
         app.window_.close();
         std::cout << checks << " reward checks, " << failures << " failures.\n";
         return failures ? 1 : 0;

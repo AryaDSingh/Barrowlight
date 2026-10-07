@@ -41,7 +41,20 @@ enum class MonsterType {
     Slagling,         // small and quick; leaves the ground burning where it dies
     BellowsImp,       // fans the fires around it, and blows heat at you from range
     Forgemaster,      // the Foundry's boss
+    // Thornwood Hollow (save format 44).
+    BriarHound,       // fast pack hunter; its bites bleed
+    RotWitch,         // thorns spread from where she stands; her curse poisons
+    BroodSpider,      // lays egg sacs that hatch unless broken
+    EggSac,           // breakable; hatches into spiderlings
+    Spiderling,       // small and quick
+    Thornback,        // slow, armoured; striking it in melee cuts you
+    HollowMother,     // Thornwood's boss
 };
+// The Hollow's own walk through its thorns unharmed.
+inline bool thornNative(MonsterType t) {
+    return t == MonsterType::BriarHound || t == MonsterType::RotWitch || t == MonsterType::BroodSpider || t == MonsterType::EggSac ||
+           t == MonsterType::Spiderling || t == MonsterType::Thornback || t == MonsterType::HollowMother;
+}
 
 // Darkvision: goblinkind, orcs, beasts and the undead see without light.
 // The humans among the enemies (archers, monks, clerics, the warden) need
@@ -60,7 +73,7 @@ inline bool bleeds(MonsterType type) {
         case MonsterType::Skeleton: case MonsterType::SkeletonArcher: case MonsterType::SkeletonGuard:
         case MonsterType::CryptShade: case MonsterType::CryptSentinel: case MonsterType::Lich:
         case MonsterType::Gloomstalker: case MonsterType::DrownedOne: case MonsterType::DrownedChorister: case MonsterType::TheSleeper: case MonsterType::Mimic:
-        case MonsterType::SlagGolem: case MonsterType::Slagling: case MonsterType::Forgemaster: return false;
+        case MonsterType::SlagGolem: case MonsterType::Slagling: case MonsterType::Forgemaster: case MonsterType::EggSac: return false;
         default: return true;
     }
 }

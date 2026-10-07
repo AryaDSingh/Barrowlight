@@ -180,7 +180,7 @@ bool Application::interactStairs() {
     }
     if (trial_ && sameTile(player_.position(),floorEntrance_)) { exitTrial(); return true; }
     if (sameTile(player_.position(),floorEntrance_)) {
-        if (currentFloor_==1 || currentFloor_==kCathedralFirst || currentFloor_==kFoundryFirst) returnToTown(sideDungeonFloor(currentFloor_));
+        if (currentFloor_==1 || currentFloor_==kCathedralFirst || currentFloor_==kFoundryFirst || currentFloor_==kThornFirst) returnToTown(sideDungeonFloor(currentFloor_));
         else travelFloor(currentFloor_-1);
         return true;
     }
@@ -196,6 +196,8 @@ void Application::travelFloor(int destination,bool fromTown,bool falling) {
     if(!fromTown && currentFloor_==kFoundryLast && destination==kFoundryLast+1) { returnToTown(true); if (mode_==GameMode::Town) log("You climb out of the Ashen Foundry."); return; }
     if(cathedralFloor(destination) && !cathedralOpen()) { log("The way down is sealed."); return; }
     if(foundryFloor(destination) && !foundryOpen()) { log("The Foundry door is locked."); return; }
+    if(!fromTown && currentFloor_==kThornLast && destination==kThornLast+1) { returnToTown(true); if (mode_==GameMode::Town) log("You climb out of Thornwood Hollow."); return; }
+    if(thornFloor(destination) && !thornwoodOpen()) { log("You don't know the way to the Hollow."); return; }
     if(destination==currentFloor_) {
         if(fromTown) { dungeonMenu_=false; handleTownKey(sf::Keyboard::Key::D); }
         return;
@@ -243,7 +245,7 @@ void Application::travelFloor(int destination,bool fromTown,bool falling) {
 
 // Chasms drop you a floor, except in a trial arena or from the very bottom.
 bool Application::canFall() const {
-    return !trial_ && mode_ == GameMode::Playing && (currentFloor_ < kRunFinalFloor || (cathedralFloor(currentFloor_) && currentFloor_ < kCathedralLast) || (foundryFloor(currentFloor_) && currentFloor_ < kFoundryLast));
+    return !trial_ && mode_ == GameMode::Playing && (currentFloor_ < kRunFinalFloor || (cathedralFloor(currentFloor_) && currentFloor_ < kCathedralLast) || (foundryFloor(currentFloor_) && currentFloor_ < kFoundryLast) || (thornFloor(currentFloor_) && currentFloor_ < kThornLast));
 }
 
 // Knocked into a chasm: you land hard somewhere on the floor below. The fall
@@ -495,20 +497,23 @@ void Application::renderDungeonSelection() {
                                cathedralOpen()?"A sunken church, as deadly as Ruins 7-12. The Sleeper Below waits at depth 6.":
                                                "Sealed. Its key was a warlord's.",
                                foundryOpen()?"A forge that never went out, as deadly as Ruins 6-10. The Forgemaster waits at depth 5.":
-                                             "Locked. A goblin captain carries the key."};
-    const char* icons[]{"relic-blade","skull-crossed-bones","eclipse","hammer-drop"};
+                                             "Locked. A goblin captain carries the key.",
+                               thornwoodOpen()?"A cloister the forest took back, as deadly as Crypts 14-18. The Hollow Mother waits at depth 5.":
+                                               "Lost. The Crypts' warden keeps the map."};
+    const char* icons[]{"relic-blade","skull-crossed-bones","eclipse","hammer-drop","tree-branch"};
     for(int i=0;i<kDungeonCount;++i) {
         const auto r=dungeonCard(i);
         const bool active=i==dungeonSelection_;
         ui_.inset(window_,r,active?ui::kGold:hovered(r)?ui::kBronze:sf::Color::Transparent);
-        const sf::FloatRect art{{r.position.x+12,r.position.y+12},{78,78}};
+        const sf::FloatRect art{{r.position.x+10,r.position.y+10},{54,54}};
         ui_.inset(window_,art);
-        ui_.icon(window_,icons[i],{{art.position.x+10,art.position.y+10},{58,58}},active?ui::kGold:ui::kMuted);
-        ui_.text(window_,dungeonName(i),{r.position.x+102,r.position.y+14},18,active?ui::kGold:ui::kText,ui::Font::Title);
-        ui_.text(window_,std::to_string(dungeonLength(i))+" floors",{r.position.x+102,r.position.y+44},15,
-            (i==2 && !cathedralOpen()) || (i==3 && !foundryOpen())?ui::kBad:ui::kText,ui::Font::Bold);
-        float y=r.position.y+98;
-        ui_.paragraph(window_,descriptions[i],r.position.x+14,y,r.size.x-28,14,ui::kMuted);
+        ui_.icon(window_,icons[i],{{art.position.x+7,art.position.y+7},{40,40}},active?ui::kGold:ui::kMuted);
+        float nameY=r.position.y+8;
+        ui_.paragraph(window_,dungeonName(i),r.position.x+74,nameY,r.size.x-82,16,active?ui::kGold:ui::kText,ui::Font::Title);
+        ui_.text(window_,std::to_string(dungeonLength(i))+" floors",{r.position.x+74,r.position.y+48},14,
+            (i==2 && !cathedralOpen()) || (i==3 && !foundryOpen()) || (i==4 && !thornwoodOpen())?ui::kBad:ui::kText,ui::Font::Bold);
+        float y=r.position.y+74;
+        ui_.paragraph(window_,descriptions[i],r.position.x+12,y,r.size.x-24,13,ui::kMuted);
     }
     ui_.text(window_,"Depth",{40,272},20,ui::kGold,ui::Font::Title);
     for(int depth=1;depth<=dungeonLength(dungeonSelection_);++depth) {
@@ -518,7 +523,7 @@ void Application::renderDungeonSelection() {
         ui_.inset(window_,r,depth==dungeonDepth_?ui::kGold:hovered(r)?ui::kBronze:sf::Color::Transparent);
         ui_.textCentered(window_,std::to_string(depth),{{r.position.x,r.position.y+6},{r.size.x,44}},32,
             depth==dungeonDepth_?ui::kGold:ui::kText,ui::Font::Title);
-        if(floor==5 || floor==10 || floor==kRunFinalFloor || floor==kCathedralLast || floor==kFoundryLast)
+        if(floor==5 || floor==10 || floor==kRunFinalFloor || floor==kCathedralLast || floor==kFoundryLast || floor==kThornLast)
             ui_.icon(window_,"skull-crossed-bones",{{r.position.x+r.size.x-24,r.position.y+6},{18,18}},sf::Color(200,70,60));
         if(visited) ui_.textCentered(window_,floor==currentFloor_?"you are here":"visited",{{r.position.x,r.position.y+52},{r.size.x,20}},13,ui::kGood);
     }

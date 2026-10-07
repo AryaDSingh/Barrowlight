@@ -8,8 +8,8 @@ namespace engine {
 // elements. Fire ignites oil and melts ice; cold freezes water and puts
 // out fire; lightning electrifies connected water. Values are saved, so
 // only ever append new kinds.
-enum class SurfaceType : std::uint8_t { None = 0, Oil = 1, Water = 2, Fire = 3, Ice = 4, Electrified = 5, Blood = 6, Acid = 7, Gas = 8 };
-inline constexpr int kSurfaceTypeMax = 8;
+enum class SurfaceType : std::uint8_t { None = 0, Oil = 1, Water = 2, Fire = 3, Ice = 4, Electrified = 5, Blood = 6, Acid = 7, Gas = 8, Thorns = 9 };
+inline constexpr int kSurfaceTypeMax = 9;
 // Water and blood both carry lightning and freeze.
 inline bool conducts(SurfaceType t) { return t == SurfaceType::Water || t == SurfaceType::Blood || t == SurfaceType::Electrified; }
 
@@ -32,6 +32,7 @@ inline const char* surfaceName(SurfaceType type) {
         case SurfaceType::Ice: return "Ice";
         case SurfaceType::Electrified: return "Electrified water";
         case SurfaceType::Blood: return "Blood";
+        case SurfaceType::Thorns: return "Thorns";
         case SurfaceType::None: break;
     }
     return "";
@@ -45,6 +46,7 @@ inline const char* surfaceHint(SurfaceType type) {
         case SurfaceType::Ice: return "Chills whoever stands on it. Fire melts it back to water.";
         case SurfaceType::Electrified: return "Shocks and hurts whoever stands in it.";
         case SurfaceType::Blood: return "Carries lightning like water; cold freezes it.";
+        case SurfaceType::Thorns: return "Cuts and slows whoever walks through it. Fire burns it away.";
         case SurfaceType::None: break;
     }
     return "";

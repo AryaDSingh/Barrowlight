@@ -412,6 +412,46 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
             monster->stats().speed = speed;
             break;
         }
+        case MonsterType::BriarHound: case MonsterType::RotWitch: case MonsterType::BroodSpider: case MonsterType::EggSac:
+        case MonsterType::Spiderling: case MonsterType::Thornback: {
+            // Thornwood Hollow's own: thorns, eggs and their hatching live in Application.
+            MonsterAttackProfile profile;
+            int hp = 30, strength = 12, dexterity = 14, intelligence = 2, power = 6, speed = 125;
+            const char* name = "Briar Hound";
+            if (type == MonsterType::BriarHound) { profile.onHitEffect = StatusEffectInstance{StatusEffectType::Bleed, 3, 2}; profile.onHitChance = .5f; }
+            if (type == MonsterType::RotWitch) { name = "Rot Witch"; hp = 26; strength = 2; dexterity = 8; intelligence = 12; power = 4; speed = 100;
+                profile.scalingStat = ScalingStat::Intelligence; profile.onHitEffect = StatusEffectInstance{StatusEffectType::Poison, 3, 2}; profile.onHitChance = 1.f; }
+            if (type == MonsterType::BroodSpider) { name = "Brood Spider"; hp = 34; strength = 10; dexterity = 10; power = 6; speed = 100;
+                profile.onHitEffect = StatusEffectInstance{StatusEffectType::Poison, 3, 2}; profile.onHitChance = .3f; }
+            if (type == MonsterType::EggSac) { name = "Egg Sac"; hp = 8; strength = 0; dexterity = 0; power = 0; speed = 100; }
+            if (type == MonsterType::Spiderling) { name = "Spiderling"; hp = 10; strength = 5; dexterity = 12; power = 3; speed = 130; }
+            if (type == MonsterType::Thornback) { name = "Thornback"; hp = 60; strength = 14; dexterity = 2; power = 8; speed = 75; }
+            profile.power = scaledPower(power, strength / 5, tier);
+            std::unique_ptr<AIBehavior> ai;
+            if (type == MonsterType::RotWitch) ai = std::make_unique<Kiter>(profile, 5, 2);
+            else ai = std::make_unique<Chaser>(profile);
+            monster = std::make_unique<Monster>(type, tieredName(name, tier), 't', position,
+                makeStats(scaledHp(hp, tier), strength, dexterity, intelligence), std::move(ai));
+            monster->stats().speed = speed;
+            break;
+        }
+        case MonsterType::HollowMother: {
+            // A great spider-queen: a warned burst of webbing that pins and
+            // seeds thorns, and her brood called out of the walls at half life.
+            MonsterAttackProfile bite;
+            bite.power = 8;
+            bite.onHitEffect = StatusEffectInstance{StatusEffectType::Poison, 3, 3}; bite.onHitChance = .5f;
+            std::vector<Talent> abilities;
+            Talent web;
+            web.name = "Web Burst"; web.id = "hollowmother.web";
+            web.description = "A radius-2 burst of webbing with three actions to escape: it pins, and thorns grow where it lands.";
+            web.cooldownTurns = 4; web.scalingStat = ScalingStat::Strength;
+            abilities.push_back(web);
+            monster = std::make_unique<Monster>(type, "The Hollow Mother", 'H', position, makeStats(320, 14, 10, 8),
+                std::make_unique<BossBehavior>(bite, /*blastPower=*/6, /*blastRange=*/5, /*tooCloseRange=*/2, /*enrageBonus=*/3),
+                TalentSet(abilities));
+            break;
+        }
         case MonsterType::Forgemaster: {
             // A furnace that walks: a telegraphed hammer, a warned blast of heat
             // that sets the ground burning, and slaglings from the furnaces.
@@ -533,6 +573,13 @@ int xpRewardForType(MonsterType type, MonsterTier tier) {
         case MonsterType::Slagling: baseReward=6; break;
         case MonsterType::BellowsImp: baseReward=18; break;
         case MonsterType::Forgemaster: return 220;
+        case MonsterType::BriarHound: baseReward=22; break;
+        case MonsterType::RotWitch: baseReward=20; break;
+        case MonsterType::BroodSpider: baseReward=22; break;
+        case MonsterType::EggSac: baseReward=2; break;
+        case MonsterType::Spiderling: baseReward=5; break;
+        case MonsterType::Thornback: baseReward=28; break;
+        case MonsterType::HollowMother: return 280;
         case MonsterType::SkeletonArcher: baseReward=16; break;
         case MonsterType::SkeletonGuard: baseReward=22; break;
         case MonsterType::Bonecaller: baseReward=18; break;

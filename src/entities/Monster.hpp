@@ -35,6 +35,7 @@ public:
     int lastObservedHp=0; // transient damage observation; rebuilt on load
     bool voicedAlert=false; // transient: has shouted on spotting you, until it loses you
     bool shard=false;       // transient: a slagling already split from another (Brittle Slag splits once)
+    int eggTimer=0;         // Brood Spider: turns until it lays; Egg Sac: turns until it hatches
     EnemyTactics tactics;
     bool allied=false;
     int summonRank=1, summonIntelligence=0, remainingLife=0; // 0 permanent; positive temporary

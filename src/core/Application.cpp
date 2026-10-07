@@ -132,6 +132,12 @@ sf::Color monsterColor(MonsterType type) {
         case MonsterType::Slagling: return sf::Color(240, 110, 50);
         case MonsterType::BellowsImp: return sf::Color(220, 70, 50);
         case MonsterType::Forgemaster: return sf::Color(250, 120, 40);
+        case MonsterType::BriarHound: return sf::Color(150, 110, 70);
+        case MonsterType::RotWitch: return sf::Color(110, 160, 80);
+        case MonsterType::BroodSpider: case MonsterType::Spiderling: return sf::Color(150, 150, 160);
+        case MonsterType::EggSac: return sf::Color(200, 210, 120);
+        case MonsterType::Thornback: return sf::Color(160, 80, 60);
+        case MonsterType::HollowMother: return sf::Color(90, 140, 200);
     }
     return sf::Color(190, 190, 190); // unreachable -- all enum values handled above
 }
@@ -389,6 +395,14 @@ MonsterLook monsterLook(MonsterType type) {
         case MonsterType::Slagling: return {{"dcss/jelly.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color::White, .8f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
         case MonsterType::BellowsImp: return {{"dcss/imp.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color::White, .9f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
         case MonsterType::Forgemaster: return {{"dcss/molten_gargoyle.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color::White, 2.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
+        // Thornwood Hollow (Stone Soup tiles).
+        case MonsterType::BriarHound: return {{"dcss/hound.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color::White, 1.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
+        case MonsterType::RotWitch: return {{"dcss/dryad.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color::White, 1.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
+        case MonsterType::BroodSpider: return {{"dcss/spider.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color::White, 1.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
+        case MonsterType::EggSac: return {{"dcss/giant_spore.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color(230, 230, 200), .7f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
+        case MonsterType::Spiderling: return {{"dcss/spider.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color(210, 210, 220), .6f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
+        case MonsterType::Thornback: return {{"dcss/giant_beetle.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color::White, 1.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
+        case MonsterType::HollowMother: return {{"dcss/orb_spider.png", sf::IntRect({0, 0}, {32, 32})}, sf::Color::White, 2.f, {0, 0, 0, 0, 0}, {1, 1, 1, 1, 1}};
         case MonsterType::GoblinWarlord: return {idleFrame("calciumtrice/monsters/GreyMinotaur.png", 0, 48, 52)};
         case MonsterType::Lich: return {idleFrame("calciumtrice/monsters/Death.png")};
         case MonsterType::GoblinCaptain: return {idleFrame("calciumtrice/monsters/ArmourPsionicGoblin.png")};
@@ -1700,6 +1714,12 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     const auto* struck=dynamic_cast<const Monster*>(target);
                     soundManager_.playHit(talentSound(talent,held && held->definition()?held->definition()->weaponKind:WeaponKind::None),
                                           critical,!struck || bleeds(struck->type()));
+                    // A Thornback's spines cut whoever strikes it up close.
+                    if (struck && struck->type()==MonsterType::Thornback && isMeleeAttack(talent)) {
+                        player_.stats().hp-=3; flashActor(player_);
+                        log("Its spines cut you for 3!");
+                        harmSource_="a Thornback's spines"; checkAndHandleDeath(player_); harmSource_.clear();
+                    }
                 }
                 if (target->stats().hp>0 && talent.pushDistance>0) {
                     const auto from=player_.position(), origin=target->position();
@@ -2084,6 +2104,12 @@ void Application::processMonsterTurns() {
                             for (int x=intent.target.x-intent.radius;x<=intent.target.x+intent.radius;++x)
                                 if (intent.contains({x,y}) && hasLineOfFire(map_,intent.target,{x,y})) setSurface({x,y},SurfaceType::Fire,kSpilledFireTurns);
                     }
+                    if (intent.kind==IntentKind::MagicStrike && monster->type()==MonsterType::HollowMother) {
+                        for (int y=intent.target.y-intent.radius;y<=intent.target.y+intent.radius;++y)
+                            for (int x=intent.target.x-intent.radius;x<=intent.target.x+intent.radius;++x)
+                                if (intent.contains({x,y}) && (x+y)%2==0) setSurface({x,y},SurfaceType::Thorns,0);
+                        if (intent.contains(player_.position())) { player_.statusEffects().apply({StatusEffectType::Pinned,2,0}); log("The webbing pins you!"); }
+                    }
                     if (intent.kind==IntentKind::MagicStrike && monster->type()==MonsterType::Bomber) {
                         std::vector<Position> blast;
                         for (int y=intent.target.y-intent.radius;y<=intent.target.y+intent.radius;++y)
@@ -2134,6 +2160,8 @@ void Application::processMonsterTurns() {
                 }
             } else if (monster && !monster->allied && monster==boss_ && bossSurfaceAction(*monster)) {
                 // The boss spent its turn on a brazier or on the light.
+            } else if (monster && monster->type()==MonsterType::EggSac) {
+                hatchTurn(*monster); // an egg only waits, and hatches
             } else if (monster && (monster->allied || monster->statusEffects().has(StatusEffectType::Puppeted))) {
                 actMinion(*monster);
             } else if (actor->ai() != nullptr) {
@@ -2163,13 +2191,22 @@ void Application::processMonsterTurns() {
                     essenceStrike(*monster,decision);
                     labEnemyDecision(*monster,decision);
                     if (monster->type()==MonsterType::BellowsImp) fanFires(monster->position());
+                    if (monster->type()==MonsterType::RotWitch) growThorns(monster->position());
+                    if (monster->type()==MonsterType::BroodSpider) broodTurn(*monster);
+                    // At half her life the Hollow Mother calls her brood out of the walls.
+                    if (monster->type()==MonsterType::HollowMother && !broodCalled_ && monster->stats().hp*2<=monster->stats().maxHp) {
+                        broodCalled_=true;
+                        for (int i=0;i<3;++i) broodTurn(*monster);
+                        growThorns(monster->position());
+                        log("The Hollow Mother shrieks, and her brood pours out of the walls!");
+                    }
                     // At half its life the Forgemaster calls slaglings out of the furnaces.
                     if (monster->type()==MonsterType::Forgemaster && !forgeSummoned_ && monster->stats().hp*2<=monster->stats().maxHp) {
                         forgeSummoned_=true; foundryDeath(*monster);
                     }
                     const bool warlord=monster && monster->type()==MonsterType::GoblinWarlord;
                     const bool lich=monster && monster->type()==MonsterType::Lich;
-                    const bool forge=monster && monster->type()==MonsterType::Forgemaster;
+                    const bool forge=monster && (monster->type()==MonsterType::Forgemaster || monster->type()==MonsterType::HollowMother);
                     const bool blast=monster && (monster->type()==MonsterType::Bomber || monster->type()==MonsterType::OssuaryWarden || warlord || forge) && decision.type==AIActionType::UseAbility;
                     const bool slam=monster && monster->type()==MonsterType::Ogre && decision.type==AIActionType::Attack &&
                         decision.effectToApply && decision.effectToApply->type==StatusEffectType::Stun;
@@ -3204,7 +3241,7 @@ void Application::regenerateLevel(unsigned int seed) {
     // kFirstBossFloor (5) for now -- the actual Lich (see ROADMAP.md)
     // is a separate, later piece of work; this gets the full 10-floor
     // structure and victory gating correct end to end first.
-    params.includeBossRoom = (currentFloor_ == kFirstBossFloor || currentFloor_ == 10 || currentFloor_ == kFinalFloor || currentFloor_ == kCathedralLast || currentFloor_ == kFoundryLast);
+    params.includeBossRoom = (currentFloor_ == kFirstBossFloor || currentFloor_ == 10 || currentFloor_ == kFinalFloor || currentFloor_ == kCathedralLast || currentFloor_ == kFoundryLast || currentFloor_ == kThornLast);
     params.cathedral=cathedralFloor(currentFloor_);
     params.includeVault=currentFloor_>=3 && !params.includeBossRoom && nextItemId_<=std::numeric_limits<std::uint64_t>::max()-3;
     const GeneratedDungeon dungeon = generateDungeon(params, seed);
@@ -3220,7 +3257,7 @@ void Application::regenerateLevel(unsigned int seed) {
 
     map_ = dungeon.map;
     actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN; vfx_.clear(); hitFlash_.clear();
-    vfx_.clear(); hitFlash_.clear(); lightOrbs_.clear(); loreDrops_.clear(); banner_.reset(); forgeSummoned_=false;
+    vfx_.clear(); hitFlash_.clear(); lightOrbs_.clear(); loreDrops_.clear(); banner_.reset(); forgeSummoned_=false; broodCalled_=false;
     setProps(dungeon.props); pillarTurns_.clear(); traps_.clear();
 
     player_.setPosition(dungeon.playerStart);
@@ -3251,7 +3288,7 @@ void Application::regenerateLevel(unsigned int seed) {
         // the true final fight, not a placeholder like it was before
         // this was actually built.
         const MonsterType bossType =
-            currentFloor_ == kCathedralLast ? MonsterType::TheSleeper : currentFloor_ == kFoundryLast ? MonsterType::Forgemaster : (currentFloor_ >= 10) ? MonsterType::Lich : MonsterType::GoblinWarlord;
+            currentFloor_ == kCathedralLast ? MonsterType::TheSleeper : currentFloor_ == kFoundryLast ? MonsterType::Forgemaster : currentFloor_ == kThornLast ? MonsterType::HollowMother : (currentFloor_ >= 10) ? MonsterType::Lich : MonsterType::GoblinWarlord;
         Position bossPosition=dungeon.bossRoomCenter;
         auto startDistance=[&](Position p) {
             const int dx=p.x-dungeon.playerStart.x,dy=p.y-dungeon.playerStart.y;
@@ -3885,8 +3922,9 @@ void Application::render() {
     // Floors, wall faces and decorations all come from the dungeon tileset,
     // so each pass is one batched draw call.
     const sf::Texture* tileset = sprites_.texture(kTileset);
-    const bool foundry = foundryFloor(currentFloor_);
-    const sf::Texture* floorTexture = sprites_.texture(foundry ? kVolcanicFloor : floorSheet(theme.region));
+    const bool foundry = foundryFloor(currentFloor_), hollow = thornFloor(currentFloor_);
+    const char* sheet = foundry ? kVolcanicFloor : hollow ? "dcss/vine_floor.png" : floorSheet(theme.region);
+    const sf::Texture* floorTexture = sprites_.texture(sheet);
     sf::VertexArray wallTops(sf::PrimitiveType::Triangles), dais(sf::PrimitiveType::Triangles);
     // The cobble art carries its own colour, so it gets a soft, slightly
     // desaturating tint rather than the full theme colour.
@@ -3934,8 +3972,9 @@ void Application::render() {
                     quad(tops, at, {kTileSize, 6}, lip, sf::Color(6, 6, 10), true);
                 continue;
             }
-            if (floorTexture) SpriteAtlas::append(floors, foundry ? SpriteFrame{kVolcanicFloor, sf::IntRect({static_cast<int>(tileHash(x, y) % 7) * 32, 0}, {32, 32})}
-                                                          : floorFrame(x, y, theme.region), at, kTileSize, shadeFor(vis, foundry ? sf::Color(150, 138, 136) : floorTint));
+            if (floorTexture) SpriteAtlas::append(floors, foundry || hollow ? SpriteFrame{sheet, sf::IntRect({static_cast<int>(tileHash(x, y) % 7) * 32, 0}, {32, 32})}
+                                                          : floorFrame(x, y, theme.region), at, kTileSize,
+                                                  shadeFor(vis, foundry ? sf::Color(150, 138, 136) : hollow ? sf::Color(170, 180, 160) : floorTint));
             else {
                 sf::RectangleShape tileShape({kTileSize - 1.f, kTileSize - 1.f});
                 tileShape.setPosition(at);

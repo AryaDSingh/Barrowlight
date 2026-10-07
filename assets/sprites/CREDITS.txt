@@ -144,6 +144,10 @@ assets/sprites/dcss/
   volcanic_floor_0-6, volcanic_wall_0-6 and lava_0-3, and the monsters
   orc_warlord (Orc Smith), iron_elemental (Slag Golem), jelly (Slagling),
   imp (Bellows Imp) and molten_gargoyle (the Forgemaster);
+  for Thornwood Hollow, from the same set: floor_vines_0-6 (packed into
+  vine_floor.png), briar_patch (thorny ground), and the monsters hound
+  (Briar Hound), dryad (Rot Witch), spider (Brood Spider and spiderlings),
+  giant_spore (egg sac), giant_beetle (Thornback) and orb_spider (the Hollow Mother);
   unmodified; oil.png and oil1-4.png are the blood splatters turned grey for oil
   slicks)
   Downloaded 2026-10-03 for the Drowned Cathedral.

@@ -50,6 +50,10 @@ void Application::onBossDefeated(const Monster& boss) {
         }
         grantUnique(boss.position());
         log("Its stairs lead back to town.");
+    } else if (boss.type() == MonsterType::HollowMother) {
+        log("The Hollow Mother curls up and is still, and the thorns begin to wither.");
+        grantUnique(boss.position());
+        log("Its stairs lead back to town.");
     } else if (boss.type() == MonsterType::TheSleeper) {
         log("The Sleeper Below sinks into the dark water, and the Cathedral falls silent.");
         grantUnique(boss.position());

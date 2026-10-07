@@ -357,7 +357,8 @@ void Application::tickSurfaces() {
             auto& s = surfaces_[static_cast<std::size_t>(y * w + x)];
             if (s.type != SurfaceType::Fire) continue;
             for (const Position d : {Position{1, 0}, Position{-1, 0}, Position{0, 1}, Position{0, -1}})
-                if (surfaceAt({x + d.x, y + d.y}) == SurfaceType::Oil || surfaceAt({x + d.x, y + d.y}) == SurfaceType::Gas) spreadTo.push_back({x + d.x, y + d.y});
+                if (surfaceAt({x + d.x, y + d.y}) == SurfaceType::Oil || surfaceAt({x + d.x, y + d.y}) == SurfaceType::Gas ||
+                    surfaceAt({x + d.x, y + d.y}) == SurfaceType::Thorns) spreadTo.push_back({x + d.x, y + d.y});
         }
     for (auto& orb : lightOrbs_) --orb.turns;
     lightOrbs_.erase(std::remove_if(lightOrbs_.begin(), lightOrbs_.end(), [](const LightOrb& o) { return o.turns <= 0; }), lightOrbs_.end());
@@ -417,6 +418,7 @@ void Application::tickSurfaces() {
                         a.statusEffects().apply({StatusEffectType::Slowed, 2, slow});
                 break;
             case SurfaceType::Ice: a.statusEffects().apply({StatusEffectType::Chill, 2, 20}); break;
+            case SurfaceType::Thorns: thornsCut(a); break;
             case SurfaceType::Electrified: shocked.push_back(a.position()); break;
             case SurfaceType::Gas:
                 a.statusEffects().apply({StatusEffectType::Poison, 2, 2});
@@ -507,6 +509,7 @@ void Application::enterSurface(Actor& actor, Position tile) {
             actor.statusEffects().apply({StatusEffectType::Burn, 3, 2}); log(actor.name(), " lands in the flames!"); break;
         case SurfaceType::Electrified: shockStanding({tile}); break;
         case SurfaceType::Ice: actor.statusEffects().apply({StatusEffectType::Chill, 2, 20}); break;
+        case SurfaceType::Thorns: thornsCut(actor); break;
         default: break;
     }
 }
@@ -853,6 +856,8 @@ void Application::seedSurfaces(unsigned seed) {
     const bool cathedral = cathedralFloor(currentFloor_);
     const int puddles = cathedral ? (currentFloor_ % 2 ? 10 : 7) : region == FloorRegion::Crypts ? 4 : region == FloorRegion::Sanctum ? 3 : 2;
     for (int i = 0; i < puddles; ++i) pool(SurfaceType::Water, cathedral ? std::uniform_int_distribution<int>(8, 18)(rng) : std::uniform_int_distribution<int>(4, 10)(rng));
+    // Thornwood: brambles across the floor.
+    if (thornFloor(currentFloor_)) for (int i = 0; i < 6; ++i) pool(SurfaceType::Thorns, std::uniform_int_distribution<int>(3, 8)(rng));
     const int slicks = cathedral ? 0 : region == FloorRegion::Barracks ? 2 : 1;
     for (int i = 0; i < slicks; ++i) pool(SurfaceType::Oil, std::uniform_int_distribution<int>(3, 7)(rng));
 
@@ -935,6 +940,10 @@ void Application::renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>
                     const float sheen = .5f + .5f * std::sin(now * 1.5f + x + y);
                     blob(detail, {c.x + 3, c.y - 2}, 4.f, sf::Color(110, 80, 150, static_cast<std::uint8_t>(45 * sheen)), sf::Color(110, 80, 150, 0));
                 }
+                continue;
+            }
+            if (type == SurfaceType::Thorns) {
+                sprites_.draw(window_, {"dcss/briar_patch.png", sf::IntRect({0, 0}, {32, 32})}, at, kTile, shade(sf::Color(190, 200, 170)), surfaceHash(x, y, 2) % 2 == 0);
                 continue;
             }
             sf::Color body;
