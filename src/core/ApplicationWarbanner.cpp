@@ -58,6 +58,9 @@ void Application::readLore(std::size_t index) {
         log("An iron key on a chain, stamped with a hammer and a flame.");
         log("It opens the Ashen Foundry. Choose it from the dungeon menu in town.");
     }
+    if (drop.id == "bonecaller_journal") {
+        log("A journal bound in skin: how bones remember their shape, and how to ask them to take a new one.");
+    }
     if (drop.id == "chorister_hymn") {
         log("Water-stained notes of a hymn no living throat could sing. Reading them, you hear the thunder in it.");
     }

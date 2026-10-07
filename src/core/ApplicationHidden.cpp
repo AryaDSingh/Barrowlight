@@ -160,12 +160,13 @@ void Application::configureMinion(Monster& m,int rank,int intelligence) {
     m.stats().intelligence=0; m.stats().speed=100;
 }
 // Slag that fights for you (Slagcaller): a slagling, or a slow and tough golem.
-void Application::raiseSlag(MonsterType kind,Position at,int turns,bool shard) {
+void Application::raiseSlag(MonsterType kind,Position at,int turns,bool shard,int rank) {
     auto m=createMonster(kind,at);
-    configureMinion(*m,1,player_.stats().intelligence);
+    configureMinion(*m,rank,player_.stats().intelligence);
     if (kind==MonsterType::SlagGolem) { m->stats().maxHp*=2; m->stats().hp=m->stats().maxHp; m->stats().strength+=3; m->stats().speed=70; }
     if (kind==MonsterType::Slagling) m->stats().speed=120;
-    m->remainingLife=turns+1; m->shard=shard;
+    if (kind==MonsterType::SkeletonGuard) { m->stats().maxHp+=10; m->stats().hp=m->stats().maxHp; m->stats().strength+=2; }
+    m->remainingLife=turns?turns+1:0; m->shard=shard;
     scheduler_.add(*m); monsters_.push_back(std::move(m));
 }
 int Application::minionCap() const { return std::clamp(1+player_.stats().intelligence/10,1,5); }
@@ -191,13 +192,14 @@ void Application::summonMinions(const Talent& t) {
         const Position pos{p.x+d.x,p.y+d.y};
         if (remaining<=0) break;
         if (!map_.isWalkable(pos.x,pos.y) || isOccupied(pos,nullptr)) continue;
-        if (slag) { raiseSlag(static_cast<MonsterType>(t.summonKind),pos,t.summonDuration,false); --remaining; ++raised; continue; }
+        if (slag) { raiseSlag(static_cast<MonsterType>(t.summonKind),pos,t.summonDuration,false,t.summonRank); --remaining; ++raised; continue; }
         auto m=createMonster(MonsterType::Skeleton,pos);
         configureMinion(*m,t.summonRank,player_.stats().intelligence);
         m->remainingLife=t.summonDuration?t.summonDuration+1:0;
         scheduler_.add(*m); monsters_.push_back(std::move(m)); --remaining; ++raised;
     }
-    if (slag) log(raised?"The slag rises to fight for you.":"There's no room for the slag to rise.");
+    if (slag && t.summonKind==static_cast<int>(MonsterType::SkeletonGuard)) log(raised?"Bones knit together into a guardian.":"You have no room for another minion.");
+    else if (slag) log(raised?"The slag rises to fight for you.":"There's no room for the slag to rise.");
     else log("Raised ",raised," skeleton(s). Permanent minion cap: ",minionCap(),".");
 }
 Actor* Application::nearestOpponent(Actor& actor,bool playerHidden) {

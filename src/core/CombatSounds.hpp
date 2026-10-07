@@ -61,7 +61,7 @@ inline HitSound talentSound(const Talent& t, WeaponKind weapon) {
         case TalentTree::Lightning: case TalentTree::Stormlance: case TalentTree::Tempest: return HitSound::Lightning;
         case TalentTree::Tide: return HitSound::Water;
         case TalentTree::Arcane: case TalentTree::Cloth: return HitSound::Arcane;
-        case TalentTree::Shadow: case TalentTree::Hexes: case TalentTree::Animation: return HitSound::Shadow;
+        case TalentTree::Shadow: case TalentTree::Hexes: case TalentTree::Animation: case TalentTree::Bonewright: return HitSound::Shadow;
         case TalentTree::Radiance: return HitSound::Light;
         case TalentTree::Earth: return HitSound::Earth;
         case TalentTree::Venom: return HitSound::Rot;

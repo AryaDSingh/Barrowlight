@@ -133,6 +133,7 @@ void Application::foundryDeath(Monster& monster) {
         log(line);
     };
     carries(MonsterType::DrownedChorister, "chorister_hymn", "A sodden hymn-sheet drifts down where the Chorister fell.");
+    carries(MonsterType::Bonecaller, "bonecaller_journal", "A Bonecaller's journal slips from its robes.");
     if (monster.type() == MonsterType::GoblinCaptain && monster.stats().hp <= 0 && !player_.knowsLore("foreman_key") &&
         std::none_of(loreDrops_.begin(), loreDrops_.end(), [](const LoreDrop& d) { return d.id == "foreman_key"; })) {
         loreDrops_.push_back({at, "foreman_key"});
@@ -146,6 +147,30 @@ void Application::tickStormcall() {
     const auto me = player_.position();
     if (const int eye = player_.talents().passiveValue(PassiveKind::EyeOfTheStorm, player_.stats()); eye && surfaceAt(me) == SurfaceType::Electrified)
         player_.statusEffects().apply({StatusEffectType::Hasted, 2, eye});
+    // Bonewright: the bone storm cuts the foes beside you; Bone Lord hastens your minions.
+    if (const int shards = player_.statusEffects().magnitudeOf(StatusEffectType::BoneStorm)) {
+        for (auto& m : monsters_)
+            if (!m->allied && m->stats().hp > 0 && std::max(std::abs(m->position().x - me.x), std::abs(m->position().y - me.y)) <= 1) {
+                m->stats().hp -= shards; m->statusEffects().apply({StatusEffectType::Bleed, 3, 2}); flashActor(*m); checkAndHandleDeath(*m);
+                combatThisTurn_ = true;
+            }
+        removeDeadMonsters();
+    }
+    if (player_.statusEffects().has(StatusEffectType::BoneLord))
+        for (auto& m : monsters_) if (m->allied && m->stats().hp > 0) m->statusEffects().apply({StatusEffectType::Hasted, 2, 25});
+    // Grown Guard: your bone guardian is as strong as your mind, kept current
+    // as your Intelligence changes (bounded by it, never by kills).
+    for (auto& m : monsters_) {
+        if (!m->allied || m->stats().hp <= 0 || m->type() != MonsterType::SkeletonGuard) continue;
+        const int intelligence = player_.stats().intelligence;
+        const bool grown = player_.talents().passiveValue(PassiveKind::GrownGuard, player_.stats()) > 0;
+        const int maxHp = 12 + 4 * m->summonRank + intelligence + 10 + (grown ? 2 * (intelligence / 5) : 0);
+        m->stats().strength = 2 + m->summonRank + intelligence / 5 + 2 + (grown ? intelligence / 5 : 0);
+        if (m->stats().maxHp != maxHp) {
+            m->stats().hp = std::max(1, m->stats().hp + maxHp - m->stats().maxHp);
+            m->stats().maxHp = maxHp;
+        }
+    }
     if (!player_.statusEffects().has(StatusEffectType::Stormcall)) return;
     Monster* nearest = nullptr; int best = 100;
     for (auto& m : monsters_) {

@@ -136,6 +136,8 @@ inline std::string talentIcon(const Talent& talent) {
         {"warbanner.ranks", "impact-point"}, {"warbanner.last", "checked-shield"}, {"warbanner.charge", "charging-bull"},
         {"forgeknight.heat_engine", "campfire"}, {"forgeknight.slam", "meteor-impact"}, {"forgeknight.quench", "big-wave"},
         {"forgeknight.burning_plate", "magic-shield"}, {"forgeknight.overheat", "fire-dash"}, {"forgeknight.anvil", "bordered-shield"},
+        {"bonewright.armour", "bordered-shield"}, {"bonewright.wall", "stone-block"}, {"bonewright.guard", "skull-slices"},
+        {"bonewright.marrow", "skull-crossed-bones"}, {"bonewright.grown", "broken-bone"}, {"bonewright.storm", "spinning-blades"}, {"bonewright.lord", "skull-crossed-bones"},
         {"tempest.stormcall", "lightning-shout"}, {"tempest.forked", "lightning-arc"}, {"tempest.static", "power-lightning"},
         {"tempest.overcharge", "lightning-arc"}, {"tempest.eye", "psychic-waves"}, {"tempest.thunderhead", "power-lightning"}, {"tempest.ride", "fire-dash"},
         {"slagcaller.pool", "fire-dash"}, {"slagcaller.slagling", "fireball"}, {"slagcaller.hail", "meteor-impact"}, {"slagcaller.brittle", "cracked-shield"},
@@ -249,6 +251,8 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::Forgeheart: return "fire-dash";
         case StatusEffectType::Anvil: return "bordered-shield";
         case StatusEffectType::Stormcall: return "lightning-shout";
+        case StatusEffectType::BoneStorm: return "spinning-blades";
+        case StatusEffectType::BoneLord: return "skull-crossed-bones";
     }
     return "aura";
 }

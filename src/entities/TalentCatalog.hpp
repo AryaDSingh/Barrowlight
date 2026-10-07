@@ -19,7 +19,7 @@ struct TreeDefinition {
     const char* description;
     const char* starterItem;
 };
-inline constexpr std::array<TreeDefinition, 41> kTalentTrees{{
+inline constexpr std::array<TreeDefinition, 42> kTalentTrees{{
     {"one_handed", "One-Handed", TalentTree::OneHanded, "Efficient strikes, defensive openings and finishing blows.", "iron_sword"},
     {"two_handed", "Two-Handed", TalentTree::TwoHanded, "Heavy swings, surrounding enemies and blood-fuelled attacks.", "greatsword"},
     {"shield", "Shield", TalentTree::Shield, "Block damage, interrupt attacks and control space.", "wooden_shield"},
@@ -61,6 +61,7 @@ inline constexpr std::array<TreeDefinition, 41> kTalentTrees{{
     {"forgeborn", "Forgeborn", TalentTree::Forgeborn, "A deep tree: burning plate. Struck, you heat up; hot, your blows sear.", ""},
     {"slagcaller", "Slagcaller", TalentTree::Slagcaller, "A deep tree: molten ground, and slag that rises to fight for you.", ""},
     {"tempest", "Tempest", TalentTree::Tempest, "A deep tree: lightning that stays. Storms that follow you, and bolts that leap.", ""},
+    {"bonewright", "Bonewright", TalentTree::Bonewright, "A deep tree: build from the dead. Bone walls, bone armour, and a guardian that grows.", ""},
 }};
 inline const TreeDefinition* findTree(const std::string& id) {
     for (const auto& t : kTalentTrees) if (id == t.id) return &t;
@@ -156,6 +157,11 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "stealth.vanish") { longer(); d.mastery = "Hide for four responses."; }
     if (id == "stealth.smoke_bomb") { m.cooldownTurns -= 4; d.mastery = "Ready again four turns sooner."; }
     if (id == "stealth.feign") { m.restoreHpPercent = 10; d.mastery = "You also recover 10% of your life."; }
+    if (id == "bonewright.armour") { if (m.selfBuffEffect) m.selfBuffEffect->magnitude = 6; d.mastery = "Guard 6."; }
+    if (id == "bonewright.wall") { m.boneWall = 5; d.mastery = "A wall of 5."; }
+    if (id == "bonewright.guard") { m.summonRank = 3; d.mastery = "The guardian rises tougher."; }
+    if (id == "bonewright.storm") { m.boneStorm = 5; d.mastery = "The storm lasts 5 turns."; }
+    if (id == "bonewright.lord") { m.boneLord = 8; d.mastery = "Lasts 8 turns."; }
     if (id == "tempest.stormcall") { m.stormcall = 6; d.mastery = "The storm stays 6 turns."; }
     if (id == "tempest.forked") { m.chainJumps = 3; d.mastery = "Leaps to three more foes."; }
     if (id == "tempest.static") { m.staticField = 2; d.mastery = "Covers everything within 2 tiles."; }
@@ -378,7 +384,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             if (tree == 30 || tree == 31 || tree == 35) t.scalingStat=ScalingStat::Dexterity;
             if (tree == 32) t.scalingStat=ScalingStat::Intelligence;
             if (tree == 33 || tree == 34 || tree == 36) t.scalingStat=ScalingStat::Strength;
-            if (tree == 39 || tree == 40) t.scalingStat=ScalingStat::Intelligence;
+            if (tree == 39 || tree == 40 || tree == 41) t.scalingStat=ScalingStat::Intelligence;
             if (tree == 33) t.weaponRequirement=WeaponRequirement::Spear;
             if (tree == 34) t.weaponRequirement=WeaponRequirement::OneHanded;
             if (tree == 10) t.armourRequirement=ArmourRequirement::Cloth;
@@ -1019,6 +1025,29 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t=move("Ride the Lightning","Flash up to 5 tiles in a line, striking and shocking everything beside your path.",5,6,8);
         t.blitz=true; t.power=6; t.onHitEffect=StatusEffectInstance{StatusEffectType::Shock,3,0}; add(40,"tempest.ride",3,t);
         shape("tempest.ride",3,"capstone",{});
+        // Bonewright (INT), the Crypts' deep tree: Death 8, Earth 4, level 12, and a Bonecaller's journal.
+        add(41,"bonewright.armour",0,buff("Bone Armour","Wrap yourself in bone: Guard 4 for four enemy responses.",StatusEffectType::Guard,4,4,4,8));
+        shape("bonewright.armour",3,"",{});
+        t=Talent{}; t.name="Bone Wall"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Raise a wall of 3 bone pillars across your path, two tiles ahead. It crumbles after 6 turns.";
+        t.boneWall=3; t.manaCost=6; t.cooldownTurns=9; add(41,"bonewright.wall",1,t);
+        shape("bonewright.wall",3,"path",{"bonewright.armour"});
+        t=Talent{}; t.name="Ossuary Guard"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Raise a bone guardian beside you. It stays until it falls, and counts toward your minions.";
+        t.summonCount=1; t.summonKind=static_cast<int>(MonsterType::SkeletonGuard); t.manaCost=10; t.cooldownTurns=12; add(41,"bonewright.guard",1,t);
+        shape("bonewright.guard",3,"path",{"bonewright.armour"});
+        add(41,"bonewright.marrow",2,passive("Marrow","When a foe dies within 2 tiles of you, you gain 2 Guard.",PassiveKind::Marrow,2));
+        shape("bonewright.marrow",1,"",{"bonewright.wall"});
+        add(41,"bonewright.grown",2,passive("Grown Guard","Your bone guardian draws on your mind: +1 Strength and +2 life for every 5 Intelligence you have.",PassiveKind::GrownGuard,1));
+        shape("bonewright.grown",1,"",{"bonewright.guard"});
+        t=Talent{}; t.name="Bone Storm"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Bone shards whirl around you for 3 turns: each turn the foes beside you take 4 and bleed.";
+        t.boneStorm=3; t.manaCost=8; t.cooldownTurns=12; add(41,"bonewright.storm",3,t);
+        shape("bonewright.storm",3,"capstone",{});
+        t=Talent{}; t.name="Bone Lord"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="For 5 turns your minions are hastened and deal +3.";
+        t.boneLord=5; t.manaCost=8; t.cooldownTurns=14; add(41,"bonewright.lord",3,t);
+        shape("bonewright.lord",3,"capstone",{});
         // Mace (STR, one hand): guards and bones.
         t=attack("Crush","A heavy blow that sunders: the target takes +2 damage from every hit for four enemy turns.",6,2,4);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Sundered,4,2}; add(24,"mace.crush",0,t);
@@ -1395,6 +1424,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="stonefist")
                 d.affinity=(d.id=="stonefist.tremor" || d.id=="stonefist.granite" || d.id=="stonefist.rockhide")?Affinity::Earth:Affinity::Motion;
             else if (d.treeId=="tempest") d.affinity=Affinity::Storm;
+            else if (d.treeId=="bonewright") d.affinity=(d.id=="bonewright.wall" || d.id=="bonewright.marrow")?Affinity::Earth:Affinity::Death;
             else if (d.treeId=="slagcaller")
                 d.affinity=(d.id=="slagcaller.hail" || d.id=="slagcaller.pyroclasm" || d.id=="slagcaller.eruption")?Affinity::Flame:Affinity::Earth;
             else if (d.treeId=="forgeborn")
@@ -1421,7 +1451,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 case PassiveKind::FollowThrough: case PassiveKind::Stoneskin: case PassiveKind::HallowedGuard: case PassiveKind::Tidecaller:
                 case PassiveKind::Bulwark: case PassiveKind::FlowingMana: case PassiveKind::BladeWard: case PassiveKind::Transfusion:
                 case PassiveKind::GravePact: case PassiveKind::LongShadow: case PassiveKind::StaticEdge:
-                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered: case PassiveKind::Overcharge:
+                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered: case PassiveKind::Overcharge: case PassiveKind::Marrow:
                     return 5;
                 case PassiveKind::BurningPlate:
                     return 10;

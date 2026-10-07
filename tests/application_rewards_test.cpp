@@ -29,16 +29,20 @@
 #include "entities/TalentEffects.hpp"
 
 namespace engine {
-// Colour points for a test: ranks spread across that colour's base-tree nodes.
+// Colour points for a test: ranks spread across that colour's base-tree
+// nodes, then its hybrids' if it has no base tree (Death). Never a deep
+// tree's, so the deep tree under test stays unlearned.
 void giveColour(Player& p, Affinity colour, int points) {
-    for (const auto& d : talentCatalog()) {
-        if (points <= 0) break;
-        if (d.affinity != colour || d.treeId == "resonance" || hybridGate(d.treeId) || p.talents().rankOf(d.id)) continue;
-        const int rank = std::min(points, d.maxRank());
-        p.talents().learnTalent(d.ranks[0]);
-        p.talents().setRank(p.talents().knownTalents().size() - 1, rank);
-        points -= rank;
-    }
+    for (const bool hybrids : {false, true})
+        for (const auto& d : talentCatalog()) {
+            if (points <= 0) return;
+            if (d.affinity != colour || d.treeId == "resonance" || deepGate(d.treeId) || isAscendancyTree(d.treeId) ||
+                static_cast<bool>(hybridGate(d.treeId)) != hybrids || p.talents().rankOf(d.id)) continue;
+            const int rank = std::min(points, d.maxRank());
+            p.talents().learnTalent(d.ranks[0]);
+            p.talents().setRank(p.talents().knownTalents().size() - 1, rank);
+            points -= rank;
+        }
 }
 
 struct ApplicationRewardsTestAccess {
@@ -2086,6 +2090,48 @@ struct ApplicationRewardsTestAccess {
                 auto* e=foe({12,11});
                 cast(ranked("tempest.ride",1),{15,10});
                 check(app.player_.position().x>10 && e->stats().hp<90,"Ride the Lightning: you flash along and strike what you pass");
+                clearFoes(); app.player_.statusEffects().active().clear();
+            }
+
+            // Bonewright: the Crypts' deep tree, from the first Bonecaller's journal.
+            arena(PlayerClass::Mage);
+            {
+                auto made=createMonster(MonsterType::Bonecaller,{12,10}); auto* caller=made.get();
+                app.scheduler_.add(*caller); app.monsters_.push_back(std::move(made));
+                caller->stats().hp=0; app.checkAndHandleDeath(*caller); app.removeDeadMonsters();
+                check(app.loreDrops_.size()==1 && app.loreDrops_[0].id=="bonecaller_journal","The first Bonecaller slain drops its journal");
+                app.player_.setPosition(app.loreDrops_[0].at); app.pickupItem(); app.player_.setPosition({10,10});
+                check(deepTreeKnown(app.player_,"bonewright"),"The journal reveals Bonewright");
+                giveColour(app.player_,Affinity::Death,8); giveColour(app.player_,Affinity::Earth,4); app.player_.level()=12; app.player_.treePoints()=1;
+                check(purchaseTree(app.player_,PlayerClass::Mage,*findTree("bonewright")),"With Death 8, Earth 4 and level 12 Bonewright opens");
+                cast(ranked("bonewright.armour",1),app.player_.position());
+                check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Guard)>=4,"Bone Armour: Guard 4");
+                app.lastMoveDirection_={1,0};
+                cast(ranked("bonewright.wall",1),app.player_.position());
+                check(app.propIndexAt(12,9)>=0 && app.propIndexAt(12,10)>=0 && app.propIndexAt(12,11)>=0,"Bone Wall: three pillars across your way, two tiles ahead");
+                app.setProps({}); for (int y=9;y<=11;++y) app.map_.setTile(12,y,Tile{TileType::Floor,true,true}); app.pillarTurns_.clear();
+                cast(ranked("bonewright.guard",1),app.player_.position());
+                Monster* guardian=nullptr;
+                for (auto& m:app.monsters_) if (m->allied && m->type()==MonsterType::SkeletonGuard) guardian=m.get();
+                check(guardian && guardian->remainingLife==0,"Ossuary Guard: a bone guardian stays until it falls");
+                if (guardian) {
+                    app.player_.stats().intelligence=20; app.tickStormcall();
+                    const int plain=guardian->stats().strength, plainLife=guardian->stats().maxHp;
+                    ranked("bonewright.grown",1); app.tickStormcall();
+                    check(guardian->stats().strength==plain+4 && guardian->stats().maxHp==plainLife+8,"Grown Guard: +1 Strength and +2 life per 5 Intelligence");
+                    app.tickStormcall();
+                    check(guardian->stats().strength==plain+4,"Grown Guard doesn't keep stacking");
+                }
+                ranked("bonewright.marrow",1); app.player_.statusEffects().active().clear();
+                auto* near=foe({11,11}); near->stats().hp=0; app.checkAndHandleDeath(*near); app.removeDeadMonsters();
+                check(app.player_.statusEffects().magnitudeOf(StatusEffectType::Guard)>=2,"Marrow: a foe dying near you gives Guard");
+                auto* cut=foe({9,10});
+                cast(ranked("bonewright.storm",1),app.player_.position());
+                app.tickStormcall();
+                check(cut->stats().hp<90 && cut->statusEffects().has(StatusEffectType::Bleed),"Bone Storm cuts the foes beside you");
+                cast(ranked("bonewright.lord",1),app.player_.position());
+                app.tickStormcall();
+                check(!guardian || guardian->statusEffects().has(StatusEffectType::Hasted),"Bone Lord hastens your minions");
                 clearFoes(); app.player_.statusEffects().active().clear();
             }
 

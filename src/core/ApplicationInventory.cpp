@@ -228,7 +228,8 @@ void Application::renderGroundItems() {
             mapHints_.push_back({std::string(drop.id == "warlord_standard" ? "The Warlord's Standard" : drop.id == "foreman_key" ? "The Foreman's key" :
                                              drop.id == "forgemaster_brand" ? "The Forgemaster's brand" :
                                              drop.id == "slag_formula" ? "A slag-scrawled formula" :
-                                             drop.id == "chorister_hymn" ? "The Chorister's hymn" : "Lore") +
+                                             drop.id == "chorister_hymn" ? "The Chorister's hymn" :
+                                             drop.id == "bonecaller_journal" ? "A Bonecaller's journal" : "Lore") +
                                  " at your feet. G: take it", ui::kUnique});
     }
     for (const auto& item : groundItems_) {

@@ -207,7 +207,7 @@ private:
     void tickStormcall();
     void fanFires(Position imp);
     void foundryDeath(Monster& monster);
-    void raiseSlag(MonsterType kind, Position at, int turns, bool shard);
+    void raiseSlag(MonsterType kind, Position at, int turns, bool shard, int rank = 1);
     bool forgeSummoned_ = false; // the Forgemaster has called its slaglings
     bool heatFresh_ = false;     // Heat gained since your last turn began: it doesn't cool yet
     // The Encounter Lab (ApplicationLab.cpp): a fixed, seeded run of three

@@ -31,6 +31,8 @@ enum class StatusEffectType {
     Forgeheart,      // Heat can't fall; it vents when this ends (Forgeborn)
     Anvil,           // can't be moved; takes magnitude% less damage; heats 2 a turn (Forgeknight)
     Stormcall,       // a storm over you strikes the nearest foe each turn (Tempest)
+    BoneStorm,       // bone shards whirl around you, cutting the foes beside you (Bonewright)
+    BoneLord,        // your minions are hastened and hit harder (Bonewright)
 };
 
 struct StatusEffectInstance {
@@ -130,6 +132,8 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::Forgeheart: return "Forgeheart";
     case StatusEffectType::Anvil: return "Anvil Stance";
     case StatusEffectType::Stormcall: return "Stormcall";
+    case StatusEffectType::BoneStorm: return "Bone Storm";
+    case StatusEffectType::BoneLord: return "Bone Lord";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

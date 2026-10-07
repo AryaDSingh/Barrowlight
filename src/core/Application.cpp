@@ -1396,6 +1396,22 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         if (talent.plantBanner) plantBanner(talent.plantBanner,talent.greatBanner,player_.position());
         if (talent.gainHeat) addHeat(talent.gainHeat);
         if (talent.stormcall) { player_.statusEffects().apply({StatusEffectType::Stormcall,talent.stormcall,1}); log("A storm gathers over you."); }
+        if (talent.boneStorm) { player_.statusEffects().apply({StatusEffectType::BoneStorm,talent.boneStorm,4}); log("Bone shards whirl up around you."); }
+        if (talent.boneLord) { player_.statusEffects().apply({StatusEffectType::BoneLord,talent.boneLord,3}); log("Your dead stand taller."); }
+        if (talent.boneWall) {
+            // A wall across your way, two tiles ahead.
+            const auto me=player_.position();
+            Position dir=lastMoveDirection_;
+            if (!dir.x && !dir.y) dir={0,-1};
+            const Position across{-dir.y,dir.x}, centre{me.x+2*dir.x,me.y+2*dir.y};
+            int raised=0;
+            for (int k=-(talent.boneWall/2);k<=talent.boneWall/2;++k) {
+                const Position at{centre.x+k*across.x,centre.y+k*across.y};
+                if (raisePillarAt(at)) { pillarTurns_[{at.x,at.y}]=6; ++raised; }
+            }
+            log(raised?"A wall of bone heaves up.":"There's no room for a wall there.");
+            updateFieldOfView();
+        }
         if (talent.staticField) {
             const auto me=player_.position(); const int r=talent.staticField;
             for (int dy=-r;dy<=r;++dy) for (int dx=-r;dx<=r;++dx)
@@ -2115,6 +2131,7 @@ void Application::processMonsterTurns() {
                     AIDecision decision=enemyDecision(*monster,opponent);
                     if (const int shaken=actor->statusEffects().magnitudeOf(StatusEffectType::Shaken))
                         decision.attackPower=decision.attackPower*(100-shaken)/100;
+                    if (monster->allied && decision.attackPower>0) decision.attackPower+=player_.statusEffects().magnitudeOf(StatusEffectType::BoneLord);
                     if (const int anvil=player_.statusEffects().magnitudeOf(StatusEffectType::Anvil); anvil && decision.target==&player_)
                         decision.attackPower=decision.attackPower*(100-anvil)/100;
                     essenceStrike(*monster,decision);
@@ -2738,6 +2755,9 @@ void Application::checkAndHandleDeath(Actor& actor) {
     if (defeated && exploredMap_.at(defeated->position().x,defeated->position().y)==Visibility::Visible)
         soundManager_.playVoice(monsterVoice(defeated->type()),"death");
     if (defeated && !defeated->allied) foundryDeath(*defeated);
+    if (defeated && !defeated->allied && std::max(std::abs(defeated->position().x-player_.position().x),std::abs(defeated->position().y-player_.position().y))<=2)
+        if (const int marrow=player_.talents().passiveValue(PassiveKind::Marrow,player_.stats()))
+            player_.statusEffects().apply({StatusEffectType::Guard,2,player_.statusEffects().magnitudeOf(StatusEffectType::Guard)+marrow});
     if (defeated && !defeated->allied) {
         spreadWildfire(*defeated); shatterHoarfrost(*defeated); echoHexes(*defeated);
         if (player_.talents().passiveValue(PassiveKind::SoulHarvest,player_.stats())) {
