@@ -47,7 +47,7 @@ void line(sf::VertexArray& va, sf::Vector2f a, sf::Vector2f b, float w, sf::Colo
 Element talentElement(const Talent& t) {
     if (t.effectKind != TalentEffectKind::Damage || t.shape == EffectShape::Movement) return Element::None;
     if (t.tree == TalentTree::Tide) return Element::None; // its chill must not freeze the water it brings
-    if (t.tree == TalentTree::Stormlance) return Element::Lightning;
+    if (t.tree == TalentTree::Stormlance || t.tree == TalentTree::Tempest) return Element::Lightning;
     if (t.tree == TalentTree::Fire || (t.onHitEffect && t.onHitEffect->type == StatusEffectType::Burn)) return Element::Fire;
     if (t.tree == TalentTree::Ice || (t.onHitEffect && t.onHitEffect->type == StatusEffectType::Chill)) return Element::Ice;
     if (t.tree == TalentTree::Lightning) return Element::Lightning;
@@ -165,7 +165,7 @@ void Application::electrify(const std::vector<Position>& seeds) {
 void Application::shockStanding(const std::vector<Position>& pool) {
     const auto inPool = [&](Position p) { return std::any_of(pool.begin(), pool.end(), [&](Position q) { return q.x == p.x && q.y == p.y; }); };
     std::vector<Actor*> victims;
-    if (inPool(player_.position())) victims.push_back(&player_);
+    if (inPool(player_.position()) && !player_.talents().passiveValue(PassiveKind::EyeOfTheStorm, player_.stats())) victims.push_back(&player_);
     for (auto& m : monsters_) if (m->stats().hp > 0 && inPool(m->position())) victims.push_back(m.get());
     for (auto* a : victims) {
         a->statusEffects().apply({StatusEffectType::Shock, 2, 0});

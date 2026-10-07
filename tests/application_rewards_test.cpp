@@ -2045,6 +2045,50 @@ struct ApplicationRewardsTestAccess {
                 clearFoes(); app.player_.statusEffects().active().clear();
             }
 
+            // Tempest: the Cathedral's deep tree, from the first Drowned Chorister's hymn.
+            arena(PlayerClass::Mage);
+            {
+                auto* singer=foe({12,10});
+                app.monsters_.back()->stats().hp=0; app.checkAndHandleDeath(*app.monsters_.back()); app.removeDeadMonsters(); (void)singer;
+                check(app.loreDrops_.empty(),"Only a Chorister carries the hymn");
+                auto made=createMonster(MonsterType::DrownedChorister,{12,10}); auto* chorister=made.get();
+                app.scheduler_.add(*chorister); app.monsters_.push_back(std::move(made));
+                chorister->stats().hp=0; app.checkAndHandleDeath(*chorister); app.removeDeadMonsters();
+                check(app.loreDrops_.size()==1 && app.loreDrops_[0].id=="chorister_hymn","The first Chorister slain drops its hymn");
+                app.player_.setPosition(app.loreDrops_[0].at); app.pickupItem(); app.player_.setPosition({10,10});
+                check(deepTreeKnown(app.player_,"tempest"),"The hymn reveals Tempest");
+                giveColour(app.player_,Affinity::Storm,10); app.player_.level()=12; app.player_.treePoints()=1;
+                check(purchaseTree(app.player_,PlayerClass::Mage,*findTree("tempest")),"With Storm 10 and level 12 Tempest opens");
+                auto* a=foe({12,10});
+                cast(ranked("tempest.stormcall",1),app.player_.position());
+                app.tickStormcall();
+                check(a->stats().hp<90 && a->statusEffects().has(StatusEffectType::Shock),"Stormcall: the storm over you strikes the nearest foe and shocks it");
+                clearFoes(); app.player_.statusEffects().active().clear();
+                cast(ranked("tempest.static",1),app.player_.position());
+                check(app.surfaceAt({11,11})==SurfaceType::Electrified && app.surfaceAt({10,10})!=SurfaceType::Electrified,"Static Field: the ground around you crackles, not under you");
+                ranked("tempest.eye",1);
+                app.player_.setPosition({11,11}); const int hp=app.player_.stats().hp; app.shockStanding({{11,11}}); app.tickStormcall();
+                check(app.player_.stats().hp==hp && app.player_.statusEffects().has(StatusEffectType::Hasted),"Eye of the Storm: electrified ground can't hurt you, and quickens you");
+                app.clearSurfaces(); app.player_.setPosition({10,10}); app.player_.statusEffects().active().clear();
+                auto* b=foe({13,10}); auto* c=foe({14,11});
+                cast(ranked("tempest.forked",1),{13,10});
+                check(b->stats().hp<90 && c->stats().hp<90,"Forked Bolt leaps on to a second foe");
+                ranked("tempest.overcharge",1);
+                const auto& bolt=findTalentDefinition("tempest.forked")->ranks[0];
+                const int shocked=app.situationalBonus(bolt,*b); b->statusEffects().remove(StatusEffectType::Shock);
+                check(shocked>=app.situationalBonus(bolt,*b)+3,"Overcharge: lightning hits shocked foes harder");
+                clearFoes();
+                auto* d=foe({14,10});
+                cast(ranked("tempest.thunderhead",1),{14,10});
+                const int afterCast=d->stats().hp; app.tickStorms();
+                check(d->stats().hp<afterCast,"Thunderhead: the storm strikes again as your turn begins");
+                clearFoes(); app.storms_.clear();
+                auto* e=foe({12,11});
+                cast(ranked("tempest.ride",1),{15,10});
+                check(app.player_.position().x>10 && e->stats().hp<90,"Ride the Lightning: you flash along and strike what you pass");
+                clearFoes(); app.player_.statusEffects().active().clear();
+            }
+
             // Daggers.
             arena(PlayerClass::Thief);
             {

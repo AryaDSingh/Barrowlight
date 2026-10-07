@@ -227,7 +227,8 @@ void Application::renderGroundItems() {
         if (drop.at.x == player_.position().x && drop.at.y == player_.position().y)
             mapHints_.push_back({std::string(drop.id == "warlord_standard" ? "The Warlord's Standard" : drop.id == "foreman_key" ? "The Foreman's key" :
                                              drop.id == "forgemaster_brand" ? "The Forgemaster's brand" :
-                                             drop.id == "slag_formula" ? "A slag-scrawled formula" : "Lore") +
+                                             drop.id == "slag_formula" ? "A slag-scrawled formula" :
+                                             drop.id == "chorister_hymn" ? "The Chorister's hymn" : "Lore") +
                                  " at your feet. G: take it", ui::kUnique});
     }
     for (const auto& item : groundItems_) {

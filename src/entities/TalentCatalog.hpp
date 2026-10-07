@@ -19,7 +19,7 @@ struct TreeDefinition {
     const char* description;
     const char* starterItem;
 };
-inline constexpr std::array<TreeDefinition, 40> kTalentTrees{{
+inline constexpr std::array<TreeDefinition, 41> kTalentTrees{{
     {"one_handed", "One-Handed", TalentTree::OneHanded, "Efficient strikes, defensive openings and finishing blows.", "iron_sword"},
     {"two_handed", "Two-Handed", TalentTree::TwoHanded, "Heavy swings, surrounding enemies and blood-fuelled attacks.", "greatsword"},
     {"shield", "Shield", TalentTree::Shield, "Block damage, interrupt attacks and control space.", "wooden_shield"},
@@ -60,6 +60,7 @@ inline constexpr std::array<TreeDefinition, 40> kTalentTrees{{
     {"warbanner", "Warbanner", TalentTree::Warbanner, "A deep tree: plant a war standard, hold your ground beside it, and break their packs.", ""},
     {"forgeborn", "Forgeborn", TalentTree::Forgeborn, "A deep tree: burning plate. Struck, you heat up; hot, your blows sear.", ""},
     {"slagcaller", "Slagcaller", TalentTree::Slagcaller, "A deep tree: molten ground, and slag that rises to fight for you.", ""},
+    {"tempest", "Tempest", TalentTree::Tempest, "A deep tree: lightning that stays. Storms that follow you, and bolts that leap.", ""},
 }};
 inline const TreeDefinition* findTree(const std::string& id) {
     for (const auto& t : kTalentTrees) if (id == t.id) return &t;
@@ -155,6 +156,11 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "stealth.vanish") { longer(); d.mastery = "Hide for four responses."; }
     if (id == "stealth.smoke_bomb") { m.cooldownTurns -= 4; d.mastery = "Ready again four turns sooner."; }
     if (id == "stealth.feign") { m.restoreHpPercent = 10; d.mastery = "You also recover 10% of your life."; }
+    if (id == "tempest.stormcall") { m.stormcall = 6; d.mastery = "The storm stays 6 turns."; }
+    if (id == "tempest.forked") { m.chainJumps = 3; d.mastery = "Leaps to three more foes."; }
+    if (id == "tempest.static") { m.staticField = 2; d.mastery = "Covers everything within 2 tiles."; }
+    if (id == "tempest.thunderhead") { m.lingerTurns = 5; d.mastery = "The storm stays two turns longer."; }
+    if (id == "tempest.ride") { m.moveDistance += 2; d.mastery = "Flash two tiles further."; }
     if (id == "slagcaller.pool") { m.areaRadius = 2; d.mastery = "The pool spreads over 5 by 5."; }
     if (id == "slagcaller.slagling") { m.summonCount = 2; d.mastery = "Two slaglings rise."; }
     if (id == "slagcaller.hail") { m.lingerTurns = 4; d.mastery = "The cinders fall two turns longer."; }
@@ -372,7 +378,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             if (tree == 30 || tree == 31 || tree == 35) t.scalingStat=ScalingStat::Dexterity;
             if (tree == 32) t.scalingStat=ScalingStat::Intelligence;
             if (tree == 33 || tree == 34 || tree == 36) t.scalingStat=ScalingStat::Strength;
-            if (tree == 39) t.scalingStat=ScalingStat::Intelligence;
+            if (tree == 39 || tree == 40) t.scalingStat=ScalingStat::Intelligence;
             if (tree == 33) t.weaponRequirement=WeaponRequirement::Spear;
             if (tree == 34) t.weaponRequirement=WeaponRequirement::OneHanded;
             if (tree == 10) t.armourRequirement=ArmourRequirement::Cloth;
@@ -991,6 +997,28 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t=attack("Eruption","The ground under a foe in sight erupts: heavy damage to everything beside it, the ground around burns, and the target is stunned.",12,10,10,true,1);
         t.projectile=false; t.eruption=true; add(39,"slagcaller.eruption",3,t);
         shape("slagcaller.eruption",3,"capstone",{});
+        // Tempest (INT), the Cathedral's deep tree: Storm 10, level 12, and the Drowned Chorister's hymn.
+        t=Talent{}; t.name="Stormcall"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="A storm hangs over you for 4 turns. Each turn it strikes the nearest foe within 3 tiles with lightning that shocks.";
+        t.stormcall=4; t.manaCost=6; t.cooldownTurns=10; add(40,"tempest.stormcall",0,t);
+        shape("tempest.stormcall",3,"",{});
+        t=attack("Forked Bolt","A bolt that leaps on to two more foes near the first, each at half damage. Terrain blocks the leap.",7,5,5,true);
+        t.chain=true; t.chainJumps=2; t.onHitEffect=StatusEffectInstance{StatusEffectType::Shock,3,0}; add(40,"tempest.forked",1,t);
+        shape("tempest.forked",3,"path",{"tempest.stormcall"});
+        t=Talent{}; t.name="Static Field"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="The ground in the 8 tiles around you crackles with lightning for 3 turns, shocking whatever stands in it.";
+        t.staticField=1; t.manaCost=6; t.cooldownTurns=8; add(40,"tempest.static",1,t);
+        shape("tempest.static",3,"path",{"tempest.stormcall"});
+        add(40,"tempest.overcharge",2,passive("Overcharge","Your lightning hits on shocked foes deal +3.",PassiveKind::Overcharge,3));
+        shape("tempest.overcharge",1,"",{"tempest.forked"});
+        add(40,"tempest.eye",2,passive("Eye of the Storm","Electrified ground can't harm you, and you are 15% faster while you stand on it.",PassiveKind::EyeOfTheStorm,15));
+        shape("tempest.eye",1,"",{"tempest.static"});
+        t=attack("Thunderhead","A great storm gathers over a spot in sight for 4 turns, striking everything within 2 tiles of it as each of your turns begins.",4,9,12,true,2);
+        t.projectile=false; t.lingerTurns=3; t.onHitEffect=StatusEffectInstance{StatusEffectType::Shock,3,0}; add(40,"tempest.thunderhead",3,t);
+        shape("tempest.thunderhead",3,"capstone",{});
+        t=move("Ride the Lightning","Flash up to 5 tiles in a line, striking and shocking everything beside your path.",5,6,8);
+        t.blitz=true; t.power=6; t.onHitEffect=StatusEffectInstance{StatusEffectType::Shock,3,0}; add(40,"tempest.ride",3,t);
+        shape("tempest.ride",3,"capstone",{});
         // Mace (STR, one hand): guards and bones.
         t=attack("Crush","A heavy blow that sunders: the target takes +2 damage from every hit for four enemy turns.",6,2,4);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Sundered,4,2}; add(24,"mace.crush",0,t);
@@ -1366,6 +1394,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="saboteur") d.affinity=Affinity::Guile;
             else if (d.treeId=="stonefist")
                 d.affinity=(d.id=="stonefist.tremor" || d.id=="stonefist.granite" || d.id=="stonefist.rockhide")?Affinity::Earth:Affinity::Motion;
+            else if (d.treeId=="tempest") d.affinity=Affinity::Storm;
             else if (d.treeId=="slagcaller")
                 d.affinity=(d.id=="slagcaller.hail" || d.id=="slagcaller.pyroclasm" || d.id=="slagcaller.eruption")?Affinity::Flame:Affinity::Earth;
             else if (d.treeId=="forgeborn")
@@ -1392,7 +1421,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 case PassiveKind::FollowThrough: case PassiveKind::Stoneskin: case PassiveKind::HallowedGuard: case PassiveKind::Tidecaller:
                 case PassiveKind::Bulwark: case PassiveKind::FlowingMana: case PassiveKind::BladeWard: case PassiveKind::Transfusion:
                 case PassiveKind::GravePact: case PassiveKind::LongShadow: case PassiveKind::StaticEdge:
-                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered:
+                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered: case PassiveKind::Overcharge:
                     return 5;
                 case PassiveKind::BurningPlate:
                     return 10;

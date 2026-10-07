@@ -133,6 +133,7 @@ sf::Color buffColor(StatusEffectType type) {
         case StatusEffectType::Steadfast: return sf::Color(214, 178, 110);
         case StatusEffectType::Heat: return sf::Color(255, 150, 70);
         case StatusEffectType::MoltenPlate: case StatusEffectType::Forgeheart: case StatusEffectType::Anvil: return sf::Color(244, 124, 52);
+        case StatusEffectType::Stormcall: return sf::Color(120, 170, 255);
         default: return kHoly;
     }
 }

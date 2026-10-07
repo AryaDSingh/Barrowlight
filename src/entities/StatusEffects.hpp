@@ -30,6 +30,7 @@ enum class StatusEffectType {
     MoltenPlate,     // melee attackers take magnitude fire damage; each blow heats you (Forgeborn)
     Forgeheart,      // Heat can't fall; it vents when this ends (Forgeborn)
     Anvil,           // can't be moved; takes magnitude% less damage; heats 2 a turn (Forgeknight)
+    Stormcall,       // a storm over you strikes the nearest foe each turn (Tempest)
 };
 
 struct StatusEffectInstance {
@@ -128,6 +129,7 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::MoltenPlate: return "Molten Plate";
     case StatusEffectType::Forgeheart: return "Forgeheart";
     case StatusEffectType::Anvil: return "Anvil Stance";
+    case StatusEffectType::Stormcall: return "Stormcall";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

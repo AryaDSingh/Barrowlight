@@ -1,5 +1,6 @@
 #include "core/Application.hpp"
 #include "entities/MonsterFactory.hpp"
+#include "entities/TalentEffects.hpp"
 
 #include <algorithm>
 
@@ -124,11 +125,46 @@ void Application::foundryDeath(Monster& monster) {
         if (furnaces.empty()) spawnSlaglings(2, at);
         for (std::size_t i = 0; i < std::min<std::size_t>(2, furnaces.size()); ++i) spawnSlaglings(1, furnaces[i]);
     }
+    // Deep-tree lore carried by the monsters whose powers it teaches: the first one slain drops it.
+    const auto carries = [&](MonsterType type, const char* lore, const char* line) {
+        if (monster.type() != type || monster.stats().hp > 0 || player_.knowsLore(lore) ||
+            std::any_of(loreDrops_.begin(), loreDrops_.end(), [&](const LoreDrop& d) { return d.id == lore; })) return;
+        loreDrops_.push_back({at, lore});
+        log(line);
+    };
+    carries(MonsterType::DrownedChorister, "chorister_hymn", "A sodden hymn-sheet drifts down where the Chorister fell.");
     if (monster.type() == MonsterType::GoblinCaptain && monster.stats().hp <= 0 && !player_.knowsLore("foreman_key") &&
         std::none_of(loreDrops_.begin(), loreDrops_.end(), [](const LoreDrop& d) { return d.id == "foreman_key"; })) {
         loreDrops_.push_back({at, "foreman_key"});
         log("An iron key clatters from Grik's belt.");
     }
+}
+
+// Tempest: the storm over you strikes the nearest foe within 3 tiles; and the
+// Eye of the Storm quickens you on electrified ground.
+void Application::tickStormcall() {
+    const auto me = player_.position();
+    if (const int eye = player_.talents().passiveValue(PassiveKind::EyeOfTheStorm, player_.stats()); eye && surfaceAt(me) == SurfaceType::Electrified)
+        player_.statusEffects().apply({StatusEffectType::Hasted, 2, eye});
+    if (!player_.statusEffects().has(StatusEffectType::Stormcall)) return;
+    Monster* nearest = nullptr; int best = 100;
+    for (auto& m : monsters_) {
+        if (m->allied || m->stats().hp <= 0 || !visibleTile(m->position())) continue;
+        const int d = std::max(std::abs(m->position().x - me.x), std::abs(m->position().y - me.y));
+        if (d <= 3 && d < best) { best = d; nearest = m.get(); }
+    }
+    if (!nearest) return;
+    Talent bolt; bolt.name = "Stormcall"; bolt.id = "tempest.stormcall.strike"; bolt.tree = TalentTree::Tempest;
+    bolt.effectKind = TalentEffectKind::Damage; bolt.power = 4; bolt.scalingStat = ScalingStat::Intelligence;
+    combatThisTurn_ = true;
+    spawnVfx({Vfx::Kind::Lightning, {me.x + .5f, me.y - 1.f}, {nearest->position().x + .5f, nearest->position().y + .5f}, sf::Color(170, 200, 255), 0, .25f, 1.f});
+    if (applyTalentDamage(bolt, player_, *nearest)) {
+        flashActor(*nearest);
+        nearest->statusEffects().apply({StatusEffectType::Shock, 3, 0});
+        soundManager_.playHit(HitSound::Lightning, lastHitWasCritical(), bleeds(nearest->type()));
+    }
+    checkAndHandleDeath(*nearest);
+    removeDeadMonsters();
 }
 
 } // namespace engine

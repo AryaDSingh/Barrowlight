@@ -1395,6 +1395,13 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         }
         if (talent.plantBanner) plantBanner(talent.plantBanner,talent.greatBanner,player_.position());
         if (talent.gainHeat) addHeat(talent.gainHeat);
+        if (talent.stormcall) { player_.statusEffects().apply({StatusEffectType::Stormcall,talent.stormcall,1}); log("A storm gathers over you."); }
+        if (talent.staticField) {
+            const auto me=player_.position(); const int r=talent.staticField;
+            for (int dy=-r;dy<=r;++dy) for (int dx=-r;dx<=r;++dx)
+                if ((dx || dy) && map_.isWalkable(me.x+dx,me.y+dy)) setSurface({me.x+dx,me.y+dy},SurfaceType::Electrified,3);
+            log("The ground around you crackles.");
+        }
         if (talent.moltenPlate) player_.statusEffects().apply({StatusEffectType::MoltenPlate,talent.moltenPlate,3});
         if (talent.forgeheart) player_.statusEffects().apply({StatusEffectType::Forgeheart,talent.forgeheart,1});
         if (talent.anvil) player_.statusEffects().apply({StatusEffectType::Anvil,talent.anvil,30});
@@ -1897,6 +1904,9 @@ int Application::situationalBonus(const Talent& talent, const Actor& target) con
         if (player_.stats().hp*2<player_.stats().maxHp) bonus+=gear.affixTotal(BonusStat::LowLifeDamage);
         if (const auto* m=dynamic_cast<const Monster*>(&target); m && m->tactics.alert==0) bonus+=gear.affixTotal(BonusStat::UnawareDamage);
     }
+    if (const int charge=kit.passiveValue(PassiveKind::Overcharge,player_.stats());
+        charge && (talent.tree==TalentTree::Lightning || talent.tree==TalentTree::Tempest || talent.tree==TalentTree::Stormlance) &&
+        target.statusEffects().has(StatusEffectType::Shock)) bonus+=charge;
     if (const int tempered=kit.passiveValue(PassiveKind::Tempered,player_.stats());
         tempered && isMeleeAttack(talent) && player_.statusEffects().magnitudeOf(StatusEffectType::Heat)>=4) bonus+=tempered;
     if (const int ranks=kit.passiveValue(PassiveKind::BreakRanks,player_.stats())) {
@@ -2355,6 +2365,7 @@ void Application::advanceTurnsUntilPlayerCanAct() {
             tickStorms();
             tickBanner();
             tickHeat();
+            tickStormcall();
             return; // genuinely the player's turn now
         }
         log("You are stunned and lose a turn!");

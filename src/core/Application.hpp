@@ -204,6 +204,7 @@ private:
     // The Ashen Foundry (ApplicationFoundry.cpp).
     void addHeat(int amount);
     void tickHeat();
+    void tickStormcall();
     void fanFires(Position imp);
     void foundryDeath(Monster& monster);
     void raiseSlag(MonsterType kind, Position at, int turns, bool shard);
