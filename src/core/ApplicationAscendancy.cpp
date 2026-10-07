@@ -39,6 +39,10 @@ void Application::onBossDefeated(const Monster& boss) {
         log("The Warlord drops the ", trialSigil(1), "! It opens the ", trialName(1), " at the obelisk in town.");
     } else if (boss.type() == MonsterType::Forgemaster) {
         log("The Forgemaster cools and cracks, and the Foundry's fires gutter low.");
+        if (!(player_.trialKeys & (1 << (kForgeTrial - 1)))) {
+            player_.trialKeys |= 1 << (kForgeTrial - 1);
+            log("It drops the ", trialSigil(kForgeTrial), "! It opens the ", trialName(kForgeTrial), " at the obelisk in town.");
+        }
         if (!player_.knowsLore("forgemaster_brand") &&
             std::none_of(loreDrops_.begin(), loreDrops_.end(), [](const LoreDrop& d) { return d.id == "forgemaster_brand"; })) {
             loreDrops_.push_back({boss.position(), "forgemaster_brand"});
@@ -75,7 +79,8 @@ std::string Application::trialAvailability(int trial) const {
     const int bit = 1 << (trial - 1);
     if (player_.trialsCleared & bit) return "Won.";
     if (!(player_.trialKeys & bit))
-        return std::string("Sealed: needs the ") + trialSigil(trial) + (trial == 1 ? ", carried by the Goblin Warlord." : ", carried by the Lich.");
+        return std::string("Sealed: needs the ") + trialSigil(trial) +
+               (trial == 1 ? ", carried by the Goblin Warlord." : trial == 3 ? ", carried by the Forgemaster." : ", carried by the Lich.");
     if (trial == 2 && !(player_.trialsCleared & 1)) return std::string("Win the ") + trialName(1) + " first.";
     return {};
 }
@@ -122,10 +127,10 @@ bool Application::enterTrial(int trial) {
 
     boss_ = nullptr;
     monsters_.clear();
-    const bool stone = trial == 1;
-    auto guardian = createMonster(stone ? MonsterType::GoblinWarlord : MonsterType::Lich, {cx, 3});
+    const bool stone = trial == 1, forge = trial == kForgeTrial;
+    auto guardian = createMonster(forge ? MonsterType::Forgemaster : stone ? MonsterType::GoblinWarlord : MonsterType::Lich, {cx, 3});
     scaleDungeonMonster(*guardian, currentFloor_);
-    guardian->eventChampion = stone ? kChampionStoneWarden : kChampionFallenSaint;
+    guardian->eventChampion = forge ? kChampionAnvilBorn : stone ? kChampionStoneWarden : kChampionFallenSaint;
     guardian->setName(championName(guardian->eventChampion));
     guardian->stats().maxHp = guardian->stats().maxHp * (stone ? 3 : 4) / 2;
     guardian->stats().hp = guardian->stats().maxHp;
@@ -134,6 +139,12 @@ bool Application::enterTrial(int trial) {
     monsters_.push_back(std::move(guardian));
     // Braziers ring the arena: light to fight by, and coals to kick.
     placeBraziers({cx, cy}, {{-4, -2}, {4, -2}, {-4, 3}, {4, 3}});
+    if (forge) { // the forge's arena burns with furnaces, not braziers
+        auto props = props_;
+        for (auto& p : props) if (p.kind == PropKind::Brazier || p.kind == PropKind::ColdBrazier) p.kind = PropKind::Furnace;
+        setProps(props);
+    }
+    forgeSummoned_ = false;
 
     exploredMap_ = ExploredMap(map_);
     scheduler_ = TurnScheduler{};
@@ -227,7 +238,7 @@ void Application::handleAscendancyKey(sf::Keyboard::Key key) {
         // The choice is permanent; until your colours allow one, it can wait (Y reopens it).
         const std::size_t count = kAscendancies.size();
         if (key == K::Escape) { ascendancyMenu_ = false; return; }
-        if (key >= K::Num1 && key <= K::Num7 && static_cast<std::size_t>(static_cast<int>(key) - static_cast<int>(K::Num1)) < count)
+        if (key >= K::Num1 && key <= K::Num8 && static_cast<std::size_t>(static_cast<int>(key) - static_cast<int>(K::Num1)) < count)
             ascendancyChoiceSelection_ = static_cast<std::size_t>(static_cast<int>(key) - static_cast<int>(K::Num1));
         if ((key == K::Up || key == K::Left) && ascendancyChoiceSelection_ > 0) --ascendancyChoiceSelection_;
         if ((key == K::Down || key == K::Right) && ascendancyChoiceSelection_ + 1 < count) ++ascendancyChoiceSelection_;
@@ -352,6 +363,7 @@ void Application::handleTrialMenuKey(sf::Keyboard::Key key) {
     if (key == sf::Keyboard::Key::Escape) { trialMenu_ = false; return; }
     if (key == sf::Keyboard::Key::Num1) enterTrial(1);
     if (key == sf::Keyboard::Key::Num2) enterTrial(2);
+    if (key == sf::Keyboard::Key::Num3) enterTrial(3);
 }
 
 void Application::handleTrialMenuMouse(const sf::Event& event) {
@@ -375,9 +387,11 @@ void Application::renderTrialMenu() {
     const auto* a = findAscendancy(player_.ascendancy);
     ui_.textCentered(window_, std::string("Sigils from the great bosses open its trials. Win them to ascend") +
                      (a ? std::string(" further as a ") + a->name + "." : "; the first lets you choose how."), {{x, top + 64}, {w, 22}}, 16, ui::kMuted);
-    const char* rewards[]{"Reward: your ascendancy and its first point.", "Reward: a second ascendancy point."};
+    const char* rewards[]{"Reward: an ascendancy point, and your ascendancy if you have none.", "Reward: an ascendancy point.",
+                          "Reward: an ascendancy point, and the Forgeknight opens."};
     const char* fights[]{"A living statue that slams the ground and quakes the arena. Its blows grow wilder as it cracks.",
-                         "A saint who fell to the Lich: bolts, curses and rituals that raise the dead."};
+                         "A saint who fell to the Lich: bolts, curses and rituals that raise the dead.",
+                         "The forge's own champion, among furnaces: a hammer you see coming, and blasts of heat that set the floor alight."};
     for (int i = 0; i < kTrialCount; ++i) {
         const int trial = i + 1;
         const auto r = trialCard(i);

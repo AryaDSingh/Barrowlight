@@ -1213,6 +1213,9 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     const Position blinkDestination = target.destination;
     // Forgeborn: a blow or a blast that spends all your Heat.
     const int heldHeat=player_.statusEffects().magnitudeOf(StatusEffectType::Heat);
+    // Overheat: at 10 Heat or more, every hit lands half again as hard.
+    if (heldHeat>=10 && player_.talents().passiveValue(PassiveKind::Overheat,player_.stats())) talent.damagePercent=talent.damagePercent*3/2;
+    if (talent.landingSlam && talent.ventHeat) talent.landingSlam+=talent.ventHeat*heldHeat;
     if (talent.spendHeat || talent.ventHeat) {
         talent.power+=(talent.spendHeat+talent.ventHeat)*heldHeat;
         if (talent.spendHeat && heldHeat) talent.onHitEffect=StatusEffectInstance{StatusEffectType::Burn,3,std::max(1,heldHeat/2)};
@@ -1394,6 +1397,13 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         if (talent.gainHeat) addHeat(talent.gainHeat);
         if (talent.moltenPlate) player_.statusEffects().apply({StatusEffectType::MoltenPlate,talent.moltenPlate,3});
         if (talent.forgeheart) player_.statusEffects().apply({StatusEffectType::Forgeheart,talent.forgeheart,1});
+        if (talent.anvil) player_.statusEffects().apply({StatusEffectType::Anvil,talent.anvil,30});
+        if (talent.quench) {
+            const int quenched=player_.statusEffects().magnitudeOf(StatusEffectType::Heat);
+            addHeat(-quenched);
+            player_.stats().hp=std::min(player_.stats().maxHp,player_.stats().hp+quenched*talent.quench);
+            log(quenched?"Steam pours off you as you quench the heat.":"You have no heat to quench.");
+        }
         if (talent.rallyCry) {
             const auto me=player_.position();
             int shaken=0;
@@ -1835,7 +1845,11 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
         player_.stats().hp=std::min(player_.stats().maxHp,player_.stats().hp+hallowed);
         log("A warm light steadies you.");
     }
-    if (talent.ventHeat) {
+    if (talent.ventHeat && talent.shape==EffectShape::Movement) {
+        // Furnace Slam: the ground burns around where you land.
+        for (int dy=-1;dy<=1;++dy) for (int dx=-1;dx<=1;++dx)
+            if ((dx || dy) && map_.isWalkable(blinkDestination.x+dx,blinkDestination.y+dy)) setSurface({blinkDestination.x+dx,blinkDestination.y+dy},SurfaceType::Fire,kSpilledFireTurns);
+    } else if (talent.ventHeat) {
         const auto me=player_.position(); // everywhere but under you
         for (const auto& p:target.area) if (map_.isWalkable(p.x,p.y) && !(p.x==me.x && p.y==me.y)) setSurface(p,SurfaceType::Fire,kSpilledFireTurns);
         if (heldHeat) log("Your heat bursts out of you!");
@@ -2078,6 +2092,8 @@ void Application::processMonsterTurns() {
                     AIDecision decision=enemyDecision(*monster,opponent);
                     if (const int shaken=actor->statusEffects().magnitudeOf(StatusEffectType::Shaken))
                         decision.attackPower=decision.attackPower*(100-shaken)/100;
+                    if (const int anvil=player_.statusEffects().magnitudeOf(StatusEffectType::Anvil); anvil && decision.target==&player_)
+                        decision.attackPower=decision.attackPower*(100-anvil)/100;
                     essenceStrike(*monster,decision);
                     labEnemyDecision(*monster,decision);
                     if (monster->type()==MonsterType::BellowsImp) fanFires(monster->position());
@@ -2560,6 +2576,13 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
 
             // A dodged hit lands no on-hit effect either -- avoiding the
             // blow avoids the poison that would have ridden in on it.
+            // Forgeknight: blows that land heat you (Heat Engine), and melee attackers burn (Burning Plate).
+            if (!dodged && decision.target == &player_) {
+                if (const int engine=player_.talents().passiveValue(PassiveKind::HeatEngine,player_.stats())) addHeat(engine);
+                if (const int plate=player_.talents().passiveValue(PassiveKind::BurningPlate,player_.stats());
+                    plate && std::max(std::abs(actor.position().x-player_.position().x),std::abs(actor.position().y-player_.position().y))<=1)
+                    actor.statusEffects().apply({StatusEffectType::Burn,3,plate});
+            }
             // Molten Plate: whoever strikes you in melee is burned for it, and you heat up.
             if (!dodged && decision.target == &player_ && player_.statusEffects().has(StatusEffectType::MoltenPlate) &&
                 std::max(std::abs(actor.position().x-player_.position().x),std::abs(actor.position().y-player_.position().y))<=1) {

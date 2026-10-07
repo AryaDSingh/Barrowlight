@@ -134,6 +134,8 @@ inline std::string talentIcon(const Talent& talent) {
         {"stonefist.fist", "fist"}, {"stonefist.slam", "punch-blast"}, {"stonefist.granite", "stone-block"}, {"stonefist.landslide", "falling-rocks"},
         {"warbanner.plant", "spear-feather"}, {"warbanner.rally", "shouting"}, {"warbanner.bash", "spear-hook"}, {"warbanner.hold", "bordered-shield"},
         {"warbanner.ranks", "impact-point"}, {"warbanner.last", "checked-shield"}, {"warbanner.charge", "charging-bull"},
+        {"forgeknight.heat_engine", "campfire"}, {"forgeknight.slam", "meteor-impact"}, {"forgeknight.quench", "big-wave"},
+        {"forgeknight.burning_plate", "magic-shield"}, {"forgeknight.overheat", "fire-dash"}, {"forgeknight.anvil", "bordered-shield"},
         {"forgeborn.stoke", "campfire"}, {"forgeborn.searing", "hammer-drop"}, {"forgeborn.plate", "magic-shield"}, {"forgeborn.tempered", "fist"},
         {"forgeborn.heat_sink", "bordered-shield"}, {"forgeborn.vent", "meteor-impact"}, {"forgeborn.forgeheart", "fire-dash"},
         {"alchemy.oil", "round-bottom-flask"}, {"alchemy.firebomb", "molotov"}, {"alchemy.brews", "bubbling-flask"}, {"alchemy.acid", "fizzing-flask"},
@@ -241,6 +243,7 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::Heat: return "campfire";
         case StatusEffectType::MoltenPlate: return "magic-shield";
         case StatusEffectType::Forgeheart: return "fire-dash";
+        case StatusEffectType::Anvil: return "bordered-shield";
     }
     return "aura";
 }

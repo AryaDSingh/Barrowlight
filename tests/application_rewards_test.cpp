@@ -3998,6 +3998,44 @@ struct ApplicationRewardsTestAccess {
             app.currentFloor_=1;
         }
 
+        // The Trial of the Forge and the Forgeknight.
+        {
+            setup(PlayerClass::Warrior);
+            auto made=createMonster(MonsterType::Forgemaster,{12,10}); auto* smith=made.get(); app.monsters_.push_back(std::move(made));
+            app.onBossDefeated(*smith);
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m); app.monsters_.clear(); app.loreDrops_.clear();
+            check((app.player_.trialKeys & 4) && app.trialAvailability(3).empty(),"The Forgemaster's sigil opens the Trial of the Forge, on its own");
+            app.mode_=GameMode::Town;
+            check(app.enterTrial(3) && app.boss_ && app.boss_->type()==MonsterType::Forgemaster && app.boss_->name()=="The Anvil-Born",
+                  "The Trial of the Forge pits you against the Anvil-Born");
+            int furnaces=0; for (const auto& p:app.props_) furnaces+=p.kind==PropKind::Furnace;
+            check(furnaces>0,"Its arena burns with furnaces");
+            check(!ascendancyQualified(app.player_,"forgeknight"),"The Forgeknight waits for its colours and its trial");
+            giveColour(app.player_,Affinity::Steel,6); giveColour(app.player_,Affinity::Flame,6);
+            check(!ascendancyQualified(app.player_,"forgeknight"),"Colours alone don't open the Forgeknight");
+            app.boss_->stats().hp=0; app.checkAndHandleDeath(*app.boss_); app.removeDeadMonsters();
+            check((app.player_.trialsCleared & 4) && app.player_.ascendancyPoints==1 && ascendancyQualified(app.player_,"forgeknight"),
+                  "Winning the trial opens the Forgeknight to Steel 6 and Flame 6");
+            snapshot("ui-ascendancy-forge.png");
+            app.chooseAscendancy("forgeknight");
+            check(app.player_.ascendancy=="forgeknight","You become a Forgeknight");
+            app.ascendancyMenu_=false; app.leaveTrialState(); app.mode_=GameMode::Playing;
+            // Its nodes.
+            const auto learn=[&](const char* id) { app.player_.talents().learnTalent(findTalentDefinition(id)->ranks[0]); return app.player_.talents().knownTalents().size()-1; };
+            learn("forgeknight.heat_engine"); app.addHeat(8);
+            check(ascendancyGuardBonus(app.player_)>=4,"Heat Engine: every 2 Heat is 1 armour");
+            const auto q=learn("forgeknight.quench");
+            app.player_.stats().hp=10; app.player_.talents().resetCooldowns(); app.player_.stats().mana=app.player_.stats().maxMana;
+            app.tryUseTalent(q,app.player_.position());
+            check(!app.player_.statusEffects().has(StatusEffectType::Heat) && app.player_.stats().hp>=10+8*3-2,"Quench: all Heat gone, 3 life healed for each point");
+            const auto anvil=learn("forgeknight.anvil");
+            app.player_.talents().resetCooldowns(); app.tryUseTalent(anvil,app.player_.position());
+            check(app.player_.statusEffects().has(StatusEffectType::Anvil),"Anvil Stance plants you");
+            learn("forgeknight.overheat"); app.addHeat(12); const int hp=app.player_.stats().hp; app.tickHeat();
+            check(app.player_.stats().hp==hp,"Overheat: Heat no longer burns you");
+            app.player_.statusEffects().active().clear(); app.player_.ascendancy.clear();
+        }
+
         app.window_.close();
         std::cout << checks << " reward checks, " << failures << " failures.\n";
         return failures ? 1 : 0;

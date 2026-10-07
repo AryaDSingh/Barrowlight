@@ -509,7 +509,7 @@ void Application::enterSurface(Actor& actor, Position tile) {
 }
 
 void Application::pushActor(Actor& target, Position direction, int distance, const Actor& pusher) {
-    if (target.statusEffects().has(StatusEffectType::Steadfast)) {
+    if (target.statusEffects().has(StatusEffectType::Steadfast) || target.statusEffects().has(StatusEffectType::Anvil)) {
         log(&target == &player_ ? "You hold your ground." : target.name() + " holds its ground.");
         return;
     }

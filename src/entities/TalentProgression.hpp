@@ -97,6 +97,7 @@ inline AscendancyNeed ascendancyNeed(const std::string& id) {
     if (id=="templar") return {{{Affinity::Light,6},{Affinity::Guard,6}},{},0,0};
     if (id=="shadowcaster") return {{{Affinity::Dark,6},{Affinity::Guile,6}},{},0,0};
     if (id=="duelist") return {{{Affinity::Steel,6},{Affinity::Motion,6}},{},0,0};
+    if (id=="forgeknight") return {{{Affinity::Steel,6},{Affinity::Flame,6}},{},0,0};
     std::vector<Affinity> every;
     for (int a=1;a<=static_cast<int>(Affinity::Rot);++a) every.push_back(static_cast<Affinity>(a));
     return {{},every,5,3}; // the Paragon: any five colours
@@ -109,6 +110,7 @@ inline bool ascendancyQualified(const std::function<int(const std::string&)>& ra
     return reached>=need.anyCount;
 }
 inline bool ascendancyQualified(const Player& p,const std::string& id) {
+    if (id=="forgeknight" && !(p.trialsCleared & (1<<(kForgeTrial-1)))) return false; // the forge's own trial first
     return ascendancyQualified([&](const std::string& t){ return p.talents().rankOf(t); },id);
 }
 inline std::string ascendancyNeedText(const Player& p,const std::string& id) {
@@ -126,6 +128,7 @@ inline std::string ascendancyNeedText(const Player& p,const std::string& id) {
         text+=" at "+std::to_string(need.anyPoints)+":";
         for (const auto colour:need.anyOf) text+=" "+std::string(affinityInfo(colour).name)+" "+std::to_string(std::min(affinityPoints(p,colour),need.anyPoints));
     }
+    if (id=="forgeknight") text+=(p.trialsCleared & (1<<(kForgeTrial-1)))?", Trial of the Forge won":", and the Trial of the Forge";
     return text;
 }
 } // namespace engine

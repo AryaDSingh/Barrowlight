@@ -38,8 +38,10 @@ void Application::tickHeat() {
     const int heldTurns = holding ? held->turnsRemaining : 0; // read now: changing Heat rewrites the list
     const bool fresh = heatFresh_;
     heatFresh_ = false;
+    const bool anvil = player_.statusEffects().has(StatusEffectType::Anvil);
     if (hot) { addHeat(1); heatFresh_ = false; } // the furnace's heat follows the usual rule
-    else if (heat > 0 && !holding && !fresh) addHeat(-1);
+    else if (heat > 0 && !holding && !fresh && !anvil) addHeat(-1);
+    if (anvil) { addHeat(2); heatFresh_ = false; } // Anvil Stance: the stance itself heats you
     // Forgeheart's last turn: the heat it held comes out all at once.
     if (holding && heldTurns <= 1) {
         const int vent = player_.statusEffects().magnitudeOf(StatusEffectType::Heat);
@@ -56,7 +58,8 @@ void Application::tickHeat() {
         }
     }
     if (player_.statusEffects().magnitudeOf(StatusEffectType::Heat) >= kBurningHeat &&
-        !player_.talents().passiveValue(PassiveKind::HeatSink, player_.stats())) {
+        !player_.talents().passiveValue(PassiveKind::HeatSink, player_.stats()) &&
+        !player_.talents().passiveValue(PassiveKind::Overheat, player_.stats())) {
         player_.stats().hp -= 2;
         flashActor(player_);
         harmSource_ = "the heat";

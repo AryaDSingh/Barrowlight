@@ -1287,6 +1287,16 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         node("paragon","paragon.versatility",Dex,passive("Versatility","+5% dodge and +5% critical chance.",PassiveKind::Versatility,5));
         node("paragon","paragon.resilience",Str,passive("Resilience","Direct hits on you deal 2 less.",PassiveKind::Resilience,2));
         node("paragon","paragon.wellspring",Int,passive("Wellspring","+10% maximum life and maximum mana.",PassiveKind::Wellspring,10));
+        // Forgeknight (STR): heat as armour.
+        node("forgeknight","forgeknight.heat_engine",Str,passive("Heat Engine","Each blow that lands on you gives you 1 Heat, and every 2 Heat you hold is 1 armour.",PassiveKind::HeatEngine,1));
+        t=move("Furnace Slam","Leap up to three tiles and slam everything beside where you land, spending all your Heat for +2 damage each point. The ground around you burns.",3,5,8);
+        t.vault=true; t.landingSlam=6; t.ventHeat=2; node("forgeknight","forgeknight.slam",Str,t);
+        t=Talent{}; t.name="Quench"; t.description="Drop all your Heat at once, and heal 3 life for each point."; t.targeting=TargetingMode::Self;
+        t.effectKind=TalentEffectKind::SelfBuff; t.quench=3; t.manaCost=2; t.cooldownTurns=10; node("forgeknight","forgeknight.quench",Str,t);
+        node("forgeknight","forgeknight.burning_plate",Str,passive("Burning Plate","Foes that strike you in melee burn for 3 turns.",PassiveKind::BurningPlate,2));
+        node("forgeknight","forgeknight.overheat",Str,passive("Overheat","While you hold 10 Heat or more, your hits deal +50%, and Heat no longer burns you.",PassiveKind::Overheat,50));
+        t=Talent{}; t.name="Anvil Stance"; t.description="For 3 turns you can't be moved, take 30% less damage from blows, and gain 2 Heat a turn.";
+        t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff; t.anvil=3; t.manaCost=4; t.cooldownTurns=12; node("forgeknight","forgeknight.anvil",Str,t);
 
         // The pilot trees' colours: Fire is Flame, Arcane is Arcane, and
         // One-Handed is Steel except for its guard (Parry, Riposte).
@@ -1352,6 +1362,8 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 case PassiveKind::GravePact: case PassiveKind::LongShadow: case PassiveKind::StaticEdge:
                 case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks: case PassiveKind::Tempered:
                     return 5;
+                case PassiveKind::BurningPlate:
+                    return 10;
                 case PassiveKind::FireArrows: case PassiveKind::Incendiary: case PassiveKind::WastingCurse: case PassiveKind::Witchfire:
                 case PassiveKind::FoulWater: case PassiveKind::EnvenomedBlades: case PassiveKind::GraveLight: case PassiveKind::BoilingBlood:
                 case PassiveKind::Bloodletter: case PassiveKind::Ionise: case PassiveKind::DirtyTricks:

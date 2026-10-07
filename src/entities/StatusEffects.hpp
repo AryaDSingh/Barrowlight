@@ -29,6 +29,7 @@ enum class StatusEffectType {
     Heat,            // builds near furnaces and fire; at 10 or more it burns (the Ashen Foundry)
     MoltenPlate,     // melee attackers take magnitude fire damage; each blow heats you (Forgeborn)
     Forgeheart,      // Heat can't fall; it vents when this ends (Forgeborn)
+    Anvil,           // can't be moved; takes magnitude% less damage; heats 2 a turn (Forgeknight)
 };
 
 struct StatusEffectInstance {
@@ -126,6 +127,7 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::Heat: return "Heat";
     case StatusEffectType::MoltenPlate: return "Molten Plate";
     case StatusEffectType::Forgeheart: return "Forgeheart";
+    case StatusEffectType::Anvil: return "Anvil Stance";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

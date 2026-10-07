@@ -62,13 +62,13 @@ inline sf::FloatRect ascendNode(int i) { return {{140.f + 336.f * (i % 3), 170.f
 inline const sf::FloatRect kAscendLearn{{760, 618}, {240, 42}}, kAscendClose{{1012, 618}, {136, 42}};
 inline sf::FloatRect ascendChoice(int i) { return {{134.f + 254.f * i, 140}, {242, 462}}; }
 // The choice list (one row per ascendancy) and the chosen one's details beside it.
-inline sf::FloatRect ascendRow(int i) { return {{134.f, 134.f + 64.f * i}, {420, 58}}; }
+inline sf::FloatRect ascendRow(int i) { return {{134.f, 132.f + 59.f * i}, {420, 54}}; }
 inline const sf::FloatRect kAscendDetails{{578, 134}, {570, 470}};
 
 // --- The trial obelisk ---------------------------------------------------------------
-inline const sf::FloatRect kTrialDialog{{220, 90}, {840, 540}};
-inline sf::FloatRect trialCard(int i) { return {{250.f + 400.f * i, 190}, {380, 340}}; }
-inline sf::FloatRect trialEnter(int i) { return {{270.f + 400.f * i, 476}, {340, 40}}; }
+inline const sf::FloatRect kTrialDialog{{60, 90}, {1160, 540}};
+inline sf::FloatRect trialCard(int i) { return {{86.f + 374.f * i, 190}, {360, 340}}; }
+inline sf::FloatRect trialEnter(int i) { return {{96.f + 374.f * i, 476}, {340, 40}}; }
 inline const sf::FloatRect kTrialClose{{560, 566}, {160, 40}};
 
 // --- Dungeon selection ------------------------------------------------------------
