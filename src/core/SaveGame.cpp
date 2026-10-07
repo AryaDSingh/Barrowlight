@@ -46,7 +46,7 @@ namespace {
 // Version 16 appended enemy types and larger blast areas.
 // Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
 // Version 20 replaces entry-level scaling with fixed global-depth scaling.
-constexpr int kSaveFormatVersion = 41;
+constexpr int kSaveFormatVersion = 42;
 
 void writeTalentStates(std::ostream& out, const std::vector<SaveGameState::TalentSaveData>& talents) {
     out << talents.size() << '\n';
@@ -210,7 +210,7 @@ bool validProgression(const SaveGameState& s) {
     if (!s.ascendancy.empty() && !s.trialsCleared) return false; // an ascendancy needs a trial won (choosing may still be pending)
     if (!s.ascendancy.empty()) {
         const auto* a=findAscendancy(s.ascendancy);
-        if (!a || !ascendancyAllowed(*a,s.playerClass)) return false;
+        if (!a) return false;
     }
     std::unordered_set<std::string> trees,known,bound;
     int utilityTrees=0;
@@ -345,7 +345,7 @@ bool readStatusEffects(std::istream& in, std::vector<StatusEffectInstance>& effe
         if (!(in >> type >> turnsRemaining >> magnitude)) {
             return false;
         }
-        if (type<0 || type>static_cast<int>(StatusEffectType::Slowed) || turnsRemaining<1 || turnsRemaining>10000 || magnitude<0 || magnitude>10000) return false;
+        if (type<0 || type>static_cast<int>(StatusEffectType::Steadfast) || turnsRemaining<1 || turnsRemaining>10000 || magnitude<0 || magnitude>10000) return false;
         if (type==static_cast<int>(StatusEffectType::Marked) && magnitude!=1) return false;
         effects.push_back(
             StatusEffectInstance{static_cast<StatusEffectType>(type), turnsRemaining, magnitude});
@@ -499,6 +499,13 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
     if (version>=30) {
         out << state.lightOrbs.size();
         for (const auto& [x,y,turns] : state.lightOrbs) out << ' ' << x << ' ' << y << ' ' << turns;
+        out << '\n';
+    }
+    if (version>=42) {
+        out << state.lore.size();
+        for (const auto& id : state.lore) out << ' ' << id;
+        out << '\n' << state.loreDrops.size();
+        for (const auto& drop : state.loreDrops) out << ' ' << drop.x << ' ' << drop.y << ' ' << drop.id;
         out << '\n';
     }
     return static_cast<bool>(out);
@@ -851,6 +858,17 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
             int x=0,y=0,turns=0;
             if (!(in>>x>>y>>turns) || !state.map.inBounds(x,y) || turns<1 || turns>100) return std::nullopt;
             state.lightOrbs.push_back({x,y,turns});
+        }
+    }
+    if (version>=42) {
+        std::size_t count=0;
+        if (!(in>>count) || count>64) return std::nullopt;
+        for (std::size_t i=0;i<count;++i) { std::string id; if (!(in>>id) || id.size()>64) return std::nullopt; state.lore.push_back(id); }
+        if (!(in>>count) || count>16) return std::nullopt;
+        for (std::size_t i=0;i<count;++i) {
+            SaveGameState::LoreDrop drop;
+            if (!(in>>drop.x>>drop.y>>drop.id) || !state.map.inBounds(drop.x,drop.y) || drop.id.size()>64) return std::nullopt;
+            state.loreDrops.push_back(drop);
         }
     }
     if (state.landmark && (!state.map.inBounds(state.landmarkAltar.x,state.landmarkAltar.y) ||

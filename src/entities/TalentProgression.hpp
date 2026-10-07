@@ -2,20 +2,12 @@
 #include "entities/Player.hpp"
 #include "entities/HiddenTrees.hpp"
 #include "entities/RunProgression.hpp"
+#include "entities/Ascendancy.hpp"
 
 namespace engine {
 inline const Player::TreeAccess* treeAccess(const Player& p, const std::string& id) {
     for (const auto& t:p.trees()) if (t.id==id) return &t;
     return nullptr;
-}
-// Points of a colour: one per rank bought in a node of that colour.
-inline int affinityPoints(const std::function<int(const std::string&)>& rankOf,Affinity a) {
-    int points=0;
-    for (const auto& d:talentCatalog()) if (d.affinity==a) points+=rankOf(d.id);
-    return points;
-}
-inline int affinityPoints(const Player& p,Affinity a) {
-    return affinityPoints([&](const std::string& id){ return p.talents().rankOf(id); },a);
 }
 inline const std::vector<const TalentDefinition*>& resonances() { return treeNodes("resonance"); }
 // Awake: both colours held deeply enough to learn it. Glimpsed: you hold some of one.
@@ -44,7 +36,10 @@ inline std::string treePurchaseReason(const Player& p, PlayerClass cls, const Tr
         if (treeAccess(p,t.id)) return "Already open.";
         return utilityTree(t.id) || p.treePoints()>0 ? std::string{} : std::string("No tree points available.");
     }
-    if (!hiddenTreeAvailable(p,t.id)) { const auto need=hybridRequirement(t.id); return need.empty() ? "This tree is locked for now." : need; }
+    if (!hiddenTreeAvailable(p,t.id)) {
+        const auto need=deepGate(t.id) ? deepRequirement(p,t.id) : hybridRequirement(p,t.id);
+        return need.empty() ? "This tree is locked for now." : need;
+    }
     if (treeAccess(p,t.id)) return "Already open.";
     if (utilityTree(t.id)) {
         if (openTrees(p,true)>=utilityTreeSlots(p.level())) {
@@ -90,5 +85,47 @@ inline bool purchaseAbility(Player& p,const TalentDefinition& d) {
     --pointsFor(p,d); synchronizeImbues(p);
     if (upgrading) p.talents().hotbar()=bindings;
     return true;
+}
+// Ascendancies go to what your build became: each asks for colours, not a
+// class. Either every listed colour at its own count, or (Elementalist,
+// Paragon) enough of a group at one count.
+struct AscendancyNeed { std::vector<std::pair<Affinity,int>> all; std::vector<Affinity> anyOf; int anyCount=0, anyPoints=0; };
+inline AscendancyNeed ascendancyNeed(const std::string& id) {
+    if (id=="juggernaut") return {{{Affinity::Steel,8},{Affinity::Guard,6}},{},0,0};
+    if (id=="elementalist") return {{},{Affinity::Flame,Affinity::Frost,Affinity::Storm},2,6};
+    if (id=="trickster") return {{{Affinity::Guile,6},{Affinity::Motion,6}},{},0,0};
+    if (id=="templar") return {{{Affinity::Light,6},{Affinity::Guard,6}},{},0,0};
+    if (id=="shadowcaster") return {{{Affinity::Dark,6},{Affinity::Guile,6}},{},0,0};
+    if (id=="duelist") return {{{Affinity::Steel,6},{Affinity::Motion,6}},{},0,0};
+    std::vector<Affinity> every;
+    for (int a=1;a<=static_cast<int>(Affinity::Rot);++a) every.push_back(static_cast<Affinity>(a));
+    return {{},every,5,3}; // the Paragon: any five colours
+}
+inline bool ascendancyQualified(const std::function<int(const std::string&)>& rankOf,const std::string& id) {
+    const auto need=ascendancyNeed(id);
+    for (const auto& [colour,points]:need.all) if (affinityPoints(rankOf,colour)<points) return false;
+    int reached=0;
+    for (const auto colour:need.anyOf) reached+=affinityPoints(rankOf,colour)>=need.anyPoints;
+    return reached>=need.anyCount;
+}
+inline bool ascendancyQualified(const Player& p,const std::string& id) {
+    return ascendancyQualified([&](const std::string& t){ return p.talents().rankOf(t); },id);
+}
+inline std::string ascendancyNeedText(const Player& p,const std::string& id) {
+    const auto need=ascendancyNeed(id);
+    std::string text;
+    for (const auto& [colour,points]:need.all)
+        text+=(text.empty()?"":", ")+std::string(affinityInfo(colour).name)+" "+std::to_string(std::min(affinityPoints(p,colour),points))+"/"+std::to_string(points);
+    if (need.anyCount==5) {
+        int reached=0;
+        for (const auto colour:need.anyOf) reached+=affinityPoints(p,colour)>=need.anyPoints;
+        text="Any five colours at 3: "+std::to_string(std::min(reached,5))+"/5";
+    } else if (need.anyCount) {
+        text="Two of ";
+        for (std::size_t i=0;i<need.anyOf.size();++i) text+=(i?(i+1==need.anyOf.size()?" or ":", "):"")+std::string(affinityInfo(need.anyOf[i]).name);
+        text+=" at "+std::to_string(need.anyPoints)+":";
+        for (const auto colour:need.anyOf) text+=" "+std::string(affinityInfo(colour).name)+" "+std::to_string(std::min(affinityPoints(p,colour),need.anyPoints));
+    }
+    return text;
 }
 } // namespace engine

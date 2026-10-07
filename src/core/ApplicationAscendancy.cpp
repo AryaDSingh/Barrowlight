@@ -9,6 +9,7 @@
 #include "core/GameIcons.hpp"
 #include "core/ScreenLayout.hpp"
 #include "entities/Ascendancy.hpp"
+#include "entities/TalentProgression.hpp"
 #include "entities/MonsterFactory.hpp"
 #include "entities/TalentCatalog.hpp"
 #include "world/FloorTheme.hpp"
@@ -27,6 +28,11 @@ constexpr int kTrialArenaWidth = 31, kTrialArenaHeight = 21;
 
 void Application::onBossDefeated(const Monster& boss) {
     if (trialGuardianChampion(boss.eventChampion)) { completeTrial(trial_); return; }
+    if (boss.type() == MonsterType::GoblinWarlord && !player_.knowsLore("warlord_standard") &&
+        std::none_of(loreDrops_.begin(), loreDrops_.end(), [](const LoreDrop& d) { return d.id == "warlord_standard"; })) {
+        loreDrops_.push_back({boss.position(), "warlord_standard"});
+        log("The Warlord's standard falls with him.");
+    }
     if (boss.type() == MonsterType::GoblinWarlord && !(player_.trialKeys & 1)) {
         player_.trialKeys |= 1;
         log("The Warlord drops the ", trialSigil(1), "! It opens the ", trialName(1), " at the obelisk in town.");
@@ -165,7 +171,7 @@ void Application::exitTrial() {
 
 void Application::chooseAscendancy(const std::string& id) {
     const auto* a = findAscendancy(id);
-    if (!a || !ascendancyAllowed(*a, playerClass_) || !player_.ascendancy.empty() || !player_.trialsCleared) return;
+    if (!a || !ascendancyQualified(player_, a->id) || !player_.ascendancy.empty() || !player_.trialsCleared) return;
     player_.ascendancy = a->id;
     ascendancyChoice_ = false;
     log("You ascend: you are now a ", a->name, "!");
@@ -208,13 +214,14 @@ bool Application::learnAscendancyNode(std::size_t node) {
 void Application::handleAscendancyKey(sf::Keyboard::Key key) {
     using K = sf::Keyboard::Key;
     if (ascendancyChoice_) {
-        // The choice is permanent and can't be skipped.
-        const auto options = ascendanciesFor(playerClass_);
-        if (key >= K::Num1 && key <= K::Num4 && static_cast<std::size_t>(static_cast<int>(key) - static_cast<int>(K::Num1)) < options.size())
+        // The choice is permanent; until your colours allow one, it can wait (Y reopens it).
+        const std::size_t count = kAscendancies.size();
+        if (key == K::Escape) { ascendancyMenu_ = false; return; }
+        if (key >= K::Num1 && key <= K::Num7 && static_cast<std::size_t>(static_cast<int>(key) - static_cast<int>(K::Num1)) < count)
             ascendancyChoiceSelection_ = static_cast<std::size_t>(static_cast<int>(key) - static_cast<int>(K::Num1));
-        if (key == K::Left && ascendancyChoiceSelection_ > 0) --ascendancyChoiceSelection_;
-        if (key == K::Right && ascendancyChoiceSelection_ + 1 < options.size()) ++ascendancyChoiceSelection_;
-        if (key == K::Enter && ascendancyChoiceSelection_ < options.size()) chooseAscendancy(options[ascendancyChoiceSelection_]->id);
+        if ((key == K::Up || key == K::Left) && ascendancyChoiceSelection_ > 0) --ascendancyChoiceSelection_;
+        if ((key == K::Down || key == K::Right) && ascendancyChoiceSelection_ + 1 < count) ++ascendancyChoiceSelection_;
+        if (key == K::Enter && ascendancyChoiceSelection_ < count) chooseAscendancy(kAscendancies[ascendancyChoiceSelection_].id);
         return;
     }
     if (key == K::Escape || key == K::Y) { ascendancyMenu_ = false; return; }
@@ -231,9 +238,9 @@ void Application::handleAscendancyMouse(const sf::Event& event) {
     if (!click || click->button != sf::Mouse::Button::Left) return;
     const auto p = sf::Vector2f(click->position);
     if (ascendancyChoice_) {
-        const auto options = ascendanciesFor(playerClass_);
-        for (std::size_t i = 0; i < options.size(); ++i) if (ascendChoice(static_cast<int>(i)).contains(p)) { ascendancyChoiceSelection_ = i; return; }
-        if (kAscendLearn.contains(p) && ascendancyChoiceSelection_ < options.size()) chooseAscendancy(options[ascendancyChoiceSelection_]->id);
+        for (std::size_t i = 0; i < kAscendancies.size(); ++i) if (ascendRow(static_cast<int>(i)).contains(p)) { ascendancyChoiceSelection_ = i; return; }
+        if (kAscendLearn.contains(p) && ascendancyChoiceSelection_ < kAscendancies.size()) chooseAscendancy(kAscendancies[ascendancyChoiceSelection_].id);
+        if (kAscendClose.contains(p)) ascendancyMenu_ = false;
         return;
     }
     if (kAscendClose.contains(p)) { ascendancyMenu_ = false; return; }
@@ -241,52 +248,42 @@ void Application::handleAscendancyMouse(const sf::Event& event) {
     for (std::size_t i = 0; i < 6; ++i) if (ascendNode(static_cast<int>(i)).contains(p)) { ascendancySelection_ = i; return; }
 }
 
-// The first trial's reward: choose one of the class's four ascendancies.
+// A trial's reward: choose an ascendancy. Those your colours allow are lit;
+// the rest are silhouettes that say what they ask for.
 void Application::renderAscendancyChoice() {
     const auto mouse = mousePixel_ ? std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)) : std::nullopt;
     const auto hovered = [&](const sf::FloatRect& r) { return mouse && r.contains(*mouse); };
     beginMenu(160);
-    ui_.glass(window_, kAscendDialog,true);
+    ui_.glass(window_, kAscendDialog, true);
     const float x = kAscendDialog.position.x, w = kAscendDialog.size.x, top = kAscendDialog.position.y;
-    ui_.textCentered(window_, "Choose your ascendancy", {{x, top + 22}, {w, 44}}, 34, ui::kUnique, ui::Font::Title);
-    ui_.textCentered(window_, "This choice is permanent. Each trial won buys one of its six nodes.", {{x, top + 70}, {w, 22}}, 16, ui::kMuted);
-    const auto options = ascendanciesFor(playerClass_);
-    const Talent* tip = nullptr;
-    sf::Vector2f tipAt;
-    for (std::size_t i = 0; i < options.size(); ++i) {
-        const auto& a = *options[i];
-        const auto r = ascendChoice(static_cast<int>(i));
-        const bool selected = i == ascendancyChoiceSelection_;
+    ui_.textCentered(window_, "Choose your ascendancy", {{x, top + 18}, {w, 44}}, 34, ui::kUnique, ui::Font::Title);
+    ui_.textCentered(window_, "What your build has become decides which you may take. The choice is permanent.", {{x, top + 64}, {w, 22}}, 16, ui::kMuted);
+    for (std::size_t i = 0; i < kAscendancies.size(); ++i) {
+        const auto& a = kAscendancies[i];
+        const auto r = ascendRow(static_cast<int>(i));
+        const bool selected = i == ascendancyChoiceSelection_, open = ascendancyQualified(player_, a.id);
         ui_.inset(window_, r, selected ? ui::kUnique : hovered(r) ? ui::kBronze : sf::Color::Transparent);
-        const sf::FloatRect emblem{{r.position.x + r.size.x / 2 - 34, r.position.y + 16}, {68, 68}};
-        ui_.inset(window_, emblem, selected ? ui::kUnique : sf::Color::Transparent);
-        ui_.icon(window_, a.icon, {{emblem.position.x + 10, emblem.position.y + 10}, {48, 48}}, selected ? ui::kUnique : ui::kText);
-        ui_.textCentered(window_, std::to_string(i + 1) + ".  " + a.name, {{r.position.x, r.position.y + 92}, {r.size.x, 30}}, 22,
-                         selected ? ui::kUnique : ui::kGold, ui::Font::Title);
-        ui_.textCentered(window_, a.attributes, {{r.position.x, r.position.y + 122}, {r.size.x, 20}}, 13, ui::kInfo, ui::Font::Bold);
-        float y = r.position.y + 150;
-        ui_.paragraph(window_, a.tagline, r.position.x + 14, y, r.size.x - 28, 14, ui::kText);
-        y += 10;
-        for (const char* nodeId : a.nodes)
-            if (const auto* d = findTalentDefinition(nodeId)) {
-                const sf::FloatRect line{{r.position.x + 12, y - 1}, {r.size.x - 24, 20}};
-                const bool over = hovered(line);
-                ui_.text(window_, std::string(d->ranks[0].passive ? "- " : "+ ") + d->ranks[0].name, {r.position.x + 18, y}, 14,
-                         over ? ui::kGold : d->ranks[0].passive ? ui::kMuted : ui::kMagic);
-                if (over) { tip = &d->ranks[0]; tipAt = {line.position.x + line.size.x, line.position.y}; }
-                y += 20;
-            }
+        const sf::Color tone = open ? (selected ? ui::kUnique : ui::kGold) : sf::Color(110, 104, 96);
+        ui_.icon(window_, a.icon, {{r.position.x + 10, r.position.y + 9}, {38, 38}}, open ? ui::kText : sf::Color(80, 76, 72));
+        ui_.text(window_, std::to_string(i + 1) + ".  " + a.name, {r.position.x + 58, r.position.y + 6}, 20, tone, ui::Font::Title);
+        ui_.text(window_, ascendancyNeedText(player_, a.id), {r.position.x + 60, r.position.y + 33}, 13, open ? ui::kGood : ui::kMuted, ui::Font::Bold);
     }
-    if (tip) {
-        std::vector<ui::Line> lines{{tip->name, ui::kGold, 16, ui::Font::Bold},
-                                    {tip->passive ? "Passive" : "Active, " + std::to_string(tip->manaCost) + " mana, cooldown " + std::to_string(tip->cooldownTurns),
-                                     tip->passive ? ui::kInfo : ui::kMagic, 13},
-                                    {tip->description, ui::kText, 14}};
-        ui_.tooltip(window_, lines, tipAt, 280);
-    }
-    const auto& chosen = *options[std::min(ascendancyChoiceSelection_, options.size() - 1)];
-    ui_.button(window_, kAscendLearn, std::string("Become a ") + chosen.name + " (Enter)", hovered(kAscendLearn), true, 16);
-    ui_.text(window_, "1-4 or click to choose; hover a node to read it. + active, - passive.", {x + 30, kAscendLearn.position.y + 12}, 14, ui::kMuted);
+    const auto& chosen = kAscendancies[std::min(ascendancyChoiceSelection_, kAscendancies.size() - 1)];
+    const bool open = ascendancyQualified(player_, chosen.id);
+    const float dx = kAscendDetails.position.x + 18, dw = kAscendDetails.size.x - 36;
+    float y = kAscendDetails.position.y + 6;
+    ui_.text(window_, chosen.name, {dx, y}, 30, open ? ui::kUnique : ui::kGold, ui::Font::Title); y += 44;
+    ui_.paragraph(window_, chosen.tagline, dx, y, dw, 16, ui::kText); y += 8;
+    ui_.paragraph(window_, open ? "Your colours allow it." : "Needs " + ascendancyNeedText(player_, chosen.id) + ".", dx, y, dw, 15, open ? ui::kGood : ui::kBad, ui::Font::Bold);
+    y += 10;
+    for (const char* nodeId : chosen.nodes)
+        if (const auto* d = findTalentDefinition(nodeId)) {
+            ui_.text(window_, d->ranks[0].name, {dx, y}, 16, d->ranks[0].passive ? ui::kInfo : ui::kMagic, ui::Font::Bold); y += 22;
+            ui_.paragraph(window_, d->ranks[0].description, dx + 12, y, dw - 12, 14, ui::kMuted, ui::Font::Body, kAscendLearn.position.y - 10);
+            y += 4;
+        }
+    ui_.button(window_, kAscendLearn, std::string("Become a ") + chosen.name + " (Enter)", hovered(kAscendLearn), open, 16);
+    ui_.button(window_, kAscendClose, "Later (Esc)", hovered(kAscendClose), true, 16);
 }
 
 void Application::renderAscendancy() {

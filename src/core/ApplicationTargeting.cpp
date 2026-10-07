@@ -117,6 +117,8 @@ std::string statusTooltip(const StatusEffectInstance& e) {
     case StatusEffectType::Chill: return "Slowed by the cold: acts "+n+"% less often.";
     case StatusEffectType::Hasted: return "Acts "+n+"% more often.";
     case StatusEffectType::Slowed: return "Acts "+n+"% less often.";
+    case StatusEffectType::Shaken: return "Deals "+n+"% less damage.";
+    case StatusEffectType::Steadfast: return "Can't be moved or stunned; direct hits deal "+n+" less.";
     case StatusEffectType::Shock: return "Enables Lightning follow-ups. Certain talents consume Shock for an additional effect.";
     case StatusEffectType::Concealed: return "Enemies roll detection using distance, Dexterity and concealment rank. Most attacks and taking damage reveal you.";
     case StatusEffectType::Opening: return "A brief opportunity from waiting or movement talents. Enables bonuses from compatible bow and armour talents.";

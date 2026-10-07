@@ -164,6 +164,7 @@ add_executable(roguelike
     src/core/ApplicationAscendancy.cpp
     src/core/ApplicationLab.cpp
     src/core/ApplicationSandbox.cpp
+    src/core/ApplicationWarbanner.cpp
     src/core/ApplicationEffects.cpp
     src/core/ApplicationSurfaces.cpp
     src/core/ApplicationHidden.cpp

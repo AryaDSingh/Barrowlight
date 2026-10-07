@@ -129,6 +129,8 @@ sf::Color buffColor(StatusEffectType type) {
         case StatusEffectType::BloodPact: return kBlood;
         case StatusEffectType::Frenzy: return kBlood;
         case StatusEffectType::Slowed: return kIce;
+        case StatusEffectType::Shaken: return sf::Color(200, 170, 120);
+        case StatusEffectType::Steadfast: return sf::Color(214, 178, 110);
         default: return kHoly;
     }
 }

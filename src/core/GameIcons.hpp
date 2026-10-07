@@ -132,6 +132,8 @@ inline std::string talentIcon(const Talent& talent) {
         {"hexblade.edge", "bloody-sword"}, {"hexblade.rend", "skull-slices"}, {"hexblade.lingering", "hourglass"}, {"hexblade.doom", "death-zone"},
         {"saboteur.caltrops", "caltrops"}, {"saboteur.smoke", "powder"}, {"saboteur.tricks", "ninja-mask"}, {"saboteur.booby", "rolling-bomb"},
         {"stonefist.fist", "fist"}, {"stonefist.slam", "punch-blast"}, {"stonefist.granite", "stone-block"}, {"stonefist.landslide", "falling-rocks"},
+        {"warbanner.plant", "spear-feather"}, {"warbanner.rally", "shouting"}, {"warbanner.bash", "spear-hook"}, {"warbanner.hold", "bordered-shield"},
+        {"warbanner.ranks", "impact-point"}, {"warbanner.last", "checked-shield"}, {"warbanner.charge", "charging-bull"},
         {"alchemy.oil", "round-bottom-flask"}, {"alchemy.firebomb", "molotov"}, {"alchemy.brews", "bubbling-flask"}, {"alchemy.acid", "fizzing-flask"},
     };
     if (const auto it = byId.find(talent.id); it != byId.end()) return it->second;
@@ -232,6 +234,8 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::Frenzy: return "bloody-sword";
         case StatusEffectType::Hasted: return "sprint";
         case StatusEffectType::Slowed: return "hourglass";
+        case StatusEffectType::Shaken: return "shouting";
+        case StatusEffectType::Steadfast: return "checked-shield";
     }
     return "aura";
 }

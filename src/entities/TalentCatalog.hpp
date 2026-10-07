@@ -18,7 +18,7 @@ struct TreeDefinition {
     const char* description;
     const char* starterItem;
 };
-inline constexpr std::array<TreeDefinition, 37> kTalentTrees{{
+inline constexpr std::array<TreeDefinition, 38> kTalentTrees{{
     {"one_handed", "One-Handed", TalentTree::OneHanded, "Efficient strikes, defensive openings and finishing blows.", "iron_sword"},
     {"two_handed", "Two-Handed", TalentTree::TwoHanded, "Heavy swings, surrounding enemies and blood-fuelled attacks.", "greatsword"},
     {"shield", "Shield", TalentTree::Shield, "Block damage, interrupt attacks and control space.", "wooden_shield"},
@@ -56,6 +56,7 @@ inline constexpr std::array<TreeDefinition, 37> kTalentTrees{{
     {"hexblade", "Hexblade", TalentTree::Hexblade, "One-Handed and Hexes: a blade that lays and feeds on curses. Needs a one-handed weapon.", ""},
     {"saboteur", "Saboteur", TalentTree::Saboteur, "Stealth and Alchemy: caltrops, smoke and booby traps.", ""},
     {"stonefist", "Stonefist", TalentTree::Stonefist, "Brawling and Earth: fists of stone, and pillars to break foes against.", ""},
+    {"warbanner", "Warbanner", TalentTree::Warbanner, "A deep tree: plant a war standard, hold your ground beside it, and break their packs.", ""},
 }};
 inline const TreeDefinition* findTree(const std::string& id) {
     for (const auto& t : kTalentTrees) if (id == t.id) return &t;
@@ -151,6 +152,11 @@ inline void applyMastery(TalentDefinition& d) {
     if (id == "stealth.vanish") { longer(); d.mastery = "Hide for four responses."; }
     if (id == "stealth.smoke_bomb") { m.cooldownTurns -= 4; d.mastery = "Ready again four turns sooner."; }
     if (id == "stealth.feign") { m.restoreHpPercent = 10; d.mastery = "You also recover 10% of your life."; }
+    if (id == "warbanner.plant") { m.plantBanner = 12; d.mastery = "The banner stands for 12 turns."; }
+    if (id == "warbanner.rally") { m.breakWindups = true; d.mastery = "Shaken foes also lose whatever they were winding up."; }
+    if (id == "warbanner.bash") { m.crashStun = 2; d.mastery = "The crash deals double damage."; }
+    if (id == "warbanner.last") { m.plantBanner = 9; d.mastery = "The great standard stands for 9 turns."; }
+    if (id == "warbanner.charge") { m.moveDistance += 2; d.mastery = "Charge two tiles further."; }
     if (id == "daggers.assassinate") { m.conditionalHpFraction = .6f; d.mastery = "Triple damage below 60% life instead of half."; }
     if (id == "acrobatics.tumble") { dodge(15); d.mastery = "+15% dodge for one enemy response after tumbling."; }
     if (id == "acrobatics.vault_kick") { stun(1); d.mastery = "The kick stuns for one enemy turn."; }
@@ -903,6 +909,29 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         t=attack("Eviscerate","Tear the wound open: the target's whole bleed comes due at once, doubled.",6,4,8); t.consumeBleed=true;
         add(23,"daggers.eviscerate",3,t);
         shape("daggers.eviscerate",3,"capstone",{});
+        // Warbanner (STR), the first deep tree: Steel 8, Guard 6, level 10, and the Warlord's standard.
+        t=Talent{}; t.name="Plant the Standard"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Plant your banner on a tile beside you for 8 turns. Within two tiles of it you gain 3 Guard each turn and can't be slowed.";
+        t.manaCost=4; t.cooldownTurns=10; t.plantBanner=8; add(37,"warbanner.plant",0,t);
+        shape("warbanner.plant",3,"",{});
+        t=Talent{}; t.name="Rally Cry"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Foes within two tiles of you are Shaken for three turns: they deal 25% less damage.";
+        t.manaCost=4; t.cooldownTurns=8; t.rallyCry=true; add(37,"warbanner.rally",1,t);
+        shape("warbanner.rally",3,"path",{"warbanner.plant"});
+        t=attack("Standard Bash","Strike with the banner pole and knock the foe two tiles back. If it crashes into another foe, both are stunned.",6,3,5);
+        t.pushDistance=2; t.crashStun=1; add(37,"warbanner.bash",1,t);
+        shape("warbanner.bash",3,"path",{"warbanner.plant"});
+        add(37,"warbanner.hold",2,passive("Hold the Line","Within two tiles of your banner you can't be moved or stunned, and direct hits deal 2 less.",PassiveKind::HoldTheLine,2));
+        shape("warbanner.hold",1,"",{"warbanner.rally"});
+        add(37,"warbanner.ranks",2,passive("Break Their Ranks","Your hits deal +2 for each other foe in the 8 tiles around your target.",PassiveKind::BreakRanks,2));
+        shape("warbanner.ranks",1,"",{"warbanner.bash"});
+        t=Talent{}; t.name="Last Banner"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Raise a great standard for 6 turns: foes within three tiles of it are slowed, and you are hastened while within it.";
+        t.manaCost=8; t.cooldownTurns=16; t.plantBanner=6; t.greatBanner=true; add(37,"warbanner.last",3,t);
+        shape("warbanner.last",3,"capstone",{});
+        t=move("Warlord's Charge","Charge up to five tiles, striking every foe along the way and throwing them aside. Your banner plants where you stop.",5,6,10);
+        t.blitz=true; t.knockAside=true; t.power=6; t.plantBanner=8; add(37,"warbanner.charge",3,t);
+        shape("warbanner.charge",3,"capstone",{});
         // Mace (STR, one hand): guards and bones.
         t=attack("Crush","A heavy blow that sunders: the target takes +2 damage from every hit for four enemy turns.",6,2,4);
         t.onHitEffect=StatusEffectInstance{StatusEffectType::Sundered,4,2}; add(24,"mace.crush",0,t);
@@ -1268,6 +1297,8 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
             else if (d.treeId=="saboteur") d.affinity=Affinity::Guile;
             else if (d.treeId=="stonefist")
                 d.affinity=(d.id=="stonefist.tremor" || d.id=="stonefist.granite" || d.id=="stonefist.rockhide")?Affinity::Earth:Affinity::Motion;
+            else if (d.treeId=="warbanner")
+                d.affinity=(d.id=="warbanner.bash" || d.id=="warbanner.ranks" || d.id=="warbanner.charge")?Affinity::Steel:Affinity::Guard;
             else if (d.treeId=="stormlance")
                 d.affinity=(d.id=="stormlance.thrust" || d.id=="stormlance.vault" || d.id=="stormlance.static_edge")?Affinity::Steel:Affinity::Storm;
             else if (d.treeId=="one_handed") d.affinity=(d.id=="one_handed.parry" || d.id=="one_handed.riposte")?Affinity::Guard:Affinity::Steel;
@@ -1288,7 +1319,7 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
                 case PassiveKind::FollowThrough: case PassiveKind::Stoneskin: case PassiveKind::HallowedGuard: case PassiveKind::Tidecaller:
                 case PassiveKind::Bulwark: case PassiveKind::FlowingMana: case PassiveKind::BladeWard: case PassiveKind::Transfusion:
                 case PassiveKind::GravePact: case PassiveKind::LongShadow: case PassiveKind::StaticEdge:
-                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists:
+                case PassiveKind::HungeringBlade: case PassiveKind::GraniteFists: case PassiveKind::HoldTheLine: case PassiveKind::BreakRanks:
                     return 5;
                 case PassiveKind::FireArrows: case PassiveKind::Incendiary: case PassiveKind::WastingCurse: case PassiveKind::Witchfire:
                 case PassiveKind::FoulWater: case PassiveKind::EnvenomedBlades: case PassiveKind::GraveLight: case PassiveKind::BoilingBlood:

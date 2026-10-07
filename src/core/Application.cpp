@@ -1230,6 +1230,7 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     } else if (talent.summonCount) {
         summonMinions(talent);
     } else if (talent.shape == EffectShape::Movement) {
+        if (talent.plantBanner) plantBanner(talent.plantBanner,talent.greatBanner,blinkDestination);
         // Vanish: every foe within five tiles loses you as you slip away.
         if (talent.shakeOff) {
             for (auto& m:monsters_)
@@ -1304,6 +1305,13 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     if (talent.landingBurst) m->statusEffects().apply({StatusEffectType::Shock,4,0});
                 }
                 checkAndHandleDeath(*m);
+                // Thrown aside: away from the nearest step of your path.
+                if (talent.knockAside && m->stats().hp>0 && !immovable(*m)) {
+                    Position from=target.path.empty()?beforeMovement:target.path.front();
+                    for (const auto& p:target.path) if (beside(p,m->position())) { from=p; break; }
+                    const Position away{(m->position().x>from.x)-(m->position().x<from.x),(m->position().y>from.y)-(m->position().y<from.y)};
+                    if (away.x || away.y) pushActor(*m,away,1,player_);
+                }
             }
             if (talent.landingBurst) {
                 std::vector<Position> ring;
@@ -1361,6 +1369,19 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     m->tactics.alert=0; m->tactics.lastKnown=m->tactics.home;
                 }
             if (!talent.smokeBomb) log(lost?"You go limp. They lose track of you.":"You go limp and lie still.");
+        }
+        if (talent.plantBanner) plantBanner(talent.plantBanner,talent.greatBanner,player_.position());
+        if (talent.rallyCry) {
+            const auto me=player_.position();
+            int shaken=0;
+            for (auto& m:monsters_)
+                if (!m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-me.x),std::abs(m->position().y-me.y))<=2) {
+                    m->statusEffects().apply({StatusEffectType::Shaken,3,25});
+                    if (talent.breakWindups && m->intent()) m->intent().reset();
+                    ++shaken;
+                }
+            spawnVfx({Vfx::Kind::Ring,{me.x+.5f,me.y+.5f},{me.x+.5f,me.y+.5f},sf::Color(214,178,110),0,.5f,2.5f});
+            log(shaken?"Your war cry shakes them.":"Your war cry echoes off the stone.");
         }
         if (talent.smokeBomb) {
             const auto me=player_.position();
@@ -1611,7 +1632,9 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                 if (target->stats().hp>0 && talent.pushDistance>0) {
                     const auto from=player_.position(), origin=target->position();
                     const Position direction{(origin.x>from.x)-(origin.x<from.x),(origin.y>from.y)-(origin.y<from.y)};
+                    crashStun_=talent.crashStun;
                     if (direction.x || direction.y) pushActor(*target,direction,talent.pushDistance,player_);
+                    crashStun_=0;
                     const auto landed=target->position();
                     const int moved=std::max(std::abs(landed.x-origin.x),std::abs(landed.y-origin.y));
                     if ((talent.stunOnImpact || player_.talents().passiveValue(PassiveKind::Knockout,player_.stats())) && target->stats().hp>0 && moved<talent.pushDistance && !pendingFall_ &&
@@ -1819,6 +1842,11 @@ int Application::situationalBonus(const Talent& talent, const Actor& target) con
         if (player_.stats().hp*2<player_.stats().maxHp) bonus+=gear.affixTotal(BonusStat::LowLifeDamage);
         if (const auto* m=dynamic_cast<const Monster*>(&target); m && m->tactics.alert==0) bonus+=gear.affixTotal(BonusStat::UnawareDamage);
     }
+    if (const int ranks=kit.passiveValue(PassiveKind::BreakRanks,player_.stats())) {
+        const auto at=target.position();
+        for (const auto& m:monsters_)
+            if (m.get()!=&target && !m->allied && m->stats().hp>0 && std::max(std::abs(m->position().x-at.x),std::abs(m->position().y-at.y))<=1) bonus+=ranks;
+    }
     const auto& effects=target.statusEffects();
     if (talent.tree==TalentTree::Whip && (effects.has(StatusEffectType::Stun) || effects.has(StatusEffectType::Grappled) ||
         effects.has(StatusEffectType::Blinded) || effects.has(StatusEffectType::Burn) || effects.has(StatusEffectType::Chill) ||
@@ -2013,6 +2041,8 @@ void Application::processMonsterTurns() {
                 if (monster) {
                     auto* opponent=nearestOpponent(*actor,hidden);
                     AIDecision decision=enemyDecision(*monster,opponent);
+                    if (const int shaken=actor->statusEffects().magnitudeOf(StatusEffectType::Shaken))
+                        decision.attackPower=decision.attackPower*(100-shaken)/100;
                     essenceStrike(*monster,decision);
                     labEnemyDecision(*monster,decision);
                     const bool warlord=monster && monster->type()==MonsterType::GoblinWarlord;
@@ -2253,6 +2283,7 @@ void Application::advanceTurnsUntilPlayerCanAct() {
             recordQuietTurn();
             fireEcho();
             tickStorms();
+            tickBanner();
             return; // genuinely the player's turn now
         }
         log("You are stunned and lose a turn!");
@@ -2953,6 +2984,7 @@ void Application::selectClass(PlayerClass cls) {
     player_.bloodRelic=false; player_.animationRelic=false; player_.deathlessSpentFloors.clear();
     player_.treePoints()=1; player_.abilityPoints()=earnedAbilityPoints(1); player_.utilityPoints()=earnedUtilityPoints(1);
     player_.ascendancy.clear(); player_.ascendancyPoints=0; player_.trialKeys=0; player_.trialsCleared=0;
+    player_.lore.clear();
     player_.lightSource=1; player_.lightLit=true; // everyone starts with a torch
     trial_=0; trialReturnFloor_=0; ascendancyMenu_=false; trialMenu_=false;
     pendingFinalVictory_ = false;
@@ -3018,7 +3050,7 @@ void Application::regenerateLevel(unsigned int seed) {
 
     map_ = dungeon.map;
     actorAnims_.clear(); corpses_.clear(); previousCameraX_ = previousCameraY_ = INT_MIN; vfx_.clear(); hitFlash_.clear();
-    vfx_.clear(); hitFlash_.clear(); lightOrbs_.clear();
+    vfx_.clear(); hitFlash_.clear(); lightOrbs_.clear(); loreDrops_.clear(); banner_.reset();
     setProps(dungeon.props); pillarTurns_.clear(); traps_.clear();
 
     player_.setPosition(dungeon.playerStart);
@@ -3144,6 +3176,8 @@ SaveGameState Application::captureState(bool includeFloors) {
     }
     for (const auto& t:torchToggles_) state.torchToggles.push_back({t.first,t.second});
     for (const auto& orb:lightOrbs_) state.lightOrbs.push_back({orb.at.x,orb.at.y,orb.turns});
+    state.lore=player_.lore;
+    for (const auto& drop:loreDrops_) state.loreDrops.push_back({drop.at.x,drop.at.y,drop.id});
     state.map = map_;
     state.exploredMap = exploredMap_;
     state.playerPosition = player_.position();
@@ -3327,6 +3361,9 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
     for (const auto& t:state.torchToggles) torchToggles_.insert({t.x,t.y});
     lightOrbs_.clear();
     for (const auto& [x,y,turns]:state.lightOrbs) lightOrbs_.push_back({{x,y},turns});
+    player_.lore=state.lore;
+    loreDrops_.clear(); banner_.reset();
+    for (const auto& drop:state.loreDrops) loreDrops_.push_back({{drop.x,drop.y},drop.id});
     ascendancyMenu_=false; trialMenu_=false;
     // A trial won before choosing an ascendancy: the choice comes back.
     if (player_.trialsCleared && player_.ascendancy.empty()) { ascendancyChoice_=true; ascendancyMenu_=true; ascendancyChoiceSelection_=0; }
@@ -4018,7 +4055,7 @@ void Application::render() {
     window_.setView(playView_); renderShrine();
     window_.setView(playView_); renderAscendancy();
     window_.setView(playView_); renderSandbox();
-    if (vaultMenu_ || shrineMenu_ || exitMenu_) mapHints_.clear();
+    if (vaultMenu_ || shrineMenu_ || exitMenu_ || ascendancyMenu_ || sandboxMenu_) mapHints_.clear();
     window_.setView(playView_);
     renderMapHints();
     if (overScene) {

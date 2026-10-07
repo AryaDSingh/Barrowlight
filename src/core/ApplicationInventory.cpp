@@ -99,6 +99,8 @@ void Application::spillLoot(Position from, ItemRarity rarity, int quality) {
 void Application::pickupItem() {
     if (interactVault()) return;
     const auto position = player_.position();
+    for (std::size_t i = 0; i < loreDrops_.size(); ++i)
+        if (loreDrops_[i].at.x == position.x && loreDrops_[i].at.y == position.y) { readLore(i); return; }
     if (besideChest() && !chestClaimed_) { openChest(); return; }
     const auto found = std::find_if(groundItems_.begin(), groundItems_.end(), [&](const auto& item) {
         return item->position().x == position.x && item->position().y == position.y;
@@ -203,6 +205,27 @@ void Application::renderGroundItems() {
                 chest.setOutlineColor(sf::Color(255,220,100)); window_.draw(chest);
             }
         }
+    }
+    // Your standard, and the reach it steadies.
+    if (banner_ && exploredMap_.at(banner_->at.x, banner_->at.y) != Visibility::Hidden) {
+        const int reach = banner_->great ? 3 : 2;
+        const auto corner = worldToScreen(banner_->at.x - reach, banner_->at.y - reach);
+        const float side = static_cast<float>(playLayout::tileSize * (2 * reach + 1));
+        sf::RectangleShape area({side, side}); area.setPosition(corner);
+        area.setFillColor(sf::Color(200, 60, 50, 22)); area.setOutlineThickness(1.f); area.setOutlineColor(sf::Color(200, 60, 50, 90));
+        window_.draw(area);
+        const auto at = worldToScreen(banner_->at.x, banner_->at.y);
+        if (onMap(at)) ui_.icon(window_, "spear-feather", {{at.x + 2.f, at.y - 6.f}, {24.f, 30.f}}, sf::Color(220, 70, 55));
+    }
+    for (const auto& drop : loreDrops_) {
+        if (exploredMap_.at(drop.at.x, drop.at.y) != Visibility::Visible) continue;
+        const auto screen = worldToScreen(drop.at.x, drop.at.y);
+        if (!onMap(screen)) continue;
+        sf::CircleShape glow(12.f); glow.setOrigin({12.f, 12.f}); glow.setPosition({screen.x + 14.f, screen.y + 15.f});
+        glow.setFillColor(sf::Color(240, 136, 52, 70)); window_.draw(glow);
+        ui_.icon(window_, "scroll-unfurled", {{screen.x + 4.f, screen.y + 4.f}, {20.f, 20.f}}, ui::kUnique);
+        if (drop.at.x == player_.position().x && drop.at.y == player_.position().y)
+            mapHints_.push_back({std::string(drop.id == "warlord_standard" ? "The Warlord's Standard" : "Lore") + " at your feet. G: read it", ui::kUnique});
     }
     for (const auto& item : groundItems_) {
         const auto p = item->position();

@@ -287,6 +287,7 @@ void Application::importFloor(SaveGameState& next, const SaveGameState& floor) {
     next.vaultCenter=floor.vaultCenter; next.vaultEntrance=floor.vaultEntrance;
     next.landmark=floor.landmark; next.landmarkAltar=floor.landmarkAltar; next.landmarkUsed=floor.landmarkUsed;
     next.extraLandmarks=floor.extraLandmarks;
+    next.loreDrops=floor.loreDrops;
     next.decals=floor.decals;
     next.props=floor.props;
     next.surfaces=floor.surfaces; next.torchToggles=floor.torchToggles;

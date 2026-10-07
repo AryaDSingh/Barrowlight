@@ -189,6 +189,18 @@ private:
     int ordinaryDrops_ = 0;
     void rewardMonster(Monster& monster, bool boss);
     void spawnFloorChest();
+    // Lore lying on the floor (a boss's standard, a journal page): G reads it,
+    // and a deep tree may show itself among your talents.
+    struct LoreDrop { Position at; std::string id; };
+    std::vector<LoreDrop> loreDrops_;
+    void readLore(std::size_t index);
+    // Warbanner's standard: planted beside you, it steadies you while you stay near it.
+    struct Banner { Position at; int turns = 0; bool great = false; };
+    std::optional<Banner> banner_;
+    int crashStun_ = 0; // Standard Bash: a crash stuns both (and deals this many times its damage)
+    void plantBanner(int turns, bool great, Position near);
+    void tickBanner();
+    bool nearBanner(Position p) const;
     // The Encounter Lab (ApplicationLab.cpp): a fixed, seeded run of three
     // rooms for comparing builds, logged turn by turn to encounter-lab/.
     bool labMode_ = false, labRun_ = false;

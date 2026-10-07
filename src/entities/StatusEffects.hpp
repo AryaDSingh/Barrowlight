@@ -24,6 +24,8 @@ enum class StatusEffectType {
     Frenzy,          // your hits heal you for magnitude% of the damage they deal (Two-Handed)
     Hasted,          // acts magnitude% more often
     Slowed,          // acts magnitude% less often (Chill slows the same way)
+    Shaken,          // deals magnitude% less damage (Warbanner's Rally Cry)
+    Steadfast,       // can't be moved or stunned; direct hits deal magnitude less (Hold the Line)
 };
 
 struct StatusEffectInstance {
@@ -49,7 +51,7 @@ public:
 
     bool has(StatusEffectType type) const;
     void remove(StatusEffectType type);
-    bool canReceiveStun() const { return !has(StatusEffectType::Stun) && !has(StatusEffectType::StunRecovery); }
+    bool canReceiveStun() const { return !has(StatusEffectType::Stun) && !has(StatusEffectType::StunRecovery) && !has(StatusEffectType::Steadfast); }
     void setStunRules(int maximumDuration, int recoveryTurns) { maxStunDuration_=maximumDuration; stunRecoveryTurns_=recoveryTurns; }
     int stunRecoveryTurns() const { return stunRecoveryTurns_; }
     int maxStunDuration() const { return maxStunDuration_; }
@@ -116,6 +118,8 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::Frenzy: return "Frenzy";
     case StatusEffectType::Hasted: return "Hasted";
     case StatusEffectType::Slowed: return "Slowed";
+    case StatusEffectType::Shaken: return "Shaken";
+    case StatusEffectType::Steadfast: return "Steadfast";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }

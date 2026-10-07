@@ -509,6 +509,10 @@ void Application::enterSurface(Actor& actor, Position tile) {
 }
 
 void Application::pushActor(Actor& target, Position direction, int distance, const Actor& pusher) {
+    if (target.statusEffects().has(StatusEffectType::Steadfast)) {
+        log(&target == &player_ ? "You hold your ground." : target.name() + " holds its ground.");
+        return;
+    }
     if (&target == &player_ && player_.talents().passiveValue(PassiveKind::Bedrock,player_.stats()) && player_.statusEffects().has(StatusEffectType::Guard)) {
         log("You stand your ground.");
         return;
@@ -559,8 +563,13 @@ void Application::pushActor(Actor& target, Position direction, int distance, con
             break;
         }
         if (Actor* other = actorAt(dest, &target)) {
-            target.stats().hp -= 2 + hard; other->stats().hp -= 2 + hard; flashActor(target); flashActor(*other);
-            log(target.name(), " crashes into ", other->name(), "! Both take ", 2 + hard, ".");
+            const int crash = (2 + hard) * std::max(1, crashStun_);
+            target.stats().hp -= crash; other->stats().hp -= crash; flashActor(target); flashActor(*other);
+            log(target.name(), " crashes into ", other->name(), "! Both take ", crash, ".");
+            // Standard Bash: the crash stuns them both.
+            if (crashStun_)
+                for (Actor* dazed : {&target, other})
+                    if (dazed->stats().hp > 0 && dazed->statusEffects().canReceiveStun()) dazed->statusEffects().apply({StatusEffectType::Stun, 1, 0});
             // Domino (Hurl mastery): the one it hits goes flying too.
             if (dominoPush_ && other->stats().hp > 0 && other != &player_ && !immovable(*other)) {
                 dominoPush_ = false;

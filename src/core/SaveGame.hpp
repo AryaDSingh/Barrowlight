@@ -102,6 +102,9 @@ struct SaveGameState {
     int trial=0, trialReturnFloor=0;
     int lightSource=1; bool lightLit=true; // format 28
     bool bloodMagicUnlocked=false;         // format 33
+    std::vector<std::string> lore;          // format 42: lore found this run
+    struct LoreDrop { int x=0, y=0; std::string id; };
+    std::vector<LoreDrop> loreDrops;        // format 42: lore lying on this floor
     int patron=0, favor=0;                 // format 34
     std::vector<std::array<int, 4>> extraLandmarks; // format 36: kind, altar x, altar y, used
     // Format 29: ground surfaces (x, y, type, turns) and wall torches lit or put out.

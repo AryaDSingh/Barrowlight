@@ -76,6 +76,9 @@ public:
 
     bool bloodRelic=false, animationRelic=false;
     bool sandbox=false; // transient: the sandbox lifts tree rules (never saved)
+    // Lore found this run (format 42): each piece can reveal a deep tree.
+    std::vector<std::string> lore;
+    bool knowsLore(const std::string& id) const { return std::find(lore.begin(), lore.end(), id) != lore.end(); }
     // Cloth's ward: a shield over your life. Transient: it refills on load.
     int ward=0, wardRest=0;
     // Ward from spells (Arcane Shroud): soaks hits before the gear's ward and

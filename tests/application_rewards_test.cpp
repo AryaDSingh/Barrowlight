@@ -28,6 +28,18 @@
 #include "entities/TalentEffects.hpp"
 
 namespace engine {
+// Colour points for a test: ranks spread across that colour's base-tree nodes.
+void giveColour(Player& p, Affinity colour, int points) {
+    for (const auto& d : talentCatalog()) {
+        if (points <= 0) break;
+        if (d.affinity != colour || d.treeId == "resonance" || hybridGate(d.treeId) || p.talents().rankOf(d.id)) continue;
+        const int rank = std::min(points, d.maxRank());
+        p.talents().learnTalent(d.ranks[0]);
+        p.talents().setRank(p.talents().knownTalents().size() - 1, rank);
+        points -= rank;
+    }
+}
+
 struct ApplicationRewardsTestAccess {
     static int run() {
         int failures = 0, checks = 0;
@@ -67,7 +79,7 @@ struct ApplicationRewardsTestAccess {
             app.landmark_=LandmarkKind::None; app.landmarkUsed_=false; app.shrineMenu_=false; app.extraLandmarks_.clear(); app.decals_.clear(); app.floorTurns_=0; app.breachTurns_=0; app.breachKills_=0;
             app.player_.patron=app.player_.favor=0; app.player_.bloodMagicUnlocked=false; app.pendingFall_=false;
             app.player_.ascendancy.clear(); app.player_.ascendancyPoints=app.player_.trialKeys=app.player_.trialsCleared=0;
-            app.lightOrbs_.clear();
+            app.lightOrbs_.clear(); app.loreDrops_.clear(); app.banner_.reset(); app.player_.lore.clear();
             app.trial_=app.trialReturnFloor_=0; app.ascendancyMenu_=app.trialMenu_=false;
             app.setProps({});
             app.floorCache_.clear(); app.floorEntrance_={1,1}; app.floorExit_={30,20};
@@ -1133,7 +1145,7 @@ struct ApplicationRewardsTestAccess {
             check(app.playerLightRadius()==4,"Inner Light: your light reaches a tile further");
             app.player_.setPosition({10,10}); app.updateFieldOfView();
             auto* goblin=enemy({12,10}); goblin->stats().dexterity=0; goblin->stats().hp=goblin->stats().maxHp=80; goblin->tactics.concealed=true;
-            app.lightOrbs_.clear();
+            app.lightOrbs_.clear(); app.loreDrops_.clear(); app.banner_.reset(); app.player_.lore.clear();
             check(cast(flare,{12,10}) && !goblin->tactics.concealed && goblin->statusEffects().has(StatusEffectType::Blinded) && !app.lightOrbs_.empty(),
                   "Flare blinds, reveals the hidden and leaves the spot lit");
             app.monsters_.clear();
@@ -1470,14 +1482,14 @@ struct ApplicationRewardsTestAccess {
             clearFoes(); app.pillarTurns_.clear(); app.setProps({});
             app.map_.setTile(12,10,Tile{TileType::Floor,true,true});
 
-            // The hybrids open with their parent trees.
-            check(!hiddenTreeAvailable(app.player_,"lamplighter") && !hybridRequirement("stonefist").empty(),"The new hybrids start locked, showing what they need");
+            // The hybrids open on their colours.
+            check(!hiddenTreeAvailable(app.player_,"lamplighter") && !hybridRequirement(app.player_,"stonefist").empty(),"The new hybrids start locked, showing what they need");
             const auto invest=[&](const char* id) {
                 app.player_.talents().learnTalent(findTalentDefinition(id)->ranks[0]);
-                app.player_.talents().setRank(app.player_.talents().knownTalents().size()-1,5);
+                app.player_.talents().setRank(app.player_.talents().knownTalents().size()-1,6);
             };
-            invest("radiance.sear"); invest("fire.ember_bolt");
-            check(hiddenTreeAvailable(app.player_,"lamplighter"),"Lamplighter opens with 5 ranks in Radiance and in Fire");
+            (void)invest; giveColour(app.player_,Affinity::Light,6); giveColour(app.player_,Affinity::Flame,6);
+            check(hiddenTreeAvailable(app.player_,"lamplighter"),"Lamplighter opens with Light 6 and Flame 6");
         }
 
         // The forked trees: Fire, One-Handed and Arcane.
@@ -1891,6 +1903,52 @@ struct ApplicationRewardsTestAccess {
                 check(app.player_.statusEffects().has(StatusEffectType::Concealed),"Unseen Hand: striking from an unlit tile keeps you hidden");
                 app.darknessEnabled_=false; app.player_.lightLit=true; app.player_.statusEffects().active().clear(); clearFoes();
             }
+            // Warbanner: the first deep tree. Hidden until the Warlord's standard is read.
+            setup(PlayerClass::Warrior);
+            {
+                const auto* banner=findTree("warbanner");
+                std::size_t bannerIndex=0; while (std::string(kTalentTrees[bannerIndex].id)!="warbanner") ++bannerIndex;
+                check(!deepTreeKnown(app.player_,"warbanner") && !hiddenTreeAvailable(app.player_,"warbanner"),"Warbanner is unseen before its lore"); (void)bannerIndex;
+                auto made=createMonster(MonsterType::GoblinWarlord,{12,10}); auto* lord=made.get(); app.monsters_.push_back(std::move(made));
+                app.onBossDefeated(*lord); clearFoes();
+                check(app.loreDrops_.size()==1 && app.loreDrops_[0].id=="warlord_standard","The Warlord's standard falls with him");
+                roundTrip();
+                check(app.loreDrops_.size()==1,"Save/load keeps lore lying on the floor");
+                app.player_.setPosition(app.loreDrops_[0].at); app.pickupItem();
+                check(app.loreDrops_.empty() && app.player_.knowsLore("warlord_standard") && deepTreeKnown(app.player_,"warbanner"),
+                      "Reading it reveals Warbanner among your talents");
+                check(treePurchaseReason(app.player_,PlayerClass::Warrior,*banner).find("Steel")!=std::string::npos,"It says what it needs");
+                roundTrip();
+                check(app.player_.knowsLore("warlord_standard"),"Save/load keeps the lore you found");
+                giveColour(app.player_,Affinity::Steel,8); giveColour(app.player_,Affinity::Guard,6); app.player_.level()=10; app.player_.treePoints()=1;
+                check(purchaseTree(app.player_,PlayerClass::Warrior,*banner),"With Steel 8, Guard 6 and level 10 it opens");
+                arena(PlayerClass::Warrior); app.lastMoveDirection_={1,0};
+                cast(ranked("warbanner.plant",1),app.player_.position());
+                check(app.banner_ && app.banner_->at.x==11 && app.banner_->at.y==10 && app.player_.statusEffects().magnitudeOf(StatusEffectType::Guard)>=3,
+                      "Plant the Standard: the banner stands beside you, and you are guarded");
+                ranked("warbanner.hold",1); app.tickBanner();
+                check(app.player_.statusEffects().has(StatusEffectType::Steadfast) && !app.player_.statusEffects().canReceiveStun(),
+                      "Hold the Line: beside your banner you can't be stunned");
+                auto* near=foe({11,11}); auto* far=foe({16,16});
+                cast(ranked("warbanner.rally",1),app.player_.position());
+                check(near->statusEffects().has(StatusEffectType::Shaken) && !far->statusEffects().has(StatusEffectType::Shaken),
+                      "Rally Cry shakes the foes within two tiles");
+                clearFoes(); app.player_.statusEffects().active().clear();
+                auto* front=foe({11,10}); auto* behind=foe({13,10});
+                cast(ranked("warbanner.bash",1),{11,10});
+                check(front->statusEffects().has(StatusEffectType::Stun) && behind->statusEffects().has(StatusEffectType::Stun),
+                      "Standard Bash: knocked into another foe, both are stunned");
+                clearFoes();
+                auto* lone=foe({11,10});
+                const int alone=app.situationalBonus(findTalentDefinition("one_handed.quick_strike")->ranks[0],*lone);
+                foe({12,10}); foe({12,11});
+                ranked("warbanner.ranks",1);
+                check(app.situationalBonus(findTalentDefinition("one_handed.quick_strike")->ranks[0],*lone)>=alone+4,
+                      "Break Their Ranks: +2 for each other foe around the target");
+                clearFoes(); app.banner_.reset();
+                for (int i=0;i<12;++i) app.tickBanner();
+            }
+
             // Daggers.
             arena(PlayerClass::Thief);
             {
@@ -2750,7 +2808,8 @@ struct ApplicationRewardsTestAccess {
             app.currentFloor_=1; app.regenerateLevel(1); app.player_.trialKeys=0;
         }
 
-        // Hybrid trees open with five ranks in each parent tree.
+        // Hybrid trees open on their colours, held in any tree. Until then they
+        // are silhouettes: seen once you hold either colour, named once you hold both.
         setup(PlayerClass::Warrior);
         {
             const auto invest=[&](const char* id,int rank) {
@@ -2760,19 +2819,32 @@ struct ApplicationRewardsTestAccess {
             check(!hiddenTreeAvailable(app.player_,"spellblade") && !hiddenTreeAvailable(app.player_,"shadow_archer") &&
                   !hiddenTreeAvailable(app.player_,"animation"),"Hybrid trees start locked");
             const auto* archer=findTree("shadow_archer");
-            check(treePurchaseReason(app.player_,PlayerClass::Warrior,*archer).find("Bow")!=std::string::npos,
-                  "A locked hybrid tree says what it needs");
-            invest("bow.quick_shot",5);
-            check(!hiddenTreeAvailable(app.player_,"shadow_archer"),"One parent is not enough");
-            invest("stealth.conceal",3); invest("stealth.shadow_step",2);
-            check(hiddenTreeAvailable(app.player_,"shadow_archer"),"Shadow Archer opens with 5 ranks in Bow and in Stealth");
-            invest("fire.ember_bolt",5);
-            check(!hiddenTreeAvailable(app.player_,"spellblade"),"Spellblade needs a melee tree too");
-            invest("whip.lash",5);
-            check(hiddenTreeAvailable(app.player_,"spellblade"),"Spellblade opens with 5 melee ranks and 5 magic ranks");
-            invest("shadow.bolt",5);
-            check(hiddenTreeAvailable(app.player_,"animation"),"Animation opens with Shadow and another school");
+            check(!hybridGlimpsed(app.player_,"shadow_archer"),"A hybrid you hold neither colour of stays unseen");
+            check(treePurchaseReason(app.player_,PlayerClass::Warrior,*archer).find("Hunt 0/6")!=std::string::npos,
+                  "A locked hybrid tree says which colours it needs, and how far you are");
+            (void)invest; giveColour(app.player_,Affinity::Hunt,6);
+            check(!hiddenTreeAvailable(app.player_,"shadow_archer") && hybridGlimpsed(app.player_,"shadow_archer") && !hybridNamed(app.player_,"shadow_archer"),
+                  "One colour shows its silhouette, nameless");
+            giveColour(app.player_,Affinity::Guile,6);
+            check(hiddenTreeAvailable(app.player_,"shadow_archer") && hybridNamed(app.player_,"shadow_archer"),"Shadow Archer opens with Hunt 6 and Guile 6");
+            giveColour(app.player_,Affinity::Flame,6);
+            check(!hiddenTreeAvailable(app.player_,"spellblade"),"Spellblade needs Steel and Arcane, not just any magic");
+            giveColour(app.player_,Affinity::Steel,6); giveColour(app.player_,Affinity::Arcane,6);
+            check(hiddenTreeAvailable(app.player_,"spellblade"),"Spellblade opens with Steel 6 and Arcane 6");
+            giveColour(app.player_,Affinity::Dark,6);
+            check(hiddenTreeAvailable(app.player_,"animation"),"Animation opens with Dark 6 and another school at 6");
             check(!hiddenTreeAvailable(app.player_,"blood_magic"),"Blood Magic still needs the altar");
+            // Ascendancies by colour, not class.
+            Player probe({0,0},statsForClass(PlayerClass::Mage),TalentSet{});
+            check(!ascendancyQualified(probe,"juggernaut") && !ascendancyQualified(probe,"paragon"),"An unbuilt character qualifies for no ascendancy");
+            giveColour(probe,Affinity::Steel,8); giveColour(probe,Affinity::Guard,6);
+            check(ascendancyQualified(probe,"juggernaut"),"A mage with Steel 8 and Guard 6 may become a Juggernaut");
+            giveColour(probe,Affinity::Flame,6);
+            check(!ascendancyQualified(probe,"elementalist"),"One element is not enough for the Elementalist");
+            giveColour(probe,Affinity::Frost,6);
+            check(ascendancyQualified(probe,"elementalist"),"Two elements at 6 make an Elementalist");
+            giveColour(probe,Affinity::Arcane,3);
+            check(ascendancyQualified(probe,"paragon"),"Any five colours at 3 make a Paragon");
         }
 
         // The Blood Altar: its Vampire Lord, and the Blood Magic it teaches.
@@ -3436,12 +3508,15 @@ struct ApplicationRewardsTestAccess {
         auto* warden=app.boss_; warden->stats().hp=0; app.checkAndHandleDeath(*warden); app.removeDeadMonsters();
         check(app.player_.trialsCleared==1 && app.player_.ascendancy.empty() && app.player_.ascendancyPoints==1 && app.ascendancyChoice_,
               "Winning the trial grants a point and asks which ascendancy to take");
-        check(ascendanciesFor(PlayerClass::Warrior).size()==4 && ascendanciesFor(PlayerClass::Mage).size()==4 && ascendanciesFor(PlayerClass::Thief).size()==4,
-              "Every class chooses among four ascendancies");
         snapshot("ui-ascendancy-choice.png");
+        clickOn(screen::ascendRow(0)); clickOn(screen::kAscendLearn);
+        check(app.player_.ascendancy.empty() && app.ascendancyChoice_,"An ascendancy your colours don't allow can't be taken");
         app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Escape});
-        check(app.ascendancyChoice_ && app.player_.ascendancy.empty(),"The choice can't be skipped");
-        clickOn(screen::ascendChoice(0)); clickOn(screen::kAscendLearn);
+        check(!app.ascendancyMenu_ && app.player_.ascendancy.empty(),"The choice can wait until your build allows one");
+        app.openAscendancy();
+        check(app.ascendancyMenu_ && app.ascendancyChoice_,"It comes back when you open the ascendancy screen");
+        // (Qualifying is checked above; here the choice is made as if it were allowed.)
+        app.player_.ascendancy="juggernaut"; app.ascendancyChoice_=false; app.openAscendancy();
         check(app.player_.ascendancy=="juggernaut" && !app.ascendancyChoice_ && app.ascendancyMenu_,"Choosing an ascendancy opens its nodes");
         snapshot("ui-ascendancy.png");
         const int lifeBeforeSkin=app.player_.stats().maxHp;

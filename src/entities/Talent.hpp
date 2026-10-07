@@ -16,6 +16,7 @@ enum class TalentTree {
     Spear, Daggers, Mace, Crossbow,
     Earth, Tide, Hexes, Venom,
     Traps, Skirmish, Lamplighter, Stormlance, Hexblade, Saboteur, Stonefist,
+    Warbanner, // the first deep tree
 };
 
 // Abilities and talents have five ranks; rank 5 often adds a mastery effect
@@ -88,7 +89,7 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The third batch (Shadow, Radiance, Shield) and its resonances.
     Dread, Bulwark, Twilight, TemplarsEdge, HallowedGuard,
     // The fourth batch (Bow, Stealth, Daggers) and its resonances.
-    CutDeep, FireArrows, SoftSteps, UnseenHand, AssassinsEdge,
+    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, UnseenHand, AssassinsEdge,
     // The fifth batch (Earth, Tide, Venom) and its resonances.
     Aftershock, Tidecaller, Virulence, Mire, FoulWater, EnvenomedBlades,
     // The sixth batch (Spear, Mace, Crossbow) and its resonances.
@@ -268,6 +269,13 @@ struct Talent {
     // blitz: a movement that strikes everything beside its path.
     int placeTrap=0, landingBurst=0;
     bool needsLight=false, hurlTorch=false, bonfire=false, curseBonus=false, pillarSlam=false, smokeBomb=false, blitz=false;
+    // Warbanner. plantBanner: plant your standard for that many turns (a
+    // great standard when greatBanner). rallyCry: shake the foes around you
+    // (breakWindups: and cancel what they were winding up). crashStun: a foe
+    // knocked into another stuns both, the crash dealing crashStun times its
+    // damage. knockAside: a blitz also throws aside what it strikes.
+    int plantBanner=0, crashStun=0;
+    bool greatBanner=false, rallyCry=false, breakWindups=false, knockAside=false;
     // The forked pilot trees. guardPerHit: Guard for each foe struck (Blade
     // Dance). markOnHit: also marks what it hits. stunOnImpact: a shoved foe
     // that slams into something is stunned. scatterSplash: the splash lands

@@ -22,7 +22,7 @@ const sf::FloatRect cancelBindingButton{{kBindingDialog.position.x+kBindingDialo
 constexpr float kTreeColumnX[]{28,300,572};
 constexpr float kTreeTop=70, kCategoryHeight=30, kTreeRowHeight=96, kIcon=50, kIconStride=60, kColumnWidth=250;
 
-enum class TreeCategory { Martial, Magic, Utility, Defence, Hybrid };
+enum class TreeCategory { Martial, Magic, Utility, Defence, Hybrid, Deep };
 struct CategoryInfo { const char* name; sf::Color color; };
 CategoryInfo categoryInfo(TreeCategory c) {
     switch(c) {
@@ -31,6 +31,7 @@ CategoryInfo categoryInfo(TreeCategory c) {
         case TreeCategory::Utility: return {"Utility",sf::Color(124,204,144)};
         case TreeCategory::Defence: return {"Defence",sf::Color(208,176,112)};
         case TreeCategory::Hybrid: return {"Hybrid",sf::Color(190,132,222)};
+        case TreeCategory::Deep: return {"Deep",sf::Color(240,136,52)};
     }
     return {"",ui::kText};
 }
@@ -41,6 +42,7 @@ TreeCategory treeCategory(const std::string& id) {
         id=="earth" || id=="tide" || id=="hexes" || id=="venom") return TreeCategory::Magic;
     if (id=="stealth" || id=="acrobatics" || id=="alchemy" || id=="traps" || id=="skirmish") return TreeCategory::Utility;
     if (id=="shield" || id=="cloth" || id=="light_armour" || id=="heavy_armour") return TreeCategory::Defence;
+    if (deepGate(id)) return TreeCategory::Deep;
     return TreeCategory::Hybrid;
 }
 
@@ -48,7 +50,8 @@ TreeCategory treeCategory(const std::string& id) {
 // secret until the altar (or an older save already owns it).
 bool treeVisible(const Player& player,std::size_t tree) {
     const std::string id=kTalentTrees[tree].id;
-    return player.sandbox || hiddenTreeAvailable(player,id) || treeAccess(player,id) || !hybridRequirement(id).empty();
+    if (deepGate(id)) return player.sandbox || treeAccess(player,id) || deepTreeKnown(player,id);
+    return player.sandbox || hiddenTreeAvailable(player,id) || treeAccess(player,id) || hybridGlimpsed(player,id);
 }
 
 // A forked tree lays its nodes out by tier, the two sides of each fork one
@@ -107,6 +110,8 @@ TreeLayout layoutTrees(const Player& player,const std::array<float,3>& scroll={}
     const auto hybrid=treesIn(TreeCategory::Hybrid);
     place(1,TreeCategory::Hybrid,std::vector<std::size_t>(hybrid.begin(),hybrid.begin()+std::min<std::size_t>(2,hybrid.size())));
     if (hybrid.size()>2) place(2,TreeCategory::Hybrid,std::vector<std::size_t>(hybrid.begin()+2,hybrid.end()));
+    // Deep trees, once their lore is found, take the shortest column.
+    if (const auto deep=treesIn(TreeCategory::Deep); !deep.empty()) place(static_cast<int>(std::min_element(columnY,columnY+3)-columnY),TreeCategory::Deep,deep);
     for (int c=0;c<3;++c) layout.bottoms[c]=columnY[c];
     return layout;
 }
@@ -404,7 +409,9 @@ void Application::renderTalentTrees() {
         const sf::Color headerColor=access?ui::kGood:ui::kMuted;
         sf::RectangleShape dash({10,2}); dash.setPosition({header.position.x,header.position.y+11});
         dash.setFillColor(headerColor); window_.draw(dash);
-        ui_.text(window_,std::string(tree.name)+(access?"":"  (locked)"),
+        // A hybrid you hold only one colour of is a silhouette: its shape, not its name.
+        const bool named=access || player_.sandbox || hybridNamed(player_,tree.id);
+        ui_.text(window_,std::string(named?tree.name:"???")+(access?"":"  (locked)"),
             {header.position.x+16,header.position.y},16,t==treeSelection_?sf::Color(255,236,170):headerColor,ui::Font::Bold);
         // Forked trees: a thin line from each node back to what it needs.
         if (forkedTree(t)) for(std::size_t i=0;i<treeNodes(t).size();++i) for (const auto& need:treeNodes(t)[i]->prerequisites)
@@ -452,8 +459,9 @@ void Application::renderTalentTrees() {
     const sf::FloatRect bigIcon{{left,y},{56,56}};
     ui_.inset(window_,bigIcon,ui::kBronze);
     ui_.icon(window_,talentIcon(t0),{{bigIcon.position.x+7,bigIcon.position.y+7},{42,42}},rank?ui::kGold:ui::kText);
-    ui_.text(window_,t0.name,{left+68,y},22,ui::kGold,ui::Font::Title);
-    ui_.text(window_,std::string(categoryInfo(treeCategory(tree.id)).name)+" / "+tree.name+(access?", open":", locked")+
+    const bool veiled=!access && !player_.sandbox && !hybridNamed(player_,tree.id);
+    ui_.text(window_,veiled?"???":t0.name,{left+68,y},22,ui::kGold,ui::Font::Title);
+    ui_.text(window_,std::string(categoryInfo(treeCategory(tree.id)).name)+" / "+(veiled?"???":tree.name)+(access?", open":", locked")+
         (d.tier==3?", advanced":"")+(t0.passive?", passive":""),{left+68,y+30},14,access?ui::kGood:ui::kMuted);
     y+=68;
     ui_.text(window_,"Current rank: "+std::to_string(rank)+" of "+std::to_string(d.maxRank()),{left,y},15,ui::kText,ui::Font::Bold); y+=22;
@@ -463,7 +471,7 @@ void Application::renderTalentTrees() {
             left,y,width,14,active?ui::kGood:ui::kBad);
     }
     y+=4;
-    ui_.paragraph(window_,t0.description,left,y,width,15,ui::kText,ui::Font::Body,292);
+    ui_.paragraph(window_,veiled?hybridRequirement(player_,tree.id):t0.description,left,y,width,15,ui::kText,ui::Font::Body,292);
     y=298;
     // Rank table.
     const char* headings[]{"Rank","Damage","Mana","Cooldown","Move","Extra"};
@@ -522,6 +530,11 @@ void Application::renderTalentTrees() {
     if(!bindingTalent_ && mouse && mouse->y>=kTreeViewTop && mouse->y<=treeViewBottom_) for(std::size_t row=0;row<layout.trees.size();++row) for(std::size_t i=0;i<treeNodes(layout.trees[row]).size();++i) {
         if(!abilityRect(layout.origins[row],layout.trees[row],i).contains(*mouse)) continue;
         const auto& hd=*treeNodes(layout.trees[row])[i];
+        const auto& hoverTree=kTalentTrees[layout.trees[row]];
+        if (!treeAccess(player_,hoverTree.id) && !player_.sandbox && !hybridNamed(player_,hoverTree.id)) {
+            ui_.tooltip(window_,{{"???",ui::kGold,17,ui::Font::Title},{hybridRequirement(player_,hoverTree.id),ui::kText,14}},*mouse,300);
+            continue;
+        }
         ui_.tooltip(window_,{{hd.ranks[0].name,ui::kGold,17,ui::Font::Title},
             {"Rank "+std::to_string(player_.talents().rankOf(hd.id))+" of "+std::to_string(hd.maxRank())+(hd.ranks[0].passive?", passive":""),ui::kMuted,13},
             {hd.ranks[0].description,ui::kText,14},{"Click to see ranks and learn it.",ui::kInfo,13}},*mouse,300);
