@@ -1,6 +1,7 @@
 Sound effects in assets/sounds/sfx/ were cut, layered, pitched and levelled
-from these packs. Every one is CC0 (public domain): no attribution is
-required, but the authors are credited here with thanks.
+from these packs. All are CC0 (public domain) except Michel Baradari's,
+which is CC-BY 3.0 and credited as its license requires; the CC0 authors
+are credited here with thanks.
 
 Impact Sounds (Kenney) -- CC0
   https://kenney.nl/assets/impact-sounds
@@ -29,6 +30,19 @@ Impact (Iwan 'qubodup' Gabovitch) -- CC0
 80 CC0 creature SFX (rubberduck) -- CC0
   https://opengameart.org/content/80-cc0-creature-sfx
   the monster voices: grunts, roars, hisses, screams.
+
+15 vocal male strain/hurt/pain/jump sounds -- CC0
+  https://opengameart.org/content/15-vocal-male-strainhurtpainjump-sounds
+  a human cry of pain.
+
+Male Grunt/Yelling sounds -- CC0
+  https://opengameart.org/content/male-gruntyelling-sounds
+  the shout a human foe gives on spotting you.
+
+11 male human pain/death sounds, by Michel Baradari -- CC-BY 3.0
+  https://opengameart.org/content/11-male-human-paindeath-sounds
+  https://creativecommons.org/licenses/by/3.0/
+  human cries of pain and death (used as voice_human_hurt and _death).
 
 The families: slash, pierce, blunt (weapons); fire, frost, lightning, water,
 arcane, shadow, light, earth, rot, blood (spells); crit_gore, crit_bone,

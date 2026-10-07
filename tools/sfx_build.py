@@ -203,9 +203,6 @@ GROUPS = {
     'spirit': ([('weird_01', .7), ('alien_02', .6), ('weird_05', .65)],
                [('weird_02', .75), ('alien_05', .7), ('weird_03', .7)],
                [('alien_03', .5), ('ooh', .5), ('alien_01', .5)]),
-    'human':  ([('grunt_01', 1.0), ('grunt_03', 1.05), ('grunt_02', .95)],
-               [('hurt_01', 1.0), ('hurt_03', 1.0), ('hurt_05', .95)],
-               [('scream_01', .95), ('scream_02', 1.0), ('hurt_02', .85)]),
     'drowned':([('burble_01', .7), ('monster_07', .7), ('burble_02', .65)],
                [('burp_01', .8), ('cough_03', .7), ('burble_02', .8)],
                [('monster_01', .6), ('burble_01', .55), ('monster_07', .55)]),
@@ -218,6 +215,13 @@ for kind, events in GROUPS.items():
             if kind == 'drowned': x = filt(x, 'lowpass', 1800)
             if kind == 'brute' and event == 'death': x = mix((x, 0, 0), (filt(pitch(cut(soft_h[i], .6), .45), 'lowpass', 300), -3, .25))
             v(f'voice_{kind}_{event}_{i}', x)
+# Humans: real voices -- a shout on spotting you, a cry of pain, a death.
+HUMAN = {'alert': ['yell/yelling sounds/1yell2.wav', 'yell/yelling sounds/2yell3.wav', 'yell/yelling sounds/3yell3.wav'],
+         'hurt': ['baradari/player/pain1.wav', 'baradari/player/pain3.wav', 'strain/slightscream-03.flac'],
+         'death': ['baradari/player/die1.wav', 'baradari/player/die2.wav', 'baradari/player/deathh.wav']}
+for event, files in HUMAN.items():
+    for i, f in enumerate(files):
+        v(f'voice_human_{event}_{i}', load(f))
 for i in range(3):
     v(f'voice_bones_alert_{i}', rattle(10 + i, 7, .35))
     v(f'voice_bones_hurt_{i}', mix((pitch(cut(wood_h[i], .25), 1.6), 0, 0), (rattle(20 + i, 4, .15), -4, .03)))

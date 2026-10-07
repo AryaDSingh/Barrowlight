@@ -204,6 +204,20 @@ private:
     void labTurnBegins();
     void labEnemyDecision(const Monster& monster, const AIDecision& decision);
     void finishLab(const char* outcome);
+    // The sandbox (ApplicationSandbox.cpp): F1 spawns foes and items, grants
+    // levels and points, respecs. Never saved.
+    bool sandboxMode_ = false, sandboxRun_ = false, sandboxMenu_ = false, sandboxGod_ = false, sandboxAwake_ = true;
+    int sandboxTab_ = 0, sandboxTier_ = 0, sandboxRarity_ = 0, sandboxItemGroup_ = 0, sandboxPage_ = 0;
+    void startSandbox(PlayerClass cls);
+    std::optional<Position> sandboxSpot();
+    void sandboxSpawn(int type);
+    void sandboxItem(const ItemDefinition& definition);
+    void sandboxRespec();
+    void sandboxCharacter(int action);
+    void sandboxWorld(int action);
+    void handleSandboxKey(sf::Keyboard::Key key);
+    void handleSandboxMouse(const sf::Event& event);
+    void renderSandbox();
     bool vaultExists_=false, vaultOpened_=false, vaultClaimed_=false;
     Position vaultCenter_{}, vaultEntrance_{};
     std::vector<std::unique_ptr<Item>> vaultRewards_;

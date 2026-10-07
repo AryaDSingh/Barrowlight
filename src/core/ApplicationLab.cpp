@@ -95,7 +95,7 @@ void Application::buildLabCharacter() {
 }
 
 // Three rooms, west to east. 1: an Ogre that telegraphs its stunning slam,
-// with the doorway behind you to fall back through. 2: archers behind
+// with the doorway behind you to fall back through. 2: slingers behind
 // pillars, an oil slick and a brazier to kick into it. 3: a goblin squad
 // holding a chokepoint, a bomber's warned blast, and a pillar to circle.
 void Application::buildLabMap() {
@@ -140,9 +140,9 @@ void Application::buildLabMap() {
     spawn(MonsterType::Ogre, {roll(11, 13), roll(6, 10)});
     spawn(MonsterType::Goblin, {roll(12, 14), roll(0, 1) ? roll(3, 5) : roll(11, 13)}); // clear of the Ogre
     const int hidden = roll(0, 1);
-    spawn(MonsterType::Archer, {pillars[hidden].x + 1, pillars[hidden].y});
+    spawn(MonsterType::GoblinSlinger, {pillars[hidden].x + 1, pillars[hidden].y});
     const auto far = pillars[2 + roll(0, 1)];
-    spawn(MonsterType::Archer, {far.x + 1, far.y});
+    spawn(MonsterType::GoblinSlinger, {far.x + 1, far.y});
     spawn(MonsterType::GoblinBulwark, {39, 8});
     spawn(MonsterType::GoblinSlinger, {47, roll(3, 5)});
     spawn(MonsterType::GoblinMedic, {48, roll(11, 13)});

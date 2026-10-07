@@ -39,6 +39,11 @@ inline int openTrees(const Player& p,bool utility) {
     return count;
 }
 inline std::string treePurchaseReason(const Player& p, PlayerClass cls, const TreeDefinition& t) {
+    if (p.sandbox) {
+        // Any tree, hidden ones included; it still costs a tree point (a utility tree doesn't).
+        if (treeAccess(p,t.id)) return "Already open.";
+        return utilityTree(t.id) || p.treePoints()>0 ? std::string{} : std::string("No tree points available.");
+    }
     if (!hiddenTreeAvailable(p,t.id)) { const auto need=hybridRequirement(t.id); return need.empty() ? "This tree is locked for now." : need; }
     if (treeAccess(p,t.id)) return "Already open.";
     if (utilityTree(t.id)) {

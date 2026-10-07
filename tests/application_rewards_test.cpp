@@ -3674,7 +3674,7 @@ struct ApplicationRewardsTestAccess {
         const auto oldLoaded=loadGame(oldPath.string());
         check(oldLoaded && oldLoaded->dungeonLevels[1]==0 && app.restoreState(*oldLoaded),"Version 18 migrates to depth-based difficulty");
 
-        bool packsSafe=true, varied=false, rares=false, named=false;
+        bool packsSafe=true, varied=false, rares=false, named=false, humans=false;
         for(int floor=1;floor<=20;++floor) for(unsigned seed=1;seed<=25;++seed) {
             DungeonGenerationParams params;
             params.includeBossRoom=(floor==5 || floor==10 || floor==20); params.includeVault=floor>=3 && !params.includeBossRoom;
@@ -3687,12 +3687,14 @@ struct ApplicationRewardsTestAccess {
                     occupied.emplace(spawn.position.x,spawn.position.y).second;
                 rareCount+=spawn.tier==MonsterTier::Nightmare; uniqueCount+=isUniqueMonster(spawn.type);
                 varied |= spawn.type==MonsterType::Bonecaller;
+                if (floorTheme(floor).region!=FloorRegion::Crypts) humans |= spawn.type==MonsterType::Archer || spawn.type==MonsterType::Torchbearer;
             }
             packsSafe &= rareCount<=1 && uniqueCount<=1;
             if(!spawns.empty()) packsSafe &= spawns[0].tier==MonsterTier::Base && !isUniqueMonster(spawns[0].type);
             rares |= rareCount>0; named |= uniqueCount>0;
         }
         check(packsSafe && varied && rares && named,"500 generated floors: safe unique positions, opening packs, rare caps and new roster");
+        check(!humans,"Goblins hold the Ruins: no human archers or torchbearers before the Crypts");
 
         // The Encounter Lab: every class and build starts level 6 with the
         // same budget spent, in the same seeded rooms, and logs the attempt.
@@ -3757,6 +3759,44 @@ struct ApplicationRewardsTestAccess {
             check(text.find("Trees:")!=std::string::npos && text.find("T1  you  life")!=std::string::npos && text.find("Outcome: died")!=std::string::npos,
                   "Encounter Lab: the log holds the build, each turn's state and the outcome");
             app.labMode_=false;
+        }
+
+        // The sandbox: spawn anything, level up, respec, open any tree, never die, never save.
+        {
+            app.startSandbox(PlayerClass::Warrior);
+            check(app.sandboxRun_ && app.player_.sandbox,"Sandbox: a sandbox run starts");
+            purchaseTree(app.player_,PlayerClass::Warrior,*findTree("one_handed"));
+            app.closeTalentTrees(); app.mode_=GameMode::Playing;
+            const auto foes=app.monsters_.size();
+            app.sandboxTier_=1; app.sandboxSpawn(static_cast<int>(MonsterType::Lich));
+            const auto& spawned=*app.monsters_.back();
+            check(app.monsters_.size()==foes+1 && spawned.type()==MonsterType::Lich && spawned.tier()==MonsterTier::Elite &&
+                  std::max(std::abs(spawned.position().x-app.player_.position().x),std::abs(spawned.position().y-app.player_.position().y))<=5,
+                  "Sandbox: any foe, at any tier, appears beside you");
+            app.sandboxRarity_=2; const auto& sword=*findItemDefinition("iron_sword");
+            const auto bag=app.player_.inventory().items().size();
+            app.sandboxItem(sword);
+            check(app.player_.inventory().items().size()==bag+1 && app.player_.inventory().items().back()->definition()==&sword &&
+                  app.player_.inventory().items().back()->rarity()==ItemRarity::Rare,"Sandbox: any base, at any rarity, lands in your bag");
+            app.sandboxCharacter(1);
+            check(app.player_.level()==6,"Sandbox: +5 levels");
+            app.sandboxRespec();
+            check(app.player_.trees().empty() && app.player_.abilityPoints()==earnedAbilityPoints(6) && app.player_.utilityPoints()==earnedUtilityPoints(6) &&
+                  app.player_.treePoints()==earnedTreePoints(6) && app.player_.talents().rankOf("basic.attack")==1,"Sandbox: respec returns every point and keeps the basics");
+            check(treePurchaseReason(app.player_,PlayerClass::Warrior,*findTree("shadow_archer")).empty() &&
+                  treePurchaseReason(app.player_,PlayerClass::Warrior,*findTree("fire")).empty(),"Sandbox: any tree can be opened, hidden ones included");
+            app.sandboxCharacter(10); app.player_.stats().hp=0; app.checkAndHandleDeath(app.player_);
+            check(app.mode_==GameMode::Playing && app.player_.stats().hp==app.player_.stats().maxHp,"Sandbox: god mode refuses death");
+            app.sandboxCharacter(10);
+            app.logMessages_.clear(); app.saveGame();
+            check(!app.logMessages_.empty() && app.logMessages_.back().find("isn't saved")!=std::string::npos,"Sandbox: nothing is saved");
+            app.sandboxWorld(4);
+            check(app.chestExists_ && app.chestMimic_ && !app.map_.isWalkable(app.chestPosition_.x,app.chestPosition_.y),"Sandbox: a mimic on demand");
+            app.sandboxMenu_=true;
+            for (int tab=0; tab<4; ++tab) { app.sandboxTab_=tab; snapshot(("sandbox-tab"+std::to_string(tab)+".png").c_str()); }
+            app.sandboxMenu_=false;
+            app.selectClass(PlayerClass::Mage);
+            check(!app.sandboxRun_ && !app.player_.sandbox,"Sandbox: a normal run leaves it behind");
         }
 
         // Real generated campaigns: valid saves across every floor and every class.

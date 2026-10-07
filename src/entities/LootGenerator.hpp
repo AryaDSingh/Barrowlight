@@ -57,6 +57,16 @@ public:
         const unsigned magicChance = static_cast<unsigned>(25 + tier * 3);
         ItemRarity rarity = rarityRoll < rareChance ? ItemRarity::Rare : rarityRoll < rareChance + magicChance ? ItemRarity::Magic : ItemRarity::Normal;
         if (static_cast<int>(minimum) > static_cast<int>(rarity)) rarity = minimum == ItemRarity::Unique ? ItemRarity::Rare : minimum;
+        return roll(definition, tier, rarity, id, position);
+    }
+    // A chosen base at a chosen rarity, its affixes rolled as a drop's would be
+    // at this depth (the sandbox's item spawner).
+    std::unique_ptr<Item> make(const ItemDefinition& definition, int floor, ItemRarity rarity, std::uint64_t id, Position position) {
+        if (definition.unique) return std::make_unique<Item>(definition, id, position);
+        return roll(definition, std::clamp((floor - 1) / 3, 0, 5), rarity == ItemRarity::Unique ? ItemRarity::Rare : rarity, id, position);
+    }
+private:
+    std::unique_ptr<Item> roll(const ItemDefinition& definition, int tier, ItemRarity rarity, std::uint64_t id, Position position) {
         int count = rarity == ItemRarity::Magic ? 1 + static_cast<int>(roll(2)) : 0;
         if (rarity == ItemRarity::Rare) {
             count = 3;
@@ -91,7 +101,6 @@ public:
         }
         return std::make_unique<Item>(definition, id, position, std::move(affixes), tier);
     }
-private:
     std::uint64_t state_;
 };
 }

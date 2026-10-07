@@ -75,6 +75,7 @@ public:
     }
 
     bool bloodRelic=false, animationRelic=false;
+    bool sandbox=false; // transient: the sandbox lifts tree rules (never saved)
     // Cloth's ward: a shield over your life. Transient: it refills on load.
     int ward=0, wardRest=0;
     // Ward from spells (Arcane Shroud): soaks hits before the gear's ward and

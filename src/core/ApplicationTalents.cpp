@@ -48,7 +48,7 @@ TreeCategory treeCategory(const std::string& id) {
 // secret until the altar (or an older save already owns it).
 bool treeVisible(const Player& player,std::size_t tree) {
     const std::string id=kTalentTrees[tree].id;
-    return hiddenTreeAvailable(player,id) || treeAccess(player,id) || !hybridRequirement(id).empty();
+    return player.sandbox || hiddenTreeAvailable(player,id) || treeAccess(player,id) || !hybridRequirement(id).empty();
 }
 
 // A forked tree lays its nodes out by tier, the two sides of each fork one

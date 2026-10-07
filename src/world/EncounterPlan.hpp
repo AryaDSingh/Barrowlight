@@ -45,7 +45,7 @@ inline std::vector<EncounterSpawn> planEncounters(const GeneratedDungeon& dungeo
             pack={MonsterType::Goblin,MonsterType::GoblinRaider,floor>=2?MonsterType::GoblinSlinger:MonsterType::Goblin}; cost=8;
         } else if (vignette == Vignette::Armoury) {
             if (floor>=3) { pack={MonsterType::GoblinBulwark,MonsterType::GoblinRaider,MonsterType::GoblinSlinger}; cost=11; }
-            else { pack={MonsterType::Goblin,MonsterType::Goblin,MonsterType::Archer}; cost=7; }
+            else { pack={MonsterType::Goblin,MonsterType::Goblin,MonsterType::GoblinSlinger}; cost=7; }
         } else if (vignette == Vignette::Dormitory) {
             pack={MonsterType::Goblin,MonsterType::Goblin,floor>=2?MonsterType::GoblinStalker:MonsterType::Goblin}; cost=7;
         } else if (vignette == Vignette::Nest) {
@@ -69,6 +69,7 @@ inline std::vector<EncounterSpawn> planEncounters(const GeneratedDungeon& dungeo
         } else if (crypt) {
             switch(i%6) {
                 case 5: pack={MonsterType::DrownedOne,MonsterType::Gloomstalker,MonsterType::DrownedOne}; cost=12; break;
+                // The dead, and the living who tend them.
                 case 0: pack={MonsterType::CryptSentinel,MonsterType::SkeletonArcher,MonsterType::GraveMender}; cost=12; break;
                 case 1: pack={MonsterType::SkeletonGuard,MonsterType::CryptShade,MonsterType::Bonecaller}; cost=11; break;
                 case 2: pack={MonsterType::Skeleton,MonsterType::FrostAcolyte,MonsterType::SkeletonArcher}; cost=10; break;
@@ -85,9 +86,9 @@ inline std::vector<EncounterSpawn> planEncounters(const GeneratedDungeon& dungeo
             pack={MonsterType::Ogre,MonsterType::Goblin,MonsterType::GoblinMedic}; cost=11; dangerous=true;
         } else if(i%5==4 && floor>=3) {
             // Fire-bringers: a torch to light the way, a firebrand to throw it, and (deeper) a beast of the dark.
-            pack={MonsterType::Torchbearer,MonsterType::OrcFirebrand,floor>=5?MonsterType::Gloomstalker:MonsterType::Goblin}; cost=11; dangerous=true;
+            pack={MonsterType::Goblin,MonsterType::OrcFirebrand,floor>=5?MonsterType::Gloomstalker:MonsterType::Goblin}; cost=11; dangerous=true;
         } else {
-            pack={MonsterType::Goblin,floor>=2?MonsterType::GoblinSlinger:MonsterType::Goblin,i%2?MonsterType::Archer:MonsterType::Spider}; cost=7;
+            pack={MonsterType::Goblin,floor>=2?MonsterType::GoblinSlinger:MonsterType::Goblin,i%2?MonsterType::GoblinRaider:MonsterType::Spider}; cost=7;
         }
         if (cost>budget) continue;
         std::vector<Position> positions;

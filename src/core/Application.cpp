@@ -728,7 +728,7 @@ void Application::renderPause() {
 
 // A 1280x720 menu is in front: the mouse speaks its coordinates.
 bool Application::menuOpen() const {
-    return mode_ != GameMode::Playing || inventoryOpen_ || shrineMenu_ || vaultMenu_ || exitMenu_ || trialMenu_ || ascendancyMenu_ || pauseMenu_;
+    return mode_ != GameMode::Playing || inventoryOpen_ || shrineMenu_ || vaultMenu_ || exitMenu_ || trialMenu_ || ascendancyMenu_ || pauseMenu_ || sandboxMenu_;
 }
 
 float Application::menuSplit() const {
@@ -843,7 +843,9 @@ void Application::handleEvent(const sf::Event& input) {
         if(mode_==GameMode::ClassSelection) {
             if(screen::kModeToggle.contains(point)) { adventureMode_=!adventureMode_; return; }
             if(screen::kStartLoad.contains(point)) { loadGame(); return; }
+            if(screen::kSandboxToggle.contains(point)) { sandboxMode_=!sandboxMode_; if(sandboxMode_) labMode_=false; return; }
             if(screen::kLabToggle.contains(point)) {
+                sandboxMode_=false;
                 // Off, then each build in turn, then off again.
                 if(!labMode_) { labMode_=true; labBuild_=0; } else if(labBuild_<2) ++labBuild_; else labMode_=false;
                 return;
@@ -852,7 +854,7 @@ void Application::handleEvent(const sf::Event& input) {
             if(labMode_ && screen::kLabSeedUp.contains(point)) { ++labSeed_; return; }
             for(int i=0;i<3;++i) if(screen::classCard(i).contains(point)) {
                 const auto cls=i==0?PlayerClass::Warrior:i==1?PlayerClass::Mage:PlayerClass::Thief;
-                if(labMode_) startLab(cls); else selectClass(cls);
+                if(sandboxMode_) startSandbox(cls); else if(labMode_) startLab(cls); else selectClass(cls);
                 break;
             }
             return;
@@ -874,6 +876,7 @@ void Application::handleEvent(const sf::Event& input) {
         handleInventoryMouse(*event);
         return; // inventory mouse actions must never click through onto the map
     }
+    if(sandboxMenu_ && !event->is<sf::Event::KeyPressed>()) { handleSandboxMouse(*event); return; }
     if(ascendancyMenu_ && !event->is<sf::Event::KeyPressed>()) { handleAscendancyMouse(*event); return; }
     if(mode_==GameMode::Town && !event->is<sf::Event::KeyPressed>()) {
         handleTownMouse(*event);
@@ -889,6 +892,10 @@ void Application::handleEvent(const sf::Event& input) {
     if (mode_ == GameMode::Playing && !inventoryOpen_ && !vaultMenu_ && !exitMenu_) handleTargetingMouse(*event);
 
     if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
+        if (sandboxMenu_) { handleSandboxKey(keyPressed->code); return; }
+        if (sandboxRun_ && keyPressed->code == sf::Keyboard::Key::F1 && (mode_ == GameMode::Playing || mode_ == GameMode::Town)) {
+            inventoryOpen_ = false; cancelTargeting(); sandboxMenu_ = true; return;
+        }
         if (ascendancyMenu_) { handleAscendancyKey(keyPressed->code); return; }
         if (mode_==GameMode::Town) { handleTownKey(keyPressed->code); return; }
         if (exitMenu_) {
@@ -931,11 +938,12 @@ void Application::handleEvent(const sf::Event& input) {
             // PlayerClassFactory (see PlayerClass.hpp), just not as
             // a starting option anymore.
             if (keyPressed->code == sf::Keyboard::Key::M) { adventureMode_=!adventureMode_; return; }
-            if (keyPressed->code == sf::Keyboard::Key::L) { labMode_=!labMode_; return; }
+            if (keyPressed->code == sf::Keyboard::Key::L) { labMode_=!labMode_; if (labMode_) sandboxMode_=false; return; }
+            if (keyPressed->code == sf::Keyboard::Key::S) { sandboxMode_=!sandboxMode_; if (sandboxMode_) labMode_=false; return; }
             if (labMode_ && keyPressed->code == sf::Keyboard::Key::B) { labBuild_=(labBuild_+1)%3; return; }
             if (labMode_ && keyPressed->code == sf::Keyboard::Key::LBracket) { if (labSeed_>1) --labSeed_; return; }
             if (labMode_ && keyPressed->code == sf::Keyboard::Key::RBracket) { ++labSeed_; return; }
-            const auto choose=[&](PlayerClass cls) { if (labMode_) startLab(cls); else selectClass(cls); };
+            const auto choose=[&](PlayerClass cls) { if (sandboxMode_) startSandbox(cls); else if (labMode_) startLab(cls); else selectClass(cls); };
             if (keyPressed->code == sf::Keyboard::Key::Num1) {
                 choose(PlayerClass::Warrior);
             } else if (keyPressed->code == sf::Keyboard::Key::Num2) {
@@ -2572,6 +2580,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
     }
 
     if (&actor == &player_) {
+        if (sandboxGod_) { player_.stats().hp=player_.stats().maxHp; return; }
         if (player_.talents().passiveValue(PassiveKind::Deathless,player_.stats()) &&
             std::find(player_.deathlessSpentFloors.begin(),player_.deathlessSpentFloors.end(),currentFloor_)==player_.deathlessSpentFloors.end()) {
             player_.deathlessSpentFloors.push_back(currentFloor_); player_.stats().hp=1;
@@ -2930,6 +2939,7 @@ void Application::toggleLight() {
 void Application::selectClass(PlayerClass cls) {
     soundManager_.play(SoundEffect::Select);
     labRun_ = false;
+    sandboxRun_ = false; sandboxMenu_ = false; sandboxGod_ = false; player_.sandbox = false;
     extraLives_=adventureMode_?2:0;
     playerClass_ = cls;
     player_.inventory() = Inventory{};
@@ -3021,7 +3031,7 @@ void Application::regenerateLevel(unsigned int seed) {
     if (vaultExists_) {
         auto guard=createMonster(MonsterType::Goblin,{vaultCenter_.x-1,vaultCenter_.y},MonsterTier::Elite);
         guard->vaultGuard=true; monsters_.push_back(std::move(guard));
-        guard=createMonster(MonsterType::Archer,{vaultCenter_.x+1,vaultCenter_.y});
+        guard=createMonster(floorTheme(currentFloor_).region==FloorRegion::Crypts?MonsterType::SkeletonArcher:MonsterType::GoblinSlinger,{vaultCenter_.x+1,vaultCenter_.y});
         guard->vaultGuard=true; monsters_.push_back(std::move(guard));
         const auto lootTheme=currentFloor_<=3?LootTheme::Barracks:currentFloor_<=6?LootTheme::Sanctum:LootTheme::Crypts;
         for (int i=0;i<3;++i) {
@@ -3215,6 +3225,7 @@ SaveGameState Application::captureState(bool includeFloors) {
 
 void Application::saveGame() {
     if (labRun_) { log("The Encounter Lab isn't saved; each attempt is written to its log instead."); return; }
+    if (sandboxRun_) { log("The sandbox isn't saved; your real save is untouched."); return; }
     if (engine::saveGame(captureState(),kSaveFilePath)) log("Game saved, including visited floors.");
     else log("Failed to save game.");
 }
@@ -3222,6 +3233,7 @@ void Application::saveGame() {
 void Application::loadGame() {
     const auto loaded=engine::loadGame(kSaveFilePath);
     if (!loaded) { log("No valid save file found."); return; }
+    sandboxRun_=false; sandboxMenu_=false; sandboxGod_=false; player_.sandbox=false; labRun_=false;
     restoreState(*loaded);
 }
 
@@ -3433,7 +3445,7 @@ void Application::renderClassSelection() {
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
     if (playLayout::screenWidth<=1280.f) ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(140,135,130));
-    ui_.textCentered(window_,labMode_?"Encounter Lab: choose your class":"Choose your class",{{0,26},{1280,50}},38,ui::kGold,ui::Font::Title);
+    ui_.textCentered(window_,sandboxMode_?"Sandbox: choose your class":labMode_?"Encounter Lab: choose your class":"Choose your class",{{0,26},{1280,50}},38,ui::kGold,ui::Font::Title);
     struct ClassInfo { const char* name; PlayerClass cls; sf::Color color; const char* stats; const char* pools; const char* blurb; std::vector<std::size_t> trees; };
     const ClassInfo classes[]{
         {"Warrior",PlayerClass::Warrior,sf::Color(232,150,108),"Str 6   Dex 2   Int 2","Life 30   Mana 10",
@@ -3468,6 +3480,8 @@ void Application::renderClassSelection() {
     }
     ui_.button(window_,kStartLoad,"Load game (F9)",hovered(kStartLoad));
     ui_.button(window_,kModeToggle,adventureMode_?"Mode: Adventure, 2 extra lives (M)":"Mode: Roguelike, one life (M)",hovered(kModeToggle));
+    ui_.button(window_,kSandboxToggle,sandboxMode_?"Sandbox: on (S)":"Sandbox (S)",hovered(kSandboxToggle));
+    if (sandboxMode_) ui_.inset(window_,kSandboxToggle,ui::kGold);
     ui_.button(window_,kLabToggle,labMode_?std::string("Lab: ")+labBuildName(labBuild_)+" build (L, B)":std::string("Encounter Lab (L)"),hovered(kLabToggle));
     if (labMode_) {
         ui_.button(window_,kLabSeedDown,"<",hovered(kLabSeedDown));
@@ -4003,6 +4017,7 @@ void Application::render() {
     window_.setView(playView_); renderVault();
     window_.setView(playView_); renderShrine();
     window_.setView(playView_); renderAscendancy();
+    window_.setView(playView_); renderSandbox();
     if (vaultMenu_ || shrineMenu_ || exitMenu_) mapHints_.clear();
     window_.setView(playView_);
     renderMapHints();
