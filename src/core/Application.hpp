@@ -43,6 +43,9 @@ Element talentElement(const Talent& t); // what an ability does to the ground (A
 // a text menu, not a separate scene/state-machine framework -- this
 // project's established minimal-but-real UI approach (Prompt 13), just
 // applied to one more screen.
+// The Encounter Lab's three builds: Specialist, Hybrid, Broad.
+const char* labBuildName(int build);
+
 enum class GameMode {
     Town,
     ClassSelection,
@@ -186,6 +189,21 @@ private:
     int ordinaryDrops_ = 0;
     void rewardMonster(Monster& monster, bool boss);
     void spawnFloorChest();
+    // The Encounter Lab (ApplicationLab.cpp): a fixed, seeded run of three
+    // rooms for comparing builds, logged turn by turn to encounter-lab/.
+    bool labMode_ = false, labRun_ = false;
+    int labBuild_ = 0;          // 0 Specialist, 1 Hybrid, 2 Broad
+    unsigned labSeed_ = 1;
+    int labTurn_ = 0, labRoom_ = 1;
+    std::vector<std::string> labLog_;
+    void startLab(PlayerClass cls);
+    void buildLabCharacter();
+    void buildLabMap();
+    int labRoomAt(Position p) const;
+    void labNote(const std::string& line);
+    void labTurnBegins();
+    void labEnemyDecision(const Monster& monster, const AIDecision& decision);
+    void finishLab(const char* outcome);
     bool vaultExists_=false, vaultOpened_=false, vaultClaimed_=false;
     Position vaultCenter_{}, vaultEntrance_{};
     std::vector<std::unique_ptr<Item>> vaultRewards_;

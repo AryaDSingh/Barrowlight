@@ -447,6 +447,7 @@ void Application::updateMusic() {
 
 void Application::logImpl(const std::string& message) {
     std::cout << message << std::endl;
+    labNote(message);
     logMessages_.push_back(message);
     logTimes_.push_back(animationClock_.getElapsedTime().asSeconds());
     ++logTotal_;
@@ -842,8 +843,16 @@ void Application::handleEvent(const sf::Event& input) {
         if(mode_==GameMode::ClassSelection) {
             if(screen::kModeToggle.contains(point)) { adventureMode_=!adventureMode_; return; }
             if(screen::kStartLoad.contains(point)) { loadGame(); return; }
+            if(screen::kLabToggle.contains(point)) {
+                // Off, then each build in turn, then off again.
+                if(!labMode_) { labMode_=true; labBuild_=0; } else if(labBuild_<2) ++labBuild_; else labMode_=false;
+                return;
+            }
+            if(labMode_ && screen::kLabSeedDown.contains(point)) { if(labSeed_>1) --labSeed_; return; }
+            if(labMode_ && screen::kLabSeedUp.contains(point)) { ++labSeed_; return; }
             for(int i=0;i<3;++i) if(screen::classCard(i).contains(point)) {
-                selectClass(i==0?PlayerClass::Warrior:i==1?PlayerClass::Mage:PlayerClass::Thief);
+                const auto cls=i==0?PlayerClass::Warrior:i==1?PlayerClass::Mage:PlayerClass::Thief;
+                if(labMode_) startLab(cls); else selectClass(cls);
                 break;
             }
             return;
@@ -922,12 +931,17 @@ void Application::handleEvent(const sf::Event& input) {
             // PlayerClassFactory (see PlayerClass.hpp), just not as
             // a starting option anymore.
             if (keyPressed->code == sf::Keyboard::Key::M) { adventureMode_=!adventureMode_; return; }
+            if (keyPressed->code == sf::Keyboard::Key::L) { labMode_=!labMode_; return; }
+            if (labMode_ && keyPressed->code == sf::Keyboard::Key::B) { labBuild_=(labBuild_+1)%3; return; }
+            if (labMode_ && keyPressed->code == sf::Keyboard::Key::LBracket) { if (labSeed_>1) --labSeed_; return; }
+            if (labMode_ && keyPressed->code == sf::Keyboard::Key::RBracket) { ++labSeed_; return; }
+            const auto choose=[&](PlayerClass cls) { if (labMode_) startLab(cls); else selectClass(cls); };
             if (keyPressed->code == sf::Keyboard::Key::Num1) {
-                selectClass(PlayerClass::Warrior);
+                choose(PlayerClass::Warrior);
             } else if (keyPressed->code == sf::Keyboard::Key::Num2) {
-                selectClass(PlayerClass::Mage);
+                choose(PlayerClass::Mage);
             } else if (keyPressed->code == sf::Keyboard::Key::Num3) {
-                selectClass(PlayerClass::Thief);
+                choose(PlayerClass::Thief);
             }
             return;
         }
@@ -1135,7 +1149,9 @@ bool Application::tryMovePlayer(int dx, int dy) {
     // actor, so no separate "is the boss defeated" check is needed
     // here at all.
     if (!autoExploring_ && mode_==GameMode::Playing && target.x==floorExit_.x && target.y==floorExit_.y) {
-        cancelTargeting(); exitMenu_=true;
+        cancelTargeting();
+        if (labRun_) { finishLab("cleared"); mode_=GameMode::ClassSelection; return true; }
+        exitMenu_=true;
     }
 
     return true;
@@ -1867,6 +1883,7 @@ void Application::advanceEnemyIntents() {
 
 void Application::processMonsterTurns() {
     noteHarm(); // whatever the player's own action cost them
+    labTurnBegins();
     while (window_.isOpen() && currentActor_ != &player_ && mode_!=GameMode::GameOver) {
         Actor* actor = currentActor_;
         harmSource_ = actor->name();
@@ -1989,6 +2006,7 @@ void Application::processMonsterTurns() {
                     auto* opponent=nearestOpponent(*actor,hidden);
                     AIDecision decision=enemyDecision(*monster,opponent);
                     essenceStrike(*monster,decision);
+                    labEnemyDecision(*monster,decision);
                     const bool warlord=monster && monster->type()==MonsterType::GoblinWarlord;
                     const bool lich=monster && monster->type()==MonsterType::Lich;
                     const bool blast=monster && (monster->type()==MonsterType::Bomber || monster->type()==MonsterType::OssuaryWarden || warlord) && decision.type==AIActionType::UseAbility;
@@ -2563,6 +2581,7 @@ void Application::checkAndHandleDeath(Actor& actor) {
         }
         soundManager_.play(SoundEffect::Death);
         log("You have died!");
+        finishLab("died");
         // As of Prompt 17: a real GameOver screen instead of closing
         // the window outright. selectClass() (reachable from the
         // ClassSelection screen this leads to) already does a complete
@@ -2910,6 +2929,7 @@ void Application::toggleLight() {
 
 void Application::selectClass(PlayerClass cls) {
     soundManager_.play(SoundEffect::Select);
+    labRun_ = false;
     extraLives_=adventureMode_?2:0;
     playerClass_ = cls;
     player_.inventory() = Inventory{};
@@ -3194,6 +3214,7 @@ SaveGameState Application::captureState(bool includeFloors) {
 }
 
 void Application::saveGame() {
+    if (labRun_) { log("The Encounter Lab isn't saved; each attempt is written to its log instead."); return; }
     if (engine::saveGame(captureState(),kSaveFilePath)) log("Game saved, including visited floors.");
     else log("Failed to save game.");
 }
@@ -3412,7 +3433,7 @@ void Application::renderClassSelection() {
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
     if (playLayout::screenWidth<=1280.f) ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(140,135,130));
-    ui_.textCentered(window_,"Choose your class",{{0,26},{1280,50}},38,ui::kGold,ui::Font::Title);
+    ui_.textCentered(window_,labMode_?"Encounter Lab: choose your class":"Choose your class",{{0,26},{1280,50}},38,ui::kGold,ui::Font::Title);
     struct ClassInfo { const char* name; PlayerClass cls; sf::Color color; const char* stats; const char* pools; const char* blurb; std::vector<std::size_t> trees; };
     const ClassInfo classes[]{
         {"Warrior",PlayerClass::Warrior,sf::Color(232,150,108),"Str 6   Dex 2   Int 2","Life 30   Mana 10",
@@ -3420,7 +3441,7 @@ void Application::renderClassSelection() {
         {"Mage",PlayerClass::Mage,sf::Color(142,172,240),"Str 2   Dex 2   Int 6","Life 20   Mana 20",
             "Fire, ice, lightning and raw arcane force, from a safe distance.",{6,7,8,9}},
         {"Thief",PlayerClass::Thief,sf::Color(132,218,160),"Str 2   Dex 6   Int 2","Life 25   Mana 15",
-            "Shadows, the bow and quick feet: strike first, then vanish.",{4,3,5,18}}};
+            "Daggers, the bow and the whip: strike first, then vanish.",{23,3,18}}};
     for (int i=0;i<3;++i) {
         const auto& info=classes[i];
         const auto card=classCard(i);
@@ -3447,6 +3468,12 @@ void Application::renderClassSelection() {
     }
     ui_.button(window_,kStartLoad,"Load game (F9)",hovered(kStartLoad));
     ui_.button(window_,kModeToggle,adventureMode_?"Mode: Adventure, 2 extra lives (M)":"Mode: Roguelike, one life (M)",hovered(kModeToggle));
+    ui_.button(window_,kLabToggle,labMode_?std::string("Lab: ")+labBuildName(labBuild_)+" build (L, B)":std::string("Encounter Lab (L)"),hovered(kLabToggle));
+    if (labMode_) {
+        ui_.button(window_,kLabSeedDown,"<",hovered(kLabSeedDown));
+        ui_.textCentered(window_,"Seed "+std::to_string(labSeed_),{{kLabSeedDown.position.x+kLabSeedDown.size.x,kLabSeedDown.position.y},{100,kLabSeedDown.size.y}},16,ui::kText,ui::Font::Bold);
+        ui_.button(window_,kLabSeedUp,">",hovered(kLabSeedUp));
+    }
     if(!logMessages_.empty()) ui_.textCentered(window_,logMessages_.back(),{{0,684},{1280,24}},15,sf::Color(232,196,130));
 }
 

@@ -16,6 +16,9 @@ inline sf::Vector2i center(const sf::FloatRect& r) {
 inline sf::FloatRect classCard(int i) { return {{70.f + 390.f * i, 122}, {360, 420}}; }
 inline const sf::FloatRect kStartLoad{{70, 600}, {260, 44}};
 inline const sf::FloatRect kModeToggle{{850, 600}, {360, 44}};
+inline const sf::FloatRect kLabToggle{{460, 600}, {300, 44}};
+inline const sf::FloatRect kLabSeedDown{{510, 652}, {44, 30}};
+inline const sf::FloatRect kLabSeedUp{{654, 652}, {44, 30}};
 
 // --- Game over: one centred dialog ------------------------------------------------
 inline const sf::FloatRect kGameOverDialog{{260, 60}, {760, 600}};

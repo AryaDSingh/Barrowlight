@@ -3694,6 +3694,71 @@ struct ApplicationRewardsTestAccess {
         }
         check(packsSafe && varied && rares && named,"500 generated floors: safe unique positions, opening packs, rare caps and new roster");
 
+        // The Encounter Lab: every class and build starts level 6 with the
+        // same budget spent, in the same seeded rooms, and logs the attempt.
+        {
+            bool budgets=true, rooms=true, hybrids=true, same=true;
+            std::vector<Position> firstLayout;
+            for (auto cls:{PlayerClass::Warrior,PlayerClass::Mage,PlayerClass::Thief})
+                for (int build=0; build<3; ++build) {
+                    app.labBuild_=build; app.labSeed_=3; app.startLab(cls);
+                    budgets=budgets && app.labRun_ && app.player_.level()==6 && app.player_.abilityPoints()==0 && app.player_.utilityPoints()==0 &&
+                            app.mode_==GameMode::Playing && app.player_.unspentAttributePoints()==0;
+                    rooms=rooms && app.monsters_.size()==8 && app.map_.tileAt(app.floorExit_.x,app.floorExit_.y).type==TileType::Door;
+                    std::vector<Position> layout;
+                    for (const auto& m:app.monsters_) layout.push_back(m->position());
+                    if (firstLayout.empty()) firstLayout=layout;
+                    for (std::size_t i=0;i<layout.size() && i<firstLayout.size();++i) same=same && layout[i].x==firstLayout[i].x && layout[i].y==firstLayout[i].y;
+                    if (build==1) {
+                        bool resonant=false;
+                        for (const auto* r:resonances()) resonant=resonant || app.player_.talents().rankOf(r->id)>0;
+                        hybrids=hybrids && resonant;
+                    }
+                }
+            check(budgets && rooms,"Encounter Lab: every class and build starts at level 6, its points all spent, in three rooms of eight foes");
+            check(hybrids,"Encounter Lab: a hybrid build wakes its resonance");
+            check(same,"Encounter Lab: the same seed lays out the same rooms for every build");
+            bool placed=true;
+            for (unsigned seed=1; seed<=20; ++seed) {
+                app.labSeed_=seed; app.startLab(PlayerClass::Warrior);
+                std::set<std::pair<int,int>> taken{{app.player_.position().x,app.player_.position().y}};
+                for (const auto& m:app.monsters_) placed=placed && app.map_.isWalkable(m->position().x,m->position().y) && taken.emplace(m->position().x,m->position().y).second;
+                const auto route=findPath(app.map_,app.player_.position(),app.floorExit_);
+                placed=placed && route && !route->empty();
+            }
+            check(placed,"Encounter Lab: across 20 seeds every foe stands on open floor of its own, and the stairs can be reached");
+            app.labSeed_=4; app.startLab(PlayerClass::Warrior);
+            bool moved=false;
+            for (std::size_t i=0;i<app.monsters_.size() && i<firstLayout.size();++i) moved=moved || app.monsters_[i]->position().x!=firstLayout[i].x || app.monsters_[i]->position().y!=firstLayout[i].y;
+            check(moved,"Encounter Lab: another seed shifts the rooms");
+            app.updateFieldOfView(); snapshot("encounter-lab.png");
+            // Only the files this test writes are read and removed; real attempts stay.
+            const auto files=[&]{ std::set<std::filesystem::path> found; std::error_code e;
+                for (const auto& f:std::filesystem::directory_iterator("encounter-lab",e)) if (f.path().extension()==".txt") found.insert(f.path());
+                return found; };
+            const auto existing=files();
+            const auto logs=[&]{ int n=0; for (const auto& f:files()) n+=!existing.count(f); return n; };
+            const int before=0;
+            app.processMonsterTurns(); app.advanceTurnsUntilPlayerCanAct();
+            app.player_.stats().hp=0; app.checkAndHandleDeath(app.player_);
+            check(app.mode_==GameMode::GameOver && !app.labRun_ && logs()==before+1,"Encounter Lab: a death writes the attempt's log");
+            app.startLab(PlayerClass::Mage);
+            app.monsters_.clear(); app.scheduler_=TurnScheduler{}; app.scheduler_.add(app.player_); app.currentActor_=&app.player_;
+            app.player_.setPosition({app.floorExit_.x-1,app.floorExit_.y});
+            app.tryMovePlayer(1,0);
+            check(app.mode_==GameMode::ClassSelection && !app.labRun_ && logs()==before+2,"Encounter Lab: the stairs finish it, log written, back to the class screen");
+            std::string text;
+            for (const auto& f:files()) {
+                if (existing.count(f)) continue;
+                { std::ifstream in(f); std::stringstream all; all<<in.rdbuf();
+                  if (all.str().find("Outcome: died")!=std::string::npos) text=all.str(); }
+                std::filesystem::remove(f);
+            }
+            check(text.find("Trees:")!=std::string::npos && text.find("T1  you  life")!=std::string::npos && text.find("Outcome: died")!=std::string::npos,
+                  "Encounter Lab: the log holds the build, each turn's state and the outcome");
+            app.labMode_=false;
+        }
+
         // Real generated campaigns: valid saves across every floor and every class.
         bool generatedSaves=true;
         for(auto cls:{PlayerClass::Warrior,PlayerClass::Thief,PlayerClass::Mage}) {

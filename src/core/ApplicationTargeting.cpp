@@ -287,7 +287,8 @@ void Application::renderBattleHud() {
     // Where you are, and the few things worth a glance.
     float y=statusY+statusStride*static_cast<float>(rowsUsed)+(rowsUsed?2.f:0.f);
     const auto theme=floorTheme(currentFloor_);
-    if (trial_) shadowed(std::string(trialName(trial_))+" - "+trialGuardian(trial_)+(boss_?" awaits":" is fallen"),{10,y},13,ui::kUnique,ui::Font::Bold);
+    if (labRun_) shadowed("Encounter Lab  -  room "+std::to_string(labRoomAt(player_.position()))+" of 3, seed "+std::to_string(labSeed_),{10,y},13,ui::kUnique,ui::Font::Bold);
+    else if (trial_) shadowed(std::string(trialName(trial_))+" - "+trialGuardian(trial_)+(boss_?" awaits":" is fallen"),{10,y},13,ui::kUnique,ui::Font::Bold);
     else shadowed(std::string(dungeonName(dungeonIndex(currentFloor_)))+" "+std::to_string(floorInDungeon(currentFloor_))+"/"+
                   std::to_string(dungeonLength(dungeonIndex(currentFloor_)))+"  -  "+theme.name,{10,y},13,sf::Color(232,206,150,220),ui::Font::Bold);
     y+=17;

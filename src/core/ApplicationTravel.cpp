@@ -173,6 +173,11 @@ void Application::returnToTown(bool byStairs) {
 }
 
 bool Application::interactStairs() {
+    if (labRun_) {
+        if (sameTile(player_.position(),floorExit_)) { cancelTargeting(); finishLab("cleared"); mode_=GameMode::ClassSelection; return true; }
+        if (sameTile(player_.position(),floorEntrance_)) { log("The way back is shut. The stairs at the far end finish the lab."); return true; }
+        return false;
+    }
     if (trial_ && sameTile(player_.position(),floorEntrance_)) { exitTrial(); return true; }
     if (sameTile(player_.position(),floorEntrance_)) {
         if (currentFloor_==1 || currentFloor_==kCathedralFirst) returnToTown(currentFloor_==kCathedralFirst);
@@ -551,7 +556,7 @@ void Application::renderTravel() {
     if (exploredMap_.at(p.x,p.y)==Visibility::Visible && onMap(at))
         ui_.icon(window_,"jump-across",{{at.x+3,at.y+3},{22,22}},ui::kInfo);
     if (sameTile(player_.position(),floorEntrance_))
-        mapHints_.push_back({trial_?(boss_?"The way out. It stays shut while the guardian lives.":"The way out. G: leave the trial for town"):
+        mapHints_.push_back({labRun_?"The way back is shut. The stairs at the far end finish the lab.":trial_?(boss_?"The way out. It stays shut while the guardian lives.":"The way out. G: leave the trial for town"):
             currentFloor_==1?"Entrance. G: return to town (needs 10 quiet turns)":"Stairs up. G: ascend to the previous floor",ui::kInfo});
     if (!exitMenu_) return;
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
