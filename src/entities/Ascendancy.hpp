@@ -31,7 +31,7 @@ struct AscendancyDefinition {
 
 // Each class chooses among four: its own, the two hybrids it shares with
 // the other classes, and the Paragon.
-inline constexpr std::array<AscendancyDefinition, 9> kAscendancies{{
+inline constexpr std::array<AscendancyDefinition, 10> kAscendancies{{
     {"juggernaut", "Juggernaut", kWarrior, "STR", "An unstoppable frontline fighter who shrugs off control.", "hammer-drop",
      {"juggernaut.unstoppable", "juggernaut.earthshaker", "juggernaut.rampage", "juggernaut.last_stand", "juggernaut.iron_skin",
       "juggernaut.crushing_blows"}},
@@ -56,6 +56,8 @@ inline constexpr std::array<AscendancyDefinition, 9> kAscendancies{{
     // Born of Thornwood Hollow.
     {"beastwarden", "Beastwarden", kWarrior | kMage | kThief, "DEX", "A warden of the wild, never alone: Thornmaw grows with you and fights where you point.", "wolverine-claws",
      {"beastwarden.thornmaw", "beastwarden.point", "beastwarden.pack_of_two", "beastwarden.running_mate", "beastwarden.guardian", "beastwarden.call_wild"}},
+    {"plaguebringer", "Plaguebringer", kWarrior | kMage | kThief, "INT", "A carrier of sickness: one foe infected, and the plague walks from room to room.", "virus",
+     {"plaguebringer.patient_zero", "plaguebringer.contagion", "plaguebringer.outbreak", "plaguebringer.miasma", "plaguebringer.wasting", "plaguebringer.pandemic"}},
 }};
 
 inline const AscendancyDefinition* findAscendancy(const std::string& id) {

@@ -96,7 +96,7 @@ enum class PassiveKind { None, Riposte, Bloodlust, ShieldTraining, Marksmanship,
     // The third batch (Shadow, Radiance, Shield) and its resonances.
     Dread, Bulwark, Twilight, TemplarsEdge, HallowedGuard,
     // The fourth batch (Bow, Stealth, Daggers) and its resonances.
-    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, BrittleSlag, Pyroclasm, Overcharge, EyeOfTheStorm, Marrow, GrownGuard, BrittleCold, CreepingFrost, Thornborn, BriarSnares, PackTactics, Blooded, Thornmaw, PackOfTwo, RunningMate, GuardianInstinct, UnseenHand, AssassinsEdge,
+    CutDeep, FireArrows, SoftSteps, HoldTheLine, BreakRanks, Tempered, HeatSink, HeatEngine, BurningPlate, Overheat, BrittleSlag, Pyroclasm, Overcharge, EyeOfTheStorm, Marrow, GrownGuard, BrittleCold, CreepingFrost, Thornborn, BriarSnares, PackTactics, Blooded, Thornmaw, PackOfTwo, RunningMate, GuardianInstinct, Contagion, Outbreak, Miasma, Wasting, UnseenHand, AssassinsEdge,
     // The fifth batch (Earth, Tide, Venom) and its resonances.
     Aftershock, Tidecaller, Virulence, Mire, FoulWater, EnvenomedBlades,
     // The sixth batch (Spear, Mace, Crossbow) and its resonances.
@@ -259,6 +259,9 @@ struct Talent {
     // bite doubles. callWild: turns you and Thornmaw run wild.
     bool pointLeap=false;
     int callWild=0;
+    // Plaguebringer. patientZero: the plague it lays grows with Intelligence.
+    // pandemic: every plagued foe in sight has its plague doubled and lengthened.
+    bool patientZero=false, pandemic=false;
     int drainPercent=0, stayHiddenPercent=0;
     bool huntersMark=false, returnConcealed=false;
     int committedRhythm=-1;

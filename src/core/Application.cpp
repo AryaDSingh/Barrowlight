@@ -1430,6 +1430,21 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
             for (auto& m:monsters_) if (packBeast(*m) && m->stats().hp>0) m->statusEffects().apply({StatusEffectType::Hasted,talent.sicEm,30});
             log("Your pack turns as one.");
         }
+        if (talent.patientZero)
+            for (Actor* t:affected) if (auto* foe=dynamic_cast<Monster*>(t); foe && !foe->allied) {
+                foe->statusEffects().remove(StatusEffectType::Plague);
+                foe->statusEffects().apply({StatusEffectType::Plague,6,3+player_.stats().intelligence/10});
+                log(foe->name()," sickens.");
+            }
+        if (talent.pandemic) {
+            int spread=0;
+            for (auto& m:monsters_) {
+                if (m->allied || m->stats().hp<=0 || !visibleTile(m->position())) continue;
+                for (auto& e:m->statusEffects().active())
+                    if (e.type==StatusEffectType::Plague) { e.magnitude=std::min(10,e.magnitude*2); e.turnsRemaining+=5; ++spread; }
+            }
+            log(spread?"The plague blooms in every one of them.":"There is no plague here to feed.");
+        }
         if (talent.pointLeap)
             for (Actor* t:affected) if (auto* foe=dynamic_cast<Monster*>(t); foe && !foe->allied) if (auto* maw=thornmaw()) {
                 const auto at=foe->position(); Position best{-1,-1}; int bestD=1000;
@@ -2270,6 +2285,9 @@ void Application::processMonsterTurns() {
                     AIDecision decision=enemyDecision(*monster,opponent);
                     if (const int shaken=actor->statusEffects().magnitudeOf(StatusEffectType::Shaken))
                         decision.attackPower=decision.attackPower*(100-shaken)/100;
+                    if (const int wasting=player_.talents().passiveValue(PassiveKind::Wasting,player_.stats());
+                        wasting && !monster->allied && actor->statusEffects().has(StatusEffectType::Plague))
+                        decision.attackPower=decision.attackPower*(100-wasting)/100;
                     if (monster->allied && decision.attackPower>0) decision.attackPower+=player_.statusEffects().magnitudeOf(StatusEffectType::BoneLord);
                     if (const int anvil=player_.statusEffects().magnitudeOf(StatusEffectType::Anvil); anvil && decision.target==&player_)
                         decision.attackPower=decision.attackPower*(100-anvil)/100;
@@ -2992,15 +3010,27 @@ void Application::checkAndHandleDeath(Actor& actor) {
     if (defeated) eventDeath(*defeated);
     if (defeated) judgeKill(*defeated);
     if (defeated && defeated->statusEffects().has(StatusEffectType::Plague)) {
-        const auto plague=defeated->statusEffects().magnitudeOf(StatusEffectType::Plague);
+        const bool virulent=player_.talents().passiveValue(PassiveKind::Outbreak,player_.stats())>0; // Outbreak
+        const auto plague=virulent ? std::min(10,defeated->statusEffects().magnitudeOf(StatusEffectType::Plague)+1)
+                                   : defeated->statusEffects().magnitudeOf(StatusEffectType::Plague);
+        const int reach=virulent?3:1;
         int spread=0;
         for (auto& m:monsters_) {
             if (m.get()==defeated || m->allied || m->stats().hp<=0) continue;
             const auto p=m->position(), at=defeated->position();
-            if (std::max(std::abs(p.x-at.x),std::abs(p.y-at.y))>1) continue;
+            if (std::max(std::abs(p.x-at.x),std::abs(p.y-at.y))>reach) continue;
             m->statusEffects().apply({StatusEffectType::Plague,5,plague}); ++spread;
         }
         if (spread) log("The plague spreads to ",spread," more!");
+        // Miasma: the plagued dead leave poison in the air.
+        if (player_.talents().passiveValue(PassiveKind::Miasma,player_.stats())) {
+            const auto at=defeated->position();
+            for (int dy=-1;dy<=1;++dy) for (int dx=-1;dx<=1;++dx) {
+                const Position p{at.x+dx,at.y+dy};
+                const auto s=surfaceAt(p);
+                if (map_.isWalkable(p.x,p.y) && (s==SurfaceType::None || s==SurfaceType::Blood || s==SurfaceType::Water)) setSurface(p,SurfaceType::Gas,6);
+            }
+        }
     }
     if (defeated) {
         if (const int thief=player_.talents().passiveValue(PassiveKind::SpellThief,player_.stats()); thief && !defeated->allied) {

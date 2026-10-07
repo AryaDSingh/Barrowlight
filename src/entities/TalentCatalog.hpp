@@ -1462,6 +1462,16 @@ inline const std::vector<TalentDefinition>& talentCatalog() {
         node("paragon","paragon.resilience",Str,passive("Resilience","Direct hits on you deal 2 less.",PassiveKind::Resilience,2));
         node("paragon","paragon.wellspring",Int,passive("Wellspring","+10% maximum life and maximum mana.",PassiveKind::Wellspring,10));
         // Forgeknight (STR): heat as armour.
+        // Plaguebringer (Rot 6, Dark 6): sickness that spreads on death, room to room.
+        t=buff("Patient Zero","Infect a foe in sight with Plague for 6 turns: it loses 3 life a turn, and 1 more for every 10 Intelligence you have. When it dies, the plague spreads.",StatusEffectType::Plague,6,3,4,8);
+        t.targeting=TargetingMode::RangedEnemyInSight; t.patientZero=true; node("plaguebringer","plaguebringer.patient_zero",Int,t);
+        node("plaguebringer","plaguebringer.contagion",Int,passive("Contagion","Each turn, a plagued foe passes its plague to every foe in the 8 tiles around it, not only when it dies.",PassiveKind::Contagion,1));
+        node("plaguebringer","plaguebringer.outbreak",Int,passive("Outbreak","When a plagued foe dies, its plague reaches every foe within 3 tiles instead of the 8 around it, and grows 1 stronger with each jump, up to 10.",PassiveKind::Outbreak,1));
+        node("plaguebringer","plaguebringer.miasma",Int,passive("Miasma","A plagued foe that dies leaves poison gas on its tile and the 8 around it. Fire sets the gas off.",PassiveKind::Miasma,1));
+        node("plaguebringer","plaguebringer.wasting",Int,passive("Wasting","Plagued foes deal 25% less damage.",PassiveKind::Wasting,25));
+        t=Talent{}; t.name="Pandemic"; t.targeting=TargetingMode::Self; t.effectKind=TalentEffectKind::SelfBuff;
+        t.description="Every plagued foe in sight has its plague doubled in strength, up to 10, and it lasts 5 more turns.";
+        t.pandemic=true; t.manaCost=10; t.cooldownTurns=16; node("plaguebringer","plaguebringer.pandemic",Int,t);
         // Beastwarden (Hunt 6, Motion 6): Thornmaw, a great hound that grows with you.
         node("beastwarden","beastwarden.thornmaw",Dex,passive("Thornmaw","Thornmaw, a great hound, walks with you from floor to floor. It has 30 life and 8 more per level, and 6 Strength and 1 more for every 2 levels. If it falls, it finds you again on the next floor.",PassiveKind::Thornmaw,1));
         t=buff("Point","Point at a foe in sight: it is marked, Thornmaw leaps to its side, and its next bite on it deals double.",StatusEffectType::Marked,3,1,4,8);

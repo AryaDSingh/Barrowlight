@@ -4686,6 +4686,85 @@ struct ApplicationRewardsTestAccess {
             app.monsters_.clear(); app.player_.statusEffects().active().clear(); app.player_.ascendancy.clear(); app.wardenFoe_=nullptr;
         }
 
+        // The Plaguebringer.
+        {
+            setup(PlayerClass::Mage);
+            app.player_.trialKeys=app.player_.trialsCleared=1; app.player_.ascendancyPoints=1;
+            check(!ascendancyQualified(app.player_,"plaguebringer"),"The Plaguebringer waits for its colours");
+            giveColour(app.player_,Affinity::Rot,6); giveColour(app.player_,Affinity::Dark,6);
+            check(ascendancyQualified(app.player_,"plaguebringer"),"Rot 6 and Dark 6 allow the Plaguebringer");
+            app.chooseAscendancy("plaguebringer"); app.ascendancyMenu_=false; app.ascendancyChoice_=false;
+            check(app.player_.ascendancy=="plaguebringer","You become a Plaguebringer");
+            app.player_.statusEffects().active().clear(); app.updateFieldOfView();
+            const auto learn=[&](const char* id) { app.player_.talents().learnTalent(findTalentDefinition(id)->ranks[0]); return app.player_.talents().knownTalents().size()-1; };
+            const auto ready=[&] { app.player_.talents().resetCooldowns(); app.player_.stats().mana=app.player_.stats().maxMana; app.currentActor_=&app.player_; };
+            const auto foeAt=[&](Position p) { auto f=createMonster(MonsterType::Goblin,p); f->stats().hp=f->stats().maxHp=200; f->stats().dexterity=0; f->setXpReward(0);
+                auto* g=f.get(); app.scheduler_.add(*g); app.monsters_.push_back(std::move(f)); return g; };
+            const auto clear=[&] { for (auto& m:app.monsters_) app.scheduler_.remove(*m); app.monsters_.clear(); app.clearSurfaces(); };
+            const auto plague=[](Monster* m) { return m->statusEffects().magnitudeOf(StatusEffectType::Plague); };
+            // Patient Zero.
+            app.player_.stats().intelligence=20;
+            auto* zero=foeAt({14,10});
+            const auto infect=learn("plaguebringer.patient_zero"); ready(); app.tryUseTalent(infect,{14,10});
+            check(plague(zero)==5,"Patient Zero: the plague grows with Intelligence (3, +1 per 10)");
+            // Contagion.
+            learn("plaguebringer.contagion");
+            auto* beside=foeAt({15,10}); auto* apart=foeAt({18,10});
+            app.tickStormcall();
+            check(plague(beside)==5 && plague(apart)==0,"Contagion: the foe beside a plagued one catches it, the one apart doesn't");
+            clear();
+            // Outbreak: further, and stronger with each jump.
+            learn("plaguebringer.outbreak");
+            auto* carrier=foeAt({14,10}); carrier->statusEffects().apply({StatusEffectType::Plague,5,4});
+            auto* near=foeAt({17,10}); auto* far=foeAt({18,10});
+            carrier->stats().hp=0; app.checkAndHandleDeath(*carrier); app.removeDeadMonsters();
+            check(plague(near)==5 && plague(far)==0,"Outbreak: the plague reaches 3 tiles, and grows 1 stronger");
+            auto* top=foeAt({14,14}); top->statusEffects().apply({StatusEffectType::Plague,5,10});
+            auto* next=foeAt({15,14});
+            top->stats().hp=0; app.checkAndHandleDeath(*top); app.removeDeadMonsters();
+            check(plague(next)==10,"It never grows past 10");
+            clear();
+            // Miasma.
+            learn("plaguebringer.miasma");
+            auto* sick=foeAt({14,10}); sick->statusEffects().apply({StatusEffectType::Plague,5,3});
+            sick->stats().hp=0; app.checkAndHandleDeath(*sick); app.removeDeadMonsters();
+            check(app.surfaceAt({14,10})==SurfaceType::Gas && app.surfaceAt({15,11})==SurfaceType::Gas,"Miasma: the plagued dead leave poison gas on the 8 tiles around");
+            clear();
+            // Wasting.
+            learn("plaguebringer.wasting");
+            const auto blows=[&](bool sickly) {
+                auto* brute=foeAt({11,10}); brute->stats().strength=30; brute->stats().dexterity=10;
+                if (sickly) brute->statusEffects().apply({StatusEffectType::Plague,99,1});
+                int total=0;
+                for (int i=0;i<12;++i) {
+                    app.player_.stats().hp=app.player_.stats().maxHp=500; app.player_.statusEffects().active().clear();
+                    brute->stats().hp=200;
+                    app.currentActor_=brute; app.processMonsterTurns();
+                    total+=500-app.player_.stats().hp;
+                }
+                clear(); return total;
+            };
+            const int healthy=blows(false), wasted=blows(true);
+            check(healthy>0 && wasted*100<=healthy*85,"Wasting: plagued foes deal less damage");
+            // Pandemic.
+            auto* a=foeAt({13,10}); a->statusEffects().apply({StatusEffectType::Plague,3,3});
+            auto* b=foeAt({13,12}); b->statusEffects().apply({StatusEffectType::Plague,3,6});
+            auto* healthyFoe=foeAt({13,8});
+            app.updateFieldOfView();
+            const auto pandemic=learn("plaguebringer.pandemic"); ready(); app.tryUseTalent(pandemic,app.player_.position());
+            check(plague(a)==6 && plague(b)==10 && plague(healthyFoe)==0,"Pandemic: every plague in sight doubles, up to 10");
+            check(std::any_of(a->statusEffects().active().begin(),a->statusEffects().active().end(),
+                  [](const StatusEffectInstance& e){ return e.type==StatusEffectType::Plague && e.turnsRemaining>=6; }),"and lasts 5 more turns");
+            // Your allies never catch it.
+            clear();
+            auto* hound=app.spawnHound(0);
+            auto* host=foeAt({hound->position().x+1,hound->position().y}); host->statusEffects().apply({StatusEffectType::Plague,5,5});
+            app.tickStormcall();
+            host->stats().hp=0; app.checkAndHandleDeath(*host); app.removeDeadMonsters();
+            check(!hound->statusEffects().has(StatusEffectType::Plague),"Your own beasts never catch the plague");
+            clear(); app.player_.statusEffects().active().clear(); app.player_.ascendancy.clear();
+        }
+
         app.window_.close();
         std::cout << checks << " reward checks, " << failures << " failures.\n";
         return failures ? 1 : 0;

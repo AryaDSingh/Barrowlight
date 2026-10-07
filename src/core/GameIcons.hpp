@@ -136,6 +136,8 @@ inline std::string talentIcon(const Talent& talent) {
         {"warbanner.ranks", "impact-point"}, {"warbanner.last", "checked-shield"}, {"warbanner.charge", "charging-bull"},
         {"forgeknight.heat_engine", "campfire"}, {"forgeknight.slam", "meteor-impact"}, {"forgeknight.quench", "big-wave"},
         {"forgeknight.burning_plate", "magic-shield"}, {"forgeknight.overheat", "fire-dash"}, {"forgeknight.anvil", "bordered-shield"},
+        {"plaguebringer.patient_zero", "virus"}, {"plaguebringer.contagion", "plague-doctor-profile"}, {"plaguebringer.outbreak", "death-zone"},
+        {"plaguebringer.miasma", "poison-gas"}, {"plaguebringer.wasting", "broken-bone"}, {"plaguebringer.pandemic", "cursed-star"},
         {"beastwarden.thornmaw", "wolverine-claws"}, {"beastwarden.point", "target-arrows"}, {"beastwarden.pack_of_two", "crossed-swords"},
         {"beastwarden.running_mate", "run"}, {"beastwarden.guardian", "shield-reflect"}, {"beastwarden.call_wild", "shouting"},
         {"packmaster.call", "wolverine-claws"}, {"packmaster.sic", "target-arrows"}, {"packmaster.bond", "cut-palm"}, {"packmaster.tactics", "crossed-swords"},

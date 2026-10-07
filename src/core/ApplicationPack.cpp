@@ -75,7 +75,24 @@ void Application::spawnThornmaw() {
             }
 }
 
+// Contagion (Plaguebringer): each turn, the plagued pass it to the foes beside them.
+void Application::tickContagion() {
+    if (!player_.talents().passiveValue(PassiveKind::Contagion, player_.stats())) return;
+    std::vector<std::pair<Monster*, int>> caught;
+    for (const auto& carrier : monsters_) {
+        if (carrier->allied || carrier->stats().hp <= 0 || !carrier->statusEffects().has(StatusEffectType::Plague)) continue;
+        const int plague = carrier->statusEffects().magnitudeOf(StatusEffectType::Plague);
+        for (auto& m : monsters_)
+            if (m != carrier && !m->allied && m->stats().hp > 0 && !m->statusEffects().has(StatusEffectType::Plague) &&
+                std::max(std::abs(m->position().x - carrier->position().x), std::abs(m->position().y - carrier->position().y)) <= 1)
+                caught.push_back({m.get(), plague});
+    }
+    for (const auto& [m, plague] : caught)
+        if (!m->statusEffects().has(StatusEffectType::Plague)) m->statusEffects().apply({StatusEffectType::Plague, 5, plague});
+}
+
 void Application::tickPack() {
+    tickContagion();
     if (wardenFoe_ && std::none_of(monsters_.begin(), monsters_.end(), [&](const auto& m) { return m.get() == wardenFoe_ && m->stats().hp > 0; }))
         wardenFoe_ = nullptr, wardenPin_ = false;
     // Thornmaw walks with you, unless it fell on this floor.

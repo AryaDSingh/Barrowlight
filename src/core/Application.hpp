@@ -229,6 +229,7 @@ private:
     Monster* spawnHound(int hp);
     void refreshPack();
     void tickPack();
+    void tickContagion();
     void stablePack();      // leaving a floor: your hounds wait to follow you
     void callPackBack();    // arriving: they come to your side
     void packKill();
