@@ -138,6 +138,7 @@ sf::Color buffColor(StatusEffectType type) {
         case StatusEffectType::Encased: return sf::Color(150, 210, 250);
         case StatusEffectType::Thornguard: case StatusEffectType::Overgrowth: case StatusEffectType::BriarHeart: return sf::Color(140, 170, 70);
         case StatusEffectType::AlphasHowl: case StatusEffectType::FeralBond: case StatusEffectType::CallOfTheWild: return sf::Color(200, 150, 90);
+        case StatusEffectType::Vampirism: return sf::Color(190, 40, 60);
         default: return kHoly;
     }
 }

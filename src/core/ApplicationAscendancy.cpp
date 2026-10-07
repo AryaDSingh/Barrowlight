@@ -155,6 +155,7 @@ bool Application::enterTrial(int trial) {
         setProps(props);
     }
     forgeSummoned_ = false; broodCalled_ = false; thornmawDown_ = false;
+    floorNotice_.clear(); // the floor you left isn't here
     if (hollow) // the Hollow's arena is overgrown: brambles between the pillars
         for (const Position p : {Position{cx - 5, cy}, Position{cx + 5, cy}, Position{cx - 3, cy - 3}, Position{cx + 3, cy - 3}, Position{cx, cy + 2}})
             for (int dy = -1; dy <= 1; ++dy)

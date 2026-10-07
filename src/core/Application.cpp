@@ -1231,6 +1231,9 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
     const int heldHeat=player_.statusEffects().magnitudeOf(StatusEffectType::Heat);
     // Shatter Lance: twice as hard against a foe standing on ice.
     if (talent.onIceDouble && surfaceAt(cursor)==SurfaceType::Ice) talent.damagePercent*=2;
+    // Vampirism: +25% in darkness, 25% less in light.
+    if (player_.statusEffects().has(StatusEffectType::Vampirism) && talent.effectKind==TalentEffectKind::Damage)
+        talent.damagePercent=talent.damagePercent*(tileLit(player_.position())?75:125)/100;
     // Bramble Lash: twice as hard against a foe in thorns, and it pins.
     if (talent.onThornsDouble && surfaceAt(cursor)==SurfaceType::Thorns) {
         talent.damagePercent*=2; talent.onHitEffect=StatusEffectInstance{StatusEffectType::Pinned,talent.lashPin,0};
@@ -1790,6 +1793,11 @@ bool Application::tryUseTalent(std::size_t talentIndex, Position cursor) {
                     const auto* struck=dynamic_cast<const Monster*>(target);
                     soundManager_.playHit(talentSound(talent,held && held->definition()?held->definition()->weaponKind:WeaponKind::None),
                                           critical,!struck || bleeds(struck->type()));
+                    // Vampirism: your melee hits drink a fifth of what they deal.
+                    if (struck && isMeleeAttack(talent) && hpBefore>target->stats().hp && player_.statusEffects().has(StatusEffectType::Vampirism) && bleeds(struck->type())) {
+                        const int drunk=std::max(1,(hpBefore-std::max(0,target->stats().hp))/5);
+                        player_.stats().hp=std::min(player_.stats().maxHp,player_.stats().hp+drunk);
+                    }
                     // A Thornback's spines cut whoever strikes it up close.
                     if (struck && struck->type()==MonsterType::Thornback && isMeleeAttack(talent)) {
                         player_.stats().hp-=3; flashActor(player_);
@@ -2780,6 +2788,11 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
                     if (const auto* lord=dynamic_cast<const Monster*>(&actor); lord && lord->eventChampion==kChampionVampire && damage>0) {
                         actor.stats().hp=std::min(actor.stats().maxHp,actor.stats().hp+damage);
                         log(actor.name()," drinks your blood and heals ",damage,".");
+                        // The first bite that drinks from you leaves his curse in your blood.
+                        if (decision.target==&player_ && !player_.statusEffects().has(StatusEffectType::Vampirism)) {
+                            player_.statusEffects().apply({StatusEffectType::Vampirism,kVampirismTurns,1});
+                            log("His bite burns cold, and something in your blood answers. The dark looks brighter now.");
+                        }
                     }
                     if (const int retribution=decision.target->talents().passiveValue(PassiveKind::Retribution,decision.target->stats());
                         retribution && guard && actor.stats().hp>0 && std::max(std::abs(actor.position().x-decision.target->position().x),
@@ -3213,8 +3226,10 @@ void Application::updateFieldOfView() {
     // smothering keeps the lit tiles in view: that is its darkness, not yours.)
     const auto here = player_.position();
     const bool doused = darknessEnabled_ && !player_.lightLit;
+    // Vampirism: you see in the dark, up to 6 tiles away.
+    const int nightEyes = player_.statusEffects().has(StatusEffectType::Vampirism) ? kVampireSight : 1;
     visible.erase(std::remove_if(visible.begin(), visible.end(), [&](Position p) {
-        const bool beside = std::max(std::abs(p.x - here.x), std::abs(p.y - here.y)) <= 1;
+        const bool beside = std::max(std::abs(p.x - here.x), std::abs(p.y - here.y)) <= nightEyes;
         return doused ? !beside : !tileLit(p) && !beside;
     }), visible.end());
     exploredMap_.update(visible);
@@ -3240,6 +3255,8 @@ bool Application::canSee(const Actor& viewer, Position target) const {
     const auto* monster = dynamic_cast<const Monster*>(&viewer);
     if (monster && (monster->allied || seesInDark(monster->type()))) return true;
     const auto p = viewer.position();
+    if (&viewer == &player_ && player_.statusEffects().has(StatusEffectType::Vampirism) &&
+        std::max(std::abs(p.x - target.x), std::abs(p.y - target.y)) <= kVampireSight) return true;
     return tileLit(target) || std::max(std::abs(p.x - target.x), std::abs(p.y - target.y)) <= 1;
 }
 

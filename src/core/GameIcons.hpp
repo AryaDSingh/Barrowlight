@@ -270,6 +270,7 @@ inline std::string statusIcon(StatusEffectType type) {
         case StatusEffectType::AlphasHowl: return "shouting";
         case StatusEffectType::FeralBond: return "linked-rings";
         case StatusEffectType::CallOfTheWild: return "run";
+        case StatusEffectType::Vampirism: return "evil-moon";
     }
     return "aura";
 }

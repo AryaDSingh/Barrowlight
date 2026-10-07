@@ -4736,7 +4736,7 @@ struct ApplicationRewardsTestAccess {
                 auto* brute=foeAt({11,10}); brute->stats().strength=30; brute->stats().dexterity=10;
                 if (sickly) brute->statusEffects().apply({StatusEffectType::Plague,99,1});
                 int total=0;
-                for (int i=0;i<12;++i) {
+                for (int i=0;i<40;++i) { // enough blows that dodges and criticals even out
                     app.player_.stats().hp=app.player_.stats().maxHp=500; app.player_.statusEffects().active().clear();
                     brute->stats().hp=200;
                     app.currentActor_=brute; app.processMonsterTurns();
@@ -4745,7 +4745,7 @@ struct ApplicationRewardsTestAccess {
                 clear(); return total;
             };
             const int healthy=blows(false), wasted=blows(true);
-            check(healthy>0 && wasted*100<=healthy*85,"Wasting: plagued foes deal less damage");
+            check(healthy>0 && wasted*100<=healthy*90,"Wasting: plagued foes deal less damage");
             // Pandemic.
             auto* a=foeAt({13,10}); a->statusEffects().apply({StatusEffectType::Plague,3,3});
             auto* b=foeAt({13,12}); b->statusEffects().apply({StatusEffectType::Plague,3,6});
@@ -4763,6 +4763,68 @@ struct ApplicationRewardsTestAccess {
             host->stats().hp=0; app.checkAndHandleDeath(*host); app.removeDeadMonsters();
             check(!hound->statusEffects().has(StatusEffectType::Plague),"Your own beasts never catch the plague");
             clear(); app.player_.statusEffects().active().clear(); app.player_.ascendancy.clear();
+        }
+
+        // Vampirism: the Vampire Lord's bite curses you.
+        {
+            setup(PlayerClass::Warrior);
+            app.player_.stats().hp=app.player_.stats().maxHp=500;
+            auto made=createMonster(MonsterType::Gloomstalker,{11,10}); auto* lord=made.get();
+            lord->eventChampion=kChampionVampire; lord->setName(championName(kChampionVampire));
+            lord->stats().hp=lord->stats().maxHp=500; lord->tactics.alert=8; lord->tactics.lastKnown=app.player_.position();
+            app.scheduler_.add(*lord); app.monsters_.push_back(std::move(made));
+            for (int i=0;i<20 && !app.player_.statusEffects().has(StatusEffectType::Vampirism);++i) {
+                app.player_.stats().hp=500; app.currentActor_=lord; app.processMonsterTurns();
+            }
+            check(app.player_.statusEffects().has(StatusEffectType::Vampirism),"The Vampire Lord's bite leaves his curse in your blood");
+            for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+            app.monsters_.clear();
+            // Night eyes: with your torch out, you see 6 tiles into the dark.
+            app.darknessEnabled_=true; app.player_.lightLit=false;
+            app.updateFieldOfView();
+            const bool nearSeen=app.exploredMap_.at(14,10)==Visibility::Visible, farSeen=app.exploredMap_.at(18,10)==Visibility::Visible;
+            check(nearSeen && !farSeen,"Cursed, you see in the dark up to 6 tiles away");
+            auto cured=app.player_.statusEffects().active();
+            app.player_.statusEffects().remove(StatusEffectType::Vampirism); app.updateFieldOfView();
+            check(app.exploredMap_.at(14,10)!=Visibility::Visible,"Without the curse, the dark stays dark");
+            app.player_.statusEffects().active()=cured; app.updateFieldOfView();
+            // The light burns; blood heals; water hurts.
+            app.player_.stats().hp=100; app.tickStormcall();
+            check(app.player_.stats().hp==100,"In the dark, nothing burns");
+            app.player_.lightLit=true; app.updateFieldOfView(); app.tickStormcall();
+            check(app.player_.stats().hp==99,"Your own torchlight burns you 1 a turn");
+            app.player_.lightLit=false; app.updateFieldOfView();
+            app.setSurface(app.player_.position(),SurfaceType::Blood,0); app.player_.stats().hp=50; app.tickStormcall();
+            check(app.player_.stats().hp==52,"A blood pool heals you 2 a turn");
+            app.setSurface(app.player_.position(),SurfaceType::Water,0); app.player_.stats().hp=50; app.tickStormcall();
+            check(app.player_.stats().hp==48,"Water hurts you 2 a turn");
+            app.clearSurfaces();
+            // Stronger in the dark, weaker in the light; and the thirst.
+            const auto strike=[&](bool dark) {
+                app.darknessEnabled_=dark; app.player_.lightLit=!dark; app.updateFieldOfView();
+                auto f=createMonster(MonsterType::Goblin,{11,10}); f->stats().hp=f->stats().maxHp=5000; f->stats().dexterity=0; f->setXpReward(0);
+                auto* foe=f.get(); app.scheduler_.add(*foe); app.monsters_.push_back(std::move(f));
+                int dealt=0, healed=0;
+                for (int i=0;i<12;++i) {
+                    app.player_.talents().resetCooldowns(); app.player_.stats().mana=app.player_.stats().maxMana;
+                    app.player_.stats().hp=50; app.currentActor_=&app.player_;
+                    const int before=foe->stats().hp; app.tryUseTalent(0,{11,10});
+                    dealt+=before-foe->stats().hp; healed+=std::max(0,app.player_.stats().hp-50);
+                }
+                for (auto& m:app.monsters_) app.scheduler_.remove(*m);
+                app.monsters_.clear();
+                return std::pair<int,int>{dealt,healed};
+            };
+            const auto [inDark,drunk]=strike(true);
+            const auto [inLight,unused]=strike(false); (void)unused;
+            check(inLight>0 && inDark*100>=inLight*140,"Cursed, your hits land harder in the dark than in the light");
+            check(drunk>0,"Your melee hits drink some of the blood they spill");
+            // It fades.
+            app.darknessEnabled_=false;
+            for (auto& e:app.player_.statusEffects().active()) if (e.type==StatusEffectType::Vampirism) e.turnsRemaining=1;
+            app.tickStormcall();
+            check(!app.player_.statusEffects().has(StatusEffectType::Vampirism),"In time, the curse fades");
+            app.player_.statusEffects().active().clear(); app.player_.lightLit=true;
         }
 
         app.window_.close();

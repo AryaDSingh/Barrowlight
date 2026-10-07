@@ -133,6 +133,7 @@ std::string statusTooltip(const StatusEffectInstance& e) {
     case StatusEffectType::AlphasHowl: return "Your beasts are hastened and their bites make foes bleed; foes beside you are shaken.";
     case StatusEffectType::FeralBond: return "Half of every hit on you goes to your nearest beast instead.";
     case StatusEffectType::CallOfTheWild: return "You and Thornmaw are hastened, and every foe that falls heals you both 10.";
+    case StatusEffectType::Vampirism: return "You see in the dark up to 6 tiles away. In darkness your hits deal +25%; in light, 25% less. Your melee hits heal you a fifth of the damage they deal. Light burns you 1 a turn, your own torch too; blood pools heal you 2 a turn, and water hurts you 2.";
     case StatusEffectType::Heat: return "Heat "+n+". It builds near furnaces and fire and fades away from them; water quenches it. At 10 or more it burns you for 2 a turn.";
     case StatusEffectType::Shock: return "Enables Lightning follow-ups. Certain talents consume Shock for an additional effect.";
     case StatusEffectType::Concealed: return "Enemies roll detection using distance, Dexterity and concealment rank. Most attacks and taking damage reveal you.";
@@ -801,7 +802,9 @@ void Application::renderHudTooltips() {
     // --- The floor's events, announced on arrival ----------------------------
     if (!floorNotice_.empty() && floorNoticeClock_.getElapsedTime().asSeconds() < 8.f && mode_==GameMode::Playing) {
         const float fade=std::clamp(8.f-floorNoticeClock_.getElapsedTime().asSeconds(),0.f,1.f);
-        const sf::FloatRect band{{playLayout::screenWidth/2-320,10.f},{640,0}};
+        // Below the boss's frame when it shows (both sit at the top centre).
+        const bool bossFrame=boss_ && boss_->stats().hp>0 && exploredMap_.at(boss_->position().x,boss_->position().y)==Visibility::Visible;
+        const sf::FloatRect band{{playLayout::screenWidth/2-320,bossFrame?66.f:10.f},{640,0}};
         float y=band.position.y+10;
         const float width=band.size.x-36;
         float probe=y; ui_.paragraph(window_,floorNotice_,-10000,probe,width,16,sf::Color::Transparent); // measure only

@@ -91,8 +91,27 @@ void Application::tickContagion() {
         if (!m->statusEffects().has(StatusEffectType::Plague)) m->statusEffects().apply({StatusEffectType::Plague, 5, plague});
 }
 
+// Vampirism, each of your turns: the light burns, blood pools heal, water hurts.
+void Application::tickVampirism() {
+    const auto curse = std::find_if(player_.statusEffects().active().begin(), player_.statusEffects().active().end(),
+                                    [](const StatusEffectInstance& e) { return e.type == StatusEffectType::Vampirism; });
+    if (curse == player_.statusEffects().active().end()) return;
+    if (curse->turnsRemaining <= 1) { log("The cold leaves your blood. The dark is only dark again."); player_.statusEffects().remove(StatusEffectType::Vampirism); return; }
+    const auto me = player_.position();
+    int harm = 0;
+    if (darknessEnabled_ && tileLit(me)) { harm += 1; log(player_.lightLit ? "Your own torchlight burns you." : "The light burns you."); }
+    const auto ground = surfaceAt(me);
+    if (ground == SurfaceType::Water) { harm += 2; log("The water scalds you."); }
+    if (ground == SurfaceType::Blood) player_.stats().hp = std::min(player_.stats().maxHp, player_.stats().hp + 2);
+    if (harm) {
+        player_.stats().hp -= harm; flashActor(player_);
+        harmSource_ = "the curse in your blood"; checkAndHandleDeath(player_); harmSource_.clear();
+    }
+}
+
 void Application::tickPack() {
     tickContagion();
+    tickVampirism();
     if (wardenFoe_ && std::none_of(monsters_.begin(), monsters_.end(), [&](const auto& m) { return m.get() == wardenFoe_ && m->stats().hp > 0; }))
         wardenFoe_ = nullptr, wardenPin_ = false;
     // Thornmaw walks with you, unless it fell on this floor.

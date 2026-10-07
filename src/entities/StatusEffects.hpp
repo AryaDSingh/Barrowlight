@@ -4,6 +4,8 @@
 
 namespace engine {
 
+// The Vampire Lord's curse: how long it lasts, and how far you see in the dark.
+inline constexpr int kVampirismTurns = 200, kVampireSight = 6;
 enum class StatusEffectType {
     Poison,    // damage per turn
     Stun,      // skip the affected actor's next action
@@ -40,6 +42,7 @@ enum class StatusEffectType {
     AlphasHowl,      // your beasts are hastened and their bites bleed (Packmaster)
     FeralBond,       // half of each hit on you goes to your nearest beast (Packmaster)
     CallOfTheWild,   // you and Thornmaw are hastened; each kill heals you both (Beastwarden)
+    Vampirism,       // the Vampire Lord's curse: night eyes and a thirst, but light burns (save format 45)
 };
 
 struct StatusEffectInstance {
@@ -148,6 +151,7 @@ inline const char* statusName(StatusEffectType type) {
     case StatusEffectType::AlphasHowl: return "Alpha's Howl";
     case StatusEffectType::FeralBond: return "Feral Bond";
     case StatusEffectType::CallOfTheWild: return "Call of the Wild";
+    case StatusEffectType::Vampirism: return "Vampirism";
     case StatusEffectType::UnseenReady: return "Unseen ready";
     case StatusEffectType::StunRecovery: return "Stun recovery";
     }
