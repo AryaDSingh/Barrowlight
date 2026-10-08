@@ -114,6 +114,7 @@ inline bool ascendancyQualified(const std::function<int(const std::string&)>& ra
     return reached>=need.anyCount;
 }
 inline bool ascendancyQualified(const Player& p,const std::string& id) {
+    if (p.sandbox) return true; // the sandbox lets you try any ascendancy
     return ascendancyQualified([&](const std::string& t){ return p.talents().rankOf(t); },id);
 }
 inline std::string ascendancyNeedText(const Player& p,const std::string& id) {

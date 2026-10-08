@@ -284,6 +284,8 @@ private:
     void sandboxSpawn(int type);
     void sandboxItem(const ItemDefinition& definition);
     void sandboxRespec();
+    void sandboxMaxOut();
+    void sandboxTravel(int dungeon, int depth);
     void sandboxCharacter(int action);
     void sandboxWorld(int action);
     void handleSandboxKey(sf::Keyboard::Key key);

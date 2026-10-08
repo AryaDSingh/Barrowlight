@@ -2,8 +2,12 @@
 #include "entities/MonsterFactory.hpp"
 #include "entities/PlayerLeveling.hpp"
 #include "entities/TalentProgression.hpp"
+#include "entities/DungeonProgression.hpp"
+#include "entities/Ascendancy.hpp"
+#include "entities/Lore.hpp"
 
 #include <algorithm>
+#include <bitset>
 
 namespace engine {
 
@@ -12,7 +16,8 @@ namespace engine {
 // changed on the fly. Nothing in it is saved.
 namespace {
 const sf::FloatRect kPanel{{790, 30}, {470, 660}};
-sf::FloatRect sandboxTab(int i) { return {{806.f + 112.f * i, 46}, {106, 30}}; }
+sf::FloatRect sandboxTab(int i) { return {{806.f + 90.f * i, 46}, {85, 30}}; }
+constexpr int kSandboxTabs = 5;
 sf::FloatRect sandboxToggle(int i, int count, float y = 86) {
     const float w = (kPanel.size.x - 32 - 6.f * (count - 1)) / count;
     return {{806.f + (w + 6) * i, y}, {w, 28}};
@@ -49,10 +54,12 @@ const std::string& monsterName(int type) {
 }
 const char* characterAction(int i, bool god) {
     static const char* labels[]{"+1 level", "+5 levels", "+5 ability points", "+5 utility points", "+1 tree point", "Respec everything",
-                                "+5 Strength", "+5 Dexterity", "+5 Intelligence", "Full heal", nullptr, "Open talents"};
+                                "+5 Strength", "+5 Dexterity", "+5 Intelligence", "Full heal", nullptr, "Open talents", "Max out", "Choose ascendancy"};
     return i == 10 ? (god ? "God mode: on" : "God mode: off") : labels[i];
 }
-constexpr int kCharacterActions = 12;
+constexpr int kCharacterActions = 14;
+// The Travel tab: every dungeon, a button for each of its depths.
+sf::FloatRect travelDepth(int dungeon, int depth) { return {{806.f + 44.f * (depth - 1), 116.f + 74.f * dungeon}, {40, 30}}; }
 const char* worldAction(int i) {
     static const char* labels[]{"Reveal the map", "Kill every foe", "Ready all cooldowns", "Spawn a chest", "Spawn a mimic", "Previous floor", "Next floor"};
     return labels[i];
@@ -135,7 +142,28 @@ void Application::sandboxCharacter(int action) {
         case 9: player_.stats().hp = player_.stats().maxHp; player_.stats().mana = player_.stats().maxMana; player_.statusEffects().active().clear(); log("Fully restored."); break;
         case 10: sandboxGod_ = !sandboxGod_; log(sandboxGod_ ? "Nothing can kill you now." : "You are mortal again."); break;
         case 11: sandboxMenu_ = false; openTalentTrees(); break;
+        case 12: sandboxMaxOut(); break;
+        case 13:
+            if (!player_.trialsCleared) { log("Max out first: an ascendancy needs a trial won."); break; }
+            if (!player_.ascendancy.empty()) { log("You are already a ", findAscendancy(player_.ascendancy)->name, ". Respec to choose again."); break; }
+            sandboxMenu_ = false; openAscendancy(); break;
     }
+}
+
+// Max out: level 30, every lore found (every dungeon and deep tree open, the
+// winter road too), every trial won with its points, gold, and full health.
+// Your attribute points are left for you to spend.
+void Application::sandboxMaxOut() {
+    for (const auto& e : loreEntries()) if (!player_.knowsLore(e.id)) player_.lore.push_back(e.id);
+    const int before = player_.level();
+    while (player_.level() < player_.levelCap()) grantXp(player_, xpForNextLevel(player_.level()) - player_.xp());
+    const int all = (1 << kTrialCount) - 1;
+    const int newly = static_cast<int>(std::bitset<8>(static_cast<unsigned>(all & ~player_.trialsCleared)).count());
+    player_.trialKeys = all; player_.trialsCleared = all; player_.ascendancyPoints += newly;
+    gold_ += 5000;
+    player_.stats().hp = player_.stats().maxHp; player_.stats().mana = player_.stats().maxMana;
+    if (player_.level() > before) soundManager_.play(SoundEffect::LevelUp);
+    log("Maxed out: level ", player_.level(), ", every lore, every dungeon and trial open, 5000 gold. Spend your points (T, and attributes).");
 }
 
 void Application::sandboxWorld(int action) {
@@ -178,9 +206,21 @@ void Application::sandboxWorld(int action) {
     }
 }
 
+// Travel: straight to any depth of any dungeon, locks and all ignored.
+void Application::sandboxTravel(int dungeon, int depth) {
+    sandboxMenu_ = false;
+    dissolveMinions();
+    trial_ = 0;
+    currentFloor_ = dungeonFirstFloor(dungeon) + depth - 1;
+    mode_ = GameMode::Playing; dungeonMenu_ = false;
+    regenerateLevel(freshSeed());
+    callPackBack();
+    log("You step through to ", dungeonName(dungeon), ", depth ", depth, ".");
+}
+
 void Application::handleSandboxKey(sf::Keyboard::Key key) {
     if (key == sf::Keyboard::Key::Escape || key == sf::Keyboard::Key::F1) { sandboxMenu_ = false; return; }
-    if (key == sf::Keyboard::Key::Tab) { sandboxTab_ = (sandboxTab_ + 1) % 4; sandboxPage_ = 0; }
+    if (key == sf::Keyboard::Key::Tab) { sandboxTab_ = (sandboxTab_ + 1) % kSandboxTabs; sandboxPage_ = 0; }
 }
 
 void Application::handleSandboxMouse(const sf::Event& event) {
@@ -189,7 +229,7 @@ void Application::handleSandboxMouse(const sf::Event& event) {
     if (!click || click->button != sf::Mouse::Button::Left) return;
     const auto p = sf::Vector2f(click->position);
     if (!kPanel.contains(p)) { sandboxMenu_ = false; return; } // a click outside closes it
-    for (int i = 0; i < 4; ++i) if (sandboxTab(i).contains(p)) { sandboxTab_ = i; sandboxPage_ = 0; return; }
+    for (int i = 0; i < kSandboxTabs; ++i) if (sandboxTab(i).contains(p)) { sandboxTab_ = i; sandboxPage_ = 0; return; }
     if (sandboxTab_ == 0) {
         for (int i = 0; i < 3; ++i) if (sandboxToggle(i, 4).contains(p)) { sandboxTier_ = i; return; }
         if (sandboxToggle(3, 4).contains(p)) { sandboxAwake_ = !sandboxAwake_; return; }
@@ -209,6 +249,10 @@ void Application::handleSandboxMouse(const sf::Event& event) {
     }
     if (sandboxTab_ == 2) for (int i = 0; i < kCharacterActions; ++i) if (sandboxButton(i).contains(p)) { sandboxCharacter(i); return; }
     if (sandboxTab_ == 3) for (int i = 0; i < kWorldActions; ++i) if (sandboxButton(i).contains(p)) { sandboxWorld(i); return; }
+    if (sandboxTab_ == 4)
+        for (int d = 0; d < kDungeonCount; ++d)
+            for (int depth = 1; depth <= dungeonLength(d); ++depth)
+                if (travelDepth(d, depth).contains(p)) { sandboxTravel(d, depth); return; }
 }
 
 void Application::renderSandbox() {
@@ -222,8 +266,8 @@ void Application::renderSandbox() {
         ui_.inset(window_, r, ui::kGold);
         ui_.textCentered(window_, label, r, size, ui::kGold, ui::Font::Bold);
     };
-    static const char* tabs[]{"Monsters", "Items", "Character", "World"};
-    for (int i = 0; i < 4; ++i) toggle(sandboxTab(i), tabs[i], sandboxTab_ == i, 15);
+    static const char* tabs[]{"Monsters", "Items", "Character", "World", "Travel"};
+    for (int i = 0; i < kSandboxTabs; ++i) toggle(sandboxTab(i), tabs[i], sandboxTab_ == i, 14);
     if (sandboxTab_ == 0) {
         static const char* tiers[]{"Normal", "Elite", "Nightmare"};
         for (int i = 0; i < 3; ++i) toggle(sandboxToggle(i, 4), tiers[i], sandboxTier_ == i);
@@ -270,6 +314,23 @@ void Application::renderSandbox() {
         for (int i = 0; i < kWorldActions; ++i) ui_.button(window_, sandboxButton(i), worldAction(i), hovered(sandboxButton(i)), true, 15);
         float y = 130 + 40 * ((kWorldActions + 1) / 2) + 10;
         ui_.paragraph(window_, "Floor " + std::to_string(currentFloor_) + ", " + std::to_string(monsters_.size()) + " foes here.", 806, y, 438, 15, ui::kText);
+    }
+    if (sandboxTab_ == 4) {
+        const int here = mode_ == GameMode::Playing && !trial_ ? dungeonIndex(currentFloor_) : -1;
+        for (int d = 0; d < kDungeonCount; ++d) {
+            const float top = travelDepth(d, 1).position.y;
+            ui_.text(window_, dungeonName(d), {806, top - 24}, 16, ui::kGold, ui::Font::Title);
+            for (int depth = 1; depth <= dungeonLength(d); ++depth) {
+                const auto r = travelDepth(d, depth);
+                const bool now = here == d && floorInDungeon(currentFloor_) == depth;
+                const int f = dungeonFirstFloor(d) + depth - 1;
+                const bool boss = f == 5 || f == 10 || f == kRunFinalFloor || f == kCathedralLast || f == kFoundryLast || f == kThornLast || f == kRimeLast;
+                toggle(r, std::to_string(depth), now, 14);
+                if (boss) ui_.icon(window_, "skull-crossed-bones", {{r.position.x + r.size.x - 13, r.position.y + 2}, {11, 11}}, ui::kBad);
+            }
+        }
+        float hintY = 560.f;
+        ui_.paragraph(window_, "Click a depth to go there at once. The skull marks a boss.", 806, hintY, 438, 14, ui::kMuted);
     }
 }
 

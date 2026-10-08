@@ -4468,8 +4468,26 @@ struct ApplicationRewardsTestAccess {
             check(!app.logMessages_.empty() && app.logMessages_.back().find("isn't saved")!=std::string::npos,"Sandbox: nothing is saved");
             app.sandboxWorld(4);
             check(app.chestExists_ && app.chestMimic_ && !app.map_.isWalkable(app.chestPosition_.x,app.chestPosition_.y),"Sandbox: a mimic on demand");
+            // Max out: level 30, every lore, every dungeon and trial open.
+            app.sandboxCharacter(12);
+            check(app.player_.level()==30 && app.player_.knowsLore("winter_road") && app.thornwoodOpen() && app.rimeholtOpen() &&
+                  app.player_.trialsCleared==(1<<kTrialCount)-1 && app.player_.ascendancyPoints==kTrialCount && app.player_.unspentAttributePoints()>0,
+                  "Sandbox: Max out gives level 30, every lore, every trial won, and points to spend");
+            check(ascendancyQualified(app.player_,"gravelord") && ascendancyQualified(app.player_,"forgeknight"),"Sandbox: any ascendancy can be chosen");
+            app.sandboxCharacter(13);
+            check(app.ascendancyMenu_ && app.ascendancyChoice_,"Sandbox: Choose ascendancy opens the choice");
+            app.chooseAscendancy("gravelord");
+            check(app.player_.ascendancy=="gravelord","Sandbox: and you take one");
+            app.ascendancyMenu_=false; app.ascendancyChoice_=false;
+            // Travel: any depth of any dungeon, at once.
+            app.sandboxTravel(5,10);
+            check(app.mode_==GameMode::Playing && app.currentFloor_==kRimeLast && app.boss_ && app.boss_->type()==MonsterType::WinterKing,
+                  "Sandbox: Travel takes you straight to the Winter King");
+            app.mode_=GameMode::Town;
+            app.sandboxTravel(4,2);
+            check(app.mode_==GameMode::Playing && app.currentFloor_==kThornFirst+1,"Sandbox: even from town, straight to Thornwood depth 2");
             app.sandboxMenu_=true;
-            for (int tab=0; tab<4; ++tab) { app.sandboxTab_=tab; snapshot(("sandbox-tab"+std::to_string(tab)+".png").c_str()); }
+            for (int tab=0; tab<5; ++tab) { app.sandboxTab_=tab; snapshot(("sandbox-tab"+std::to_string(tab)+".png").c_str()); }
             app.sandboxMenu_=false;
             app.selectClass(PlayerClass::Mage);
             check(!app.sandboxRun_ && !app.player_.sandbox,"Sandbox: a normal run leaves it behind");
