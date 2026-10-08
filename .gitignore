@@ -26,3 +26,6 @@ CMakeUserPresets.json
 .DS_Store
 Thumbs.db
 encounter-lab/
+
+# Visual Studio CMake settings (per user)
+CMakeSettings.json
