@@ -952,9 +952,12 @@ void Application::renderHudTooltips() {
         if (details.empty()) continue; // dead or hidden actors never disclose information
         std::vector<Line> lines;
         if (monster->allied) {
-            lines.push_back({"Allied skeleton",sf::Color(110,230,230),18,ui::Font::Title});
+            // Your ally by its own name: Your Hound, Thornmaw, Your Skeleton, Your Frozen Thrall...
+            const std::string name=monster->name().rfind("Your ",0)==0 || isThornmaw(*monster) ? monster->name() : "Your "+plainName(*monster);
+            lines.push_back({name,sf::Color(110,230,230),18,ui::Font::Title});
             lines.push_back({std::to_string(monster->stats().hp)+"/"+std::to_string(monster->stats().maxHp)+" life. Walk into it to swap places.",ui::kText,15});
-            lines.push_back({monster->remainingLife?"Expires in "+std::to_string(monster->remainingLife)+" actions.":"Lasts until it dies or you travel.",ui::kMuted,14});
+            lines.push_back({monster->remainingLife?"Expires in "+std::to_string(monster->remainingLife)+" actions.":
+                             packBeast(*monster)?"Follows you from floor to floor.":"Lasts until it dies or you travel.",ui::kMuted,14});
         } else {
             const sf::Color nameColor=isUniqueMonster(monster->type())?ui::kRare:
                 monster->tier()==MonsterTier::Nightmare?sf::Color(255,255,255):monster->tier()==MonsterTier::Elite?sf::Color(255,200,60):ui::kGold;

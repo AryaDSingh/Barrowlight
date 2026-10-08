@@ -2285,7 +2285,7 @@ void Application::advanceEnemyIntents() {
     tickSurfaces();
     for (auto& m:monsters_) {
         const bool held=m->allied && raisedDead(m->type()) && player_.talents().passiveValue(PassiveKind::StandingLegion,player_.stats()); // Standing Legion
-        if (m->allied && m->remainingLife>0 && !held && --m->remainingLife==0) { m->stats().hp=0; scheduler_.remove(*m); log("A temporary skeleton dissolves."); }
+        if (m->allied && m->remainingLife>0 && !held && --m->remainingLife==0) { m->stats().hp=0; scheduler_.remove(*m); log("Your ",plainName(*m)," fades away."); }
         if (m->intent() && m->intent()->playerActionsRemaining>0) --m->intent()->playerActionsRemaining;
         if (m->recoveryActions>0) --m->recoveryActions;
     }
