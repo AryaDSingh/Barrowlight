@@ -5,7 +5,10 @@ written from scratch in C++17 with SFML 3. No game engine, no frameworks: the
 turn scheduler, field of view, pathfinding, dungeon generation, talent system,
 AI, saving and UI are all built here.
 
-![The Winter King's hall in Rimeholt](docs/screenshots/winter-king.png)
+![Barrowlight: the title screen, then a Warrior fighting through the Deep Crypts](docs/screenshots/gameplay.webp)
+
+**[Download for Windows](https://github.com/AryaDSingh/Barrowlight/releases/latest)**: unzip and run
+`barrowlight.exe`, nothing to install.
 
 You build a character by discovering how talent trees, gear and ascendancies
 combine, then decide how deep you dare to go. Danger is telegraphed, darkness
@@ -14,6 +17,36 @@ and the ground beneath you are weapons, and death is permanent.
 **[DESIGN.md](DESIGN.md)** explains how and why it is built the way it is: the
 game's systems, the engine's architecture, and a log of the major decisions,
 including the ideas that were tried and replaced.
+
+## Technical highlights
+
+- **A layered engine whose boundary the build enforces.** The rules
+  (`engine_core`: actors, talents, AI, dungeon generation, FOV, pathfinding,
+  saving) never link SFML, and the console tests link only them, so a rule
+  that reached for rendering would stop the tests compiling.
+- **Composition over inheritance.** 48 monster kinds are data plus one of
+  seven pluggable AI behaviours (strategies that propose an action for the
+  game to carry out), never subclasses.
+- **An energy-based turn scheduler** (as in Angband and ToME): speed carries
+  over between turns, so speed 200 acts exactly four times as often as 50.
+- **Talents as data, targeting as pure functions.** The same targeting code
+  drives the on-screen preview and the cast, so the preview is always
+  exactly what happens.
+- **Versioned, validated saves.** A plain-text format at version 47, loading
+  every save from version 9 on; a loaded character must be one the game
+  could have produced.
+- **Reproducible runs.** All randomness comes from one seeded stream, so a
+  bug found in a bot run replays exactly.
+- **Tested through the real game.** 21 test suites: 19 console programs for
+  the rules, and two that drive the game itself through a hidden window
+  (about 1,200 checks), plus a playtest bot that plays whole runs.
+
+[DESIGN.md](DESIGN.md) covers each of these, and the trade-offs: why not
+Godot, why SFML over SDL3 and raylib, and why `Application` is still one
+large class split by file.
+
+**By the numbers:** about 28,000 lines of C++ in the game and 9,600 in its
+tests, 130 source files, 47 talent trees, 48 monster kinds, 46 floors.
 
 ## Features
 
@@ -42,8 +75,9 @@ including the ideas that were tried and replaced.
 
 | | |
 |---|---|
-| ![Surfaces: fire spreading over oil, lightning through water](docs/screenshots/surfaces.png) | ![The talent map: every tree around the sixteen colours](docs/screenshots/talent-map.png) |
-| ![Thornwood Hollow](docs/screenshots/thornwood.png) | ![The Trial Obelisk](docs/screenshots/trials.png) |
+| ![The Winter King's hall in Rimeholt](docs/screenshots/winter-king.png) | ![Surfaces: fire spreading over oil, lightning through water](docs/screenshots/surfaces.png) |
+| ![The talent map: every tree around the sixteen colours](docs/screenshots/talent-map.png) | ![Thornwood Hollow](docs/screenshots/thornwood.png) |
+| ![The Trial Obelisk](docs/screenshots/trials.png) | ![The Ashen Foundry](docs/screenshots/foundry.png) |
 
 ## Building
 
@@ -92,9 +126,9 @@ saves next to the executable.
 
 ## Playing
 
-On the first screen, pick an origin: **1** Warrior, **2** Mage or **3** Thief.
-**M** toggles Adventure mode (two spare lives), **S** starts a sandbox run and
-**L** the Encounter Lab.
+From the title screen, choose **New Game** (or the **Encounter Lab** or
+**Sandbox**), then pick an origin: **1** Warrior, **2** Mage or **3** Thief.
+**M** toggles Adventure mode (two spare lives). **Continue** loads your save.
 
 | Key | Action |
 |---|---|
@@ -133,7 +167,8 @@ ctest -C Release -LE slow     # skip the long integration suite
   hidden window, and write render snapshots to `build/rewards-checks/`.
 - The **playtest bot** (`build/bin/<Config>/playtest_bot [runs] [--seed N]`)
   plays whole runs and writes a report to `build/playtest/`. Use it as a
-  crash check.
+  crash check. With `--record <dir> <actions> <seed> <class> [dungeon depth]`
+  it saves frames instead, which is how the clip at the top was made.
 
 ## Layout
 
@@ -152,6 +187,16 @@ tools/        sfx_build.py: builds the sound effect families
 enforces that the rules stay independent of rendering. See
 [DESIGN.md](DESIGN.md#22-layers).
 
+## How it was built
+
+I designed Barrowlight and directed its development over about 125 commits:
+the game's systems, the engine's architecture, and the calls recorded in
+[DESIGN.md's decision log](DESIGN.md#part-3-decision-log). Much of the
+implementation was written with AI coding assistants (Claude Code and
+Codex) working to that direction, which is why they appear as co-authors in
+the history. I playtested every system by hand and decided what stayed,
+what changed and what was cut.
+
 ## Credits
 
 Code: Arya Singh. Art, fonts and sounds are from openly licensed packs (CC0
@@ -159,3 +204,8 @@ and CC-BY, including the Dungeon Crawl Stone Soup tiles and Calciumtrice's
 sprites); full attributions are in `assets/sprites/CREDITS.txt`,
 `assets/sounds/CREDITS.txt`, `assets/music/CREDITS.txt` and the font licences
 in `assets/fonts/`.
+
+## Licence
+
+The code is MIT-licensed (see [LICENSE](LICENSE)). The assets keep their
+own licences, listed in the credits files above.

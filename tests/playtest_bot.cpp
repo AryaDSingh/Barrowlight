@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <chrono>
 #include <deque>
+#include <functional>
+#include <thread>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -47,6 +49,10 @@ struct PlaytestBot {
     // foes it has given up on for a while (a kiting archer, say).
     std::map<const Monster*, int> chase, ignoredUntil;
     int clock = 0;
+    // Record mode: called after every action (with whether foes are in sight);
+    // setting `halt` ends the run there.
+    std::function<void(bool)> onAction;
+    bool halt = false;
     std::vector<Monster*> visibleEnemies() {
         std::vector<Monster*> found;
         for (auto& m : app.monsters_) {
@@ -438,6 +444,7 @@ struct PlaytestBot {
                 if (!acted) { wait(); acted = true; }
             }
             checkInvariants();
+            if (onAction) { onAction(!enemies.empty()); if (halt) { result.end = "recorded"; break; } }
             const auto now = app.player_.position();
             if (same(now, lastPos) && app.player_.stats().hp == lastHp && enemies.empty()) ++idle; else idle = 0;
             lastPos = now; lastHp = app.player_.stats().hp;
@@ -450,6 +457,52 @@ struct PlaytestBot {
             report << "  " << name << " run " << runNumber << " ended (" << result.end << ") on floor " << app.currentFloor_
                    << " at level " << app.player_.level() << '\n' << buildSummary() << "    level on arrival at each floor:" << levels.str() << '\n';
         return result;
+    }
+
+    // Record mode: frames for the README's gameplay clip. A few seconds of the
+    // title screen, then one run as `cls`, a frame after every action and two
+    // more while foes are in sight (so spells and hits animate). With a
+    // dungeon (0-5), the character is maxed out and starts at its given depth.
+    // Frames go to
+    // `out` as numbered JPEGs, with frames.txt marking which show a fight.
+    static int record(const std::filesystem::path& out, int actions, unsigned seed, PlayerClass cls, int dungeon = -1, int depth = 1) {
+        std::filesystem::create_directories(out);
+        Application app;
+        app.window_.setVisible(false);
+        app.window_.setFramerateLimit(0);
+        PlaytestBot bot(app, out);
+        int frame = 0;
+        std::ofstream index(out / "frames.txt");
+        const auto grab = [&](bool fight) {
+            app.render();
+            sf::Texture texture(app.window_.getSize()); texture.update(app.window_);
+            char name[32]; std::snprintf(name, sizeof name, "f%05d.jpg", frame++);
+            (void)texture.copyToImage().saveToFile(out / name);
+            index << name << ' ' << (fight ? 1 : 0) << '\n';
+        };
+        app.enterTitle();
+        app.render();
+        for (int i = 0; i < 45; ++i) { std::this_thread::sleep_for(std::chrono::milliseconds(100)); grab(false); }
+        seedRandomness(seed);
+        int done = 0;
+        bot.onAction = [&](bool fight) {
+            if (done == 0 && dungeon >= 0) {
+                app.sandboxMaxOut();
+                bot.spendPoints(cls);
+                app.darknessEnabled_ = false; // the clip is shown small: full light reads better
+                app.sandboxTravel(dungeon, depth);
+                app.logMessages_.clear();
+                ++done;
+                return;
+            }
+            grab(fight);
+            if (fight) for (int i = 0; i < 2; ++i) { std::this_thread::sleep_for(std::chrono::milliseconds(70)); grab(true); }
+            bot.halt = ++done >= actions;
+        };
+        const auto result = bot.playRun(cls, 1);
+        std::cout << frame << " frames, ended on floor " << result.floor << " (" << result.end << ")" << std::endl;
+        app.window_.close();
+        return 0;
     }
 
     // Plays every run and writes the report (a member, for the hidden window).
@@ -503,6 +556,12 @@ int main(int argc, char** argv) {
         std::cout << (ok ? "loads fine" : "load FAILED") << std::endl;
         return ok ? 0 : 1;
     }
+    // playtest_bot --record <dir> <actions> <seed> <class> [dungeon depth]: frames
+    // for a clip (class: 1 Warrior, 2 Thief, 3 Mage).
+    if (argc > 5 && std::string(argv[1]) == "--record")
+        return engine::PlaytestBot::record(argv[2], std::atoi(argv[3]), static_cast<unsigned>(std::strtoul(argv[4], nullptr, 10)),
+                                           static_cast<engine::PlayerClass>(std::atoi(argv[5])),
+                                           argc > 7 ? std::atoi(argv[6]) : -1, argc > 7 ? std::atoi(argv[7]) : 1);
     // playtest_bot [runs] [--seed S]
     int runs = 4; std::optional<unsigned> seed;
     for (int i = 1; i < argc; ++i) {
