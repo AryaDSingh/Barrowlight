@@ -18,7 +18,7 @@ constexpr float kFadeSeconds = 1.4f;
 
 const char* musicPath(MusicTrack track) {
     switch (track) {
-        case MusicTrack::Title: return "assets/music/title.mp3";
+        case MusicTrack::Title: return "assets/music/title.ogg";
         case MusicTrack::Town: return "assets/music/town.mp3";
         case MusicTrack::Barracks: return "assets/music/barracks.ogg";
         case MusicTrack::Sanctum: return "assets/music/sanctum.ogg";

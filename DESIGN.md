@@ -290,6 +290,10 @@ the Hollow and Winter). Some highlights:
   families of variants (a hit sounds like what dealt it, every monster kind
   has a voice), so repeated actions don't sound identical. The game never
   depends on sound: a missing file is skipped.
+- **The title screen** is the game itself. Behind the menu, a real floor
+  from one of the six dungeons is generated and drawn by the engine: your
+  character by a lit brazier, torchlight flickering, a new dungeon every
+  forty seconds. It shows what the game looks like and costs no separate art.
 
 ---
 

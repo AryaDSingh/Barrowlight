@@ -5328,6 +5328,38 @@ struct ApplicationRewardsTestAccess {
             app.monsters_.clear(); app.boss_=nullptr;
         }
 
+        // The title screen: a living scene behind the menu.
+        {
+            app.enterTitle();
+            check(app.mode_==GameMode::Title && !app.map_.isWalkable(-1,-1) && app.map_.width()>0,"The title screen has a real floor behind it");
+            bool brazierBeside=false;
+            for (const auto& p:app.props_) brazierBeside=brazierBeside || (p.kind==PropKind::Brazier &&
+                std::max(std::abs(p.pos.x-app.player_.position().x),std::abs(p.pos.y-app.player_.position().y))<=3);
+            check(brazierBeside,"Your character stands by a brazier");
+            // Six scenes, one from each dungeon (snapshots after the fade-in).
+            for (int i=0;i<6;++i) {
+                if (i) app.buildTitleScene();
+                sf::sleep(sf::seconds(1.3f));
+                snapshot(("ui-title-"+std::to_string(i+1)+".png").c_str());
+            }
+            const auto items=app.titleItems();
+            check(items.back()==Application::TitleItem::Quit && std::find(items.begin(),items.end(),Application::TitleItem::NewGame)!=items.end(),
+                  "The menu offers New Game and Quit");
+            app.titleSelection_=static_cast<std::size_t>(std::find(items.begin(),items.end(),Application::TitleItem::NewGame)-items.begin());
+            app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Enter});
+            check(app.mode_==GameMode::ClassSelection && !app.labMode_ && !app.sandboxMode_,"New Game opens class selection");
+            app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Escape});
+            check(app.mode_==GameMode::Title,"Esc on class selection returns to the title");
+            app.chooseTitle(Application::TitleItem::Sandbox);
+            check(app.mode_==GameMode::ClassSelection && app.sandboxMode_,"Sandbox from the title opens class selection for a sandbox run");
+            app.enterTitle(); app.chooseTitle(Application::TitleItem::Lab);
+            check(app.mode_==GameMode::ClassSelection && app.labMode_,"Encounter Lab from the title");
+            app.enterTitle();
+            app.handleEvent(sf::Event::KeyPressed{sf::Keyboard::Key::Down});
+            check(app.titleSelection_==1,"Down moves the selection");
+            app.labMode_=false; app.sandboxMode_=false; app.mode_=GameMode::Playing;
+        }
+
         app.window_.close();
         std::cout << checks << " reward checks, " << failures << " failures.\n";
         return failures ? 1 : 0;

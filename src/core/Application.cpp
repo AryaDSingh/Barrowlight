@@ -450,8 +450,8 @@ Application::Application()
     window_.setFramerateLimit(60);
     window_.setKeyRepeatEnabled(false); // A held confirm key must not cast twice.
     fitView();
-    // No dungeon yet: the game opens on the class selection screen, and
-    // selectClass() generates the first floor once a choice is made.
+    // The game opens on the title screen, whose backdrop is a real floor.
+    enterTitle();
 }
 
 
@@ -467,7 +467,7 @@ void Application::run() {
 void Application::updateMusic() {
     MusicTrack track = MusicTrack::Title;
     if (mode_ == GameMode::Town) track = MusicTrack::Town;
-    else if (mode_ != GameMode::ClassSelection && mode_ != GameMode::GameOver) {
+    else if (mode_ != GameMode::Title && mode_ != GameMode::ClassSelection && mode_ != GameMode::GameOver) {
         const auto region = floorTheme(currentFloor_).region;
         track = boss_ ? MusicTrack::Boss : region == FloorRegion::Barracks ? MusicTrack::Barracks
               : region == FloorRegion::Sanctum ? MusicTrack::Sanctum : MusicTrack::Crypts;
@@ -658,7 +658,7 @@ void Application::updateCamera() {
     const int kViewportWidthTiles = static_cast<int>(kMapWidth / kTileSize);
     const int kViewportHeightTiles = static_cast<int>(kMapHeight / kTileSize);
 
-    const int desiredX = player_.position().x - kViewportWidthTiles / 2;
+    const int desiredX = player_.position().x - (mode_ == GameMode::Title ? kViewportWidthTiles * 3 / 5 : kViewportWidthTiles / 2);
     const int desiredY = player_.position().y - kViewportHeightTiles / 2;
 
     // Clamped to [0, map dimension - viewport dimension] so the camera
@@ -723,9 +723,9 @@ void Application::handlePauseEvent(const sf::Event& event) {
         if (index == 0) pauseMenu_ = false;
         else if (index == 1) pauseOptions_ = true;
         else if (index == 2) {
-            // Save the run, if there is one, then leave.
+            // Save the run, if there is one, then return to the title.
             if (mode_ == GameMode::Playing || mode_ == GameMode::Town) saveGame();
-            window_.close();
+            enterTitle();
         }
     };
     if (const auto* key = event.getIf<sf::Event::KeyPressed>()) {
@@ -753,7 +753,7 @@ void Application::renderPause() {
         return;
     }
     ui_.textCentered(window_, "Paused", {{dialog.position.x, 214}, {dialog.size.x, 44}}, 32, ui::kGold, ui::Font::Title);
-    const char* labels[]{"Resume (Esc)", "Options", "Save and exit"};
+    const char* labels[]{"Resume (Esc)", "Options", "Save and quit to title"};
     for (int i = 0; i < 3; ++i) ui_.button(window_, pauseButton(i), labels[i], mouse && pauseButton(i).contains(*mouse), true, 16);
 }
 
@@ -859,6 +859,7 @@ void Application::handleEvent(const sf::Event& input) {
     }
 
     if (pauseMenu_) { handlePauseEvent(*event); return; }
+    if (mode_ == GameMode::Title) { handleTitleEvent(*event); return; }
     if (autoExploring_ && (event->is<sf::Event::KeyPressed>() ||
         event->is<sf::Event::MouseButtonPressed>() || event->is<sf::Event::FocusLost>())) {
         stopAutoExplore("interrupted by input or focus change.");
@@ -947,6 +948,7 @@ void Application::handleEvent(const sf::Event& input) {
         if (vaultMenu_) { handleVaultKey(keyPressed->code); return; }
         if (shrineMenu_) { handleShrineKey(keyPressed->code); return; }
         if (keyPressed->code == sf::Keyboard::Key::Escape) {
+            if (mode_ == GameMode::ClassSelection) { enterTitle(); return; } // back to the title
             if (mode_ == GameMode::AbilityChoice) { handleTreeKey(keyPressed->code,keyPressed->shift); return; }
             if (mode_ == GameMode::AttributeAllocation) { mode_=GameMode::Playing; resumeLevelUpSequence(); return; }
             if (inventoryOpen_) {
@@ -4016,6 +4018,7 @@ bool Application::restoreState(const SaveGameState& state, bool includeFloors) {
 }
 
 void Application::update() {
+    if (mode_ == GameMode::Title) { tickTitle(); return; }
     if (autoExploring_) { stepAutoExplore(); return; }
     if (restTurns_<=0) return;
     if (mode_!=GameMode::Playing || inventoryOpen_ || vaultMenu_ || shrineMenu_ || exitMenu_ || dangerNearby()) {
@@ -4221,7 +4224,7 @@ void Application::render() {
     // their own background simply cover it.
     // The talent and attribute screens open over the dungeon, which stays drawn behind their glass.
     const bool overScene = mode_ == GameMode::AbilityChoice || mode_ == GameMode::AttributeAllocation;
-    if (mode_ != GameMode::Playing && !overScene) {
+    if (mode_ != GameMode::Playing && mode_ != GameMode::Title && !overScene) {
         // Full-screen menus: one backdrop edge to edge, never black bars.
         window_.setView(playView_);
         ui_.stone(window_, {{0, 0}, {playLayout::screenWidth, 720}}, sf::Color(120, 115, 112));
@@ -4237,6 +4240,16 @@ void Application::render() {
 
     updateCamera();
     updateCameraShift();
+    // The title screen draws the same world, closer: a zoomed view around
+    // your character, who stands right of centre, clear of the menu.
+    const sf::View fullView = playView_;
+    if (mode_ == GameMode::Title) {
+        const auto at = worldToScreen(player_.position().x, player_.position().y);
+        sf::View close = playView_;
+        close.setSize(playView_.getSize() * 0.42f);
+        close.setCenter({at.x + kTileSize / 2 - close.getSize().x * 0.12f, at.y + kTileSize / 2 - close.getSize().y * 0.04f});
+        playView_ = close;
+    }
 
     // Only the camera-visible range, not the whole map -- a real
     // performance win, since floors are much bigger than the viewport,
@@ -4595,6 +4608,7 @@ void Application::render() {
 
     // Visible committed danger remains visible even if the caster leaves sight.
     renderTelegraphs(viewStartX, viewStartY, viewEndX, viewEndY);
+    if (mode_ == GameMode::Title) { playView_ = fullView; renderTitle(); window_.display(); return; } // the scene, then the menu over it
 
     renderTargetingOverlay();
     window_.setView(playView_);

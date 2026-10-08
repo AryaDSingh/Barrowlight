@@ -44,6 +44,7 @@ const char* labBuildName(int build);
 // the screens share almost all of their state (the player, the map), so one
 // object switching on a mode is simpler than passing state between scenes.
 enum class GameMode {
+    Title,                // the title screen: a living scene behind the menu (ApplicationTitle.cpp)
     Town,
     ClassSelection,
     Playing,
@@ -886,7 +887,21 @@ private:
     void placeBraziers(Position centre, const std::vector<Position>& offsets);
     void renderSurfaces(std::vector<std::pair<sf::Vector2f, sf::Color>>& lights, int x0, int y0, int x1, int y1);
     void renderSurfaceGlow(int x0, int y0, int x1, int y1);
-    GameMode mode_ = GameMode::ClassSelection;
+    GameMode mode_ = GameMode::Title;
+    // The title screen (ApplicationTitle.cpp).
+    enum class TitleItem { Continue, NewGame, Lab, Sandbox, Quit };
+    std::vector<TitleItem> titleItems() const;
+    static const char* titleLabel(TitleItem item);
+    sf::FloatRect titleItemRect(std::size_t index) const;
+    void enterTitle();
+    void buildTitleScene();
+    void tickTitle();
+    void chooseTitle(TitleItem item);
+    void handleTitleEvent(const sf::Event& event);
+    void renderTitle();
+    std::size_t titleSelection_ = 0;
+    int titleScene_ = -1;
+    sf::Clock titleClock_;
     PlayerClass playerClass_ = PlayerClass::Spellblade; // meaningless until selectClass() runs
     bool wonGame_ = false; // meaningless unless mode_ == GameOver -- see checkAndHandleDeath
 

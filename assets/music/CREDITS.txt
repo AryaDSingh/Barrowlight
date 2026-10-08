@@ -1,7 +1,9 @@
 Background music, all from OpenGameArt.org.
 
-title.mp3    "Fantasy Orchestral Theme" by Joth -- CC0
-             https://opengameart.org/content/fantasy-orchestral-theme
+title.ogg    "Dark Quest" by Alexandr Zhelanov -- CC-BY 4.0
+             https://opengameart.org/content/dark-quest
+             https://soundcloud.com/alexandr-zhelanov
+             https://creativecommons.org/licenses/by/4.0/
 town.mp3     "Medieval: The Old Tower Inn" by RandomMind -- CC0
              https://opengameart.org/content/medieval-the-old-tower-inn
 barracks.ogg "Dungeon Ambience" by yd -- CC0
