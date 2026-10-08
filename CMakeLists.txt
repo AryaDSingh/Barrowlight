@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(Barrowlight LANGUAGES CXX)
+project(Barrowlight VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,6 +11,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # everything on any platform with no libraries to install by hand. Audio is
 # on (the sound effects are Ogg Vorbis); networking is off.
 # ---------------------------------------------------------------------------
+# BARROWLIGHT_PORTABLE links the C++ runtime statically (MSVC), so the
+# packaged game runs on a machine with no Visual C++ redistributable.
+option(BARROWLIGHT_PORTABLE "Statically link the C++ runtime for a standalone build" OFF)
+if(BARROWLIGHT_PORTABLE)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    set(SFML_USE_STATIC_STD_LIBS ON CACHE BOOL "" FORCE)
+endif()
+
 include(FetchContent)
 set(SFML_BUILD_AUDIO ON CACHE BOOL "" FORCE)
 set(SFML_BUILD_NETWORK OFF CACHE BOOL "" FORCE)
@@ -78,9 +86,26 @@ target_compile_definitions(sound_silent PRIVATE ROGUELIKE_SILENT)
 # ---------------------------------------------------------------------------
 add_executable(barrowlight src/main.cpp)
 target_link_libraries(barrowlight PRIVATE engine_app sound)
+if(WIN32)
+    target_sources(barrowlight PRIVATE src/barrowlight.rc) # the .exe icon
+endif()
+if(MSVC)
+    # A Release build is a windowed app with no console; Debug keeps the console for logs.
+    target_link_options(barrowlight PRIVATE $<$<CONFIG:Release>:/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup>)
+endif()
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT barrowlight)
 # The game finds assets/ relative to where it starts: run it from the project root.
 set_property(TARGET barrowlight PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+# The playable package: `cmake --install` or `cpack` puts the game, its
+# assets and the README in one folder (or zip) that runs from anywhere.
+install(TARGETS barrowlight RUNTIME DESTINATION .)
+install(DIRECTORY assets DESTINATION .)
+install(FILES README.md DESTINATION .)
+set(CPACK_GENERATOR ZIP)
+set(CPACK_PACKAGE_FILE_NAME "Barrowlight-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}")
+set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
+include(CPack)
 
 # ---------------------------------------------------------------------------
 # Tests. Each is a small console program that prints [ok]/[FAIL] per check

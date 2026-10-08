@@ -105,6 +105,9 @@ https://game-icons.net/1x1/<author>/<file name without .png>.html
   sbed -- shield.
   (Artist pages: https://game-icons.net/about.html)
 
+  The game's own icon (src/barrowlight.ico) is Lorc's lantern-flame, recoloured
+  gold on a dark tile.
+
 "Icons by Lorc, Delapouite, sbed and Carl Olsen, from game-icons.net, CC-BY 3.0."
 
 

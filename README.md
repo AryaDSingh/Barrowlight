@@ -75,6 +75,21 @@ sudo apt install build-essential cmake git libxrandr-dev libxcursor-dev libxi-de
 In Visual Studio the debugger's working directory is already set to the
 project root.
 
+### A standalone package
+
+To make a zip anyone can unpack and play (Windows: just `barrowlight.exe`,
+its assets and this README, with no Visual C++ redistributable needed):
+
+```bash
+cmake -S . -B build-dist -DBARROWLIGHT_PORTABLE=ON
+cmake --build build-dist --config Release --target barrowlight
+cd build-dist && cpack -C Release
+```
+
+This writes `build-dist/Barrowlight-1.0.0-Windows.zip`. `BARROWLIGHT_PORTABLE`
+links the C++ runtime statically; SFML is always linked statically. The game
+saves next to the executable.
+
 ## Playing
 
 On the first screen, pick an origin: **1** Warrior, **2** Mage or **3** Thief.

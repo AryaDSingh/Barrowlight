@@ -1,0 +1,2 @@
+// The executable's icon on Windows (a lantern, from game-icons.net by Lorc).
+IDI_ICON1 ICON "barrowlight.ico"
