@@ -187,15 +187,6 @@ tools/        sfx_build.py: builds the sound effect families
 enforces that the rules stay independent of rendering. See
 [DESIGN.md](DESIGN.md#22-layers).
 
-## How it was built
-
-I designed Barrowlight and directed its development over about 125 commits:
-the game's systems, the engine's architecture, and the calls recorded in
-[DESIGN.md's decision log](DESIGN.md#part-3-decision-log). Much of the
-implementation was written with AI coding assistants (Claude Code and
-Codex) working to that direction, which is why they appear as co-authors in
-the history. I playtested every system by hand and decided what stayed,
-what changed and what was cut.
 
 ## Credits
 
