@@ -26,11 +26,9 @@ enum class SoundEffect {
 // of track crossfades.
 enum class MusicTrack { None, Title, Town, Barracks, Sanctum, Crypts, Boss };
 
-// Owns every SoundBuffer/Sound pair the game uses -- the only class
-// besides Application itself that touches SFML::Audio directly,
-// mirroring how Application.cpp has been the only place touching
-// SFML::Graphics/Window since Prompt 0. Loads every sound file once at
-// construction.
+// Owns every SoundBuffer/Sound pair the game uses -- the one class that
+// touches SFML::Audio, as Application is for graphics and windowing.
+// Loads every sound file once at construction.
 //
 // play() is silently a no-op if a buffer failed to load (a missing
 // file, say) or if the platform has no audio device at all -- confirmed

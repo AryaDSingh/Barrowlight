@@ -9,9 +9,8 @@
 namespace engine {
 
 // A fixed-size grid of Tiles. Deliberately knows nothing about SFML,
-// entities, or FOV -- see ARCHITECTURE_DECISIONS.md. A procedurally
-// generated level (Prompt 8) will build one of these the same way this
-// prompt's hardcoded test level does: by filling in tiles, nothing more.
+// entities, or FOV: the dungeon generator and the tests' hand-drawn ASCII
+// maps both build one the same way, by filling in tiles.
 class Map {
 public:
     // Default-constructs an empty 0x0 map. Exists so Map can be a plain

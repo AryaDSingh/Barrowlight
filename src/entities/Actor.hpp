@@ -14,8 +14,7 @@
 namespace engine {
 
 // Anything that takes a turn. Composed of component-style member objects
-// rather than expressed through subclassing (see
-// ARCHITECTURE_DECISIONS.md) -- a new monster variant is meant to be "a
+// rather than expressed through subclassing: a new monster variant is "a
 // Monster with different Stats + a different AIBehavior", not a new
 // subclass.
 class Actor : public Entity {
@@ -45,7 +44,7 @@ public:
     StatusEffects& statusEffects() { return statusEffects_; }
     const StatusEffects& statusEffects() const { return statusEffects_; }
 
-    // How much XP defeating this Actor grants the player (Prompt 20).
+    // How much XP defeating this Actor grants the player.
     // 0 by default -- meaningless for the Player (nothing grants XP for
     // "defeating" yourself), genuinely set per monster type by
     // MonsterFactory::createMonster(). Lives on Actor rather than

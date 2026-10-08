@@ -10,10 +10,8 @@
 
 namespace engine {
 
-// Tracks which talents an Actor knows and each one's current cooldown.
-// This is the wholesale replacement flagged back in Prompt 3 ("expect
-// this to be replaced wholesale, not incrementally extended") -- the
-// stub's empty() method is gone; this is real bookkeeping now.
+// Tracks which talents an Actor knows, their ranks, each one's current
+// cooldown and the hotbar.
 //
 // Deliberately doesn't know how to *apply* a talent's effect -- that's
 // TalentEffects' job. TalentSet only owns per-actor state (which talents
@@ -38,8 +36,7 @@ public:
     // *appends* (never inserts or reorders), so every existing talent's
     // index -- and therefore every place cooldowns are tracked or
     // referenced by index during live play -- stays
-    // exactly where it was. Saves use stable IDs. Prompt 23's level-gated talent unlocks are
-    // the reason this exists.
+    // exactly where it was. (Saves use stable IDs, not indices.)
     void learnTalent(Talent talent);
 
     const std::vector<Talent>& knownTalents() const { return knownTalents_; }
@@ -103,10 +100,8 @@ public:
     // progress with time passing, not specifically with casting.
     void tickCooldowns();
 
-    // Clears every cooldown back to 0. Used when a level regenerates
-    // (Prompt 8's debug feature) -- a fresh dungeon should mean a
-    // genuinely fresh start, not carried-over cooldown state from
-    // whatever was tested before.
+    // Clears every cooldown back to 0 (the sandbox's "ready all
+    // cooldowns", and tests).
     void resetCooldowns();
 
 private:

@@ -8,10 +8,11 @@
 
 namespace engine {
 
-// Ascendancy (ASCENDANCY_DESIGN.md): a permanent identity earned through
-// the two trials. Winning the first trial lets the player choose one of
-// their class's four ascendancies and grants a point; the second trial a
-// second point. Each point buys one of six nodes, which have no ranks.
+// Ascendancy: a permanent identity earned through the trials. Each great
+// boss drops a sigil that opens a trial at the obelisk in town; each trial
+// won grants a point, and the first lets you choose any ascendancy your
+// colours allow (ascendancyNeed in TalentProgression.hpp). One per run.
+// Each point buys one of the ascendancy's six nodes, which have no ranks.
 // Nodes are ordinary talents in talentCatalog() whose treeId is the
 // ascendancy's id.
 // Which classes may take an ascendancy: a bit per PlayerClass.

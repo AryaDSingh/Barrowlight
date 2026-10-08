@@ -1,5 +1,4 @@
-// Standalone sanity check for the pieces introduced in Prompt 10 that
-// aren't already covered by chaser_test: StatusEffects/tickStatusEffects
+// Monster AI pieces not covered by chaser_test: StatusEffects/tickStatusEffects
 // (poison damage, stun detection, expiration), and the Kiter/Support/
 // AoEBomber decision logic. No SFML, no window, no Application.
 

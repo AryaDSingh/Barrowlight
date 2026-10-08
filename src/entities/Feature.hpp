@@ -4,9 +4,9 @@
 
 namespace engine {
 
-// Non-actor, non-item world objects: doors, stairs, traps. Minimal for
-// now -- no open/close state, no trigger logic. Just a distinct Entity
-// subtype so the Map (Prompt 5) has somewhere to put these.
+// Non-actor, non-item world objects: a distinct Entity subtype for things
+// like doors and stairs. The live game represents most of these as tiles,
+// props and landmarks instead (world/), which proved simpler.
 class Feature : public Entity {
 public:
     using Entity::Entity;

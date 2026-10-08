@@ -1,3 +1,8 @@
+// Who an ability would hit if cast at a tile: the rules for every targeting
+// mode and shape (adjacent, ranged in sight, rays, areas, movement), and the
+// reasons a cast is refused. Pure functions of the map and the actors, so the
+// preview the player sees and the cast itself always agree.
+
 #include "world/TalentTargeting.hpp"
 
 #include <algorithm>

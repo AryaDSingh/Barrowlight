@@ -1,25 +1,18 @@
-// Standalone sanity check for the Thief's talent kit (ThiefTalents)
-// and PlayerClassFactory -- hand-computed expected results, no SFML, no
-// window, no Application. The retreat *direction/destination* math for
-// Vault Kick lives in Application::tryUseTalent (it needs
-// resolveBlinkDestination, an Application method), so it isn't
-// reachable from here -- this file checks the data (retreatDistance is
-// set correctly, targeting/shape are right) and the ordinary damage
-// path Vault Kick shares with every other Damage-kind talent; the
-// retreat itself is verified live (see ARCHITECTURE_DECISIONS.md).
-//
-// Rewritten for the attribute-system redesign -- see warrior_test.cpp's
-// own header comment for why every damage check now verifies "normal
-// or crit" rather than a single exact value.
+// The talent engine's damage maths, checked against the Thief fixture kit
+// (tests/fixtures/) with hand-computed expected results: no SFML, no
+// window, no Application. Vault Kick's retreat needs the map and lives in
+// Application, so here only its data and its ordinary damage are checked.
+// See warrior_test.cpp for why each damage check accepts "normal or crit".
 
 #include <iostream>
 #include <memory>
 #include <string>
 
 #include "ai/NullAIBehavior.hpp"
-#include "entities/ThiefTalents.hpp"
+#include "fixtures/ThiefTalents.hpp"
 #include "entities/Monster.hpp"
 #include "entities/PlayerClassFactory.hpp"
+#include "fixtures/ClassKits.hpp"
 #include "entities/TalentEffects.hpp"
 
 using namespace engine;
@@ -117,9 +110,8 @@ int main() {
     // Index 3: Vault Kick -- the signature move. Data-level checks only
     // here (targeting, shape, retreatDistance, and the ordinary damage
     // math it shares with every ranged/melee Damage talent); the actual
-    // retreat destination requires Application::resolveBlinkDestination
-    // and is verified live instead (see ARCHITECTURE_DECISIONS.md,
-    // "Thief and the vault mechanic"). Base 4 + strength bonus (2/5 *
+    // retreat destination requires Application::resolveBlinkDestination,
+    // which needs the map. Base 4 + strength bonus (2/5 *
     // 2.0, truncated to 0) == 4.
     constexpr std::size_t kVaultKick = 3;
     check(talents[kVaultKick].targeting == TargetingMode::AdjacentEnemy,

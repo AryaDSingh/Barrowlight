@@ -1,5 +1,5 @@
 // Standalone sanity check for findPath. No SFML, no window -- same
-// pattern as the other tests (see ARCHITECTURE_DECISIONS.md). Builds a
+// pattern as the other tests. Builds a
 // room split by a long wall with a gap only on one side, so the shortest
 // path is forced into a real detour -- then prints it as an ASCII grid to
 // check by eye that it actually routes around the wall rather than

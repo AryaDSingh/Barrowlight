@@ -1,19 +1,17 @@
-// Standalone sanity check for the Mage's talent kit (MageTalents) and
-// PlayerClassFactory -- hand-computed expected results, no SFML, no
-// window, no Application.
-//
-// Rewritten for the attribute-system redesign -- see warrior_test.cpp's
-// own header comment for why every damage check now verifies "normal
-// or crit" rather than a single exact value.
+// The talent engine's damage maths, checked against the Mage fixture kit
+// (tests/fixtures/) with hand-computed expected results: no SFML, no
+// window, no Application. See warrior_test.cpp for why each damage check
+// accepts "normal or crit".
 
 #include <iostream>
 #include <memory>
 #include <string>
 
 #include "ai/NullAIBehavior.hpp"
-#include "entities/MageTalents.hpp"
+#include "fixtures/MageTalents.hpp"
 #include "entities/Monster.hpp"
 #include "entities/PlayerClassFactory.hpp"
+#include "fixtures/ClassKits.hpp"
 #include "entities/TalentEffects.hpp"
 
 using namespace engine;

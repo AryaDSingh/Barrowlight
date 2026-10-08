@@ -36,16 +36,13 @@
 namespace engine {
 Element talentElement(const Talent& t); // what an ability does to the ground (ApplicationSurfaces.cpp)
 
-// Which top-level screen the game is currently showing. Introduced at
-// Prompt 15 alongside the multi-class system -- before this, the
-// constructor went straight into Playing (always as the Spellblade,
-// the only class that existed). ClassSelection is deliberately simple:
-// a text menu, not a separate scene/state-machine framework -- this
-// project's established minimal-but-real UI approach (Prompt 13), just
-// applied to one more screen.
 // The Encounter Lab's three builds: Specialist, Hybrid, Broad.
 const char* labBuildName(int build);
 
+// Which top-level screen the game is showing. Each mode is a plain branch in
+// handleEvent()/render(), not a separate scene or state-machine framework:
+// the screens share almost all of their state (the player, the map), so one
+// object switching on a mode is simpler than passing state between scenes.
 enum class GameMode {
     Town,
     ClassSelection,
@@ -56,33 +53,27 @@ enum class GameMode {
                            // Application::offerAttributeAllocationIfPending()
 };
 
-// Owns the window and the top-level loop shell.
+// The game: the window, the loop, and every system that touches the screen.
 //
-// This is deliberately the ONLY class in the codebase allowed to know about
-// SFML types. Game logic (Actor and its components: Stats, AIBehavior,
-// Inventory, TalentSet, StatusEffects) depends on this class's public
-// interface, never on sf:: directly.
+// Application is the only code that knows about SFML. The rules it plays by
+// (actors, talents, monsters, items, the map, field of view, pathfinding, AI
+// and saving) live in engine_core and never see an sf:: type, so they can be
+// tested in plain console programs (see CMakeLists.txt).
 //
-// As of Prompt 10, Application owns a full monster roster (monsters_, a
-// vector -- the single hardcoded goblin_ member is gone) and resolves
-// everything about combat: player/monster targeting, AoE membership,
-// Empowered damage bonuses, status-effect ticking (including
-// stun-skipping turns), death for both sides. As of Prompt 11, it also
-// tracks a boss_ pointer into monsters_ (for the set-piece encounter and
-// victory detection) and enforces tile occupancy -- the integration-pass
-// audit found that movement only ever checked terrain walkability, never
-// whether another actor already stood there. This is still genuinely the
-// "game state" concern flagged as overdue since Prompt 5 -- still not
-// extracted into its own class (that refactor stays deliberately
-// deferred; nothing here demands it be done *this* prompt, just noted
-// that the case for it keeps getting stronger).
+// What it owns:
+//  - the world: the map, monsters_ (with boss_ pointing at the floor's boss),
+//    surfaces, props, landmarks, loot on the ground and cached floors;
+//  - the turn loop: the player's action, then processMonsterTurns() until
+//    the scheduler hands the turn back, with status ticks and enemy intents;
+//  - every screen: town, class selection, talents, inventory, menus, HUD;
+//  - the log: log() prints to the console (for tests) and to the on-screen
+//    message list.
 //
-// As of Prompt 13, Application also owns a loaded sf::Font and every
-// call site that used to print only to the console now goes through
-// log() instead, which does both: prints to std::cout exactly as
-// before (so existing verification-by-console-output still works
-// unchanged) and keeps a rolling on-screen log buffer render() draws
-// each frame.
+// It is one large class split across many ApplicationXxx.cpp files, one per
+// system (surfaces, travel, talents, Thornwood, Rimeholt...). The systems
+// share most of the world state, and splitting that state into separate
+// objects would mostly add plumbing; the file split keeps each system
+// readable on its own. DESIGN.md discusses this trade-off.
 class Application {
 public:
     Application();
@@ -365,10 +356,7 @@ private:
     void selectClass(PlayerClass cls);
     void allocateAttribute(unsigned int attribute);
 
-    // Draws the ClassSelection screen: a plain text menu, not a
-    // separate scene graph -- this project's established minimal HUD
-    // approach (Prompt 13), just for one more screen instead of the
-    // gameplay HUD.
+    // Draws the ClassSelection screen: choosing an origin and a mode.
     void renderClassSelection();
 
     // Draws the GameOver screen: death or victory, distinguished by
@@ -492,8 +480,7 @@ private:
     void drawMenu(const std::function<void()>& draw);
     void beginMenu(std::uint8_t dim);
     void renderTownWings();
-    // Esc: the pause menu (resume, options, save and exit). Options is a
-    // placeholder for now.
+    // Esc: the pause menu (resume, options, save and exit).
     bool pauseMenu_ = false, pauseOptions_ = false;
     void openPause() { pauseMenu_ = true; pauseOptions_ = false; cancelTargeting(); }
     void handlePauseEvent(const sf::Event& event);
@@ -655,12 +642,10 @@ private:
     void executeAIDecision(Actor& actor, const AIDecision& decision, int chillMagnitude = 0);
 
     // If `actor`'s hp has dropped to 0 or below, handles it: for the
-    // player, prints a message and switches to the GameOver screen
-    // (Prompt 17); for the boss specifically, prints a victory message,
-    // clears boss_, and *also* switches to GameOver -- defeating the
-    // boss is a real win condition now, not "the window stays open and
-    // you can keep playing" the way it briefly was before Prompt 17;
-    // for a regular monster, prints a message and removes it from the
+    // player, prints a message and switches to the GameOver screen (or,
+    // with a life to spare in Adventure mode, revives them); for the final
+    // boss, prints a victory message and shows the victory screen, which
+    // offers to go on; for a regular monster, prints a message and removes it from the
     // scheduler (the actual erase from monsters_ happens in a later
     // cleanup pass, never mid-iteration). Grants XP via
     // grantXpAndAnnounce() for the boss and regular-monster cases (not
@@ -707,15 +692,14 @@ private:
     void grantXpAndAnnounce(int amount);
 
     // True if `pos` is currently occupied by a living actor other than
-    // `exclude` (the player, or any living monster). The integration-pass
-    // bug this prompt fixed: movement previously only checked terrain,
-    // never this -- see ARCHITECTURE_DECISIONS.md.
+    // `exclude` (the player, or any living monster). Movement checks this as
+    // well as the terrain: two actors never share a tile.
     bool isOccupied(Position pos, const Actor* exclude);
 
     // The living actor (other than `exclude`) standing at `pos`, or
     // nullptr. isOccupied() is this with the result reduced to a bool;
-    // tryMovePlayer's bump-into-a-monster handling (Phase 2, Prompt 13)
-    // needs the actor itself, to name it and to trigger its own turn.
+    // walking into a monster needs the actor itself, to attack it (or, for an
+    // ally, to swap places).
     Actor* actorAt(Position pos, const Actor* exclude);
 
     // Every monster except `exclude`, still alive. Built fresh each time
@@ -742,10 +726,9 @@ private:
         logImpl(oss.str());
     }
 
-    // Prints `message` to std::cout (exactly as every direct std::cout
-    // call here used to -- console-based verification from earlier
-    // prompts still works unchanged) and appends it to logMessages_,
-    // capped at kMaxLogMessages, for render() to draw on-screen.
+    // Prints `message` to std::cout (the tests and the playtest bot read
+    // the console) and appends it to logMessages_, capped at
+    // kMaxLogMessages, for render() to draw on-screen.
     void logImpl(const std::string& message);
 
     // Draws one line of text at (x, y) in pixels. A thin wrapper around
@@ -757,8 +740,7 @@ private:
 
     sf::RenderWindow window_;
     ui::Kit ui_; // fonts, stone/bronze panels, icons, tooltips -- see UiKit.hpp
-    SoundManager soundManager_; // Prompt 25 -- see SoundManager.hpp for the "sound is a
-                                // presentation detail, never a hard requirement" design
+    SoundManager soundManager_; // sound is presentation only: missing files never stop the game
     SpriteAtlas sprites_; // same policy: a missing sheet falls back to flat-colored squares
     sf::Clock animationClock_; // drives purely cosmetic animation (torch flicker)
     // Lighting (see renderLighting): a radial light texture and the map-sized

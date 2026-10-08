@@ -15,19 +15,16 @@ int xpForNextLevel(int currentLevel);
 // Applies `amount` XP to `player`, handling however many level-ups it
 // triggers (a single large XP grant -- e.g., the boss's reward -- can
 // cross more than one threshold at once, so this loops rather than
-// checking just once). Capped at level 10: XP stops accumulating once
-// there, rather than piling up toward a level that will never come.
+// checking just once). Capped at Player::levelCap() (20, or 30 past the
+// Lich): XP stops accumulating there, rather than piling up toward a
+// level that will never come.
 //
 // Each level-up grants +1 max HP automatically (every class, no
 // choice), +2 unspent attribute points (see
-// Player::unspentAttributePoints), and a full heal to current hp/mana.
-// Rewritten from the original flat "+3 maxHp/+2 maxMana, no player
-// input at all" placeholder -- max HP growth now happens two ways (this
-// automatic +1, plus however many points a player chooses to put into
-// Strength), and max mana no longer grows automatically at all -- it
-// only grows from Intelligence points a player actually chooses to
-// spend. See ARCHITECTURE_DECISIONS.md for the full attribute-system
-// redesign this is part of.
+// Player::unspentAttributePoints), an ability point and a utility point
+// (and a tree point at levels 5/10/15/25/30), and a full heal. Max HP
+// grows two ways (this automatic +1, plus points put into Strength); max
+// mana grows only from Intelligence the player chooses to spend.
 void grantXp(Player& player, int amount);
 
 } // namespace engine

@@ -7,9 +7,7 @@ namespace engine {
 
 // Melee rusher: paths toward its target via A* while it's out of sight
 // or out of reach, and attacks once adjacent, using its own
-// MonsterAttackProfile. Prompt 7's Chaser only ever moved; Prompt 10
-// adds the attack -- this is exactly the "adjacent currently just means
-// stay put" limitation flagged back then.
+// MonsterAttackProfile.
 //
 // Powers Goblin (plain profile), Spider (Poison on-hit), and Ogre (Stun
 // on-hit, lower chance) via different construction arguments -- one

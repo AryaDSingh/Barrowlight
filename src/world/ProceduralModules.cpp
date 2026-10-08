@@ -1,3 +1,8 @@
+// Procedural cells for the floor generator's 3x3 grid: halls, rooms, ruins
+// and caverns carved at random, always keeping the four sockets that join
+// neighbouring cells and the centre open, and rejecting cells with too
+// little floor.
+
 #include "world/ProceduralModules.hpp"
 
 #include <algorithm>

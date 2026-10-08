@@ -1,3 +1,5 @@
+// Map: the tile grid, plus parseAsciiMap for the hand-drawn maps tests use.
+
 #include "world/Map.hpp"
 
 #include <stdexcept>

@@ -9,19 +9,15 @@
 namespace engine {
 
 // The player-controlled Actor. Always has ai() == nullptr -- decisions
-// come from input (a later prompt's InputHandler), never from a strategy
-// object.
+// come from input, never from a strategy object.
 //
-// As of Prompt 15, the talent kit is passed in rather than hardcoded --
-// previously this constructor built TalentSet(spellbladeTalents())
-// itself, coupling Player to one specific class. Which kit a given
-// Player actually knows is now PlayerClassFactory's job
-// (talentSetForClass), the same "factory decides, the class itself
-// stays generic" shape MonsterFactory already established for monsters.
-// Progression adds talents to that initial kit as levels are earned.
+// The talents it starts with are passed in (Application gives every
+// character the basic attack and Cleanse); everything else is bought in
+// the talent trees and recorded here: trees opened, point balances, lore,
+// patron, ascendancy, the pack and the nemesis.
 //
-// As of Prompt 20: level_/xp_ track character progression -- level_
-// starts at 1, capped at 10; xp_ is progress toward the *next* level
+// level_/xp_ track progression -- level_ starts at 1, capped at 20 (30
+// past the Lich, see levelCap()); xp_ is progress toward the *next* level
 // specifically (resets on level-up), not a cumulative lifetime total,
 // so "45/60 XP" reads directly as "progress within this level" for the
 // HUD rather than needing a separate cumulative-vs-incremental

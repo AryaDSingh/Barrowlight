@@ -22,30 +22,12 @@ namespace engine {
 
 namespace {
 
-// Version 2: added Stats::intelligence (missed when it was introduced
-// at Prompt 14 -- a real gap, caught while touching this file again for
-// playerClass below) and playerClass (Prompt 15's multi-class system --
-// needed so a loaded save's playerCooldowns are applied to the right
-// class's talent list, not whatever player_ happened to be configured
-// as at the moment F9 was pressed). A version-1 save is simply
-// rejected, not migrated -- see ARCHITECTURE_DECISIONS.md, "Save/load,"
-// for why that's an acceptable simplification at this scale.
-// Version 3: added playerLevel/playerXp (Prompt 20's leveling system).
-// Same "reject outright, don't migrate" policy as the version-1 -> 2
-// jump above.
-// Version 4: added playerHybridPickNames/playerHybridSpecced (Prompt
-// 24's hybrid path). Same "reject outright, don't migrate" policy as
-// every prior version bump.
-// Version 5: added currentFloor (the multi-floor dungeon progression).
-// Same "reject outright, don't migrate" policy as every prior version
-// bump.
-// Version 6: base stats, current pools, owned/ground items and next instance ID.
-// Version 19 adds persistent first-entry levels for the two dungeon bands.
-// Version 18 expands equipment to eleven slots; original slot IDs remain stable.
-// Version 17 adds curses, the Lich hex cooldown, and a wider Warlord cleave.
-// Version 16 appended enemy types and larger blast areas.
-// Version 21 adds death mode and remaining extra lives. Older runs remain Roguelike.
-// Version 20 replaces entry-level scaling with fixed global-depth scaling.
+// The save format version. Bump it whenever the layout changes, and guard
+// the new fields with `version >= N` on both the write and the read side.
+// Loading accepts every version from 9 (the talent-tree rewrite) up to this
+// one; anything older is rejected rather than migrated, since its numbers
+// meant something different. Migrations for in-range versions live where
+// their fields are read (migrateForkedTrees, migrateUtilityPoints...).
 constexpr int kSaveFormatVersion = 47;
 // The creatures that can fight for you: skeletons, the bone guardian, slag, hounds.
 bool alliedKind(MonsterType t) {

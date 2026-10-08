@@ -1,3 +1,6 @@
+// A* pathfinding over the tile grid, 4-directional like the player's own
+// movement, so monsters never cut a corner the player can't.
+
 #include "world/Pathfinder.hpp"
 
 #include <algorithm>

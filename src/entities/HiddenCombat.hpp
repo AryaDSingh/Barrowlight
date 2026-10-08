@@ -1,4 +1,8 @@
 #pragma once
+
+// Small combat helpers shared by the hidden (hybrid) trees: whether an actor
+// holds a melee weapon, Spellblade's imbued hits, and the Battle Rhythm
+// adjustments applied to a talent before it is cast.
 #include "entities/Actor.hpp"
 namespace engine {
 inline bool hasMeleeWeapon(const Actor& a) {

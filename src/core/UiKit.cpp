@@ -1,3 +1,8 @@
+// The UI kit: fonts, the procedurally generated stone texture, bronze-framed
+// panels, buttons, insets, icons, wrapped paragraphs with highlighted
+// keywords, and tooltips. Every screen draws through these, so the whole
+// game shares one look.
+
 #include "core/UiKit.hpp"
 
 #include <algorithm>

@@ -7,8 +7,8 @@ namespace engine {
 
 // Phase-based boss fight: aggressive melee while healthy, a
 // cooldown-gated AoE blast (reusing TalentSet, the same way AoEBomber
-// does) once wounded, and a one-time self-Empower (reusing the existing
-// status effect from Prompt 10 -- no new mechanic needed for this) before
+// does) once wounded, and a one-time self-Empower (the ordinary Empowered
+// status, no special mechanic) before
 // going all-in once nearly dead.
 //
 // Phase is always re-derived from current hp fraction, not tracked as

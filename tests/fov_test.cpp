@@ -1,5 +1,5 @@
 // Standalone sanity check for computeFieldOfView. No SFML, no window --
-// same pattern as the other tests (see ARCHITECTURE_DECISIONS.md). Builds
+// same pattern as the other tests. Builds
 // a small room with a wall pillar splitting it, computes FOV from a fixed
 // origin, and prints the result as an ASCII grid so shadow-casting
 // correctness can be checked by eye: tiles directly behind the pillar

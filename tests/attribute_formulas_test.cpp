@@ -1,17 +1,9 @@
 // Standalone sanity check for AttributeFormulas -- the pure,
 // deterministic functions only. rollDodge()/rollCrit() themselves (the
-// functions here that actually draw a random number) are deliberately
-// not tested in isolation, same precedent as Chaser's onHitChance roll
-// (Prompt 10): didDodge(), the pure comparison they're built on, is
-// exhaustively tested instead, and live play is what confirms a
-// randomized rate behaves plausibly.
-//
-// Fully rewritten for the attribute-system redesign -- the original
-// Prompt 14 version tested a baseline-10 model (physicalDamageBonus,
-// magicDamageBonus, manaBonusFromIntelligence) that no longer exists.
-// The new system has no baseline at all: every point counts at full
-// value from zero, damage scaling is per-ability (not universal), and
-// scales by the ability's own cooldown tier.
+// functions that actually draw a random number) aren't tested in
+// isolation: didDodge(), the pure comparison they're built on, is tested
+// exhaustively instead. There is no baseline: every point counts at full
+// value from zero, and damage scaling is per ability, by its cooldown tier.
 
 #include <iostream>
 #include <string>

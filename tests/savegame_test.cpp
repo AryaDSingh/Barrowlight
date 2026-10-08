@@ -64,12 +64,8 @@ int main() {
     original.playerStats.maxMana = 20;
     original.playerStats.strength = 12;
     original.playerStats.dexterity = 14;
-    original.playerStats.intelligence = 18; // deliberately non-default -- this exact field was
-                                              // missing from the save format until Prompt 15
-                                              // caught it, and the gap slipped through
-                                              // unnoticed specifically because the original
-                                              // version of this test never set a non-default
-                                              // value here either
+    original.playerStats.intelligence = 18; // non-default on purpose: a field left at its
+                                              // default would round-trip even if it were never saved
     original.playerStats.speed = 100;
     original.playerTalents={{"basic.attack",0,1},{"one_handed.quick_strike",0,2},
         {"one_handed.parry",3,2},{"one_handed.riposte",0,1},{"basic.cleanse",0,1}};

@@ -15,16 +15,16 @@ namespace engine {
 // A non-player Actor. Always constructed with an AIBehavior -- there is
 // no default here on purpose, unlike Player. What makes different monster
 // types feel different is which Stats, which AIBehavior (parameterized
-// with its own numbers), and -- as of Prompt 10 -- which talents get
-// plugged in here, not a subclass per monster type. Most monster types
+// with its own numbers) and which talents get plugged in here, not a
+// subclass per monster type. Most monster types
 // don't need talents at all (a plain melee/ranged attack doesn't need
 // cooldown tracking); Shaman and Bomber do, reusing the same TalentSet
 // the player uses for exactly the same reason: it's already generic,
 // nothing about it is player-specific.
 //
-// Remembers its own `type_` (Prompt 12) purely so save/load can
-// reconstruct a matching Monster via MonsterFactory::createMonster() --
-// nothing about normal gameplay reads it.
+// Remembers its own `type_` so save/load can rebuild a matching Monster via
+// MonsterFactory::createMonster(), and so per-type rules (a Frost Bear's
+// ice, a Thornback's spines) can recognise it.
 class Monster : public Actor {
 public:
     Monster(MonsterType type, std::string name, char glyph, Position position, Stats stats,
@@ -66,14 +66,10 @@ public:
     std::optional<EnemyIntent>& intent() { return intent_; }
     const std::optional<EnemyIntent>& intent() const { return intent_; }
 
-    // Which Elite/Nightmare tier this monster was created at (Prompt
-    // 22) -- Base by default, set explicitly by MonsterFactory
-    // ::createMonster() via setTier(), the same "constructor stays
-    // simple, a setter attaches the extra field afterward" pattern
-    // Actor::setXpReward() already established. Not a constructor
-    // parameter specifically so every existing test that constructs a
-    // Monster directly (there are many, across nearly every test file)
-    // keeps compiling completely unchanged. Purely for rendering (the
+    // Which Elite/Nightmare tier this monster was created at -- Base by
+    // default, set by MonsterFactory::createMonster() via setTier() (a
+    // setter rather than a constructor parameter, like setXpReward(), so
+    // a Monster built directly in a test needs no tier). Purely for rendering (the
     // Elite/Nightmare border, see Application) -- gameplay-affecting
     // numbers (hp, damage) are already baked into stats()/the
     // AIBehavior at creation time and don't need this to be read back.

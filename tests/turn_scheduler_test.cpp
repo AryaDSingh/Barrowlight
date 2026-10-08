@@ -1,5 +1,5 @@
 // Standalone sanity check for TurnScheduler. No SFML, no window -- same
-// pattern as entity_smoke_test (see ARCHITECTURE_DECISIONS.md). Registers
+// pattern as entity_smoke_test. Registers
 // three Monsters with different speeds, runs a fixed number of turns, and
 // prints who acted each time, so the speed -> frequency relationship can
 // be checked before anything real depends on it being correct.

@@ -1,5 +1,20 @@
 #pragma once
 
+// The talent catalogue: every tree and every node in the game, as data.
+//
+//  - kTalentTrees lists the trees (base, utility, hybrid, deep).
+//  - Each tree is a fork: a root, a choice between two actives, the passive
+//    on the side you took, and a choice between two capstones. Actives have
+//    three ranks (the third changes how they play), passives one.
+//  - Every node carries a colour (Affinity). Ranks bought add colour points;
+//    colours gate hybrid trees, deep trees, ascendancies and resonances.
+//  - applyMastery() is what rank 3 changes; growth() is how flat passive
+//    numbers grow with their attribute.
+//
+// The rules that read this table live elsewhere: TalentProgression.hpp
+// (what can be bought), TalentEffects (what a talent does), Application
+// (targeting and the special effects keyed by talent fields).
+
 #include <array>
 #include <cstdint>
 #include <algorithm>

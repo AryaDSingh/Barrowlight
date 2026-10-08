@@ -1,9 +1,5 @@
 #include "entities/PlayerClassFactory.hpp"
 
-#include "entities/MageTalents.hpp"
-#include "entities/SpellbladeTalents.hpp"
-#include "entities/ThiefTalents.hpp"
-#include "entities/WarriorTalents.hpp"
 
 namespace engine {
 
@@ -11,16 +7,9 @@ Stats statsForClass(PlayerClass cls) {
     Stats stats;
     switch (cls) {
         case PlayerClass::Spellblade: {
-            // The original Str+Int hybrid (Prompt 9) -- deliberately
-            // left on the old baseline-10 model and its old hand-picked
-            // maxMana (20, previously computed as 12 base +
-            // manaBonusFromIntelligence(18)) rather than migrated to
-            // the new attribute system. There is currently no way to
-            // actually reach this class in play (still reserved for a
-            // future unlock, never offered at character select) --
-            // fixing it up to match the new system is a no-op until
-            // that unlock mechanism actually exists, so it's left as a
-            // known, harmless inconsistency rather than busywork now.
+            // Not offered at character selection; these stats exist for the
+            // isolated combat tests (tests/fixtures/), which compute their
+            // expected damage from them.
             stats.hp = 30;
             stats.maxHp = 30;
             stats.strength = 14;
@@ -31,13 +20,9 @@ Stats statsForClass(PlayerClass cls) {
             break;
         }
         case PlayerClass::Warrior: {
-            // Pure Strength -- originally "Fighter" (Prompt 19),
-            // renamed again as part of the full attribute-system
-            // redesign. Starting hp/mana are hand-picked literals, not
-            // derived from Strength/Intelligence at all -- the new
-            // system deliberately keeps starting resource pools and
-            // starting attribute investment as two independent
-            // decisions (see ARCHITECTURE_DECISIONS.md). The 6/2/2
+            // Pure Strength. Starting hp/mana are hand-picked, not derived
+            // from Strength/Intelligence: starting resource pools and the
+            // starting attribute spread are two independent decisions. The 6/2/2
             // Str/Dex/Int split is used purely for ability-scaling
             // damage and secondary effects (dodge/crit from Dex) from
             // this point on -- it never retroactively affects maxHp or
@@ -68,13 +53,9 @@ Stats statsForClass(PlayerClass cls) {
             break;
         }
         case PlayerClass::Mage: {
-            // Pure Intelligence -- originally "Sorcerer" (Prompt 19),
-            // renamed again as part of the attribute-system redesign.
-            // Same "hand-picked pools, separate from the 6/2/2 split"
-            // reasoning as Warrior above -- the largest starting mana
-            // pool of the three (20), reflecting a genuinely spell-
-            // hungry identity, same as it always has, just no longer
-            // computed from Intelligence directly.
+            // Pure Intelligence. Hand-picked pools as for the Warrior: the
+            // largest starting mana of the three (20), for a spell-hungry
+            // origin.
             stats.hp = 20;
             stats.maxHp = 20;
             stats.mana = 20;
@@ -86,35 +67,6 @@ Stats statsForClass(PlayerClass cls) {
         }
     }
     return stats;
-}
-
-// Legacy kit adapters retained for existing isolated combat fixtures. Live creation uses basicAttack().
-TalentSet talentSetForClass(PlayerClass cls) {
-    switch (cls) {
-        case PlayerClass::Spellblade:
-            return TalentSet(spellbladeTalents());
-        case PlayerClass::Warrior:
-            return TalentSet(warriorTalents());
-        case PlayerClass::Thief:
-            return TalentSet(thiefTalents());
-        case PlayerClass::Mage:
-            return TalentSet(mageTalents());
-    }
-    return TalentSet(); // unreachable -- all enum values handled above
-}
-
-std::optional<Talent> talentUnlockedAtLevel(PlayerClass cls, int level) {
-    switch (cls) {
-        case PlayerClass::Spellblade:
-            return std::nullopt; // reserved for its own separate unlock mechanism, not this one
-        case PlayerClass::Warrior:
-            return warriorTalentUnlockedAtLevel(level);
-        case PlayerClass::Thief:
-            return thiefTalentUnlockedAtLevel(level);
-        case PlayerClass::Mage:
-            return mageTalentUnlockedAtLevel(level);
-    }
-    return std::nullopt; // unreachable -- all enum values handled above
 }
 
 } // namespace engine

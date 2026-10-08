@@ -1,3 +1,5 @@
+// AoEBomber: keeps its distance and throws a cooldown-gated area blast (see AoEBomber.hpp).
+
 #include "ai/AoEBomber.hpp"
 
 #include <algorithm>

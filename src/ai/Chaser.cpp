@@ -1,3 +1,5 @@
+// Chaser: paths toward a visible target and attacks once adjacent (see Chaser.hpp).
+
 #include "ai/Chaser.hpp"
 
 #include <algorithm>

@@ -57,9 +57,7 @@ struct StatusEffectInstance {
     int magnitude = 0; // Poison: damage/turn. Empowered: bonus dmg/hit. Stun: unused. Concealed: source ability rank (1-3). Marked: remaining charge (1).
 };
 
-// Real bookkeeping now -- this is the wholesale replacement flagged back
-// in Prompt 3 ("expect this to be replaced wholesale, not incrementally
-// extended"). Tracks which effects are currently active on an Actor.
+// Tracks which effects are currently active on an Actor.
 //
 // Deliberately doesn't know how to *apply* an effect's per-turn behavior
 // (poison damage, stun-skipping a turn) -- that's tickStatusEffects'

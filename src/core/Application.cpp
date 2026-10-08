@@ -1,3 +1,9 @@
+// Application's core: construction, the event loop, input dispatch, the turn
+// loop (the player's action, then processMonsterTurns until it's the player's
+// turn again), combat resolution for monsters' blows, death and rewards,
+// floor generation, saving and loading, and the main render pass. Each
+// larger system lives in its own ApplicationXxx.cpp file.
+
 #include "entities/ArmourTalents.hpp"
 #include "entities/RunProgression.hpp"
 #include "entities/HiddenCombat.hpp"
@@ -43,7 +49,7 @@ namespace engine {
 namespace {
 constexpr unsigned int kWindowWidth = playLayout::windowWidth;
 constexpr unsigned int kWindowHeight = playLayout::windowHeight;
-constexpr char kWindowTitle[] = "Roguelike Engine - Dev Window";
+constexpr char kWindowTitle[] = "Barrowlight";
 constexpr float kTileSize = static_cast<float>(playLayout::tileSize);
 // The map fills the play screen, whose width follows the window (fitView).
 const float& kMapLeft = playLayout::mapLeft;
@@ -71,11 +77,9 @@ constexpr int kFinalFloor = kRunFinalFloor;
 constexpr int kManaRegenOutsideCombat = 2;
 constexpr int kManaRegenInCombat = 1;
 
-// Relative to wherever the executable is launched from -- same
-// reasoning as avoiding data/ file loading elsewhere in this project
-// (see ARCHITECTURE_DECISIONS.md): resolving the executable's own
-// directory needs platform-specific APIs this project has deliberately
-// avoided needing so far.
+// Relative to wherever the game is launched from (the project root), like
+// assets/. Finding the executable's own directory needs platform-specific
+// APIs, and one fixed save slot beside the assets is all the game needs.
 constexpr const char* kSaveFilePath = "savegame.txt";
 
 // Menu hit areas live in core/ScreenLayout.hpp (shared with the UI tests).
@@ -91,12 +95,8 @@ sf::Color dim(sf::Color c) {
 // Fallback when a monster's sprite sheet fails to load (see monsterLook())
 // -- each enemy type gets a distinct flat color so the roster is at least
 // visually distinguishable at a glance.
-// Keyed by MonsterType, not the display name string -- Prompt 22's
-// Elite/Nightmare tiers prefix the name ("Elite Goblin", "Nightmare
-// Goblin"), which would silently fail an exact-string match like
-// `name == "Goblin"` and fall through to the default gray for every
-// tiered monster. MonsterType is stable regardless of tier or display
-// name, so this can't have the same failure mode again.
+// Keyed by MonsterType, not the display name: tiers and titles change the
+// name ("Elite Goblin", "Grub the Unbowed"), but never the type.
 sf::Color monsterColor(MonsterType type) {
     switch (type) {
         case MonsterType::Goblin: return sf::Color(200, 60, 60);
@@ -147,7 +147,7 @@ sf::Color monsterColor(MonsterType type) {
     return sf::Color(190, 190, 190); // unreachable -- all enum values handled above
 }
 
-// A visual border color for Elite/Nightmare monsters (Prompt 22) --
+// A visual border color for Elite/Nightmare monsters --
 // drawn as a slightly larger square behind the monster's own type-
 // colored tile, so a tiered monster is identifiable at a glance without
 // needing to read the combat log. Base tier returns no value: nothing
@@ -437,17 +437,12 @@ SpriteFrame playerFrame(PlayerClass playerClass) {
 
 Application::Application()
     : window_(sf::VideoMode({kWindowWidth, kWindowHeight}), kWindowTitle),
-      // Spellblade is just this constructor's placeholder starting
-      // point -- selectClass() (called once the person picks a class on
-      // the selection screen) reconfigures player_'s stats and talents
-      // for real before any dungeon is generated. See
-      // PlayerClassFactory for what each class's Stats/TalentSet
-      // actually are.
+      // A placeholder until selectClass() builds the real character from
+      // the origin chosen on the selection screen.
       player_(Position{0, 0}, statsForClass(PlayerClass::Spellblade),
               TalentSet({basicAttack(),basicCleanse()})) {
-    // Auto-flush cout after every insertion (see ARCHITECTURE_DECISIONS.md,
-    // Prompt 9) -- fixes stdout buffering for every diagnostic/combat-log
-    // line at once.
+    // Flush the console after every line, so the log is complete even if the
+    // process is killed (tests and the playtest bot read it).
     std::cout << std::unitbuf;
 
     // Fonts load in ui::Kit; a missing one falls back to DejaVu Sans Mono
@@ -455,12 +450,8 @@ Application::Application()
     window_.setFramerateLimit(60);
     window_.setKeyRepeatEnabled(false); // A held confirm key must not cast twice.
     fitView();
-    // Deliberately no regenerateLevel() call here -- mode_ starts at
-    // ClassSelection (see the member's default), and selectClass()
-    // calls regenerateLevel() itself once a real choice is made. Prompt
-    // 13's text rendering is what finally makes a real selection screen
-    // possible; before that, defaulting straight into the Spellblade
-    // (as this constructor did through Prompt 14) was the only option.
+    // No dungeon yet: the game opens on the class selection screen, and
+    // selectClass() generates the first floor once a choice is made.
 }
 
 
@@ -981,13 +972,9 @@ void Application::handleEvent(const sf::Event& input) {
         }
 
         if (mode_ == GameMode::ClassSelection) {
-            // Deliberately only these keys handled here -- this
-            // screen doesn't need arrow keys, talent keys, or save,
-            // so nothing else in the Playing-mode switch below even
-            // applies yet. As of Prompt 19: only the 3 base classes
-            // are offered here -- Spellblade still exists in
-            // PlayerClassFactory (see PlayerClass.hpp), just not as
-            // a starting option anymore.
+            // Only the selection screen's own keys: origin, mode, the
+            // Encounter Lab and the sandbox. The three origins are offered;
+            // Spellblade remains in PlayerClass for tests only.
             if (keyPressed->code == sf::Keyboard::Key::M) { adventureMode_=!adventureMode_; return; }
             if (keyPressed->code == sf::Keyboard::Key::L) { labMode_=!labMode_; if (labMode_) sandboxMode_=false; return; }
             if (keyPressed->code == sf::Keyboard::Key::S) { sandboxMode_=!sandboxMode_; if (sandboxMode_) labMode_=false; return; }
@@ -1131,13 +1118,8 @@ bool Application::isOccupied(Position pos, const Actor* exclude) {
 }
 
 Actor* Application::actorAt(Position pos, const Actor* exclude) {
-    // The integration-pass bug fixed in Prompt 11: movement previously
-    // only checked map_.isWalkable() (terrain), never whether another
-    // actor already stood on the destination tile. Never surfaced in
-    // earlier testing because every scripted test walked to a tile
-    // *adjacent* to a target, never onto it -- but nothing stopped a
-    // real player (or two monsters converging from different angles)
-    // from sharing a tile.
+    // Terrain alone isn't enough to move onto a tile: two actors converging
+    // from different sides must never end up sharing one.
     if (&player_ != exclude && player_.position().x == pos.x && player_.position().y == pos.y) {
         return &player_;
     }
@@ -3089,16 +3071,9 @@ void Application::executeAIDecision(Actor& actor, const AIDecision& decision, in
 
 void Application::checkAndHandleDeath(Actor& actor) {
     if (mode_ == GameMode::GameOver) {
-        // Already handled -- without this, a dead player's hp stays <=
-        // 0 indefinitely, and this function gets called again on every
-        // subsequent status-effect tick (advanceTurnsUntilPlayerCanAct
-        // calls it unconditionally each iteration), re-running the
-        // entire death branch below repeatedly. Invisible before this
-        // prompt, since window_.close() used to make window_.isOpen()
-        // false immediately, short-circuiting those later calls before
-        // they ever reached here -- now that death leads to a GameOver
-        // screen instead of closing the window, that accidental
-        // short-circuit is gone, so this needs to be explicit.
+        // Already handled. A dead player's hp stays <= 0, and the turn loop
+        // keeps calling this on every later status tick; without this
+        // guard the whole death branch below would run again each time.
         return;
     }
     if (&actor == &player_) noteHarm();
@@ -3128,11 +3103,8 @@ void Application::checkAndHandleDeath(Actor& actor) {
         soundManager_.play(SoundEffect::Death);
         log("You have died!");
         finishLab("died");
-        // As of Prompt 17: a real GameOver screen instead of closing
-        // the window outright. selectClass() (reachable from the
-        // ClassSelection screen this leads to) already does a complete
-        // reset of player_/map_/monsters_/scheduler_, so nothing extra
-        // needs cleaning up here -- transitioning mode_ is the whole fix.
+        // The death screen. selectClass(), reached from it, resets the whole
+        // world for the next character, so nothing needs cleaning up here.
         mode_ = GameMode::GameOver;
         wonGame_ = false;
         return;
@@ -3608,12 +3580,9 @@ void Application::regenerateLevel(unsigned int seed) {
     params.rareEventChance=currentFloor_>=kRareEventFloor ? kRareEventChance : 0.f;
     // The Blood Altar waits from floor 4 until you have made your offering.
     params.bloodAltarChance=currentFloor_>=kBloodAltarFloor && !player_.bloodMagicUnlocked ? 0.3f : 0.f;
-    // Only specific floors generate with a boss room at all -- every
-    // other floor is a pure "clear it, find the door" dungeon. kFinalFloor
-    // (10) is a placeholder using the same GoblinWarlord as
-    // kFirstBossFloor (5) for now -- the actual Lich (see ROADMAP.md)
-    // is a separate, later piece of work; this gets the full 10-floor
-    // structure and victory gating correct end to end first.
+    // Only boss floors get a boss room: the Warlord (5), the Lich (10 and
+    // 20) and each side dungeon's last floor. Every other floor is explored
+    // for its exit.
     params.includeBossRoom = (currentFloor_ == kFirstBossFloor || currentFloor_ == 10 || currentFloor_ == kFinalFloor || currentFloor_ == kCathedralLast || currentFloor_ == kFoundryLast || currentFloor_ == kThornLast || currentFloor_ == kRimeLast);
     params.cathedral=cathedralFloor(currentFloor_);
     params.includeVault=currentFloor_>=3 && !params.includeBossRoom && nextItemId_<=std::numeric_limits<std::uint64_t>::max()-3;
@@ -4066,7 +4035,8 @@ void Application::renderClassSelection() {
     const auto mouse=mousePixel_?std::optional<sf::Vector2f>(sf::Vector2f(*mousePixel_)):std::nullopt;
     const auto hovered=[&](const sf::FloatRect& r){ return mouse && r.contains(*mouse); };
     if (playLayout::screenWidth<=1280.f) ui_.panel(window_,{{0,0},{1280,720}},true,sf::Color(140,135,130));
-    ui_.textCentered(window_,sandboxMode_?"Sandbox: choose your class":labMode_?"Encounter Lab: choose your class":"Choose your class",{{0,26},{1280,50}},38,ui::kGold,ui::Font::Title);
+    ui_.textCentered(window_,"Barrowlight",{{0,12},{1280,52}},42,ui::kGold,ui::Font::Title);
+    ui_.textCentered(window_,sandboxMode_?"Sandbox: choose your class":labMode_?"Encounter Lab: choose your class":"Choose your class",{{0,70},{1280,26}},18,ui::kMuted,ui::Font::Bold);
     struct ClassInfo { const char* name; PlayerClass cls; sf::Color color; const char* stats; const char* pools; const char* blurb; std::vector<std::size_t> trees; };
     const ClassInfo classes[]{
         {"Warrior",PlayerClass::Warrior,sf::Color(232,150,108),"Str 6   Dex 2   Int 2","Life 30   Mana 10",
@@ -4268,9 +4238,9 @@ void Application::render() {
     updateCamera();
     updateCameraShift();
 
-    // Only the camera-visible range, not the whole map -- both a real
-    // performance win now that the map (60x32, Prompt 18) is bigger
-    // than the ~40x22-tile viewport, and it naturally avoids needing a
+    // Only the camera-visible range, not the whole map -- a real
+    // performance win, since floors are much bigger than the viewport,
+    // and it naturally avoids needing a
     // separate "is this tile on screen" check per tile. +1 on each
     // upper bound covers the partially-visible tile at the viewport's
     // trailing edge.
@@ -4525,14 +4495,14 @@ void Application::render() {
         const bool sensed = sensedMonster(*m);
         if (sensed != sensedPass) continue;
         if (!sensed && (m->tactics.concealed || exploredMap_.at(m->position().x, m->position().y) != Visibility::Visible)) {
-            continue; // only draw what the player can currently see -- see Prompt 7 notes
+            continue; // only draw what the player can currently see (a remembered tile shows terrain, never who stood there)
         }
 
         const ActorPose pose = actorPose(*m);
         const sf::Vector2f screenPos = pose.screen;
         if (!onMap(worldToScreen(m->position().x, m->position().y))) continue;
 
-        // Elite/Nightmare border (Prompt 22): an outline in the tier's
+        // Elite/Nightmare border: an outline in the tier's
         // color around the monster's tile. An outline rather than the old
         // filled square behind the monster, which a sprite's transparent
         // pixels would show through as a solid block. Base tier returns

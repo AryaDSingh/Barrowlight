@@ -1,3 +1,5 @@
+// The energy-based turn scheduler (see TurnScheduler.hpp).
+
 #include "core/TurnScheduler.hpp"
 
 #include <algorithm>

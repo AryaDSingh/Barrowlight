@@ -1,5 +1,10 @@
 #pragma once
 
+// Saving and loading: SaveGameState holds everything needed to resume a run,
+// and saveGame/loadGame turn it into a plain, human-readable text file and
+// back. Independent of Application and SFML, so it is tested on its own
+// (savegame_test). Every enum stored here is append-only.
+
 #include <tuple>
 
 #include <optional>
@@ -59,7 +64,7 @@ struct SaveGameState {
 
     Position playerPosition;
     PlayerClass playerClass = PlayerClass::Spellblade; // starting class; learned talents persist by ID
-    int playerLevel = 1; // Prompt 20
+    int playerLevel = 1;
     int playerXp = 0;    // progress toward the *next* level, not a cumulative lifetime total
     int currentFloor = 1; // which floor of the multi-floor dungeon progression -- the
                            // dungeon layout itself is never saved (map/monsters below

@@ -14,15 +14,11 @@ void seedRandomness(std::uint32_t seed);
 // A seed for something new (a floor, the loot stream), drawn from combatRng().
 unsigned freshSeed();
 
-// Attribute-driven combat formulas. Fully rewritten for the new
-// attribute system (superseding the original Prompt 14 version, which
-// used a baseline-10 model where every stat below 10 was a penalty and
-// every point above it was a bonus). The new system has no baseline at
-// all: classes start at hand-picked, genuinely low values (2 or 6), and
-// every point -- whether part of that starting spread or earned later
-// through leveling -- counts at full value, not as an offset from some
-// implicit "average" stat. See ARCHITECTURE_DECISIONS.md for the full
-// reasoning and the conversation that shaped it.
+// Attribute-driven combat formulas. There is no "average" baseline:
+// origins start at low hand-picked values (2 or 6), and every point,
+// starting or earned, counts at full value. (An earlier baseline-10 model,
+// where points below 10 were penalties, made low stats feel like a debt
+// and was replaced; DESIGN.md has the reasoning.)
 
 // Which attribute a given talent's damage scales from. Every talent
 // scales from exactly one -- no ability scales off more than one stat,
@@ -58,11 +54,8 @@ AbilityCooldownTier tierForCooldown(int cooldownTurns);
 // spread plus every point allocated since, see PlayerLeveling.hpp),
 // scaled by the talent's own cooldown tier. +1 damage per 5 points in
 // the scaling stat, multiplied by the tier: Filler x1.0, Core x1.5,
-// Power x2.0, Signature x2.5. A first-pass number, not a derived-to-be-
-// correct one -- explicitly flagged as needing real playtesting once
-// it's in, the same way every rebalance in this project's history has
-// started with a reasoned first guess and been corrected against actual
-// play (see Prompt 21).
+// Power x2.0, Signature x2.5: abilities on long cooldowns get more from
+// their attribute, so a big spell stays big as the character grows.
 // Picks out whichever of strength/dexterity/intelligence `stat` refers
 // to -- a small dispatch used by both damage-application paths
 // (TalentEffects::applyTalentDamage for the player,
@@ -94,10 +87,7 @@ float critChanceBonus(int dexterity);
 
 // The flat multiplier a critical hit applies -- 1.5x, multiplying
 // normally with any other damage multiplier a talent has (e.g. Piercing
-// Shot's low-hp bonus), not adding to it. See
-// ARCHITECTURE_DECISIONS.md for why multiplicative stacking was chosen
-// specifically to keep Piercing Shot's total from compounding to an
-// unintended 4.5x.
+// Shot's own bonus), not adding to it.
 float critDamageMultiplier();
 
 // Overload accepting a talent-specific bonus on top of the base 1.5x --
@@ -112,10 +102,8 @@ float critDamageMultiplier(float bonusMultiplier);
 // it's unit-testable with exact inputs: `roll` succeeds if it's
 // strictly less than `chance`. rollDodge/rollCrit below are the actual
 // dice-rolling functions and are, deliberately, not unit-tested
-// themselves -- same precedent as Chaser's onHitChance roll (Prompt
-// 10), never isolated for testing either; live play is what confirms a
-// randomized rate behaves plausibly, not a unit test asserting an exact
-// outcome from randomness.
+// themselves: a unit test can't assert an exact outcome from randomness,
+// so the integration tests average many rolls instead.
 bool didDodge(float chance, float roll);
 
 // Rolls a real dodge check for a defender with this dexterity, using
@@ -140,16 +128,10 @@ bool rollCrit(int dexterity, float bonusCritChance);
 
 // A general-purpose "does this probability succeed" roll -- draws a
 // uniform [0,1) value and returns whether it's less than `probability`.
-// Introduced at Prompt 19 once a second independent "local static RNG +
-// uniform_real_distribution" pattern (Chaser's onHitChance roll, Prompt
-// 10) was about to become a third -- consolidated here rather than left
-// triplicated, the same "extract once a third copy would appear"
-// discipline AIUtils.hpp followed at Prompt 11. rollDodge()/rollCrit()
-// are both implemented in terms of this. Not unit-tested in isolation,
-// same precedent as rollDodge and Chaser's original onHitChance roll --
-// it's the one function here that actually draws a random number;
-// didDodge (the pure comparison this and rollDodge/rollCrit both
-// ultimately rely on) is what gets the exhaustive testing.
+// Every random roll in combat goes through here (rollDodge and rollCrit
+// too), drawing from the one seeded combat stream, so a run is
+// reproducible from its seed. The pure comparison it relies on (didDodge)
+// is what the tests check exhaustively.
 bool rollChance(float probability);
 
 } // namespace engine

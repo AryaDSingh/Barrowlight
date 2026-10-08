@@ -1,3 +1,6 @@
+// Rewards: the sealed vault's choice of items, physical chests (and mimics),
+// and what a slain monster leaves behind.
+
 #include "core/Application.hpp"
 #include <queue>
 #include <limits>

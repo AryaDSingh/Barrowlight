@@ -25,9 +25,8 @@ struct Stats {
     int dexterity = 0;    // dodge chance + crit chance, via AttributeFormulas
     int intelligence = 0; // scales Intelligence-tagged talents, via AttributeFormulas
 
-    // Baseline is 100. The TurnScheduler (Prompt 4) will consume this to
-    // decide act frequency -- higher speed acts more often. Not used by
-    // anything yet.
+    // Baseline is 100. The TurnScheduler adds it to the actor's energy each
+    // tick, so higher speed acts more often (Hasted and Slowed change it).
     int speed = 100;
 };
 

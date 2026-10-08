@@ -2,7 +2,7 @@
 
 namespace engine {
 
-// Which difficulty tier a spawned monster belongs to -- Prompt 22.
+// Which difficulty tier a spawned monster belongs to.
 enum class MonsterTier {
     Base,
     Elite,
@@ -21,9 +21,7 @@ MonsterTier tierForLevel(int playerLevel);
 // MonsterFactory::createMonster). hp and damage are scaled
 // independently: Elite monsters hit harder and take longer to kill,
 // Nightmare monsters meaningfully more of both. Base is always exactly
-// 1.0/1.0/1.0 -- identical to a monster with no tier concept at all,
-// so every pre-Prompt-22 balance decision (Prompt 21's rebalance
-// included) stays exactly as tuned for the common case.
+// 1.0/1.0/1.0, so the common case is exactly the monster as tuned.
 float hpMultiplierForTier(MonsterTier tier);
 float damageMultiplierForTier(MonsterTier tier);
 

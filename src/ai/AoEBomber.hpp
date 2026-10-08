@@ -7,15 +7,12 @@ namespace engine {
 // AoE threat: approaches to blast range, avoids getting adjacent, and
 // unleashes an area attack on a cooldown once in range. Distinct from
 // Kiter: its ranged option isn't spammable (cooldown-gated via its own
-// TalentSet, reusing the Prompt 9 infrastructure like Support does), and
+// TalentSet, the same cooldown bookkeeping the player uses), and
 // when cornered it holds rather than fighting back with a basic attack
 // -- unlike Kiter/Chaser, it doesn't have one.
 //
-// Targets the player only, not other monsters -- no friendly-fire/
-// faction system exists (or is being built for this prompt); a real
-// implementation might have the blast hit allies too and rely on the
-// Bomber's own placement to avoid friendly fire, but that's more than
-// this roster needs to demonstrate the archetype.
+// Aims at the player. (The committed blast itself, resolved by
+// Application, hurts whatever stands in it, other monsters included.)
 class AoEBomber : public AIBehavior {
 public:
     AoEBomber(int blastPower, int blastRange, int tooCloseRange,

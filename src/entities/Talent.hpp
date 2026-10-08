@@ -45,14 +45,9 @@ enum class EffectShape {
     Movement,          // relocates the caster; power/areaRadius unused
 };
 
-// What a talent's effect actually does to whatever it resolves as its
-// target(s) -- introduced at Prompt 15 once a third kind (SelfBuff, for
-// the Fighter's Rallying Cry, that class originally named "Marauder"
-// and renamed at Prompt 19) made a lone `bool isHeal` (Prompt 14's
-// healing addition) worth generalizing rather than bolting on a second
-// flag. Mirrors AIDecision's own discriminated-by-enum shape
-// (AIActionType), the established pattern for "one struct represents
-// different kinds of things."
+// What a talent's effect does to whatever it resolves as its target(s).
+// One enum rather than a flag per kind, mirroring AIDecision's AIActionType:
+// one struct, discriminated by an enum, for different kinds of one thing.
 enum class TalentEffectKind {
     Damage,   // the common case -- TalentEffects::applyTalentDamage
     Heal,     // TalentEffects::applyTalentHeal
@@ -62,10 +57,10 @@ enum class TalentEffectKind {
 // A talent's full definition -- deliberately POD-like data, no behavior
 // of its own. The generic logic that interprets these fields lives in
 // TalentEffects (application) and Application (targeting resolution),
-// not here. See ARCHITECTURE_DECISIONS.md for why this counts as
-// "data-driven" even without an external file: logic and data are
-// cleanly separated, the data table is trivially swappable for a file
-// loader later, but no such loader exists yet.
+// not here. Talents are defined in a C++ table (TalentCatalog.hpp) rather
+// than an external file: the logic is fully separate from the data, so a
+// file loader could replace the table without touching the rules, but a
+// loader and a format would be machinery the game doesn't need yet.
 enum class WeaponRequirement { None, OneHanded, TwoHanded, Shield, Bow, Melee, Whip, Spear, Dagger, Mace, Crossbow };
 enum class ArmourRequirement { None, Cloth, Light, Heavy };
 inline bool isMagicTree(TalentTree tree) {
@@ -138,26 +133,15 @@ struct Talent {
     float conditionalHpFraction = 0.f;
     int conditionalMultiplier = 1;
 
-    // Which attribute this talent's damage/heal scales with -- fully
-    // rewritten from the original Prompt 14 version (which only chose
-    // between Physical/Strength and Magic/Intelligence) into the new
-    // three-way ScalingStat, now that Dexterity can power a talent's
-    // damage too. Every talent scales from exactly one attribute; there
-    // is no "scales from two stats" or "universal bonus" concept.
-    // Unused for Movement and SelfBuff. Deliberately the LAST-but-two
-    // field, not inserted earlier alongside power/areaRadius where it
-    // would read more naturally: every talent in
-    // SpellbladeTalents.cpp/WarriorTalents.cpp/ThiefTalents.cpp/
-    // MageTalents.cpp is constructed with positional (not
-    // designated) aggregate initialization, so inserting a field
-    // anywhere but the end would silently shift every value after it in
-    // every existing construction that lists that many fields -- worst
-    // case, an int meant for conditionalMultiplier landing in
-    // conditionalHpFraction instead, which compiles cleanly (int ->
-    // float is an implicit, silent conversion) and would have been a
-    // very easy bug to ship unnoticed. effectKind, selfBuffEffect,
-    // retreatDistance, and onHitEffect/onHitChance, added after it
-    // across Prompts 15-19, all follow the same rule.
+    // Which attribute this talent's damage/heal scales with. Every talent
+    // scales from exactly one attribute; nothing scales from two, and no
+    // attribute boosts all damage. Unused for Movement and SelfBuff.
+    //
+    // Field order matters from here on: some talents (the test fixtures in
+    // tests/fixtures/) are built with positional aggregate initialisation,
+    // so a field inserted mid-struct would silently shift every value after
+    // it (an int landing in a float compiles without a word). New fields
+    // always go after the existing ones.
     ScalingStat scalingStat = ScalingStat::Strength;
 
     // Damage (the default), Heal, or SelfBuff -- see TalentEffectKind's
@@ -170,8 +154,7 @@ struct Talent {
     // uses). Unset for every other effectKind.
     std::optional<StatusEffectInstance> selfBuffEffect;
 
-    // Prompt 16 (originally "Archer's" Vault Kick, that class renamed
-    // to Thief at Prompt 19): for a Damage-kind, AdjacentEnemy-targeted
+    // For a Damage-kind, AdjacentEnemy-targeted
     // talent, moves the caster this many tiles directly away
     // from the target after the damage step -- a knockback on the
     // caster's own position, not the target's. 0 (the default) means no
@@ -185,14 +168,10 @@ struct Talent {
     // target instead of in the caster's last-move direction.
     int retreatDistance = 0;
 
-    // Prompt 19 (Sorcerer's Mind Shatter): for a Damage-kind talent,
-    // optionally applies this status effect to the *target* on a
-    // successful (non-dodged) hit, with probability onHitChance --
-    // mirrors MonsterAttackProfile's onHitEffect/onHitChance exactly
-    // (Poison, Stun, and so on have applied to the player from monsters
-    // this way since Prompt 10), just now available to a player talent
-    // for the first time. Unset/1.f are the defaults, meaning "no
-    // extra effect," every existing talent's ordinary behavior.
+    // For a Damage-kind talent, optionally applies this status effect to
+    // the *target* on a successful (non-dodged) hit, with probability
+    // onHitChance: the same pair monsters use (MonsterAttackProfile).
+    // Unset/1.f are the defaults, meaning no extra effect.
     std::optional<StatusEffectInstance> onHitEffect;
     float onHitChance = 1.f;
 
@@ -200,9 +179,8 @@ struct Talent {
     // (AttributeFormulas::rollCrit/critDamageMultiplier) -- Thief's
     // Piercing Shot is the one talent that uses these: an inherent
     // +20% crit chance and +50% increased crit damage (so a Piercing
-    // Shot crit deals 2.0x, not the normal 1.5x), replacing what was
-    // originally a conditional triple-damage-on-low-hp mechanic. 0 (the
-    // default) means no bonus, every other talent's ordinary behavior.
+    // Shot crit deals 2.0x, not the normal 1.5x). 0 (the default) means no
+    // bonus.
     float bonusCritChance = 0.f;
     float bonusCritDamageMultiplier = 0.f;
 

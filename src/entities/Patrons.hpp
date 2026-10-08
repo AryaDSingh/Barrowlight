@@ -2,7 +2,7 @@
 
 namespace engine {
 
-// Gods with conducts (IDEAS.md #8). You swear to one at a shrine. Each wants
+// Gods with conducts, after Dungeon Crawl's gods. You swear to one at a shrine. Each wants
 // certain deeds and hates others; favor rises and falls with them. At 30
 // favor its boon is yours, at 60 you can pray (spending 40), and at -20 its
 // wrath falls on you. Saved as an int, so only ever append.

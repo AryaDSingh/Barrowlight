@@ -4,13 +4,11 @@
 // build target links no rendering library at all. That's not just for
 // speed: if this ever stops compiling because these headers pulled in
 // <SFML/...> somewhere, that's the "Application owns all sf:: types"
-// boundary (ARCHITECTURE_DECISIONS.md) being broken, caught immediately
-// instead of discovered later.
+// boundary being broken, caught immediately.
 //
-// Not a unit test framework -- just constructs some entities, prints what
-// it built, and exits 0. A real framework can replace this later if it
-// ever earns its overhead (see ROADMAP.md, Prompt 4 already plans another
-// one of these for the turn scheduler).
+// Like every test here, a plain console program rather than a framework:
+// it prints [ok]/[FAIL] per check and exits non-zero on a failure, which is
+// all ctest needs.
 
 #include <iostream>
 #include <memory>

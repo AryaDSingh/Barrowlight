@@ -4,9 +4,9 @@
 #include <iostream>
 #include "core/Application.hpp"
 #include "core/PlayLayout.hpp"
-#include "entities/HybridSpec.hpp"
 #include "entities/MonsterFactory.hpp"
 #include "entities/PlayerClassFactory.hpp"
+#include "fixtures/ClassKits.hpp"
 #include "entities/TalentEffects.hpp"
 
 namespace engine {

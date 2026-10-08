@@ -1,4 +1,4 @@
-// Standalone sanity check for the talent system: Talent (data),
+// The talent system's core, checked against the Spellblade fixture kit: Talent (data),
 // TalentSet (cooldown bookkeeping), and applyTalentDamage (effect
 // application). No SFML, no window, no Application -- just the pieces
 // directly, against hand-computed expected results.
@@ -9,7 +9,7 @@
 
 #include "ai/NullAIBehavior.hpp"
 #include "entities/Monster.hpp"
-#include "entities/SpellbladeTalents.hpp"
+#include "fixtures/SpellbladeTalents.hpp"
 #include "entities/TalentEffects.hpp"
 
 using namespace engine;
@@ -25,7 +25,6 @@ void check(bool condition, const std::string& description) {
 // A damage result is valid if it matches either the normal hit or the
 // (1.5x, truncated) critical hit -- crit is now global (a flat 5% base
 // chance, always active), so an exact `==` would be genuinely flaky.
-// See warrior_test.cpp's own header comment for the full reasoning.
 bool matchesNormalOrCrit(int actualDamage, int normalDamage) {
     const int critDamage = static_cast<int>(static_cast<float>(normalDamage) * 1.5f);
     return actualDamage == normalDamage || actualDamage == critDamage;
@@ -36,7 +35,7 @@ int main() {
     const std::vector<Talent> talents = spellbladeTalents();
 
     check(talents.size() == 9, "spellbladeTalents() returns exactly 9 talents "
-                                "(the original 8 plus Renewal, a player-requested addition)");
+                                "(eight attacks plus Renewal)");
 
     int bladeCount = 0;
     int flameCount = 0;
@@ -47,19 +46,13 @@ int main() {
             ++flameCount;
         }
     }
-    check(bladeCount == 4 && flameCount == 5, "4 Blade talents, 5 Flame talents (Renewal joined "
-                                               "the Flame tree, matching its Magic scaling)");
+    check(bladeCount == 4 && flameCount == 5, "4 Blade talents, 5 Flame talents");
 
     TalentSet talentSet(talents);
 
-    // Attacker stats mirror the Spellblade's real configuration
-    // (Application's constructor): strength 14, intelligence 18. Using
-    // the actual configured values, not arbitrary test numbers, means
-    // these checks double as a direct verification that the Prompt 14
-    // recalibration (base power reduced by exactly the new attribute
-    // bonus) reproduces the exact damage numbers tuned back in Prompt 9
-    // -- if either the formula or the recalibrated base power were
-    // wrong, these wouldn't land on the same values they did before.
+    // Attacker stats match the fixture's own (Spellblade: strength 14,
+    // intelligence 18), so every expected number below is the kit's base
+    // power plus the attribute bonus, computed by hand.
     Stats attackerStats;
     attackerStats.strength = 14;
     attackerStats.dexterity = 10;

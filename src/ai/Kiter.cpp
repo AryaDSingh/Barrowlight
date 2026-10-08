@@ -1,3 +1,5 @@
+// Kiter: shoots from range and backs away when the target gets too close (see Kiter.hpp).
+
 #include "ai/Kiter.hpp"
 
 #include <algorithm>

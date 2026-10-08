@@ -1,21 +1,23 @@
-// Standalone sanity check for the Prompt 23 talent-unlock system --
-// TalentSet::learnTalent() and PlayerClassFactory::talentUnlockedAtLevel().
-// Hand-computed expected results, no SFML, no window, no Application.
+// The talent catalogue and its bookkeeping, checked without a window:
+// learning talents, Piercing Shot's critical mechanic, the shape of every
+// forked tree, which sound each hit makes, how flat passives grow with their
+// attribute, and fork/prerequisite rules on a made-up tree.
 
 #include <iostream>
 #include <memory>
 #include <string>
 
 #include "ai/NullAIBehavior.hpp"
-#include "entities/MageTalents.hpp"
+#include "fixtures/MageTalents.hpp"
 #include "entities/TalentCatalog.hpp"
 #include "core/CombatSounds.hpp"
 #include <map>
 #include "entities/Monster.hpp"
 #include "entities/PlayerClassFactory.hpp"
+#include "fixtures/ClassKits.hpp"
 #include "entities/TalentEffects.hpp"
-#include "entities/ThiefTalents.hpp"
-#include "entities/WarriorTalents.hpp"
+#include "fixtures/ThiefTalents.hpp"
+#include "fixtures/WarriorTalents.hpp"
 
 using namespace engine;
 
@@ -56,28 +58,7 @@ int main() {
         check(talents.isReady(4), "the newly learned talent starts with 0 cooldown -- usable immediately");
     }
 
-    // --- Fighter's unlock levels: 4 and 7 only.
-    check(!warriorTalentUnlockedAtLevel(1).has_value(), "Warrior has no unlock at level 1");
-    check(!warriorTalentUnlockedAtLevel(3).has_value(), "Warrior has no unlock at level 3");
-    check(warriorTalentUnlockedAtLevel(4).has_value() &&
-              warriorTalentUnlockedAtLevel(4)->name == "Whirlwind",
-          "Fighter unlocks Whirlwind at level 4");
-    check(!warriorTalentUnlockedAtLevel(5).has_value(), "Warrior has no unlock at level 5");
-    check(warriorTalentUnlockedAtLevel(7).has_value() &&
-              warriorTalentUnlockedAtLevel(7)->name == "Undying Rage",
-          "Fighter unlocks Undying Rage at level 7");
-    check(!warriorTalentUnlockedAtLevel(10).has_value(), "Warrior has no unlock at level 10");
-
-    // --- Sorcerer's unlock levels.
-    check(mageTalentUnlockedAtLevel(4).has_value() &&
-              mageTalentUnlockedAtLevel(4)->name == "Meteor",
-          "Sorcerer unlocks Meteor at level 4");
-    check(mageTalentUnlockedAtLevel(7).has_value() &&
-              mageTalentUnlockedAtLevel(7)->name == "Overload",
-          "Sorcerer unlocks Overload at level 7");
-    check(!mageTalentUnlockedAtLevel(6).has_value(), "Mage has no unlock at level 6");
-
-    // --- Thief's unlock levels, including Piercing Shot's crit-bonus mechanic.
+    // --- Piercing Shot: a talent with its own critical chance and critical damage.
     check(thiefTalentUnlockedAtLevel(4).has_value() &&
               thiefTalentUnlockedAtLevel(4)->name == "Piercing Shot",
           "Thief unlocks Piercing Shot at level 4");
@@ -85,20 +66,14 @@ int main() {
               thiefTalentUnlockedAtLevel(4)->bonusCritChance < 0.201f &&
               thiefTalentUnlockedAtLevel(4)->bonusCritDamageMultiplier > 0.499f &&
               thiefTalentUnlockedAtLevel(4)->bonusCritDamageMultiplier < 0.501f,
-          "Piercing Shot has an inherent +20% crit chance and +50% increased crit damage "
-          "-- reworked from its original conditional-multiplier mechanic during the "
-          "attribute-system redesign");
+          "Piercing Shot has its own +20% critical chance and +50% critical damage");
     check(thiefTalentUnlockedAtLevel(4)->cooldownTurns == 7,
-          "Piercing Shot's cooldown was raised to 7 (from the original 4) to match its "
-          "new, stronger always-on mechanic");
+          "Piercing Shot's cooldown is 7, the Signature tier");
 
-    // A real damage-application check, not just the data fields above --
-    // this is exactly the kind of discrepancy live testing caught once
-    // already (an inline comment claiming the strength bonus was 0 at
-    // "every tier," which turned out to be wrong specifically for
-    // Piercing Shot's own Signature-tier cooldown of 7): 2/5 truncates
-    // to 0 at Filler/Core/Power, but 2/5 * 2.5 (Signature) == 1.0,
-    // truncating to a real +1, not 0.
+    // The damage it really deals, not just its data. The attribute bonus is
+    // scaled by cooldown tier: 2 Strength / 5 truncates to 0 at the Filler,
+    // Core and Power tiers, but Signature (cooldown 7) multiplies by 2.5,
+    // so 2/5 * 2.5 = 1.0 and the bonus is a real +1.
     {
         Stats thiefStats = statsForClass(PlayerClass::Thief);
         Monster attacker(MonsterType::Goblin, "ThiefAttacker", '@', Position{0, 0}, thiefStats,
@@ -114,26 +89,6 @@ int main() {
               "crit, using its own 2.0x bonus multiplier, not the global 1.5x) -- the "
               "exact total confirmed live during verification, not just calculated");
     }
-
-    check(thiefTalentUnlockedAtLevel(7).has_value() &&
-              thiefTalentUnlockedAtLevel(7)->name == "Adrenaline",
-          "Thief unlocks Adrenaline at level 7");
-
-    // --- PlayerClassFactory::talentUnlockedAtLevel() dispatches correctly.
-    check(talentUnlockedAtLevel(PlayerClass::Warrior, 4)->name == "Whirlwind",
-          "talentUnlockedAtLevel dispatches Fighter correctly");
-    check(talentUnlockedAtLevel(PlayerClass::Mage, 4)->name == "Meteor",
-          "talentUnlockedAtLevel dispatches Sorcerer correctly");
-    check(talentUnlockedAtLevel(PlayerClass::Thief, 4)->name == "Piercing Shot",
-          "talentUnlockedAtLevel dispatches Thief correctly");
-
-    // --- Spellblade never unlocks talents this way -- reserved for its
-    // own separate mechanism (MetaProgress), not level-gated like the
-    // three base classes.
-    check(!talentUnlockedAtLevel(PlayerClass::Spellblade, 4).has_value(),
-          "Spellblade has no talentUnlockedAtLevel unlock at level 4");
-    check(!talentUnlockedAtLevel(PlayerClass::Spellblade, 7).has_value(),
-          "Spellblade has no talentUnlockedAtLevel unlock at level 7");
 
     // --- The node model: the forked pilot trees, and every other tree as before.
     {
@@ -212,7 +167,7 @@ int main() {
     }
 
     std::cout << "\n"
-              << (g_allOk ? "All talent-unlock checks passed." : "Some talent-unlock checks FAILED.")
+              << (g_allOk ? "All talent tree checks passed." : "Some talent tree checks FAILED.")
               << '\n';
     return g_allOk ? 0 : 1;
 }

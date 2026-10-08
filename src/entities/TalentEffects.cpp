@@ -17,14 +17,9 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
     int damage = talent.power + abilityDamageBonus(talent.scalingStat, statValue,
         talent.scalingCooldown >= 0 ? talent.scalingCooldown : talent.cooldownTurns);
 
-    // Same Empowered check executeAIDecision already applies to monster
-    // attacks (Prompt 11) -- missing here until Prompt 15's Rallying Cry
-    // surfaced it live: the Marauder's own self-buff talent was granting
-    // Empowered correctly, but nothing on the player-attack path ever
-    // consulted it, so the buff silently did nothing. Folded in before
-    // the conditional multiplier below, same reasoning as the attribute
-    // bonus: an execute is meant to amplify the attacker's full output,
-    // buffs included, not just the talent's flat listed number.
+    // Empowered adds to the hit, as it does for monsters (executeAIDecision).
+    // Added before the execute multiplier below: an execute amplifies the
+    // attacker's full output, buffs included.
     if (attacker.statusEffects().has(StatusEffectType::Empowered)) {
         damage += attacker.statusEffects().magnitudeOf(StatusEffectType::Empowered);
     }
@@ -177,10 +172,8 @@ bool applyTalentDamage(const Talent& talent, Actor& attacker, Actor& target) {
         if (target.stats().hp>0 && !armourResistsStun(target)) target.statusEffects().apply({StatusEffectType::Stun,1,0});
     }
 
-    // Sorcerer's Mind Shatter (Prompt 19): a status effect applied to
-    // the *target* on a successful hit, mirroring how
-    // MonsterAttackProfile's onHitEffect has worked since Prompt 10 --
-    // just available to a player talent for the first time. Only rolled
+    // A status effect applied to the *target* on a successful hit, as
+    // monsters' onHitEffect works. Only rolled
     // if the target survived the hit -- applying Stun to something
     // already dead has no meaning.
     if (talent.onHitEffect.has_value() && target.stats().hp > 0 &&

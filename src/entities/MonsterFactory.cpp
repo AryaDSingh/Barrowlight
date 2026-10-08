@@ -17,28 +17,16 @@ namespace engine {
 
 namespace {
 
-// Each monster type gets genuinely different Strength/Dexterity/
-// Intelligence, matching each type's identity: Ogre is Strength-heavy
-// (hits hard), Spider and Archer lean Dexterity (evasive, "hard to pin
-// down"), Shaman and Bomber lean Intelligence (already magic-coded
-// kits).
+// Each monster type gets its own Strength/Dexterity/Intelligence to match
+// its identity: the Ogre is Strength-heavy (hits hard), the Spider and the
+// Archer lean Dexterity (hard to pin down), the Shaman and the Bomber lean
+// Intelligence.
 //
-// Rebalanced for the attribute-system redesign (Prompt 26+): monster
-// attributes are NOT held to the same "genuinely low, hand-picked"
-// philosophy player starting stats follow. Players start low
-// specifically because they grow through play -- monsters are static,
-// so their Str/Dex/Int values are chosen purely to reproduce the exact
-// dodge percentages and damage totals already tuned in Prompt 21, not
-// to look like a plausible "level 1" character. Spider/Archer's high
-// Dexterity values below are a deliberate example of this: 36 and 48
-// respectively look large next to a player's starting 2-6, but they
-// exist purely to reproduce this roster's existing 18%/24% dodge
-// identity exactly (36 * 0.5% == 18%, 48 * 0.5% == 24%) under the new
-// no-baseline dodge formula, not to imply monsters have "leveled up."
-// A side effect, not a separate design pass: Spider/Archer's same high
-// Dexterity now also gives them a real crit chance (23%/29%) under the
-// new global crit system, which happens to reinforce their existing
-// "nimble, precise" identity rather than working against it.
+// Monster attributes are not on the player's scale. Players start low
+// because they grow; monsters don't grow, so their attributes are chosen
+// to produce a target dodge chance and damage. The Spider's Dexterity 36,
+// for instance, is exactly an 18% dodge (0.5% per point); its crit chance
+// rises with it (5% base + 18%), which suits a nimble biter.
 Stats makeStats(int hp, int strength, int dexterity, int intelligence) {
     Stats stats;
     stats.hp = hp;
@@ -49,8 +37,7 @@ Stats makeStats(int hp, int strength, int dexterity, int intelligence) {
     return stats;
 }
 
-// Scales a monster's hp for its tier (Prompt 22), rounding to the
-// nearest int.
+// Scales a monster's hp for its tier, rounding to the nearest int.
 int scaledHp(int baseHp, MonsterTier tier) {
     return static_cast<int>(std::lround(baseHp * hpMultiplierForTier(tier)));
 }
@@ -61,9 +48,8 @@ int scaledHp(int baseHp, MonsterTier tier) {
 // in. Deliberately not "multiply power alone" -- for a monster like the
 // Ogre, most of its damage comes from the Strength-bonus formula, not
 // the flat power field, so scaling power alone would barely move its
-// actual output. Same "base + bonus = target total" recalibration
-// discipline every attribute-driven number in this project has used
-// since Prompt 14.
+// actual output. Every attribute-driven number in the game is set this
+// way: pick the total, then subtract the attribute's share.
 int scaledPower(int baseTotal, int attributeBonus, MonsterTier tier) {
     const int scaledTotal =
         static_cast<int>(std::lround(baseTotal * damageMultiplierForTier(tier)));
@@ -81,16 +67,10 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
 
     switch (type) {
         case MonsterType::Goblin: {
-            // Baseline all around -- the roster's plain,
-            // undifferentiated mob. Modest Strength (6) gives a small,
-            // real bonus (int(6/5) == 1) rather than the old system's
-            // "exactly 0 at baseline" -- there's no baseline left to
-            // sit exactly on anymore, so "plain" is now expressed as
-            // "unspecialized," not "contributes nothing." Base total
-            // stays 4 (Prompt 21's rebalanced value): power 3 + bonus 1
-            // == 4.
+            // The plain, unspecialised mob. Modest Strength (6) gives a
+            // small bonus (6/5 = 1). Total 4: power 3 + bonus 1.
             constexpr int kStrength = 6;
-            constexpr int kDexterity = 0; // 0% dodge, matching the original tuned identity exactly
+            constexpr int kDexterity = 0; // never dodges
             MonsterAttackProfile profile;
             profile.power = scaledPower(
                 /*baseTotal=*/4, abilityDamageBonus(ScalingStat::Strength, kStrength, 0), tier);
@@ -101,12 +81,9 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
             break;
         }
         case MonsterType::Spider: {
-            // Dexterity-leaning -- Dexterity 36 reproduces the exact
-            // original 18% dodge (36 * 0.5% == 18%) under the new
-            // formula; as a side effect, also gives a real 23% crit
-            // chance now (5% base + 18%), which happens to reinforce
-            // rather than fight its nimble identity. Base total stays 2
-            // (Prompt 21): power 2 + bonus 0 (4/5 truncates to 0) == 2.
+            // Dexterity-leaning: 36 Dexterity is an 18% dodge (0.5% per
+            // point) and a 23% crit (5% base + 18%). Total 2: power 2 +
+            // bonus 0 (4/5 truncates to 0).
             constexpr int kStrength = 4;
             constexpr int kDexterity = 36;
             MonsterAttackProfile profile;
@@ -121,12 +98,9 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
             break;
         }
         case MonsterType::Ogre: {
-            // Strength-heavy/Dexterity-light -- hits hard, 0% dodge (a
-            // lumbering brute, never evasive, matching the original
-            // tuned identity exactly). Base total stays 5 (Prompt 21):
-            // power 2 + bonus 3 (15/5 == 3) == 5 -- most of its damage
-            // still comes from the Strength bonus, not the flat power
-            // field, same as the original design intent.
+            // Strength-heavy, no Dexterity: a lumbering brute that hits
+            // hard and never dodges. Total 5: power 2 + bonus 3 (15/5),
+            // so most of its damage comes from Strength.
             constexpr int kStrength = 15;
             constexpr int kDexterity = 0;
             MonsterAttackProfile profile;
@@ -141,12 +115,9 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
             break;
         }
         case MonsterType::Archer: {
-            // The roster's most evasive Dexterity lean -- Dexterity 48
-            // reproduces the exact original 24% dodge (48 * 0.5% ==
-            // 24%); also now a real 29% crit chance (5% + 24%), the
-            // highest in the roster, matching "the most evasive" with
-            // "the most precise" naturally. Base total stays 3 (Prompt
-            // 21): power 3 + bonus 0 (4/5 truncates to 0) == 3.
+            // The roster's most evasive: Dexterity 48 is a 24% dodge and
+            // a 29% crit (5% + 24%), the most precise as well. Total 3:
+            // power 3 + bonus 0 (4/5 truncates to 0).
             constexpr int kStrength = 4;
             constexpr int kDexterity = 48;
             MonsterAttackProfile profile;
@@ -165,10 +136,8 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
             // Dexterity 0 -- dodge/crit are moot for a support unit's
             // own identity, but it can still be attacked, so this isn't
             // a "doesn't matter" field, just deliberately unspecialized
-            // rather than tuned. buffMagnitude is deliberately left
-            // unscaled by tier too -- a simplification, not an
-            // oversight (see ARCHITECTURE_DECISIONS.md, "Elite/
-            // Nightmare tiers").
+            // rather than tuned. buffMagnitude deliberately doesn't scale
+            // with tier: an Elite Shaman is tougher, not a stronger buffer.
             std::vector<Talent> abilities;
             Talent empower;
             empower.name = "Empower";
@@ -185,10 +154,9 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
             break;
         }
         case MonsterType::Bomber: {
-            // Intelligence-leaning -- its blast is Magic-typed (set
-            // directly in AoEBomber's decision-building code, not here;
-            // see ARCHITECTURE_DECISIONS.md). Base total stays 7
-            // (Prompt 21): power 5 + bonus 2 (14/5 == 2) == 7. The
+            // Intelligence-leaning: its blast scales with Intelligence (set
+            // in AoEBomber's decision, not here). Total 7: power 5 +
+            // bonus 2 (14/5). The
             // Talent object's own scalingStat is set to Intelligence
             // too, purely for a future reader's sake -- the actual
             // damage path never reads it (see AIDecision::scalingStat's
@@ -540,13 +508,10 @@ std::unique_ptr<Monster> createMonster(MonsterType type, Position position, Mons
     }
 
     if (monster != nullptr) {
-        // Prompt 20: every monster carries its own XP reward from the
-        // moment it's created, via Actor::setXpReward() -- callers
-        // (Application) never need to know xpRewardForType() exists at
-        // all, they just read monster->xpReward() when it dies.
+        // Every monster carries its own XP reward from creation, so callers
+        // just read monster->xpReward() when it dies.
         monster->setXpReward(xpRewardForType(type, tier));
-        // Prompt 22: likewise for tier -- set here once, read later by
-        // Application's rendering for the Elite/Nightmare border.
+        // Likewise its tier, read by rendering for the Elite/Nightmare border.
         monster->setTier(tier);
     }
     if (type==MonsterType::GoblinWarlord || type==MonsterType::Lich)

@@ -1,16 +1,11 @@
-// Standalone sanity check for the Warrior's talent kit (WarriorTalents)
-// and PlayerClassFactory -- hand-computed expected results, no SFML, no
+// The talent engine's damage maths, checked against the Warrior fixture kit
+// (tests/fixtures/) with hand-computed expected results: no SFML, no
 // window, no Application.
 //
-// Rewritten for the attribute-system redesign: renamed class, new
-// hand-picked stats, and the new tiered damage formula. Every damage
-// check now also has to account for global crit (a flat 5% base
-// chance, always active, plus a small Dexterity-derived bonus) -- a
-// single exact `==` assertion would be genuinely flaky, since roughly
-// 1 in 17 real runs would land an unexpected crit on any given hit.
-// Each check instead verifies the result is *one of* the two possible
-// values (normal or critical), which stays deterministic while still
-// meaningfully validating the damage math.
+// Every hit can be a critical (5% base chance, plus a little from
+// Dexterity), so a single exact `==` would fail now and then. Each check
+// instead accepts exactly one of the two possible values, normal or
+// critical, which stays deterministic while still checking the maths.
 
 #include <iostream>
 #include <memory>
@@ -19,8 +14,9 @@
 #include "ai/NullAIBehavior.hpp"
 #include "entities/Monster.hpp"
 #include "entities/PlayerClassFactory.hpp"
+#include "fixtures/ClassKits.hpp"
 #include "entities/TalentEffects.hpp"
-#include "entities/WarriorTalents.hpp"
+#include "fixtures/WarriorTalents.hpp"
 
 using namespace engine;
 
@@ -123,10 +119,8 @@ int main() {
     check(caster.statusEffects().magnitudeOf(StatusEffectType::Empowered) == 4,
           "Empowered's magnitude matches the talent's configured selfBuffEffect (4)");
 
-    // The exact bug live testing originally caught (Prompt 15): Rallying
-    // Cry granting Empowered did nothing to the caster's own subsequent
-    // damage, since applyTalentDamage never checked for it. Verify the
-    // fix still holds: the same caster now empowered, using Slam, deals
+    // Empowered must reach the caster's own later hits: the same caster,
+    // now empowered, using Slam, deals
     // its normal 5 damage *plus* the 4 from Empowered == 9.
     Stats empoweredSlamTargetStats;
     empoweredSlamTargetStats.hp = 20;
@@ -136,8 +130,7 @@ int main() {
     applyTalentDamage(talents[kSlam], caster, empoweredSlamTarget);
     check(matchesNormalOrCrit(20 - empoweredSlamTarget.stats().hp, 9),
           "an Empowered caster's Slam deals base 4 + strength bonus 1 + Empowered 4 == 9 "
-          "damage (or 13 on a crit), not just the un-buffed 5 -- the fix from the bug live "
-          "testing originally caught still holds");
+          "damage (or 13 on a crit), not just the un-buffed 5");
 
     // Index 3: Berserker's Fury -- costs hp, base 23 + strength bonus
     // (6/5 * Power-tier 2.0, truncated to 2) == 25, the hardest-hitting

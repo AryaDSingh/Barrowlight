@@ -11,26 +11,20 @@ namespace engine {
 
 // Constructs a fully-configured Monster of the given type at `position`
 // -- stats, glyph, and AIBehavior (parameterized with this type's own
-// numbers) all live here in one place, so adding a 7th enemy type means
-// adding one case here, not touching Application. This is the project's
-// founding "data + which behavior objects get plugged in, not a new
-// subclass" philosophy (Prompt 0) finally proven out with a real roster:
-// 6 enemy types built from just 4 AIBehavior classes.
+// numbers) all live here in one place, so a new enemy type means one case
+// here. This is the project's founding rule at work: a monster is data
+// plus which behaviour objects get plugged in, never a new subclass. Over
+// fifty enemy types are built from a handful of AIBehavior classes.
 //
-// `tier` (Prompt 22) defaults to Base -- every pre-Prompt-22 call site
-// (including every existing test) keeps working completely unchanged,
-// spawning exactly the Prompt 21-rebalanced numbers with no scaling
-// applied at all. Elite/Nightmare scale both hp and damage from that
-// same rebalanced baseline (see MonsterTier.hpp) and prepend a name
-// prefix; the boss (GoblinWarlord) deliberately ignores `tier` entirely
-// -- it's already a separately-tuned "hardest fight in the game," and
-// scaling it further at high levels risks making the climactic fight
-// absurd rather than harder.
+// `tier` defaults to Base. Elite/Nightmare scale hp and damage (see
+// MonsterTier.hpp) and prepend a name prefix; bosses ignore `tier`, since
+// they are tuned as set pieces and scaling them further would make the
+// climactic fight absurd rather than harder.
 std::unique_ptr<Monster> createMonster(MonsterType type, Position position,
                                         MonsterTier tier = MonsterTier::Base);
 
 // How much XP defeating a monster of this type and tier grants the
-// player (Prompt 20, extended for tiers at Prompt 22) --
+// player --
 // createMonster() calls this itself and sets it on the returned Monster
 // via Actor::setXpReward(), so every caller automatically gets a
 // monster with the right reward already attached; nothing else needs

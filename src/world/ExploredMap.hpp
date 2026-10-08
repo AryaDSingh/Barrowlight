@@ -19,8 +19,7 @@ enum class Visibility {
 // results were over time.
 class ExploredMap {
 public:
-    // Default-constructs empty (0x0) -- same reasoning as Map's default
-    // constructor (see ARCHITECTURE_DECISIONS.md): lets this be a plain
+    // Default-constructs empty (0x0), like Map: lets this be a plain
     // member, assigned its real size once the Map it's tracking exists.
     ExploredMap() = default;
 

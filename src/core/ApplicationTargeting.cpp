@@ -1,3 +1,7 @@
+// The play screen's HUD and targeting: the hotbar and action buttons, the
+// life and mana orbs, the minimap, aiming an ability (cursor, previews of
+// who it will hit), enemy inspection, and the hover tooltips.
+
 #include "core/Application.hpp"
 #include "entities/Ascendancy.hpp"
 #include "core/Keywords.hpp"

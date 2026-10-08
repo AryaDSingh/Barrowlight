@@ -1,3 +1,5 @@
+// TalentSet: the talents an actor knows, their ranks, cooldowns and the hotbar (see TalentSet.hpp).
+
 #include "entities/TalentSet.hpp"
 
 #include <algorithm>

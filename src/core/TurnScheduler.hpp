@@ -12,10 +12,9 @@ namespace engine {
 // acts roughly twice as often as a baseline (speed 100) actor -- no
 // explicit turn-counting needed, speed alone determines frequency.
 //
-// Deliberately doesn't know about Action, Map, or AIBehavior yet. It only
-// answers "whose turn is it" -- nothing about what that actor then does.
-// Wiring this into real gameplay is Prompt 5, not this one (see
-// ROADMAP.md).
+// Deliberately knows nothing about Map, actions or AIBehavior. It only
+// answers "whose turn is it"; what that actor then does is Application's
+// business.
 class TurnScheduler {
 public:
     static constexpr int kActionThreshold = 1000;

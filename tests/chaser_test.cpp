@@ -1,9 +1,5 @@
-// Standalone sanity check for Chaser. No SFML, no window -- same pattern
-// as the other tests. Updated for Prompt 10's interface (decideAction
-// instead of decideMove) -- and the expected behavior genuinely changed,
-// not just the syntax: Chaser now Attacks once adjacent instead of just
-// stopping (Prompt 7's "adjacent currently just means stay put"
-// limitation is exactly what this prompt resolves).
+// Chaser, the melee rusher: it paths toward a target it can see and attacks
+// once adjacent. Hand-traced step by step on fixed ASCII maps. No SFML.
 
 #include <iostream>
 #include <memory>

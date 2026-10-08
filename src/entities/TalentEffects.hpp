@@ -12,9 +12,9 @@ TalentDamageEstimate estimateTalentDamage(const Talent& talent,
     const Actor& attacker, const Actor& target);
 
 // Applies `talent`'s damage from `attacker` to `target`'s Stats::hp,
-// including the attacker's attribute bonus (Prompt 14:
-// physicalDamageBonus/magicDamageBonus, chosen by talent.damageType),
-// the conditional/execute bonus (Execution) if the target qualifies,
+// including the attacker's attribute bonus (from talent.scalingStat,
+// scaled by cooldown tier), the conditional/execute bonus if the target
+// qualifies,
 // and a dodge roll on the target's dexterity. Returns false (and
 // applies nothing) if the attack was dodged, true if it landed --
 // callers need this to print the right message, not assume every call

@@ -81,7 +81,7 @@ struct AIDecision {
 // concrete strategy object -- what makes enemy types feel distinct is
 // which Stats, which on-hit effects, and which AIBehavior (parameterized
 // with its own numbers) get plugged into an otherwise identical Monster,
-// not one class per enemy type (see ARCHITECTURE_DECISIONS.md).
+// not one class per enemy type.
 //
 // `self`, `map`, `player`, and `Actor` are only forward-declared here,
 // not #included -- deliberately, to avoid a circular include (Actor.hpp
