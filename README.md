@@ -32,7 +32,7 @@ including the ideas that were tried and replaced.
 - **Talents as data, targeting as pure functions.** The same targeting code
   drives the on-screen preview and the cast, so the preview is always
   exactly what happens.
-- **Versioned, validated saves.** A plain-text format at version 47, loading
+- **Versioned, validated saves.** A plain-text format at version 48, loading
   every save from version 9 on; a loaded character must be one the game
   could have produced.
 - **Reproducible runs.** All randomness comes from one seeded stream, so a

@@ -78,11 +78,14 @@ const char* kSvgStyle = R"(
 .start rect { fill: #7ee081; } .exit rect { fill: var(--door); } .boss rect { fill: #ff5a5a; }
 .vault rect { fill: #ffd34d; } .event rect { fill: #c9a6ff; }
 .gate { fill: #ffd34d; fill-opacity: .6; }
+.posts .guard { fill: #6fb6ff; stroke: #0b2340; stroke-width: 1.2; }
+.posts .ledge { fill: #ffb35c; stroke: #3a2208; stroke-width: 1.2; }
+.posts .hidden { fill: none; stroke: #e4e4e4; stroke-width: 1.4; stroke-dasharray: 2 2; }
 )";
 
 const char* kPageStyle = R"(
 a.back { color: #c9a6ff; font-size: 13px; }
-body.no-names .names, body.no-props .props, body.no-props .decals, body.no-anchors .anchors, body.no-grid .grid { display: none; }
+body.no-anchors .posts, body.no-names .names, body.no-props .props, body.no-props .decals, body.no-anchors .anchors, body.no-grid .grid { display: none; }
 )";
 
 struct Options {
@@ -219,6 +222,9 @@ void printAscii(const Floor& f) {
             const auto is = [&](Position p) { return p.x == x && p.y == y; };
             char c = d.map.isWalkable(x, y) ? '.' : isProp(d, x, y) ? 'o' : d.map.tileAt(x, y).type == TileType::Chasm ? '_' : '#';
             for (const Position& a : d.otherRoomCenters) if (is(a)) c = 'g';
+            for (const auto& posts : d.roomPosts)
+                for (const Post& post : posts)
+                    if (is(post.pos)) c = post.kind == PostKind::Guard ? 'P' : post.kind == PostKind::Ledge ? 'R' : 'H';
             if (hasExit(d) && is(d.otherRoomCenters.back())) c = '>';
             if (d.hasBossRoom && is(d.bossRoomCenter)) c = 'B';
             if (d.hasVault && is(d.vaultCenter)) c = 'V';
@@ -319,6 +325,21 @@ void writeSvg(std::ostream& out, const Floor& f, bool standalone) {
     }
     out << "</g>\n";
 
+    // Set encounters: guards' posts, shooters' ledges, hiding places.
+    out << "<g class=\"posts\">";
+    for (const auto& posts : d.roomPosts)
+        for (const Post& post : posts) {
+            const int cx = post.pos.x * kTile + kTile / 2, cy = post.pos.y * kTile + kTile / 2;
+            if (post.kind == PostKind::Guard)
+                out << "<rect class=\"guard\" x=\"" << cx - 4 << "\" y=\"" << cy - 4 << "\" width=\"8\" height=\"8\"><title>A guard's post</title></rect>";
+            else if (post.kind == PostKind::Ledge)
+                out << "<path class=\"ledge\" d=\"M" << cx << ' ' << cy - 5 << " L" << cx + 5 << ' ' << cy + 4 << " L" << cx - 5 << ' ' << cy + 4
+                    << " Z\"><title>A shooter's ledge</title></path>";
+            else
+                out << "<circle class=\"hidden\" cx=\"" << cx << "\" cy=\"" << cy << "\" r=\"4\"><title>A hiding place</title></circle>";
+        }
+    out << "</g>\n";
+
     // Markers: a filled square with a letter, centred on its tile.
     const auto marker = [&](Position p, const char* cls, const char* letter, const std::string& title) {
         const int cx = p.x * kTile + kTile / 2, cy = p.y * kTile + kTile / 2;
@@ -409,7 +430,9 @@ void writePage(const std::string& path, const std::vector<Floor>& floors, const 
         << "<span><i style=\"background:#ff5a5a\"></i>Boss</span><span><i style=\"background:#ffd34d\"></i>Vault</span>"
         << "<span><i style=\"background:#c9a6ff\"></i>Event</span>"
         << "<span><i style=\"border:2px solid #ff6b5a\"></i>Encounter</span>"
-        << "<span><i style=\"background:#b98a52\"></i>Prop</span></div>\n</header>\n<main>\n";
+        << "<span><i style=\"background:#b98a52\"></i>Prop</span>"
+        << "<span><i style=\"background:#6fb6ff\"></i>Guard post</span><span><i style=\"background:#ffb35c\"></i>Shooter's ledge</span>"
+        << "<span><i style=\"border:2px dashed #e4e4e4;border-radius:50%\"></i>Hiding place</span></div>\n</header>\n<main>\n";
     for (const Floor& f : floors) writeCard(out, f);
     out << "</main>\n<script>" << kScript << "</script>\n</body></html>\n";
 }

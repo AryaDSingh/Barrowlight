@@ -35,6 +35,14 @@ struct DungeonGenerationParams {
     float proceduralShare = 0.5f;
 };
 
+// A set place in a room for one foe, from its module (see DungeonModules.hpp):
+// a guard's post, a ledge to shoot from, or a hiding place.
+enum class PostKind { Guard, Ledge, Hidden };
+struct Post {
+    PostKind kind;
+    Position pos;
+};
+
 // A lived-in room: the goblins' mess, armoury and bedding, a spider nest, a
 // shaman's idol, a library, an ossuary, or grave-robbers digging in the crypts.
 enum class Vignette { None, Mess, Armoury, Dormitory, Nest, Shrine, Library, Ossuary, GraveDig };
@@ -67,6 +75,9 @@ struct GeneratedDungeon {
     // with the crowd that belongs there.
     std::vector<Vignette> roomVignettes;
     std::vector<Decal> decals;
+    // The posts in each encounter room (aligned with otherRoomCenters; only a
+    // room's first anchor carries them). A room with posts is never dressed.
+    std::vector<std::vector<Post>> roomPosts;
 };
 
 // Builds a floor from a 3x3 grid of module-sized cells (see

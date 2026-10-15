@@ -29,6 +29,11 @@ namespace engine {
 //      module has no A, its center tile is the anchor.
 //   V  vault gate: wall until the player opens it (vault module only)
 //   C  vault cache: center of the sealed 5x5 vault room (vault module only)
+//   P  floor + a guard's post: a tank holds this tile (a bridge, a door)
+//   R  floor + a ledge: a ranged foe holds it, shooting from afar
+//   H  floor + a hiding place: an ambusher waits here, concealed
+//      A room with posts gets that set encounter instead of a pack at its
+//      anchor (see planEncounters).
 //   _  chasm: a drop to the floor below (see-through, not walkable); anything
 //      knocked into it falls
 //   S  landmark altar: a solid object the player interacts with from beside

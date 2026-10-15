@@ -1,4 +1,6 @@
 #pragma once
+#include <algorithm>
+#include <cstdlib>
 #include "core/Position.hpp"
 #include "entities/MonsterType.hpp"
 namespace engine {
@@ -22,5 +24,14 @@ struct EnemyTactics {
     Position home{}, lastKnown{};
     int alert=0, patrol=0, retreat=0, heals=3;
     bool retreated=false, concealed=false;
+    // A posted guard (a bridge's warden, an archer on a ledge) fights from
+    // its post: it never steps more than `post` tiles from home. 0 = free.
+    // Saved, format 48.
+    int post=0;
 };
+inline constexpr int kMaxPost=4;
+// Whether a tile is beyond a posted guard's reach from home.
+inline bool offPost(const EnemyTactics& t, Position p) {
+    return t.post>0 && std::max(std::abs(p.x-t.home.x),std::abs(p.y-t.home.y))>t.post;
+}
 }

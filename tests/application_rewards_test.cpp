@@ -4363,6 +4363,30 @@ struct ApplicationRewardsTestAccess {
         check(packsSafe && varied && rares && named,"500 generated floors: safe unique positions, opening packs, rare caps and new roster");
         check(!humans,"Goblins hold the Ruins: no human archers or torchbearers before the Crypts");
 
+        // A posted guard (a bridge's warden) fights from its post: it won't
+        // chase you off it, and walks back when knocked away. A free one chases.
+        {
+            setup(PlayerClass::Warrior);
+            // Both well within a Goblin's sight (8), neither within reach.
+            app.player_.setPosition({19,10}); app.updateFieldOfView();
+            auto* guard=enemy({14,10}); guard->tactics.home={14,10}; guard->tactics.post=1;
+            auto* free=enemy({19,14}); free->tactics.home={19,14};
+            bool held=true, stepped=false;
+            for (int turn=0;turn<8;++turn) {
+                const auto d=app.enemyDecision(*guard,&app.player_);
+                if (d.type==AIActionType::Move) { guard->setPosition(d.movePosition); stepped=true; }
+                held &= !offPost(guard->tactics,guard->position());
+            }
+            check(held && stepped && guard->position().x==15,"A posted guard comes to the edge of its post, and no further");
+            const auto chase=app.enemyDecision(*free,&app.player_);
+            const auto gap=[&](Position p){ return std::abs(p.x-19)+std::abs(p.y-10); };
+            check(chase.type==AIActionType::Move && gap(chase.movePosition)<gap({19,14}),"A guard without a post comes for you");
+            guard->setPosition({18,10}); guard->tactics.alert=0;
+            const auto back=app.enemyDecision(*guard,nullptr);
+            check(back.type==AIActionType::Move && back.movePosition.x<18,"A guard knocked off its post walks back");
+            app.monsters_.clear();
+        }
+
         // --- Keywords: mechanics named in descriptions, explained on hover.
     {
         check(keywordFor("burns,") && std::string(keywordFor("burns,")->name)=="Burn" && keywordFor("Stunned.") && !keywordFor("sword"),

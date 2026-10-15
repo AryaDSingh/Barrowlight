@@ -3599,8 +3599,10 @@ void Application::regenerateLevel(unsigned int seed) {
 
     boss_ = nullptr; // clear before repopulating -- see checkAndHandleDeath for why this matters
     monsters_.clear();
-    for (const auto& spawn:planEncounters(dungeon,currentFloor_))
+    for (const auto& spawn:planEncounters(dungeon,currentFloor_)) {
         monsters_.push_back(createMonster(spawn.type,spawn.position,spawn.tier));
+        monsters_.back()->tactics.post=spawn.post;
+    }
     if (vaultExists_) {
         auto guard=createMonster(MonsterType::Goblin,{vaultCenter_.x-1,vaultCenter_.y},MonsterTier::Elite);
         guard->vaultGuard=true; monsters_.push_back(std::move(guard));

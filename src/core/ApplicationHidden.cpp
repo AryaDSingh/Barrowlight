@@ -30,7 +30,23 @@ bool Application::sensedMonster(const Monster& m) const {
         exploredMap_.at(p.x,p.y)!=Visibility::Visible;
 }
 
+// A posted guard fights from its post: a step that would take it more than
+// its post's reach from home is refused, and one moved off (knocked back,
+// lured) walks home.
 AIDecision Application::enemyDecision(Monster& m,Actor* opponent) {
+    AIDecision decision=freeEnemyDecision(m,opponent);
+    const auto& t=m.tactics;
+    if(t.post<=0 || m.allied || m.roam!=Roam::None) return decision;
+    const bool acting=decision.type!=AIActionType::Move && decision.type!=AIActionType::Wait;
+    if(acting || (decision.type==AIActionType::Move && !offPost(t,decision.movePosition))) return decision;
+    if(!offPost(t,m.position())) return AIDecision{};
+    AIDecision home;
+    const auto path=findPath(map_,m.position(),t.home);
+    if(path && path->size()>1 && !isOccupied((*path)[1],&m)) { home.type=AIActionType::Move; home.movePosition=(*path)[1]; }
+    return home;
+}
+
+AIDecision Application::freeEnemyDecision(Monster& m,Actor* opponent) {
     auto& t=m.tactics;
     const auto here=m.position();
     const auto distance=[](Position a,Position b){return std::abs(a.x-b.x)+std::abs(a.y-b.y);};

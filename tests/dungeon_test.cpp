@@ -17,6 +17,7 @@
 #include "world/DungeonGenerator.hpp"
 #include "world/DungeonModules.hpp"
 #include "world/ProceduralModules.hpp"
+#include "entities/EnemyTactics.hpp"
 #include "world/EncounterPlan.hpp"
 
 using namespace engine;
@@ -251,6 +252,48 @@ int main() {
             for (int x = 0; x < d.map.width(); ++x) chasms += d.map.tileAt(x, y).type == TileType::Chasm;
     }
     std::cout << rockFloors << " of 200 floors have solid rock, " << bigFloors << " a big room\n";
+
+    // Set encounters: bridges held, ledges manned, ambushers hidden. Posts
+    // are open floor, their rooms are never dressed, and the plan puts the
+    // right foes on them.
+    {
+        int bridges = 0, gauntlets = 0, posted = 0, hiddenFoes = 0, baits = 0;
+        bool postsSound = true, foesSound = true;
+        for (const int floorId : {2, 4, 8, 12, 22, 28, 33, 40})
+            for (unsigned seed = 1; seed <= 80; ++seed) {
+                const auto params = floorGenerationParams(floorId, false);
+                const auto d = generateDungeon(params, seed);
+                postsSound &= d.roomPosts.size() == d.otherRoomCenters.size();
+                for (std::size_t i = 0; i < d.roomPosts.size(); ++i) {
+                    if (d.roomPosts[i].empty()) continue;
+                    postsSound &= i >= d.roomVignettes.size() || d.roomVignettes[i] == Vignette::None;
+                    bool guard = false, hidden = false;
+                    for (const Post& post : d.roomPosts[i]) {
+                        postsSound &= d.map.isWalkable(post.pos.x, post.pos.y);
+                        guard |= post.kind == PostKind::Guard;
+                        hidden |= post.kind == PostKind::Hidden;
+                        for (const Prop& prop : d.props) postsSound &= prop.pos.x != post.pos.x || prop.pos.y != post.pos.y;
+                    }
+                    bridges += guard;
+                    gauntlets += hidden;
+                }
+                for (const auto& spawn : planEncounters(d, floorId)) {
+                    for (std::size_t i = 0; i < d.roomPosts.size(); ++i)
+                        for (const Post& post : d.roomPosts[i]) {
+                            if (post.pos.x != spawn.position.x || post.pos.y != spawn.position.y) continue;
+                            if (post.kind == PostKind::Hidden) { foesSound &= enemyAmbusher(spawn.type) && spawn.post == 0; ++hiddenFoes; }
+                            else { foesSound &= spawn.post > 0 && spawn.post <= kMaxPost; ++posted; }
+                        }
+                    baits += spawn.type == postBait(floorId) && !enemyAmbusher(spawn.type);
+                }
+            }
+        std::cout << bridges << " held bridges, " << gauntlets << " gauntlets: " << posted << " posted foes, "
+                  << hiddenFoes << " hidden\n";
+        check(postsSound, "posts are open floor, undressed and clear of props");
+        check(foesSound, "guards and shooters hold posts; only ambushers hide");
+        check(bridges > 10 && gauntlets > 10 && posted > 20 && hiddenFoes > 20 && baits > 0,
+              "set encounters turn up across the run");
+    }
     check(rockFloors >= 80 && rockFloors <= 160, "about three floors in five have solid rock");
     check(bigFloors >= 70 && bigFloors <= 140, "about half of floors have a big room");
     check(movedDoorways > 200, "doorways move along their edges");

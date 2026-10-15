@@ -15,7 +15,71 @@ struct EncounterSpawn {
     MonsterType type;
     Position position;
     MonsterTier tier=MonsterTier::Base;
+    int post=0; // a posted guard holds within this many tiles of where it spawns (EnemyTactics::post)
 };
+
+// Who holds a room's posts on each floor: a tank on a guard's post, a
+// shooter on a ledge, an ambusher in a hiding place, and a lone bait in
+// plain sight that draws you into an ambush.
+inline MonsterType postGuard(int floorId) {
+    if (rimeFloor(floorId)) return MonsterType::FrostBear;
+    if (thornFloor(floorId)) return MonsterType::Thornback;
+    if (foundryFloor(floorId)) return MonsterType::SlagGolem;
+    if (cathedralFloor(floorId)) return MonsterType::DrownedOne;
+    if (floorTheme(floorId).region == FloorRegion::Crypts) return floorDepth(floorId) >= 9 ? MonsterType::CryptSentinel : MonsterType::SkeletonGuard;
+    return floorDepth(floorId) >= 3 ? MonsterType::GoblinBulwark : MonsterType::Goblin;
+}
+inline MonsterType postShooter(int floorId) {
+    if (rimeFloor(floorId)) return MonsterType::IceWraith;
+    if (thornFloor(floorId)) return MonsterType::RotWitch;
+    if (foundryFloor(floorId)) return MonsterType::OrcFirebrand;
+    if (floorTheme(floorId).region == FloorRegion::Crypts) return MonsterType::SkeletonArcher;
+    return MonsterType::GoblinSlinger;
+}
+// Only the two ambusher kinds can hide (enemyAmbusher; saves enforce it).
+inline MonsterType postAmbusher(int floorId) {
+    return floorTheme(floorId).region == FloorRegion::Crypts ? MonsterType::CryptShade : MonsterType::GoblinStalker;
+}
+inline MonsterType postBait(int floorId) {
+    if (rimeFloor(floorId)) return MonsterType::RimeWight;
+    if (thornFloor(floorId)) return MonsterType::BriarHound;
+    if (foundryFloor(floorId)) return MonsterType::Slagling;
+    if (cathedralFloor(floorId)) return MonsterType::DrownedOne;
+    return floorTheme(floorId).region == FloorRegion::Crypts ? MonsterType::Skeleton : MonsterType::Goblin;
+}
+inline constexpr int kGuardPost=1, kLedgePost=3;
+
+// A room whose module has posts gets its set encounter: guards hold the
+// bridges, shooters the far ledges, ambushers wait hidden (two, three from
+// depth 5, all of them from depth 10) with a bait at the anchor. Costs the
+// floor budget like a pack; empty if it can't be afforded.
+inline std::vector<EncounterSpawn> planSetEncounter(const GeneratedDungeon& dungeon, std::size_t room, int floorId, int& cost) {
+    std::vector<EncounterSpawn> set;
+    cost=0;
+    const int floor=floorDepth(floorId);
+    const auto awayFromStart=[&](Position p) {
+        const int dx=p.x-dungeon.playerStart.x, dy=p.y-dungeon.playerStart.y;
+        return dx*dx+dy*dy>64;
+    };
+    std::vector<Position> hidden;
+    for (const Post& post:dungeon.roomPosts[room]) {
+        if (!awayFromStart(post.pos) || !dungeon.map.isWalkable(post.pos.x,post.pos.y)) continue;
+        if (post.kind==PostKind::Guard) { set.push_back({postGuard(floorId),post.pos,MonsterTier::Base,kGuardPost}); cost+=4; }
+        else if (post.kind==PostKind::Ledge) { set.push_back({postShooter(floorId),post.pos,MonsterTier::Base,kLedgePost}); cost+=3; }
+        else hidden.push_back(post.pos);
+    }
+    if (!hidden.empty()) {
+        // Which hiding places are used follows the layout, not the combat RNG.
+        std::stable_sort(hidden.begin(),hidden.end(),[&](Position a,Position b) {
+            return static_cast<unsigned>(a.x*31+a.y*17+floor*13)%7<static_cast<unsigned>(b.x*31+b.y*17+floor*13)%7;
+        });
+        const std::size_t count=std::min(hidden.size(),static_cast<std::size_t>(floor>=10?4:floor>=5?3:2));
+        for (std::size_t i=0;i<count;++i) { set.push_back({postAmbusher(floorId),hidden[i]}); cost+=3; }
+        const Position bait=dungeon.otherRoomCenters[room];
+        if (awayFromStart(bait) && dungeon.map.isWalkable(bait.x,bait.y)) { set.push_back({postBait(floorId),bait}); cost+=2; }
+    }
+    return set;
+}
 
 // Layout-derived choices never consume combat or loot RNG. Packs are placed
 // atomically, away from the entrance; rare/unique upgrades share the floor budget.
@@ -36,6 +100,15 @@ inline std::vector<EncounterSpawn> planEncounters(const GeneratedDungeon& dungeo
         if (!(i<dungeon.roomVignettes.size() && dungeon.roomVignettes[i]!=Vignette::None)) order.push_back(i);
     for (const std::size_t i:order) {
         const Position center=dungeon.otherRoomCenters[i];
+        if (i<dungeon.roomPosts.size() && !dungeon.roomPosts[i].empty()) {
+            int cost=0;
+            auto set=planSetEncounter(dungeon,i,floorId,cost);
+            if (set.empty() || cost>budget) continue;
+            if (!result.empty() && elitesLeft>0 && budget>=cost+2) { set.front().tier=MonsterTier::Elite; cost+=2; --elitesLeft; }
+            result.insert(result.end(),set.begin(),set.end());
+            budget-=cost;
+            continue;
+        }
         const bool crypt=region==FloorRegion::Crypts;
         std::vector<MonsterType> pack;
         int cost=0;
