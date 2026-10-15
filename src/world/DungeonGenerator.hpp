@@ -50,8 +50,12 @@ struct GeneratedDungeon {
                                                // module and hosts the door down.
     bool hasBossRoom = false;
     Position bossRoomCenter;                  // valid only if hasBossRoom
-    int roomCount = 0;                        // modules on the floor
-    std::vector<std::string> moduleNames;     // row-major, for debugging/printing
+    int roomCount = 0;                        // rooms on the floor (a big room counts once)
+    std::vector<std::string> moduleNames;     // per grid cell, row-major ("Solid Rock" where
+                                               // there is none), for debugging/printing
+    std::vector<int> cellRooms;               // per grid cell: which room it belongs to, or -1
+                                               // for solid rock; a big room's two cells share one
+    std::vector<Position> doorways;           // the tiles of every doorway between rooms
     LandmarkKind landmark = LandmarkKind::None;
     Position landmarkAltar{};                 // the solid altar tile; valid if landmark != None
     std::vector<std::pair<LandmarkKind, Position>> extraLandmarks; // a second and third event, with their altars
@@ -66,18 +70,21 @@ struct GeneratedDungeon {
 };
 
 // Builds a floor from a 3x3 grid of module-sized cells (see
-// DungeonModules.hpp). Most floors are built around a landmark set piece in
-// a random cell; every other ordinary cell is either generated (see
-// ProceduralModules.hpp) or a hand-made module drawn without repeats from
-// the regular pool, randomly mirrored. Adjacent modules connect through 3-wide sockets: a
-// random spanning tree of the grid guarantees the floor is one connected
-// space, then most remaining neighbor pairs are opened too, so there are
-// usually several routes between modules and monsters can arrive from
-// more than one side. Sockets that lead nowhere are sealed.
+// DungeonModules.hpp). Up to two cells are solid rock, so a floor can be an
+// L, a U or a ring, and up to two pairs of neighbouring cells merge into big
+// rooms. Most floors are built around a landmark set piece in a random
+// cell; every other room is either generated (see ProceduralModules.hpp) or
+// a hand-made module drawn without repeats, randomly mirrored. Neighbouring
+// rooms connect through 3-wide doorways: a random spanning tree guarantees
+// the floor is one connected space, then most remaining neighbor pairs are
+// opened too, so there are usually several routes and monsters can arrive
+// from more than one side. A doorway may sit off the middle of its edge;
+// where it opens onto a hand-made room's wall, the shortest passage in is
+// carved. Set pieces keep their doorways in the middle.
 //
-// The player starts in a random edge cell; the cell farthest from it (by
-// steps through open sockets) holds the boss or, on ordinary floors, the
-// door down.
+// The player starts in a random cell at the edge of the grid; the room
+// farthest from it (by steps through doorways) holds the boss or, on
+// ordinary floors, the door down.
 //
 // Deterministic given the same seed.
 GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned int seed);

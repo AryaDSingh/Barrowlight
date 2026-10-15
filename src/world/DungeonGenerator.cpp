@@ -1,8 +1,9 @@
 #include "world/DungeonGenerator.hpp"
 
 #include <algorithm>
-#include <cstdlib>
 #include <array>
+#include <cstdlib>
+#include <deque>
 #include <numeric>
 #include <queue>
 #include <random>
@@ -50,9 +51,7 @@ void placeProps(GeneratedDungeon& d, FloorRegion region, bool cathedral, std::mt
     const auto near = [](Position a, Position b, int r) { return std::abs(a.x - b.x) <= r && std::abs(a.y - b.y) <= r; };
     const auto allowed = [&](Position p) {
         if (!floorAt(p.x, p.y)) return false;
-        const int lx = p.x % kModuleWidth, ly = p.y % kModuleHeight;
-        if ((lx >= 8 && lx <= 12 && (ly <= 2 || ly >= kModuleHeight - 3)) ||
-            (ly >= 4 && ly <= 8 && (lx <= 2 || lx >= kModuleWidth - 3))) return false; // keep sockets clear
+        for (const Position& door : d.doorways) if (near(p, door, 2)) return false; // keep doorways clear
         if (near(p, d.playerStart, 2)) return false;
         for (const Position& a : d.otherRoomCenters) if (near(p, a, 2)) return false;
         if (d.hasBossRoom && near(p, d.bossRoomCenter, 4)) return false;
@@ -213,8 +212,25 @@ constexpr int kCells = kModuleGrid * kModuleGrid;
 // opened anyway. High on purpose: the floor should feel like one open
 // space with several routes, not a single winding path.
 constexpr float kExtraConnectionChance = 0.65f;
+// How many cells are solid rock (none, one, two), and how many pairs of
+// cells merge into one big room (none, one, two): weights.
+constexpr std::array<int, 3> kRockWeights{4, 4, 2};
+constexpr std::array<int, 3> kBigRoomWeights{5, 4, 1};
+// Where a doorway sits along its edge: before, at, or past the middle.
+constexpr std::array<int, 3> kDoorwayWeights{1, 2, 1};
 
 struct Edge { int a, b; };
+
+// A room: one grid cell, or two merged into a big one.
+struct Room {
+    int col = 0, row = 0, cellsWide = 1, cellsHigh = 1;
+    std::vector<int> cells;
+    bool single() const { return cells.size() == 1; }
+    int x0() const { return col * kModuleWidth; }
+    int y0() const { return row * kModuleHeight; }
+    int width() const { return cellsWide * kModuleWidth; }
+    int height() const { return cellsHigh * kModuleHeight; }
+};
 
 std::size_t landmarkModuleIndex(LandmarkKind kind) {
     switch (kind) {
@@ -258,21 +274,152 @@ std::vector<std::string> mirrored(const std::vector<std::string>& rows, bool fli
     return out;
 }
 
+// Whether the given cells are all joined to each other through grid neighbours.
+bool connectedCells(const std::array<bool, kCells>& active) {
+    int first = -1, count = 0;
+    for (int cell = 0; cell < kCells; ++cell)
+        if (active[cell]) { if (first < 0) first = cell; ++count; }
+    if (first < 0) return false;
+    std::array<bool, kCells> seen{};
+    std::queue<int> frontier;
+    frontier.push(first);
+    seen[first] = true;
+    int reached = 0;
+    while (!frontier.empty()) {
+        const int cell = frontier.front();
+        frontier.pop();
+        ++reached;
+        for (const Edge& e : gridEdges()) {
+            const int next = e.a == cell ? e.b : e.b == cell ? e.a : -1;
+            if (next >= 0 && active[next] && !seen[next]) { seen[next] = true; frontier.push(next); }
+        }
+    }
+    return reached == count;
+}
+
+// Joins every walkable tile to `start` by carving the fewest walls. Carving
+// never touches a protected tile (room borders, chasms, altars, the vault),
+// so it only ever links up the inside of a room with its own doorways.
+void connectAll(Map& map, Position start, const std::vector<bool>& isProtected, const std::vector<bool>& ignore) {
+    const int w = map.width(), h = map.height();
+    const auto index = [w](int x, int y) { return static_cast<std::size_t>(y * w + x); };
+    const Position steps[4] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    for (int pass = 0; pass < w * h; ++pass) {
+        std::vector<bool> reached(static_cast<std::size_t>(w * h), false);
+        std::queue<Position> frontier;
+        frontier.push(start);
+        reached[index(start.x, start.y)] = true;
+        while (!frontier.empty()) {
+            const Position p = frontier.front();
+            frontier.pop();
+            for (const Position s : steps) {
+                const Position n{p.x + s.x, p.y + s.y};
+                if (!map.isWalkable(n.x, n.y) || reached[index(n.x, n.y)]) continue;
+                reached[index(n.x, n.y)] = true;
+                frontier.push(n);
+            }
+        }
+        Position lost{-1, -1};
+        for (int y = 0; y < h && lost.x < 0; ++y)
+            for (int x = 0; x < w && lost.x < 0; ++x)
+                if (map.isWalkable(x, y) && !reached[index(x, y)] && !ignore[index(x, y)]) lost = {x, y};
+        if (lost.x < 0) return;
+        // 0-1 search from the lost tile: floor is free, wall costs one.
+        std::vector<int> cost(static_cast<std::size_t>(w * h), 1 << 30);
+        std::vector<int> from(static_cast<std::size_t>(w * h), -1);
+        std::deque<Position> open;
+        cost[index(lost.x, lost.y)] = 0;
+        open.push_back(lost);
+        Position goal{-1, -1};
+        while (!open.empty()) {
+            const Position p = open.front();
+            open.pop_front();
+            if (reached[index(p.x, p.y)]) { goal = p; break; }
+            for (const Position s : steps) {
+                const Position n{p.x + s.x, p.y + s.y};
+                if (!map.inBounds(n.x, n.y)) continue;
+                const bool walkable = map.isWalkable(n.x, n.y);
+                if (!walkable && (isProtected[index(n.x, n.y)] || map.tileAt(n.x, n.y).type != TileType::Wall)) continue;
+                const int c = cost[index(p.x, p.y)] + (walkable ? 0 : 1);
+                if (c >= cost[index(n.x, n.y)]) continue;
+                cost[index(n.x, n.y)] = c;
+                from[index(n.x, n.y)] = static_cast<int>(index(p.x, p.y));
+                if (walkable) open.push_front(n); else open.push_back(n);
+            }
+        }
+        if (goal.x < 0) {
+            // Nothing to carve to: give the pocket up rather than loop forever.
+            for (int y = 0; y < h; ++y)
+                for (int x = 0; x < w; ++x)
+                    if (map.isWalkable(x, y) && !reached[index(x, y)] && !ignore[index(x, y)])
+                        map.setTile(x, y, Tile{TileType::Wall, false, false});
+            return;
+        }
+        for (int i = static_cast<int>(index(goal.x, goal.y)); i >= 0; i = from[static_cast<std::size_t>(i)])
+            if (!map.isWalkable(i % w, i / w)) map.setTile(i % w, i / w, Tile{TileType::Floor, true, true});
+    }
+}
+
 } // namespace
 
 GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned int seed) {
     std::mt19937 rng(seed);
     std::uniform_real_distribution<float> roll(0.f, 1.f);
+    const auto pickFrom = [&](const auto& items) {
+        return items[std::uniform_int_distribution<std::size_t>(0, items.size() - 1)(rng)];
+    };
+
+    // --- The floor's shape -------------------------------------------------
+    // A few cells are solid rock, so floors come in L, U and ring shapes,
+    // never cut in two. Then a pair of neighbouring cells may merge into one
+    // big room.
+    std::array<bool, kCells> active{};
+    active.fill(true);
+    const int rock = std::discrete_distribution<int>(kRockWeights.begin(), kRockWeights.end())(rng);
+    for (int n = 0; n < rock; ++n) {
+        std::vector<int> candidates;
+        for (int cell = 0; cell < kCells; ++cell) {
+            if (!active[cell]) continue;
+            auto without = active;
+            without[cell] = false;
+            if (connectedCells(without)) candidates.push_back(cell);
+        }
+        if (!candidates.empty()) active[pickFrom(candidates)] = false;
+    }
+    std::array<int, kCells> roomOf{};
+    roomOf.fill(-1);
+    std::vector<Room> rooms;
+    std::vector<Edge> edges = gridEdges();
+    const int merges = std::discrete_distribution<int>(kBigRoomWeights.begin(), kBigRoomWeights.end())(rng);
+    for (int n = 0; n < merges; ++n) {
+        std::vector<Edge> candidates;
+        for (const Edge& e : edges)
+            if (active[e.a] && active[e.b] && roomOf[e.a] < 0 && roomOf[e.b] < 0) candidates.push_back(e);
+        if (candidates.empty()) break;
+        const Edge e = pickFrom(candidates);
+        const bool across = e.b == e.a + 1;
+        rooms.push_back({e.a % kModuleGrid, e.a / kModuleGrid, across ? 2 : 1, across ? 1 : 2, {e.a, e.b}});
+        roomOf[e.a] = roomOf[e.b] = static_cast<int>(rooms.size()) - 1;
+    }
+    for (int cell = 0; cell < kCells; ++cell)
+        if (active[cell] && roomOf[cell] < 0) {
+            rooms.push_back({cell % kModuleGrid, cell / kModuleGrid, 1, 1, {cell}});
+            roomOf[cell] = static_cast<int>(rooms.size()) - 1;
+        }
+    const int roomTotal = static_cast<int>(rooms.size());
 
     // --- Which neighbor pairs are joined -----------------------------------
     // Random spanning tree first (Kruskal over shuffled edges) so every
-    // cell is reachable, then extra openings on top.
-    std::vector<Edge> edges = gridEdges();
+    // room is reachable, then extra openings on top. A big room's two cells
+    // are already one.
     std::shuffle(edges.begin(), edges.end(), rng);
     std::array<int, kCells> parent{};
     std::iota(parent.begin(), parent.end(), 0);
+    for (const Room& room : rooms)
+        if (!room.single()) parent[findRoot(parent, room.cells[0])] = findRoot(parent, room.cells[1]);
     std::array<std::array<bool, kCells>, kCells> open{};
     for (const Edge& e : edges) {
+        if (!active[e.a] || !active[e.b] || roomOf[e.a] == roomOf[e.b]) continue;
         const int ra = findRoot(parent, e.a), rb = findRoot(parent, e.b);
         const bool treeEdge = ra != rb;
         if (treeEdge) parent[ra] = rb;
@@ -282,48 +429,62 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     // --- Start, finish, vault ---------------------------------------------
     std::vector<int> edgeCells;
     for (int cell = 0; cell < kCells; ++cell)
-        if (cell != kCells / 2) edgeCells.push_back(cell);
-    const int startCell = edgeCells[std::uniform_int_distribution<std::size_t>(0, edgeCells.size() - 1)(rng)];
+        if (active[cell] && cell != kCells / 2) edgeCells.push_back(cell);
+    const int startRoom = roomOf[pickFrom(edgeCells)];
 
-    std::array<int, kCells> distance{};
-    distance.fill(-1);
+    std::vector<int> distance(static_cast<std::size_t>(roomTotal), -1);
     std::queue<int> frontier;
-    distance[startCell] = 0;
-    frontier.push(startCell);
+    distance[static_cast<std::size_t>(startRoom)] = 0;
+    frontier.push(startRoom);
     while (!frontier.empty()) {
-        const int cell = frontier.front();
+        const int room = frontier.front();
         frontier.pop();
-        for (int next = 0; next < kCells; ++next)
-            if (open[cell][next] && distance[next] < 0) {
-                distance[next] = distance[cell] + 1;
-                frontier.push(next);
+        for (const int a : rooms[static_cast<std::size_t>(room)].cells)
+            for (int b = 0; b < kCells; ++b) {
+                if (!open[a][b]) continue;
+                const int next = roomOf[b];
+                if (distance[static_cast<std::size_t>(next)] < 0) {
+                    distance[static_cast<std::size_t>(next)] = distance[static_cast<std::size_t>(room)] + 1;
+                    frontier.push(next);
+                }
             }
     }
-    // Nearest modules first; ties in a random order.
-    std::vector<int> order(kCells);
+    // Nearest rooms first; ties in a random order.
+    std::vector<int> order(static_cast<std::size_t>(roomTotal));
     std::iota(order.begin(), order.end(), 0);
     std::shuffle(order.begin(), order.end(), rng);
-    std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return distance[a] < distance[b]; });
-    const int finalCell = order.back();
-
-    int vaultCell = -1;
-    if (params.includeVault && !params.includeBossRoom) {
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+        return distance[static_cast<std::size_t>(a)] < distance[static_cast<std::size_t>(b)];
+    });
+    // The boss needs a single cell: the farthest one.
+    int finalRoom = order.back();
+    if (params.includeBossRoom)
+        for (auto it = order.rbegin(); it != order.rend(); ++it)
+            if (rooms[static_cast<std::size_t>(*it)].single() && *it != startRoom) { finalRoom = *it; break; }
+    const int bossRoom = params.includeBossRoom ? finalRoom : -1;
+    // Set pieces take single cells away from the start and the finish.
+    std::vector<int> taken{startRoom, finalRoom};
+    const auto freeSingles = [&] {
         std::vector<int> candidates;
-        for (int cell = 0; cell < kCells; ++cell)
-            if (cell != startCell && cell != finalCell) candidates.push_back(cell);
-        vaultCell = candidates[std::uniform_int_distribution<std::size_t>(0, candidates.size() - 1)(rng)];
-    }
-    const int bossCell = params.includeBossRoom ? finalCell : -1;
+        for (int room = 0; room < roomTotal; ++room)
+            if (rooms[static_cast<std::size_t>(room)].single() && std::find(taken.begin(), taken.end(), room) == taken.end())
+                candidates.push_back(room);
+        return candidates;
+    };
 
-    // Landmark: any cell except the start, the final cell and the vault.
-    int landmarkCell = -1;
+    int vaultRoom = -1;
+    if (params.includeVault && !params.includeBossRoom) {
+        const auto candidates = freeSingles();
+        if (!candidates.empty()) { vaultRoom = pickFrom(candidates); taken.push_back(vaultRoom); }
+    }
+
+    // Landmark: any single cell except the start, the final room and the vault.
+    int landmarkRoom = -1;
     const bool rareEvent = !params.includeBossRoom && params.rareEventChance > 0.f &&
                            std::uniform_real_distribution<float>(0.f, 1.f)(rng) < params.rareEventChance;
     if (!params.includeBossRoom && (rareEvent || std::uniform_real_distribution<float>(0.f, 1.f)(rng) < params.landmarkChance)) {
-        std::vector<int> candidates;
-        for (int cell = 0; cell < kCells; ++cell)
-            if (cell != startCell && cell != finalCell && cell != vaultCell) candidates.push_back(cell);
-        landmarkCell = candidates[std::uniform_int_distribution<std::size_t>(0, candidates.size() - 1)(rng)];
+        const auto candidates = freeSingles();
+        if (!candidates.empty()) { landmarkRoom = pickFrom(candidates); taken.push_back(landmarkRoom); }
     }
     // Which set piece: shrines are commonest near the surface, dark rites below.
     // Shrine, Healing Fountain, Blood Font, Ritual Circle, Treasure Hoard, Prisoner's Cage, Champion's Pit
@@ -337,37 +498,66 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     };
     auto landmarkKind = weightedKind();
     // About one ordinary landmark in eight is a lamplighter's rest instead.
-    if (!rareEvent && landmarkCell >= 0 && std::uniform_int_distribution<int>(0, 7)(rng) == 0) landmarkKind = LandmarkKind::LamplighterRest;
-    if (!rareEvent && landmarkCell >= 0 && params.bloodAltarChance > 0.f &&
+    if (!rareEvent && landmarkRoom >= 0 && std::uniform_int_distribution<int>(0, 7)(rng) == 0) landmarkKind = LandmarkKind::LamplighterRest;
+    if (!rareEvent && landmarkRoom >= 0 && params.bloodAltarChance > 0.f &&
         std::uniform_real_distribution<float>(0.f, 1.f)(rng) < params.bloodAltarChance) landmarkKind = LandmarkKind::BloodAltar;
     if (rareEvent) landmarkKind = static_cast<LandmarkKind>(static_cast<int>(LandmarkKind::SealedTomb) + std::uniform_int_distribution<int>(0, 2)(rng));
     // More events: a second (and then a third) ordinary landmark, each in a
-    // cell of its own and of a kind not already on the floor.
-    std::vector<std::pair<int, LandmarkKind>> extraCells;
-    if (landmarkCell >= 0) {
-        std::uniform_real_distribution<float> roll(0.f, 1.f);
+    // room of its own and of a kind not already on the floor.
+    std::vector<std::pair<int, LandmarkKind>> extraRooms;
+    if (landmarkRoom >= 0) {
         for (const float chance : {params.secondLandmarkChance, params.thirdLandmarkChance}) {
             if (roll(rng) >= chance) break;
-            std::vector<int> candidates;
-            for (int cell = 0; cell < kCells; ++cell) {
-                const bool taken = cell == startCell || cell == finalCell || cell == vaultCell || cell == landmarkCell ||
-                    std::any_of(extraCells.begin(), extraCells.end(), [&](const auto& e) { return e.first == cell; });
-                if (!taken) candidates.push_back(cell);
-            }
+            const auto candidates = freeSingles();
             if (candidates.empty()) break;
             LandmarkKind kind = landmarkKind;
             for (int tries = 0; tries < 12; ++tries) {
                 kind = weightedKind();
                 const bool repeated = kind == landmarkKind ||
-                    std::any_of(extraCells.begin(), extraCells.end(), [&](const auto& e) { return e.second == kind; });
+                    std::any_of(extraRooms.begin(), extraRooms.end(), [&](const auto& e) { return e.second == kind; });
                 if (!repeated) break;
             }
-            extraCells.push_back({candidates[std::uniform_int_distribution<std::size_t>(0, candidates.size() - 1)(rng)], kind});
+            extraRooms.push_back({pickFrom(candidates), kind});
+            taken.push_back(extraRooms.back().first);
         }
     }
-    const auto extraKind = [&](int cell) -> LandmarkKind {
-        for (const auto& e : extraCells) if (e.first == cell) return e.second;
+    const auto extraKind = [&](int room) -> LandmarkKind {
+        for (const auto& e : extraRooms) if (e.first == room) return e.second;
         return LandmarkKind::None;
+    };
+    // Set pieces keep their doorways in the middle of each side.
+    const auto setPiece = [&](int room) {
+        return room == bossRoom || room == vaultRoom || room == landmarkRoom || extraKind(room) != LandmarkKind::None;
+    };
+
+    // --- Doorways ------------------------------------------------------------
+    // Each opened join gets a doorway before, at or past the middle of its
+    // edge, the same on both sides.
+    std::array<std::array<int, kCells>, kCells> shift{};
+    for (const Edge& e : gridEdges()) {
+        if (!open[e.a][e.b]) continue;
+        const int s = setPiece(roomOf[e.a]) || setPiece(roomOf[e.b])
+                          ? 0 : std::discrete_distribution<int>(kDoorwayWeights.begin(), kDoorwayWeights.end())(rng) - 1;
+        shift[e.a][e.b] = shift[e.b][e.a] = s;
+    }
+    // A room's doorways, in its own coordinates.
+    const auto doorwaysOf = [&](const Room& room) {
+        std::vector<Doorway> doorways;
+        for (const int cell : room.cells) {
+            const int c = cell % kModuleGrid, r = cell / kModuleGrid;
+            const int lx = (c - room.col) * kModuleWidth, ly = (r - room.row) * kModuleHeight;
+            const auto add = [&](int other, Side side) {
+                if (other < 0 || !open[cell][other]) return;
+                const int s = shift[cell][other];
+                const bool horizontal = side == Side::Top || side == Side::Bottom;
+                doorways.push_back({side, horizontal ? lx + 9 + 6 * s : ly + 5 + 3 * s});
+            };
+            add(r > 0 ? cell - kModuleGrid : -1, Side::Top);
+            add(r + 1 < kModuleGrid ? cell + kModuleGrid : -1, Side::Bottom);
+            add(c > 0 ? cell - 1 : -1, Side::Left);
+            add(c + 1 < kModuleGrid ? cell + 1 : -1, Side::Right);
+        }
+        return doorways;
     };
 
     // --- Pick and stamp modules -------------------------------------------
@@ -376,79 +566,117 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     std::iota(picks.begin(), picks.end(), std::size_t{0});
     std::shuffle(picks.begin(), picks.end(), rng);
     std::size_t nextPick = 0;
+    std::vector<std::size_t> bigPicks(bigModules().size());
+    std::iota(bigPicks.begin(), bigPicks.end(), std::size_t{0});
+    std::shuffle(bigPicks.begin(), bigPicks.end(), rng);
 
     GeneratedDungeon result;
     result.map = Map(kModuleGrid * kModuleWidth, kModuleGrid * kModuleHeight);
-    result.moduleNames.resize(kCells);
-    std::array<std::vector<Position>, kCells> anchors;
+    result.moduleNames.assign(kCells, "Solid Rock");
+    result.cellRooms.assign(roomOf.begin(), roomOf.end());
+    const int w = result.map.width(), h = result.map.height();
+    std::vector<bool> isProtected(static_cast<std::size_t>(w * h), false), ignore(static_cast<std::size_t>(w * h), false);
+    const auto tileIndex = [w](int x, int y) { return static_cast<std::size_t>(y * w + x); };
+    std::vector<std::vector<Position>> anchors(static_cast<std::size_t>(roomTotal));
     std::uniform_int_distribution<int> coin(0, 1);
 
     std::uniform_real_distribution<float> share(0.f, 1.f);
-    for (int cell = 0; cell < kCells; ++cell) {
+    for (int index = 0; index < roomTotal; ++index) {
+        const Room& room = rooms[static_cast<std::size_t>(index)];
+        const LandmarkKind extra = extraKind(index);
+        const bool landmarkHere = index == landmarkRoom || extra != LandmarkKind::None;
+        const auto doorways = doorwaysOf(room);
+        bool procedural = !setPiece(index) && share(rng) < params.proceduralShare;
+        // A big room with no hand-made module left is generated.
+        const ModuleTemplate* big = nullptr;
+        if (!room.single() && !procedural) {
+            const auto found = std::find_if(bigPicks.begin(), bigPicks.end(), [&](std::size_t b) {
+                const auto& m = bigModules()[b];
+                return static_cast<int>(m.rows.size()) == room.height() && static_cast<int>(m.rows.front().size()) == room.width();
+            });
+            if (found != bigPicks.end()) { big = &bigModules()[*found]; bigPicks.erase(found); }
+            procedural = big == nullptr;
+        }
         ModuleTemplate generated;
-        const LandmarkKind extra = extraKind(cell);
-        const bool landmarkHere = cell == landmarkCell || extra != LandmarkKind::None;
-        const bool special = cell == bossCell || cell == vaultCell || landmarkHere;
-        const bool procedural = !special && share(rng) < params.proceduralShare;
-        if (procedural) generated = proceduralModule(pickProceduralStyle(params.region, rng), rng);
-        const ModuleTemplate& module = cell == bossCell ? bossModule()
-                                     : cell == vaultCell ? vaultModule()
-                                     : cell == landmarkCell ? landmarkModules()[landmarkModuleIndex(landmarkKind)]
+        if (procedural)
+            generated = proceduralModule(pickProceduralStyle(params.region, rng), room.cellsWide, room.cellsHigh, doorways, rng);
+        const ModuleTemplate& module = index == bossRoom ? bossModule()
+                                     : index == vaultRoom ? vaultModule()
+                                     : index == landmarkRoom ? landmarkModules()[landmarkModuleIndex(landmarkKind)]
                                      : extra != LandmarkKind::None ? landmarkModules()[landmarkModuleIndex(extra)]
                                      : procedural ? generated
+                                     : big ? *big
                                      : pool[picks[nextPick++ % picks.size()]];
-        result.moduleNames[cell] = module.name;
-        const bool flipX = coin(rng) == 1, flipY = coin(rng) == 1 && !landmarkHere;
+        for (const int cell : room.cells) result.moduleNames[static_cast<std::size_t>(cell)] = module.name;
+        // Generated rooms are built around their doorways, so they stay as they are.
+        const bool flipX = !procedural && coin(rng) == 1, flipY = !procedural && coin(rng) == 1 && !landmarkHere;
         const auto rows = mirrored(module.rows, flipX, flipY);
-        const int originX = (cell % kModuleGrid) * kModuleWidth;
-        const int originY = (cell / kModuleGrid) * kModuleHeight;
-        for (int y = 0; y < kModuleHeight; ++y)
-            for (int x = 0; x < kModuleWidth; ++x) {
+        for (int y = 0; y < room.height(); ++y)
+            for (int x = 0; x < room.width(); ++x) {
                 const char c = rows[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)];
-                const Position p{originX + x, originY + y};
+                const Position p{room.x0() + x, room.y0() + y};
                 const bool wall = c == '#' || c == 'V' || c == 'S';
-                result.map.setTile(p.x, p.y, wall ? Tile{TileType::Wall, false, false}
-                                                  : Tile{TileType::Floor, true, true});
-                if (c == 'A') anchors[cell].push_back(p);
+                result.map.setTile(p.x, p.y, c == '_' ? Tile{TileType::Chasm, false, true}
+                                             : wall ? Tile{TileType::Wall, false, false}
+                                                    : Tile{TileType::Floor, true, true});
+                const bool border = x == 0 || y == 0 || x == room.width() - 1 || y == room.height() - 1;
+                if (border || c == '_' || c == 'S') isProtected[tileIndex(p.x, p.y)] = true;
+                if (c == 'A') anchors[static_cast<std::size_t>(index)].push_back(p);
                 if (c == 'C') result.vaultCenter = p;
                 if (c == 'V') result.vaultEntrance = p;
                 if (c == 'S') {
-                    if (cell == landmarkCell) result.landmarkAltar = p;
+                    if (index == landmarkRoom) result.landmarkAltar = p;
                     else result.extraLandmarks.push_back({extra, p});
                 }
             }
-        if (anchors[cell].empty() && !landmarkHere)
-            anchors[cell].push_back({originX + kModuleWidth / 2, originY + kModuleHeight / 2});
+        if (anchors[static_cast<std::size_t>(index)].empty() && !landmarkHere)
+            anchors[static_cast<std::size_t>(index)].push_back({room.x0() + room.width() / 2, room.y0() + room.height() / 2});
 
-        // Seal every socket that doesn't lead into an opened neighbor
-        // (including all of them on the floor's outer edge).
-        const int col = cell % kModuleGrid, row = cell / kModuleGrid;
-        const auto sealIfClosed = [&](bool hasNeighbor, int neighbor, auto sealTile) {
-            if (!hasNeighbor || !open[cell][neighbor])
-                for (int i = 0; i < 3; ++i) sealTile(i);
-        };
-        const Tile wall{TileType::Wall, false, false};
-        sealIfClosed(row > 0, cell - kModuleGrid, [&](int i) { result.map.setTile(originX + 9 + i, originY, wall); });
-        sealIfClosed(row + 1 < kModuleGrid, cell + kModuleGrid,
-                     [&](int i) { result.map.setTile(originX + 9 + i, originY + kModuleHeight - 1, wall); });
-        sealIfClosed(col > 0, cell - 1, [&](int i) { result.map.setTile(originX, originY + 5 + i, wall); });
-        sealIfClosed(col + 1 < kModuleGrid, cell + 1,
-                     [&](int i) { result.map.setTile(originX + kModuleWidth - 1, originY + 5 + i, wall); });
+        // The border is wall except this room's doorways; the tiles just
+        // inside a moved doorway open too (set pieces keep theirs as drawn).
+        for (int y = 0; y < room.height(); ++y)
+            for (int x = 0; x < room.width(); ++x)
+                if (x == 0 || y == 0 || x == room.width() - 1 || y == room.height() - 1)
+                    result.map.setTile(room.x0() + x, room.y0() + y, Tile{TileType::Wall, false, false});
+        for (const Doorway& d : doorways)
+            for (int i = 0; i < 3; ++i)
+                for (int depth = 0; depth < (setPiece(index) ? 1 : 2); ++depth) {
+                    const bool horizontal = d.side == Side::Top || d.side == Side::Bottom;
+                    const int x = horizontal ? d.at + i : d.side == Side::Left ? depth : room.width() - 1 - depth;
+                    const int y = !horizontal ? d.at + i : d.side == Side::Top ? depth : room.height() - 1 - depth;
+                    const Position p{room.x0() + x, room.y0() + y};
+                    if (depth > 0 && result.map.tileAt(p.x, p.y).type != TileType::Wall) continue;
+                    if (depth > 0 && isProtected[tileIndex(p.x, p.y)]) continue;
+                    result.map.setTile(p.x, p.y, Tile{TileType::Floor, true, true});
+                    if (depth == 0) result.doorways.push_back(p);
+                }
     }
+    if (vaultRoom >= 0)
+        for (int y = result.vaultCenter.y - 3; y <= result.vaultCenter.y + 3; ++y)
+            for (int x = result.vaultCenter.x - 3; x <= result.vaultCenter.x + 3; ++x) {
+                isProtected[tileIndex(x, y)] = true;
+                if (std::abs(x - result.vaultCenter.x) <= 2 && std::abs(y - result.vaultCenter.y) <= 2) ignore[tileIndex(x, y)] = true;
+            }
 
     // --- Describe the floor to the caller ----------------------------------
-    result.hasVault = vaultCell >= 0;
-    result.playerStart = anchors[startCell].front();
-    for (const int cell : order) {
-        if (cell == startCell || cell == bossCell) continue;
-        for (const Position& anchor : anchors[cell]) result.otherRoomCenters.push_back(anchor);
+    result.hasVault = vaultRoom >= 0;
+    result.playerStart = anchors[static_cast<std::size_t>(startRoom)].front();
+    // A moved doorway may open onto a hand-made room's wall: carve the
+    // shortest way in, so the floor is one connected space.
+    connectAll(result.map, result.playerStart, isProtected, ignore);
+    // On a floor without a boss the final room is the farthest, so its
+    // anchors come last and the last of them hosts the door down.
+    for (const int room : order) {
+        if (room == startRoom || room == bossRoom) continue;
+        for (const Position& anchor : anchors[static_cast<std::size_t>(room)]) result.otherRoomCenters.push_back(anchor);
     }
-    result.hasBossRoom = bossCell >= 0;
-    if (result.hasBossRoom)
-        result.bossRoomCenter = {(bossCell % kModuleGrid) * kModuleWidth + kModuleWidth / 2,
-                                 (bossCell / kModuleGrid) * kModuleHeight + kModuleHeight / 2};
-    result.roomCount = kCells;
-    if (landmarkCell >= 0) result.landmark = landmarkKind;
+    result.hasBossRoom = bossRoom >= 0;
+    if (result.hasBossRoom) {
+        const Room& room = rooms[static_cast<std::size_t>(bossRoom)];
+        result.bossRoomCenter = {room.x0() + kModuleWidth / 2, room.y0() + kModuleHeight / 2};
+    }
+    result.roomCount = roomTotal;
+    if (landmarkRoom >= 0) result.landmark = landmarkKind;
     placeProps(result, params.region, params.cathedral, rng);
     return result;
 }

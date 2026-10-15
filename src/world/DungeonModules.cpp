@@ -466,6 +466,169 @@ const std::vector<ModuleTemplate>& regularModules() {
         "#...................#",
         "#########...#########",
     }},
+    // A rift splits the room three ways; one bridge leads up, one down. A
+    // shove at the wrong moment drops you a floor.
+    {"Rift Crossing", {
+        "#########...#########",
+        "#...................#",
+        "#...................#",
+        "#__________...______#",
+        "#__________...______#",
+        ".....................",
+        "..........A..........",
+        ".....................",
+        "#____...____________#",
+        "#____...____________#",
+        "#...................#",
+        "#...................#",
+        "#########...#########",
+    }},
+    // The floor has given way in places: holes to fight around.
+    {"Sinkholes", {
+        "#########...#########",
+        "#...................#",
+        "#.__.....___.....__.#",
+        "#.__.....___.....__.#",
+        "#...................#",
+        "......__.....__......",
+        "......__.....__......",
+        ".....................",
+        "#...................#",
+        "#.__.....___.....__.#",
+        "#.__.....___.....__.#",
+        "#...................#",
+        "#########...#########",
+    }},
+    // Six side rooms off one corridor: anything could be waiting in them.
+    {"Gauntlet", {
+        "#########...#########",
+        "#.....##.....##.....#",
+        "#.....##.....##.....#",
+        "#.....##.....##.....#",
+        "###.#####...#####.###",
+        ".....................",
+        ".....................",
+        ".....................",
+        "###.#####...#####.###",
+        "#.....##.....##.....#",
+        "#.....##.....##.....#",
+        "#.....##.....##.....#",
+        "#########...#########",
+    }},
+    // A well with no bottom, and a fight on either side of it.
+    {"Well of Night", {
+        "#########...#########",
+        "#...................#",
+        "#...................#",
+        "#.....#.......#.....#",
+        "#......_______......#",
+        "...A..._______...A...",
+        "......._______.......",
+        "......._______.......",
+        "#......_______......#",
+        "#.....#.......#.....#",
+        "#...................#",
+        "#...................#",
+        "#########...#########",
+    }},
+    };
+    return modules;
+}
+
+// Big rooms: two cells wide or tall, with a socket on each cell's stretch of
+// every side, so they sit in the grid like two ordinary cells.
+const std::vector<ModuleTemplate>& bigModules() {
+    static const std::vector<ModuleTemplate> modules{
+    // Two cells long: pillar rows down a nave, a screened apse at the east end.
+    {"Great Nave", {
+        "#########...##################...#########",
+        "#........................................#",
+        "#...................................#....#",
+        "#....##...##...##...##...##...##....#....#",
+        "#...................................#....#",
+        "..........................................",
+        "..........A.............A.............A...",
+        "..........................................",
+        "#...................................#....#",
+        "#....##...##...##...##...##...##....#....#",
+        "#...................................#....#",
+        "#........................................#",
+        "#########...##################...#########",
+    }},
+    // Two cells long: rows of bunks either side of the aisle.
+    {"Grand Barracks", {
+        "#########...##################...#########",
+        "#........................................#",
+        "#..##..##..##..##..##..##..##..##..##....#",
+        "#........................................#",
+        "#..##..##..##..##..##..##..##..##..##....#",
+        "..........................................",
+        "..........A....................A..........",
+        "..........................................",
+        "#..##..##..##..##..##..##..##..##..##....#",
+        "#........................................#",
+        "#..##..##..##..##..##..##..##..##..##....#",
+        "#........................................#",
+        "#########...##################...#########",
+    }},
+    // Two cells tall: a ledge beside a long rift, crossed by two bridges.
+    {"Chasm Gallery", {
+        "#########...#########",
+        "#...................#",
+        "#...................#",
+        "#...........______..#",
+        "#...........______..#",
+        "....##......______...",
+        ".....................",
+        "............______...",
+        "#.......A...______..#",
+        "#...........______..#",
+        "#...........______..#",
+        "#...........______..#",
+        "#...##......______..#",
+        "#...##......______..#",
+        "#...........______..#",
+        "#...........______..#",
+        "#...........______..#",
+        "#.......A...______..#",
+        "............______...",
+        ".....................",
+        "....##......______...",
+        "#...........______..#",
+        "#...........______..#",
+        "#...................#",
+        "#...................#",
+        "#########...#########",
+    }},
+    // Two cells tall: burial niches either side, a processional between pillars.
+    {"Long Crypt", {
+        "#########...#########",
+        "#...................#",
+        "#####...........#####",
+        "#...................#",
+        "#...................#",
+        "..........A..........",
+        ".....................",
+        ".....................",
+        "#####...........#####",
+        "#......##...##......#",
+        "#......##...##......#",
+        "#####..##...##..#####",
+        "#......##...##......#",
+        "#......##...##......#",
+        "#####..##...##..#####",
+        "#......##...##......#",
+        "#......##...##......#",
+        "#####...........#####",
+        ".....................",
+        ".....................",
+        "..........A..........",
+        "#...................#",
+        "#...................#",
+        "#####...........#####",
+        "#...................#",
+        "#########...#########",
+    }},
     };
     return modules;
 }
@@ -511,66 +674,82 @@ const ModuleTemplate& vaultModule() {
 
 namespace {
 
-bool isSocket(int x, int y) {
-    const bool topOrBottom = y == 0 || y == kModuleHeight - 1;
-    const bool leftOrRight = x == 0 || x == kModuleWidth - 1;
-    return (topOrBottom && x >= 9 && x <= 11) || (leftOrRight && y >= 5 && y <= 7);
+bool inDoorway(int x, int y, int w, int h, const std::vector<Doorway>& doorways) {
+    for (const Doorway& d : doorways) {
+        const bool along = (d.side == Side::Top || d.side == Side::Bottom) ? x >= d.at && x <= d.at + 2 : y >= d.at && y <= d.at + 2;
+        const bool edge = d.side == Side::Top ? y == 0 : d.side == Side::Bottom ? y == h - 1 : d.side == Side::Left ? x == 0 : x == w - 1;
+        if (along && edge) return true;
+    }
+    return false;
 }
 
 bool isFloorChar(char c) { return c == '.' || c == 'A' || c == 'C'; }
 
+// Checks a room against the authoring rules. `doorways` null means the
+// standard sockets for the room's size.
 void validateModule(const ModuleTemplate& module, bool boss, bool vault, bool landmark,
-                    std::vector<std::string>& errors) {
+                    const std::vector<Doorway>* doorways, std::vector<std::string>& errors) {
     const auto fail = [&](const std::string& what) { errors.push_back(module.name + ": " + what); };
-    if (static_cast<int>(module.rows.size()) != kModuleHeight) {
-        fail("needs " + std::to_string(kModuleHeight) + " rows");
+    const int h = static_cast<int>(module.rows.size());
+    const int w = module.rows.empty() ? 0 : static_cast<int>(module.rows.front().size());
+    const bool single = boss || vault || landmark;
+    const bool sized = (h == kModuleHeight && (w == kModuleWidth || (!single && w == 2 * kModuleWidth))) ||
+                       (!single && h == 2 * kModuleHeight && w == kModuleWidth);
+    if (!sized) {
+        fail(single ? "needs " + std::to_string(kModuleHeight) + " rows of " + std::to_string(kModuleWidth) + " characters"
+                    : "must be 1x1, 2x1 or 1x2 cells (" + std::to_string(kModuleWidth) + "x" + std::to_string(kModuleHeight) + " each)");
         return;
     }
     for (std::size_t y = 0; y < module.rows.size(); ++y)
-        if (static_cast<int>(module.rows[y].size()) != kModuleWidth) {
-            fail("row " + std::to_string(y) + " needs " + std::to_string(kModuleWidth) + " characters");
+        if (static_cast<int>(module.rows[y].size()) != w) {
+            fail("row " + std::to_string(y) + " needs " + std::to_string(w) + " characters");
             return;
         }
     const auto at = [&](int x, int y) { return module.rows[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)]; };
+    const std::vector<Doorway> sockets = doorways ? *doorways : centralSockets(w / kModuleWidth, h / kModuleHeight);
+    const auto isSocket = [&](int x, int y) { return inDoorway(x, y, w, h, sockets); };
 
-    for (int y = 0; y < kModuleHeight; ++y)
-        for (int x = 0; x < kModuleWidth; ++x) {
-            const bool border = x == 0 || y == 0 || x == kModuleWidth - 1 || y == kModuleHeight - 1;
+    std::pair<int, int> start{-1, -1};
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            const bool border = x == 0 || y == 0 || x == w - 1 || y == h - 1;
             if (border && isFloorChar(at(x, y)) != isSocket(x, y))
                 fail("border tile (" + std::to_string(x) + "," + std::to_string(y) +
                      (isSocket(x, y) ? ") is a socket and must be floor" : ") must be wall"));
+            if (border && isSocket(x, y) && start.first < 0) start = {x, y};
             const char c = at(x, y);
-            if (c != '#' && !isFloorChar(c) && c != 'V' && c != 'S')
+            if (c != '#' && !isFloorChar(c) && c != 'V' && c != 'S' && c != '_')
                 fail(std::string("unknown character '") + c + "'");
             if ((c == 'V' || c == 'C') && !vault) fail("V/C are only allowed in the vault module");
             if (c == 'S' && !landmark) fail("S (altar) is only allowed in landmark modules");
         }
 
+    if (start.first < 0) { fail("needs at least one socket"); return; }
     std::set<std::pair<int, int>> reached;
     std::queue<std::pair<int, int>> frontier;
-    frontier.push({10, 0});
-    reached.insert({10, 0});
+    frontier.push(start);
+    reached.insert(start);
     while (!frontier.empty()) {
         const auto [x, y] = frontier.front();
         frontier.pop();
         for (const auto [dx, dy] : {std::pair{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
             const int nx = x + dx, ny = y + dy;
-            if (nx < 0 || ny < 0 || nx >= kModuleWidth || ny >= kModuleHeight) continue;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
             if (isFloorChar(at(nx, ny)) && reached.insert({nx, ny}).second) frontier.push({nx, ny});
         }
     }
 
     std::pair<int, int> cache{-1, -1}, gate{-1, -1}, altar{-1, -1};
     std::vector<std::pair<int, int>> anchors;
-    for (int y = 0; y < kModuleHeight; ++y)
-        for (int x = 0; x < kModuleWidth; ++x) {
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
             if (at(x, y) == 'C') cache = {x, y};
             if (at(x, y) == 'V') gate = {x, y};
             if (at(x, y) == 'A') anchors.push_back({x, y});
             if (at(x, y) == 'S') altar = {x, y};
         }
     // Landmarks are calm set pieces: they only get encounters where an A asks for one.
-    if (anchors.empty() && !landmark) anchors.push_back({kModuleWidth / 2, kModuleHeight / 2});
+    if (anchors.empty() && !landmark) anchors.push_back({w / 2, h / 2});
     if (landmark) {
         if (altar.first < 0) fail("needs an S (altar)");
         else {
@@ -584,8 +763,8 @@ void validateModule(const ModuleTemplate& module, bool boss, bool vault, bool la
     const auto inVault = [&](int x, int y) {
         return vault && std::abs(x - cache.first) <= 2 && std::abs(y - cache.second) <= 2;
     };
-    for (int y = 0; y < kModuleHeight; ++y)
-        for (int x = 0; x < kModuleWidth; ++x)
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x)
             if (isFloorChar(at(x, y)) && !reached.count({x, y}) && !inVault(x, y))
                 fail("floor (" + std::to_string(x) + "," + std::to_string(y) + ") is unreachable");
 
@@ -617,17 +796,45 @@ std::vector<std::string> validateModules() {
     std::vector<std::string> errors;
     if (static_cast<int>(regularModules().size()) < kModuleGrid * kModuleGrid)
         errors.push_back("regular pool needs at least " + std::to_string(kModuleGrid * kModuleGrid) + " modules");
-    for (const auto& module : regularModules()) validateModule(module, false, false, false, errors);
-    validateModule(bossModule(), true, false, false, errors);
-    validateModule(vaultModule(), false, true, false, errors);
-    for (const auto& module : landmarkModules()) validateModule(module, false, false, true, errors);
+    for (const auto& module : regularModules()) {
+        validateModule(module, false, false, false, nullptr, errors);
+        if (module.rows.size() != static_cast<std::size_t>(kModuleHeight) || module.rows.front().size() != static_cast<std::size_t>(kModuleWidth))
+            errors.push_back(module.name + ": regular modules are one cell; big ones go in bigModules()");
+    }
+    for (const auto& module : bigModules()) {
+        validateModule(module, false, false, false, nullptr, errors);
+        if (module.rows.size() == static_cast<std::size_t>(kModuleHeight) && module.rows.front().size() == static_cast<std::size_t>(kModuleWidth))
+            errors.push_back(module.name + ": a big module spans two cells");
+    }
+    validateModule(bossModule(), true, false, false, nullptr, errors);
+    validateModule(vaultModule(), false, true, false, nullptr, errors);
+    for (const auto& module : landmarkModules()) validateModule(module, false, false, true, nullptr, errors);
     return errors;
 }
 
 std::vector<std::string> validateRegularModule(const ModuleTemplate& module) {
     std::vector<std::string> errors;
-    validateModule(module, false, false, false, errors);
+    validateModule(module, false, false, false, nullptr, errors);
     return errors;
+}
+
+std::vector<std::string> validateRoom(const ModuleTemplate& module, const std::vector<Doorway>& doorways) {
+    std::vector<std::string> errors;
+    validateModule(module, false, false, false, &doorways, errors);
+    return errors;
+}
+
+std::vector<Doorway> centralSockets(int cellsWide, int cellsHigh) {
+    std::vector<Doorway> doorways;
+    for (int c = 0; c < cellsWide; ++c) {
+        doorways.push_back({Side::Top, c * kModuleWidth + 9});
+        doorways.push_back({Side::Bottom, c * kModuleWidth + 9});
+    }
+    for (int r = 0; r < cellsHigh; ++r) {
+        doorways.push_back({Side::Left, r * kModuleHeight + 5});
+        doorways.push_back({Side::Right, r * kModuleHeight + 5});
+    }
+    return doorways;
 }
 
 } // namespace engine

@@ -104,10 +104,20 @@ dungeon, while a side dungeon can sit at any difficulty.
 ## 1.3 Floors
 
 **Layout.** A floor is a 3×3 grid of cells, each 21×13 tiles, joined by
-3-tile-wide sockets. A cell is either a hand-made module (from a library)
+3-tile-wide doorways. A cell is either a hand-made module (from a library)
 or a procedural one (hall, rooms, ruins or cavern). This came after a
 simpler rooms-and-corridors generator: modules give each floor memorable
 set pieces, and procedural cells keep layouts from repeating.
+
+**Shape.** Seen side by side in the dungeon viewer, every floor had the
+same outline and its doorways always sat mid-edge, so the grid showed.
+Now up to two cells are solid rock (an L, a U, a ring, never a floor cut
+in two), and up to two pairs of cells merge into big rooms: a nave, a
+barracks, a long crypt, a rift gallery, or a generated hall or cavern.
+Each doorway sits before, at or past the middle of its edge; if one opens
+onto a hand-made room's wall, the shortest passage in is carved. Set
+pieces keep theirs in the middle. Some modules hold chasms, so a shove
+near the edge drops a foe (or you) to the floor below.
 
 **Landmarks.** At least half of all floors are built around a landmark,
 a hand-made set piece with an event, in a random cell that is never the
@@ -533,6 +543,7 @@ The decisions that shaped the project, and the ideas that were replaced.
 | Combining surfaces | The battlefield becomes part of every build |
 | Encounter budgets per floor | Uniform tiers made every floor feel the same |
 | Floors from modules + procedural cells | Memorable set pieces without repetition |
+| Solid rock, big rooms and moving doorways | Every floor had the same rectangle and mid-edge doors |
 | Landmarks and roaming threats | A playtest found floors "too easy and predictable" |
 | The hunt instead of a hunger clock | Pressure to move on, without a chore |
 | Forked trees with mastery ranks | The first, linear trees gave "no build identity" |
