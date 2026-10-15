@@ -113,7 +113,6 @@ int main() {
               loaded->abilityPoints==earnedAbilityPoints(6)-2 && loaded->utilityPoints==earnedUtilityPoints(6) && loaded->hotbar[1].empty(),
               "Format 41: Stealth points come back as utility points, Bow leads, and the old strike leaves the hotbar");
         std::remove(legacy.c_str());
-        saveGameAsVersion(original,"dbg40.txt",40); saveGame(original,"dbg41.txt");
         check(saveGameAsVersion(original,legacy,40) && loadGame(legacy).has_value(),"A format-40 save still loads");
         std::remove(legacy.c_str());
     }

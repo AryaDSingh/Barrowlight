@@ -1,5 +1,7 @@
 # Barrowlight
 
+[![CI](https://github.com/AryaDSingh/Barrowlight/actions/workflows/ci.yml/badge.svg)](https://github.com/AryaDSingh/Barrowlight/actions/workflows/ci.yml)
+
 A turn-based, one-life roguelike RPG in a gothic world of layered dungeons,
 written from scratch in C++17 with SFML 3. No game engine, no frameworks: the
 turn scheduler, field of view, pathfinding, dungeon generation, talent system,
@@ -172,8 +174,9 @@ ctest -C Release -LE slow     # skip the long integration suite
   it saves frames instead, which is how the clip at the top was made.
 - The **dungeon viewer** (`build/bin/<Config>/dungeon_viewer --floor 4 --count 12`)
   writes `dungeons.html`: a page of generated floors drawn as maps, for tuning
-  the generator by eye. `--floors 1-46` tours the whole run; `--ascii` prints
-  to the console instead.
+  the generator by eye. `--floors 1-46` tours the whole run, `--steps DIR`
+  shows one floor being built step by step, and `--ascii` prints to the
+  console instead.
 
 ## Layout
 
