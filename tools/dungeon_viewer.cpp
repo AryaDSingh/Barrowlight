@@ -3,7 +3,7 @@
 // engine_core only (no SFML, no window), like the console tests.
 //
 //   dungeon_viewer [--floor N | --floors A-B] [--seed S] [--count C]
-//                  [--blood] [--out FILE] [--ascii]
+//                  [--blood] [--out FILE] [--ascii] [--svg DIR] [--back URL]
 //
 //   --floor N     generate floor N as the game would (default 1)
 //   --floors A-B  one floor per number from A to B (a tour of the run)
@@ -12,6 +12,8 @@
 //   --blood       as if the Blood Altar's offering is made (no altar rolls)
 //   --out FILE    where to write the page (default dungeons.html)
 //   --ascii       print each floor to the console instead
+//   --svg DIR     also write each floor as a standalone SVG image in DIR
+//   --back URL    add a back link to the page (for publishing it on a site)
 //
 // The parameters for a floor number come from floorGenerationParams, the
 // same function the game calls, so a floor shown here for a seed is the
@@ -20,6 +22,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -39,12 +42,55 @@ namespace {
 
 constexpr int kTile = 10; // pixels per tile in the SVG
 
+const char* kPageTop = R"(
+:root { color-scheme: dark; --bg:#121015; --panel:#1c1920; --text:#e8e2d6; --muted:#9a9187; --line:#2e2a33; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+header { padding: 20px 16px 8px; max-width: 1400px; margin: 0 auto; }
+h1 { margin: 0 0 4px; font: 600 22px Georgia, serif; letter-spacing: .02em; }
+header p { margin: 0 0 10px; color: var(--muted); }
+.controls { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; color: var(--muted); font-size: 13px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
+main { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr)); gap: 16px;
+       padding: 8px 16px 32px; max-width: 1400px; margin: 0 auto; }
+.card { margin: 0; background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--door);
+        border-radius: 8px; padding: 10px; }
+figcaption { margin-bottom: 8px; }
+.seed { color: var(--muted); float: right; font-variant-numeric: tabular-nums; }
+svg { display: block; width: 100%; height: auto; border-radius: 4px; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 8px 0 0; font-size: 13px; }
+dt { color: var(--muted); } dd { margin: 0; }
+
+)";
+
+// The maps' own style: inlined into the page, and into each standalone SVG.
+const char* kSvgStyle = R"(
+.grid line { stroke: #fff; stroke-opacity: .18; stroke-dasharray: 4 4; }
+.names text { fill: #fff; fill-opacity: .7; font: 600 10px system-ui, sans-serif; paint-order: stroke; stroke: #000; stroke-width: 2.5px; stroke-opacity: .6; }
+.names text.proc { font-style: italic; fill: #c9e4ff; }
+.decals circle { fill: #d8cbb0; fill-opacity: .55; }
+.props rect { fill: #b98a52; stroke: #3a2a18; stroke-width: 1; }
+.anchors circle { fill: none; stroke: #ff6b5a; stroke-width: 1.6; }
+.anchors .vig { fill: #ffd2c8; font: 9px system-ui, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #000; stroke-width: 2px; stroke-opacity: .6; }
+.mark rect { stroke: #000; stroke-opacity: .5; }
+.mark text { font: 700 11px system-ui, sans-serif; text-anchor: middle; fill: #111; }
+.start rect { fill: #7ee081; } .exit rect { fill: var(--door); } .boss rect { fill: #ff5a5a; }
+.vault rect { fill: #ffd34d; } .event rect { fill: #c9a6ff; }
+.gate { fill: #ffd34d; fill-opacity: .6; }
+)";
+
+const char* kPageStyle = R"(
+a.back { color: #c9a6ff; font-size: 13px; }
+body.no-names .names, body.no-props .props, body.no-props .decals, body.no-anchors .anchors, body.no-grid .grid { display: none; }
+)";
+
 struct Options {
     int firstFloor = 1, lastFloor = 1;
     unsigned seed = 1;
     int count = -1;
     bool blood = false, ascii = false;
-    std::string out = "dungeons.html";
+    std::string out = "dungeons.html", svgDir, back;
 };
 
 struct Floor {
@@ -56,7 +102,8 @@ struct Floor {
 
 [[noreturn]] void usage(const std::string& error) {
     std::cerr << "dungeon_viewer: " << error << "\n"
-              << "usage: dungeon_viewer [--floor N | --floors A-B] [--seed S] [--count C] [--blood] [--out FILE] [--ascii]\n";
+              << "usage: dungeon_viewer [--floor N | --floors A-B] [--seed S] [--count C] [--blood] [--out FILE] [--ascii]\n"
+                 "                      [--svg DIR] [--back URL]\n";
     std::exit(2);
 }
 
@@ -92,6 +139,8 @@ Options parseOptions(int argc, char** argv) {
         else if (arg == "--out") o.out = value();
         else if (arg == "--blood") o.blood = true;
         else if (arg == "--ascii") o.ascii = true;
+        else if (arg == "--svg") o.svgDir = value();
+        else if (arg == "--back") o.back = value();
         else usage("unknown option " + arg);
     }
     if (o.firstFloor < 1 || o.lastFloor > kMaxFloorId || o.firstFloor > o.lastFloor)
@@ -196,12 +245,15 @@ int openJoins(const GeneratedDungeon& d) {
     return joins;
 }
 
-void writeSvg(std::ostream& out, const Floor& f) {
+// A standalone SVG carries its own style; one inside the page uses the page's.
+void writeSvg(std::ostream& out, const Floor& f, bool standalone) {
     const GeneratedDungeon& d = f.dungeon;
     const FloorTheme theme = floorTheme(f.number);
     const int w = d.map.width(), h = d.map.height();
-    out << "<svg viewBox=\"0 0 " << w * kTile << ' ' << h * kTile << "\" role=\"img\" aria-label=\"Floor "
-        << f.number << " seed " << f.seed << "\">\n";
+    out << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 " << w * kTile << ' ' << h * kTile
+        << "\" style=\"--door:" << hex(theme.door) << "\" role=\"img\" aria-label=\"Barrowlight floor " << f.number
+        << ", " << escape(theme.name) << ", seed " << f.seed << "\">\n";
+    if (standalone) out << "<style>" << kSvgStyle << "</style>\n";
     out << "<rect width=\"100%\" height=\"100%\" fill=\"" << hex(theme.floor) << "\"/>\n";
 
     // Walls, merged into horizontal runs to keep the file small.
@@ -300,7 +352,7 @@ void writeCard(std::ostream& out, const Floor& f) {
 
     out << "<figure class=\"card\" style=\"--door:" << hex(theme.door) << "\">\n<figcaption><b>Floor " << f.number
         << "</b> " << escape(theme.name) << " <span class=\"seed\">seed " << f.seed << "</span></figcaption>\n";
-    writeSvg(out, f);
+    writeSvg(out, f, false);
     out << "<dl>"
         << "<dt>Open</dt><dd>" << (100 * floorTiles) / (d.map.width() * d.map.height()) << "% floor</dd>"
         << "<dt>Joins</dt><dd>" << openJoins(d) << " of 12</dd>"
@@ -314,40 +366,6 @@ void writeCard(std::ostream& out, const Floor& f) {
     }
     out << "</dl>\n</figure>\n";
 }
-
-const char* kStyle = R"(
-:root { color-scheme: dark; --bg:#121015; --panel:#1c1920; --text:#e8e2d6; --muted:#9a9187; --line:#2e2a33; }
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
-header { padding: 20px 16px 8px; max-width: 1400px; margin: 0 auto; }
-h1 { margin: 0 0 4px; font: 600 22px Georgia, serif; letter-spacing: .02em; }
-header p { margin: 0 0 10px; color: var(--muted); }
-.controls { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); }
-.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; color: var(--muted); font-size: 13px; }
-.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
-main { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr)); gap: 16px;
-       padding: 8px 16px 32px; max-width: 1400px; margin: 0 auto; }
-.card { margin: 0; background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--door);
-        border-radius: 8px; padding: 10px; }
-figcaption { margin-bottom: 8px; }
-.seed { color: var(--muted); float: right; font-variant-numeric: tabular-nums; }
-svg { display: block; width: 100%; height: auto; border-radius: 4px; }
-dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 8px 0 0; font-size: 13px; }
-dt { color: var(--muted); } dd { margin: 0; }
-.grid line { stroke: #fff; stroke-opacity: .18; stroke-dasharray: 4 4; }
-.names text { fill: #fff; fill-opacity: .7; font: 600 10px system-ui, sans-serif; paint-order: stroke; stroke: #000; stroke-width: 2.5px; stroke-opacity: .6; }
-.names text.proc { font-style: italic; fill: #c9e4ff; }
-.decals circle { fill: #d8cbb0; fill-opacity: .55; }
-.props rect { fill: #b98a52; stroke: #3a2a18; stroke-width: 1; }
-.anchors circle { fill: none; stroke: #ff6b5a; stroke-width: 1.6; }
-.anchors .vig { fill: #ffd2c8; font: 9px system-ui, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #000; stroke-width: 2px; stroke-opacity: .6; }
-.mark rect { stroke: #000; stroke-opacity: .5; }
-.mark text { font: 700 11px system-ui, sans-serif; text-anchor: middle; fill: #111; }
-.start rect { fill: #7ee081; } .exit rect { fill: var(--door); } .boss rect { fill: #ff5a5a; }
-.vault rect { fill: #ffd34d; } .event rect { fill: #c9a6ff; }
-.gate { fill: #ffd34d; fill-opacity: .6; }
-body.no-names .names, body.no-props .props, body.no-props .decals, body.no-anchors .anchors, body.no-grid .grid { display: none; }
-)";
 
 const char* kScript = R"(
 for (const box of document.querySelectorAll('.controls input'))
@@ -363,8 +381,10 @@ void writePage(const std::string& path, const std::vector<Floor>& floors, const 
     what << ", " << floors.size() << (floors.size() == 1 ? " layout" : " layouts") << " from seed " << o.seed;
     out << "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
         << "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-        << "<title>Barrowlight Floors</title><style>" << kStyle << "</style></head>\n<body>\n<header>\n"
-        << "<h1>Barrowlight floors</h1>\n<p>" << what.str()
+        << "<title>Barrowlight Floors</title><style>" << kPageTop << kSvgStyle << kPageStyle
+        << "</style></head>\n<body>\n<header>\n";
+    if (!o.back.empty()) out << "<a class=\"back\" href=\"" << escape(o.back) << "\">&larr; Back</a>\n";
+    out << "<h1>Barrowlight floors</h1>\n<p>" << what.str()
         << ". Each floor is a 3&times;3 grid of modules; italic names are procedural cells. Hover anything for details.</p>\n"
         << "<div class=\"controls\">"
         << "<label><input type=\"checkbox\" name=\"names\" checked> Module names</label>"
@@ -395,6 +415,16 @@ int main(int argc, char** argv) {
     if (o.ascii) {
         for (const Floor& f : floors) printAscii(f);
         return 0;
+    }
+    if (!o.svgDir.empty()) {
+        std::filesystem::create_directories(o.svgDir);
+        for (const Floor& f : floors) {
+            const std::string path = o.svgDir + "/floor-" + std::to_string(f.number) + "-seed-" + std::to_string(f.seed) + ".svg";
+            std::ofstream svg(path);
+            if (!svg) usage("can't write " + path);
+            writeSvg(svg, f, true);
+        }
+        std::cout << "Wrote " << floors.size() << " SVGs to " << o.svgDir << '\n';
     }
     writePage(o.out, floors, o);
     std::cout << "Wrote " << floors.size() << " floors to " << o.out << '\n';
