@@ -217,7 +217,7 @@ void printAscii(const Floor& f) {
     for (int y = 0; y < d.map.height(); ++y) {
         for (int x = 0; x < d.map.width(); ++x) {
             const auto is = [&](Position p) { return p.x == x && p.y == y; };
-            char c = d.map.isWalkable(x, y) ? '.' : isProp(d, x, y) ? 'o' : '#';
+            char c = d.map.isWalkable(x, y) ? '.' : isProp(d, x, y) ? 'o' : d.map.tileAt(x, y).type == TileType::Chasm ? '_' : '#';
             for (const Position& a : d.otherRoomCenters) if (is(a)) c = 'g';
             if (hasExit(d) && is(d.otherRoomCenters.back())) c = '>';
             if (d.hasBossRoom && is(d.bossRoomCenter)) c = 'B';
@@ -232,20 +232,10 @@ void printAscii(const Floor& f) {
     std::cout << '\n';
 }
 
-// How many of the twelve cell-to-cell joins are open: a socket is open when
-// its middle tile is floor on the shared edge.
-int openJoins(const GeneratedDungeon& d) {
-    int joins = 0;
-    for (int r = 0; r < kModuleGrid; ++r)
-        for (int c = 0; c < kModuleGrid; ++c) {
-            const int x0 = c * kModuleWidth, y0 = r * kModuleHeight;
-            if (c + 1 < kModuleGrid) joins += d.map.isWalkable(x0 + kModuleWidth - 1, y0 + 6);
-            if (r + 1 < kModuleGrid) joins += d.map.isWalkable(x0 + 10, y0 + kModuleHeight - 1);
-        }
-    return joins;
-}
+// How many joins between rooms are open: each is a doorway three tiles wide
+// on both rooms' borders.
+int openJoins(const GeneratedDungeon& d) { return static_cast<int>(d.doorways.size()) / 6; }
 
-// A standalone SVG carries its own style; one inside the page uses the page's.
 void writeSvg(std::ostream& out, const Floor& f, bool standalone) {
     const GeneratedDungeon& d = f.dungeon;
     const FloorTheme theme = floorTheme(f.number);
@@ -256,29 +246,43 @@ void writeSvg(std::ostream& out, const Floor& f, bool standalone) {
     if (standalone) out << "<style>" << kSvgStyle << "</style>\n";
     out << "<rect width=\"100%\" height=\"100%\" fill=\"" << hex(theme.floor) << "\"/>\n";
 
-    // Walls, merged into horizontal runs to keep the file small.
-    out << "<g fill=\"" << hex(theme.wall) << "\">";
-    for (int y = 0; y < h; ++y)
-        for (int x = 0; x < w; ++x) {
-            if (d.map.isWalkable(x, y) || isProp(d, x, y)) continue;
-            int end = x;
-            while (end + 1 < w && !d.map.isWalkable(end + 1, y) && !isProp(d, end + 1, y)) ++end;
-            out << "<rect x=\"" << x * kTile << "\" y=\"" << y * kTile << "\" width=\"" << (end - x + 1) * kTile
-                << "\" height=\"" << kTile << "\"/>";
-            x = end;
-        }
-    out << "</g>\n";
+    // Walls and chasms, merged into horizontal runs to keep the file small.
+    const auto runs = [&](const char* fill, auto&& wanted) {
+        out << "<g fill=\"" << fill << "\">";
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x) {
+                if (!wanted(x, y)) continue;
+                int end = x;
+                while (end + 1 < w && wanted(end + 1, y)) ++end;
+                out << "<rect x=\"" << x * kTile << "\" y=\"" << y * kTile << "\" width=\"" << (end - x + 1) * kTile
+                    << "\" height=\"" << kTile << "\"/>";
+                x = end;
+            }
+        out << "</g>\n";
+    };
+    const auto chasm = [&](int x, int y) { return d.map.tileAt(x, y).type == TileType::Chasm; };
+    runs(hex(theme.wall).c_str(), [&](int x, int y) { return !d.map.isWalkable(x, y) && !isProp(d, x, y) && !chasm(x, y); });
+    runs("#050508", chasm);
 
-    // Module grid and names.
+    // Lines between rooms (not across a big room), and each room's name once.
+    const auto room = [&](int col, int row) { return d.cellRooms[static_cast<std::size_t>(row * kModuleGrid + col)]; };
     out << "<g class=\"grid\">";
-    for (int i = 1; i < kModuleGrid; ++i) {
-        out << "<line x1=\"" << i * kModuleWidth * kTile << "\" y1=\"0\" x2=\"" << i * kModuleWidth * kTile << "\" y2=\""
-            << h * kTile << "\"/>";
-        out << "<line x1=\"0\" y1=\"" << i * kModuleHeight * kTile << "\" x2=\"" << w * kTile << "\" y2=\""
-            << i * kModuleHeight * kTile << "\"/>";
-    }
+    for (int row = 0; row < kModuleGrid; ++row)
+        for (int col = 0; col < kModuleGrid; ++col) {
+            const int x = col * kModuleWidth * kTile, y = row * kModuleHeight * kTile;
+            if (col + 1 < kModuleGrid && room(col, row) != room(col + 1, row))
+                out << "<line x1=\"" << x + kModuleWidth * kTile << "\" y1=\"" << y << "\" x2=\"" << x + kModuleWidth * kTile
+                    << "\" y2=\"" << y + kModuleHeight * kTile << "\"/>";
+            if (row + 1 < kModuleGrid && room(col, row) != room(col, row + 1))
+                out << "<line x1=\"" << x << "\" y1=\"" << y + kModuleHeight * kTile << "\" x2=\"" << x + kModuleWidth * kTile
+                    << "\" y2=\"" << y + kModuleHeight * kTile << "\"/>";
+        }
     out << "</g>\n<g class=\"names\">";
+    std::vector<int> named;
     for (int cell = 0; cell < kModuleGrid * kModuleGrid; ++cell) {
+        const int r = d.cellRooms[static_cast<std::size_t>(cell)];
+        if (r < 0 || std::find(named.begin(), named.end(), r) != named.end()) continue;
+        named.push_back(r);
         const std::string& name = d.moduleNames[static_cast<std::size_t>(cell)];
         const bool procedural = name.rfind("Procedural ", 0) == 0;
         out << "<text x=\"" << (cell % kModuleGrid) * kModuleWidth * kTile + 4 << "\" y=\""
@@ -342,8 +346,15 @@ void writeCard(std::ostream& out, const Floor& f) {
     int floorTiles = 0;
     for (int y = 0; y < d.map.height(); ++y)
         for (int x = 0; x < d.map.width(); ++x) floorTiles += d.map.isWalkable(x, y);
-    int procedural = 0;
-    for (const auto& name : d.moduleNames) procedural += name.rfind("Procedural ", 0) == 0;
+    int procedural = 0, rock = 0, big = 0;
+    std::vector<int> seen;
+    for (std::size_t cell = 0; cell < d.moduleNames.size(); ++cell) {
+        const int r = d.cellRooms[cell];
+        if (r < 0) { ++rock; continue; }
+        if (std::find(seen.begin(), seen.end(), r) != seen.end()) { ++big; continue; }
+        seen.push_back(r);
+        procedural += d.moduleNames[cell].rfind("Procedural ", 0) == 0;
+    }
     std::vector<std::string> events;
     if (d.landmark != LandmarkKind::None) events.push_back(landmarkName(d.landmark, f.params.region));
     for (const auto& extra : d.extraLandmarks) events.push_back(landmarkName(extra.first, f.params.region));
@@ -355,8 +366,10 @@ void writeCard(std::ostream& out, const Floor& f) {
     writeSvg(out, f, false);
     out << "<dl>"
         << "<dt>Open</dt><dd>" << (100 * floorTiles) / (d.map.width() * d.map.height()) << "% floor</dd>"
-        << "<dt>Joins</dt><dd>" << openJoins(d) << " of 12</dd>"
-        << "<dt>Cells</dt><dd>" << procedural << " procedural</dd>"
+        << "<dt>Doorways</dt><dd>" << openJoins(d) << "</dd>"
+        << "<dt>Shape</dt><dd>" << d.roomCount << " rooms" << (big ? ", " + std::to_string(big) + " big" : "")
+        << (rock ? ", " + std::to_string(rock) + " rock" : "") << "</dd>"
+        << "<dt>Generated</dt><dd>" << procedural << " of " << d.roomCount << " rooms</dd>"
         << "<dt>Rooms</dt><dd>" << d.otherRoomCenters.size() << " encounters, " << dressed << " dressed</dd>"
         << "<dt>Props</dt><dd>" << d.props.size() << ", " << d.decals.size() << " decals</dd>";
     if (!events.empty()) {
@@ -385,7 +398,7 @@ void writePage(const std::string& path, const std::vector<Floor>& floors, const 
         << "</style></head>\n<body>\n<header>\n";
     if (!o.back.empty()) out << "<a class=\"back\" href=\"" << escape(o.back) << "\">&larr; Back</a>\n";
     out << "<h1>Barrowlight floors</h1>\n<p>" << what.str()
-        << ". Each floor is a 3&times;3 grid of modules; italic names are procedural cells. Hover anything for details.</p>\n"
+        << ". Each floor is a 3&times;3 grid of cells: rooms of one or two cells, and solid rock. Italic names are generated rooms. Hover anything for details.</p>\n"
         << "<div class=\"controls\">"
         << "<label><input type=\"checkbox\" name=\"names\" checked> Module names</label>"
         << "<label><input type=\"checkbox\" name=\"grid\" checked> Grid</label>"

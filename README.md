@@ -55,9 +55,10 @@ tests, 130 source files, 47 talent trees, 48 monster kinds, 46 floors.
   Thornwood Hollow) are opened by things you find. Beyond the Lich, Rimeholt
   takes the run to level 30.
 - **Floors built from modules.** A 3×3 grid of hand-made and procedural
-  cells, at least half of them around a landmark event: shrines, hoards,
-  caged prisoners, a chained demon, crystals that crack when struck, breaches
-  that open when touched.
+  cells, some merged into big rooms and some left as solid rock, so floors
+  come in many shapes; at least half are built around a landmark event:
+  shrines, hoards, caged prisoners, a chained demon, crystals that crack when
+  struck, breaches that open when touched.
 - **Readable, tactical combat.** An energy-based turn scheduler, and heavy
   attacks that are telegraphed with a reaction window. You fight with
   darkness and light (monsters differ in how they see), and with surfaces

@@ -88,11 +88,29 @@ void checkFloor(const GeneratedDungeon& d, const DungeonGenerationParams& params
               "opening the gate reaches the cache" + where);
     }
 
+    // One name per room: a big room's two cells share theirs.
     std::set<std::string> regular;
-    for (const auto& name : d.moduleNames)
+    std::set<int> named;
+    check(d.moduleNames.size() == 9 && d.cellRooms.size() == 9, "every grid cell is described" + where);
+    for (std::size_t cell = 0; cell < d.moduleNames.size() && cell < d.cellRooms.size(); ++cell) {
+        const std::string& name = d.moduleNames[cell];
+        if (d.cellRooms[cell] < 0 || !named.insert(d.cellRooms[cell]).second) continue;
         if (name != bossModule().name && name != vaultModule().name && name.rfind("Procedural", 0) != 0 &&
             std::none_of(landmarkModules().begin(), landmarkModules().end(), [&](const auto& m) { return m.name == name; }))
             check(regular.insert(name).second, "hand-made modules are distinct" + where);
+    }
+    check(static_cast<int>(named.size()) == d.roomCount, "roomCount counts each room once" + where);
+    // Solid rock is solid; doorways are open.
+    for (std::size_t cell = 0; cell < d.cellRooms.size(); ++cell) {
+        if (d.cellRooms[cell] >= 0) continue;
+        check(d.moduleNames[cell] == "Solid Rock", "a rock cell is named as such" + where);
+        const int x0 = static_cast<int>(cell % kModuleGrid) * kModuleWidth, y0 = static_cast<int>(cell / kModuleGrid) * kModuleHeight;
+        bool solid = true;
+        for (int y = y0; y < y0 + kModuleHeight; ++y)
+            for (int x = x0; x < x0 + kModuleWidth; ++x) solid = solid && map.tileAt(x, y).type == TileType::Wall;
+        check(solid, "a rock cell is all wall" + where);
+    }
+    for (const Position& p : d.doorways) check(map.isWalkable(p.x, p.y), "doorways are open" + where);
 
     check(d.landmark == LandmarkKind::None || !params.includeBossRoom, "boss floors have no landmark" + where);
     for (const Prop& prop : d.props)
@@ -189,6 +207,54 @@ int main() {
             ++procedural;
         }
     std::cout << procedural << " procedural cells checked, " << open << " at least half floor\n";
+
+    // Big generated rooms, with doorways moved along their edges, obey the
+    // same rules.
+    int bigRooms = 0;
+    for (int i = 0; i < 300; ++i) {
+        const bool across = i % 2 == 0;
+        const int cw = across ? 2 : 1, ch = across ? 1 : 2;
+        std::vector<Doorway> doorways;
+        const auto shift = [&] { return std::uniform_int_distribution<int>(-1, 1)(rng); };
+        for (int c = 0; c < cw; ++c) {
+            if (rng() % 2) doorways.push_back({Side::Top, c * kModuleWidth + 9 + 6 * shift()});
+            if (rng() % 2) doorways.push_back({Side::Bottom, c * kModuleWidth + 9 + 6 * shift()});
+        }
+        for (int r = 0; r < ch; ++r) {
+            if (rng() % 2) doorways.push_back({Side::Left, r * kModuleHeight + 5 + 3 * shift()});
+            if (rng() % 2) doorways.push_back({Side::Right, r * kModuleHeight + 5 + 3 * shift()});
+        }
+        if (doorways.empty()) doorways.push_back({Side::Top, 9});
+        const auto module = proceduralModule(static_cast<ProceduralStyle>(i % 4), cw, ch, doorways, rng);
+        for (const auto& error : validateRoom(module, doorways)) {
+            std::cout << "[FAIL] big " << module.name << ": " << error << '\n';
+            ++failures;
+        }
+        ++bigRooms;
+    }
+    std::cout << bigRooms << " big procedural rooms checked\n";
+
+    // Floors come in more than one shape, and doorways move.
+    int rockFloors = 0, bigFloors = 0, movedDoorways = 0, chasms = 0;
+    for (unsigned seed = 1; seed <= 200; ++seed) {
+        DungeonGenerationParams params;
+        params.includeBossRoom = seed % 7 == 0;
+        const auto d = generateDungeon(params, seed);
+        rockFloors += std::count(d.cellRooms.begin(), d.cellRooms.end(), -1) > 0;
+        bigFloors += d.roomCount + static_cast<int>(std::count(d.cellRooms.begin(), d.cellRooms.end(), -1)) < 9;
+        for (const Position& p : d.doorways) {
+            const int lx = p.x % kModuleWidth, ly = p.y % kModuleHeight;
+            const bool horizontalEdge = ly == 0 || ly == kModuleHeight - 1;
+            movedDoorways += horizontalEdge ? (lx < 9 || lx > 11) : (ly < 5 || ly > 7);
+        }
+        for (int y = 0; y < d.map.height(); ++y)
+            for (int x = 0; x < d.map.width(); ++x) chasms += d.map.tileAt(x, y).type == TileType::Chasm;
+    }
+    std::cout << rockFloors << " of 200 floors have solid rock, " << bigFloors << " a big room\n";
+    check(rockFloors >= 80 && rockFloors <= 160, "about three floors in five have solid rock");
+    check(bigFloors >= 70 && bigFloors <= 140, "about half of floors have a big room");
+    check(movedDoorways > 200, "doorways move along their edges");
+    check(chasms > 0, "some floors have a chasm in them");
 
     int landmarks = 0, twoEvents = 0, threeEvents = 0, poe = 0;
     for (unsigned seed = 1; seed <= 200; ++seed) {
