@@ -492,6 +492,13 @@ ctest -LE slow             everything but the long integration suite
   archers behind cover with oil and a brazier, an ogre with a doorway to
   retreat through), with build presets and a session log. It exists to
   study whether the game is readable.
+- **The dungeon viewer** (`dungeon_viewer`) renders generated floors to
+  one HTML page of SVG maps: modules (procedural ones marked), joins,
+  encounters and their vignettes, props, events, the vault, the start and
+  the exit, with a few numbers per floor. It takes a floor number and
+  builds it with the game's own parameters (`floorGenerationParams`), so a
+  generator change can be judged across many seeds, or across the whole
+  run (`--floors 1-46`), without playing to it.
 - **`tools/sfx_build.py`** builds the sound families from source
   recordings.
 

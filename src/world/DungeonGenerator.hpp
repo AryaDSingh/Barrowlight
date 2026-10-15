@@ -82,4 +82,14 @@ struct GeneratedDungeon {
 // Deterministic given the same seed.
 GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned int seed);
 
+// Whether a floor ends in a boss fight: the Warlord (5), the Lich (10 and
+// 20) and each side dungeon's last floor. Every other floor is explored for
+// its exit.
+bool bossFloor(int floor);
+
+// The parameters the game generates a floor with: its region, boss room,
+// vault and event chances. Shared by the game and tools/dungeon_viewer, so a
+// floor seen in the viewer is the floor the game would build from that seed.
+DungeonGenerationParams floorGenerationParams(int floor, bool bloodMagicUnlocked);
+
 } // namespace engine
