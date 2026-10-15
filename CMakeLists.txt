@@ -141,6 +141,11 @@ foreach(name application_targeting_test application_rewards_test)
 endforeach()
 set_tests_properties(application_rewards_test PROPERTIES LABELS slow TIMEOUT 3600)
 
+# The dungeon viewer renders generated floors to an HTML page of SVGs, for
+# tuning the generator by eye (see tools/dungeon_viewer.cpp). Rules only.
+add_executable(dungeon_viewer tools/dungeon_viewer.cpp)
+target_link_libraries(dungeon_viewer PRIVATE engine_core)
+
 # The playtest bot plays whole runs with a hidden window and writes a report
 # to build/playtest/. Not a test: it takes minutes. Use it as a crash check.
 add_executable(playtest_bot tests/playtest_bot.cpp)

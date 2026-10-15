@@ -7,6 +7,7 @@
 #include <queue>
 #include <random>
 
+#include "entities/RunProgression.hpp"
 #include "world/DungeonModules.hpp"
 #include "world/ProceduralModules.hpp"
 
@@ -450,6 +451,24 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     if (landmarkCell >= 0) result.landmark = landmarkKind;
     placeProps(result, params.region, params.cathedral, rng);
     return result;
+}
+
+bool bossFloor(int floor) {
+    return floor == 5 || floor == 10 || floor == kRunFinalFloor || floor == kCathedralLast || floor == kFoundryLast ||
+           floor == kThornLast || floor == kRimeLast;
+}
+
+DungeonGenerationParams floorGenerationParams(int floor, bool bloodMagicUnlocked) {
+    DungeonGenerationParams params;
+    params.region = floorTheme(floor).region;
+    // Very rare events only stir on deep floors.
+    params.rareEventChance = floor >= kRareEventFloor ? kRareEventChance : 0.f;
+    // The Blood Altar waits from floor 4 until you have made your offering.
+    params.bloodAltarChance = floor >= kBloodAltarFloor && !bloodMagicUnlocked ? 0.3f : 0.f;
+    params.includeBossRoom = bossFloor(floor);
+    params.cathedral = cathedralFloor(floor);
+    params.includeVault = floor >= 3 && !params.includeBossRoom;
+    return params;
 }
 
 } // namespace engine

@@ -3576,18 +3576,8 @@ void Application::regenerateLevel(unsigned int seed) {
     mousePixel_.reset();
     talentPage_ = 0;
     const auto theme=floorTheme(currentFloor_);
-    DungeonGenerationParams params;
-    params.region=theme.region;
-    // Very rare events only stir on deep floors.
-    params.rareEventChance=currentFloor_>=kRareEventFloor ? kRareEventChance : 0.f;
-    // The Blood Altar waits from floor 4 until you have made your offering.
-    params.bloodAltarChance=currentFloor_>=kBloodAltarFloor && !player_.bloodMagicUnlocked ? 0.3f : 0.f;
-    // Only boss floors get a boss room: the Warlord (5), the Lich (10 and
-    // 20) and each side dungeon's last floor. Every other floor is explored
-    // for its exit.
-    params.includeBossRoom = (currentFloor_ == kFirstBossFloor || currentFloor_ == 10 || currentFloor_ == kFinalFloor || currentFloor_ == kCathedralLast || currentFloor_ == kFoundryLast || currentFloor_ == kThornLast || currentFloor_ == kRimeLast);
-    params.cathedral=cathedralFloor(currentFloor_);
-    params.includeVault=currentFloor_>=3 && !params.includeBossRoom && nextItemId_<=std::numeric_limits<std::uint64_t>::max()-3;
+    DungeonGenerationParams params = floorGenerationParams(currentFloor_, player_.bloodMagicUnlocked);
+    params.includeVault=params.includeVault && nextItemId_<=std::numeric_limits<std::uint64_t>::max()-3;
     const GeneratedDungeon dungeon = generateDungeon(params, seed);
     vaultExists_=dungeon.hasVault; vaultOpened_=false; vaultClaimed_=false;
     vaultCenter_=dungeon.vaultCenter; vaultEntrance_=dungeon.vaultEntrance;

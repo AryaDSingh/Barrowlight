@@ -169,6 +169,10 @@ ctest -C Release -LE slow     # skip the long integration suite
   plays whole runs and writes a report to `build/playtest/`. Use it as a
   crash check. With `--record <dir> <actions> <seed> <class> [dungeon depth]`
   it saves frames instead, which is how the clip at the top was made.
+- The **dungeon viewer** (`build/bin/<Config>/dungeon_viewer --floor 4 --count 12`)
+  writes `dungeons.html`: a page of generated floors drawn as maps, for tuning
+  the generator by eye. `--floors 1-46` tours the whole run; `--ascii` prints
+  to the console instead.
 
 ## Layout
 
@@ -180,7 +184,8 @@ src/
   ai/         monster behaviours: Chaser, Kiter, Support, AoE Bomber, Boss, Lich
 tests/        console tests, application tests, the playtest bot, fixtures
 assets/       sprites, icons, fonts, sounds and music (credits in assets/sprites/CREDITS.txt)
-tools/        sfx_build.py: builds the sound effect families
+tools/        dungeon_viewer.cpp: renders generated floors to an HTML page;
+              sfx_build.py: builds the sound effect families
 ```
 
 `engine_core` (entities, world, ai, saving) never links SFML: the build
