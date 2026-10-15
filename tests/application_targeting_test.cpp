@@ -47,6 +47,11 @@ struct ApplicationTargetingTestAccess {
             app.player_.statusEffects().active().clear();
             app.map_=Map(50,30);
             app.setProps({}); app.landmark_=LandmarkKind::None;
+            // The opening floor's chest, vault and litter aren't on this map
+            // (or this floor): a save would rightly reject them.
+            app.chestExists_=app.chestClaimed_=false;
+            app.vaultExists_=app.vaultOpened_=app.vaultClaimed_=false; app.vaultRewards_.clear();
+            app.decals_.clear();
             for(int y=0;y<30;++y) for(int x=0;x<50;++x) {
                 const bool edge=x==0||y==0||x==49||y==29;
                 app.map_.setTile(x,y,Tile{edge?TileType::Wall:TileType::Floor,!edge,!edge});

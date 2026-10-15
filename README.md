@@ -1,5 +1,7 @@
 # Barrowlight
 
+[![CI](https://github.com/AryaDSingh/Barrowlight/actions/workflows/ci.yml/badge.svg)](https://github.com/AryaDSingh/Barrowlight/actions/workflows/ci.yml)
+
 A turn-based, one-life roguelike RPG in a gothic world of layered dungeons,
 written from scratch in C++17 with SFML 3. No game engine, no frameworks: the
 turn scheduler, field of view, pathfinding, dungeon generation, talent system,

@@ -1,0 +1,61 @@
+# Builds Barrowlight and runs its tests on every push and pull request.
+# Linux runs everything, the application tests in a virtual display; Windows
+# (where the game is developed and released) builds and runs the console
+# tests. SFML is built by CMake's FetchContent, cached between runs.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SFML's system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build xvfb libxrandr-dev libxcursor-dev libxi-dev libudev-dev \
+            libfreetype-dev libharfbuzz-dev libgl1-mesa-dev libegl1-mesa-dev
+      - uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: linux-deps-${{ hashFiles('CMakeLists.txt') }}
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        working-directory: build
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" ctest --output-on-failure
+      - name: Render the floor gallery
+        run: ./build/bin/dungeon_viewer --floors 1-46 --seed 7 --out dungeons.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: floor-gallery
+          path: dungeons.html
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ui-snapshots
+          path: |
+            build/rewards-checks/
+            build/targeting-checks/
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: windows-deps-${{ hashFiles('CMakeLists.txt') }}
+      - name: Configure
+        run: cmake -S . -B build
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Console tests
+        working-directory: build
+        run: ctest -C Release --output-on-failure -E application_

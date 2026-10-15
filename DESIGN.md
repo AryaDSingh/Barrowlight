@@ -502,6 +502,14 @@ ctest -LE slow             everything but the long integration suite
   only as a crash and stuck check, never to judge balance: a bot's
   strategy says nothing about how a person plays. Balance is tested by
   hand, and with the sandbox's Max out and Travel tools.
+- **Continuous integration** (GitHub Actions) builds every push on Linux
+  and Windows. Linux runs every test, the application tests in a virtual
+  display, and publishes the floor gallery; Windows runs the console tests.
+  Running on two compilers matters for a seeded game: the standard
+  library's random distributions differ between them, so a test that only
+  holds for one platform's rolls is caught. It found one: a test fixture
+  that kept the opening floor's chest, vault and litter, valid on Windows
+  only because there the chest happened to land on floor.
 
 ## 2.11 Tools
 
