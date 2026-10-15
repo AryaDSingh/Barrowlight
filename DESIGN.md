@@ -138,6 +138,16 @@ This is a soft clock that pushes you onward without a hunger meter.
 inside a safe radius of the start). This replaced uniform per-level tiers,
 which made every floor feel the same.
 
+**Set encounters.** A few modules ask for their own fight instead of a
+pack. In the Rift Crossing, guards hold both bridges and shooters on the
+far ledges fire across the rift: a guard on its post fights from it, never
+stepping more than a tile away and walking back if knocked off, so the
+answer is to break through or knock it into the rift. In the Gauntlet, a
+lone bait stands in the corridor while ambushers hide in the side rooms
+(two, three from depth 5, four from depth 10). They step out when you pass
+within three tiles, and revealing themselves costs their turn, so the
+ambush is felt but fair. Each dungeon has its own cast for both.
+
 ## 1.4 Combat
 
 - **Turns** are energy-based (see 2.4). Speed matters: Hasted and Slowed
@@ -440,7 +450,7 @@ compromise; see [known limitations](#known-limitations-and-future-work).
   game is the only reader and writer, so a general serialisation library
   would only add a dependency. The file stays readable, which made save
   bugs easy to diagnose.
-- **Versioned.** The format version (currently 47) is bumped for every
+- **Versioned.** The format version (currently 48) is bumped for every
   layout change, and new fields are guarded with `version >= N` on both
   sides. Saves from version 9 onward load, migrated where needed; older
   saves are rejected rather than half-understood.

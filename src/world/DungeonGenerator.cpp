@@ -54,6 +54,8 @@ void placeProps(GeneratedDungeon& d, FloorRegion region, bool cathedral, std::mt
         for (const Position& door : d.doorways) if (near(p, door, 2)) return false; // keep doorways clear
         if (near(p, d.playerStart, 2)) return false;
         for (const Position& a : d.otherRoomCenters) if (near(p, a, 2)) return false;
+        for (const auto& posts : d.roomPosts)
+            for (const Post& post : posts) if (near(p, post.pos, 1)) return false;
         if (d.hasBossRoom && near(p, d.bossRoomCenter, 4)) return false;
         if (d.hasVault && near(p, d.vaultCenter, 4)) return false;
         if (d.landmark != LandmarkKind::None && near(p, d.landmarkAltar, 4)) return false;
@@ -135,6 +137,7 @@ void placeProps(GeneratedDungeon& d, FloorRegion region, bool cathedral, std::mt
         int digs = 0;
         for (std::size_t i = 0; i < d.otherRoomCenters.size() && !menu.empty(); ++i) {
             if (roll(0, 99) >= 45) continue;
+            if (i < d.roomPosts.size() && !d.roomPosts[i].empty()) continue; // its set encounter stays as drawn
             Vignette v = menu[static_cast<std::size_t>(roll(0, static_cast<int>(menu.size()) - 1))];
             if (v == Vignette::GraveDig && digs >= 1) v = Vignette::Ossuary;
             const Position a = d.otherRoomCenters[i];
@@ -578,6 +581,7 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     std::vector<bool> isProtected(static_cast<std::size_t>(w * h), false), ignore(static_cast<std::size_t>(w * h), false);
     const auto tileIndex = [w](int x, int y) { return static_cast<std::size_t>(y * w + x); };
     std::vector<std::vector<Position>> anchors(static_cast<std::size_t>(roomTotal));
+    std::vector<std::vector<Post>> posts(static_cast<std::size_t>(roomTotal));
     std::uniform_int_distribution<int> coin(0, 1);
 
     std::uniform_real_distribution<float> share(0.f, 1.f);
@@ -622,6 +626,8 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
                 const bool border = x == 0 || y == 0 || x == room.width() - 1 || y == room.height() - 1;
                 if (border || c == '_' || c == 'S') isProtected[tileIndex(p.x, p.y)] = true;
                 if (c == 'A') anchors[static_cast<std::size_t>(index)].push_back(p);
+                if (c == 'P' || c == 'R' || c == 'H')
+                    posts[static_cast<std::size_t>(index)].push_back({c == 'P' ? PostKind::Guard : c == 'R' ? PostKind::Ledge : PostKind::Hidden, p});
                 if (c == 'C') result.vaultCenter = p;
                 if (c == 'V') result.vaultEntrance = p;
                 if (c == 'S') {
@@ -668,7 +674,11 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     // anchors come last and the last of them hosts the door down.
     for (const int room : order) {
         if (room == startRoom || room == bossRoom) continue;
-        for (const Position& anchor : anchors[static_cast<std::size_t>(room)]) result.otherRoomCenters.push_back(anchor);
+        const auto& here = anchors[static_cast<std::size_t>(room)];
+        for (std::size_t i = 0; i < here.size(); ++i) {
+            result.otherRoomCenters.push_back(here[i]);
+            result.roomPosts.push_back(i == 0 ? posts[static_cast<std::size_t>(room)] : std::vector<Post>{});
+        }
     }
     result.hasBossRoom = bossRoom >= 0;
     if (result.hasBossRoom) {

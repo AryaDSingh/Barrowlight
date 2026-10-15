@@ -467,20 +467,21 @@ const std::vector<ModuleTemplate>& regularModules() {
         "#########...#########",
     }},
     // A rift splits the room three ways; one bridge leads up, one down. A
-    // shove at the wrong moment drops you a floor.
+    // shove at the wrong moment drops you a floor. Each bridge is held, and
+    // archers on the far ledges shoot across the gap.
     {"Rift Crossing", {
         "#########...#########",
-        "#...................#",
+        "#...R...............#",
         "#...................#",
         "#__________...______#",
-        "#__________...______#",
+        "#__________.P.______#",
         ".....................",
         "..........A..........",
         ".....................",
-        "#____...____________#",
+        "#____.P.____________#",
         "#____...____________#",
         "#...................#",
-        "#...................#",
+        "#...............R...#",
         "#########...#########",
     }},
     // The floor has given way in places: holes to fight around.
@@ -499,18 +500,19 @@ const std::vector<ModuleTemplate>& regularModules() {
         "#...................#",
         "#########...#########",
     }},
-    // Six side rooms off one corridor: anything could be waiting in them.
+    // Six side rooms off one corridor, and something waiting in them: walk
+    // down it and they step out behind you.
     {"Gauntlet", {
         "#########...#########",
         "#.....##.....##.....#",
         "#.....##.....##.....#",
-        "#.....##.....##.....#",
+        "#..H..##.....##..H..#",
         "###.#####...#####.###",
         ".....................",
         ".....................",
         ".....................",
         "###.#####...#####.###",
-        "#.....##.....##.....#",
+        "#..H..##.....##..H..#",
         "#.....##.....##.....#",
         "#.....##.....##.....#",
         "#########...#########",
@@ -683,7 +685,7 @@ bool inDoorway(int x, int y, int w, int h, const std::vector<Doorway>& doorways)
     return false;
 }
 
-bool isFloorChar(char c) { return c == '.' || c == 'A' || c == 'C'; }
+bool isFloorChar(char c) { return c == '.' || c == 'A' || c == 'C' || c == 'P' || c == 'R' || c == 'H'; }
 
 // Checks a room against the authoring rules. `doorways` null means the
 // standard sockets for the room's size.

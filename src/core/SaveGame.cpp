@@ -28,7 +28,7 @@ namespace {
 // one; anything older is rejected rather than migrated, since its numbers
 // meant something different. Migrations for in-range versions live where
 // their fields are read (migrateForkedTrees, migrateUtilityPoints...).
-constexpr int kSaveFormatVersion = 47;
+constexpr int kSaveFormatVersion = 48;
 // The creatures that can fight for you: skeletons, the bone guardian, slag, hounds.
 bool alliedKind(MonsterType t) {
     return t==MonsterType::Skeleton || t==MonsterType::SkeletonGuard || t==MonsterType::Slagling || t==MonsterType::SlagGolem || t==MonsterType::BriarHound ||
@@ -414,7 +414,9 @@ static bool writeSaveState(std::ostream& out, const SaveGameState& state, int de
         const auto& t=m.tactics;
         if (version>=22)
             out << t.home.x << ' ' << t.home.y << ' ' << t.lastKnown.x << ' ' << t.lastKnown.y << ' '
-                << t.alert << ' ' << t.patrol << ' ' << t.retreat << ' ' << t.heals << ' ' << t.retreated << ' ' << t.concealed << '\n';
+                << t.alert << ' ' << t.patrol << ' ' << t.retreat << ' ' << t.heals << ' ' << t.retreated << ' ' << t.concealed;
+        if (version>=48) out << ' ' << t.post;
+        if (version>=22) out << '\n';
     }
 
     out << state.unspentAttributePoints << ' ' << state.nextItemId << ' ' << state.items.size() << '\n';
@@ -676,6 +678,7 @@ static std::optional<SaveGameState> readSaveState(std::istream& in, int depth=0)
                 t.lastKnown.x<0 || t.lastKnown.y<0 || t.lastKnown.x>=state.map.width() || t.lastKnown.y>=state.map.height() ||
                 t.alert<0 || t.alert>8 || t.patrol<0 || t.patrol>=24 || t.retreat<0 || t.retreat>3 || t.heals<0 || t.heals>3 ||
                 (t.concealed && !enemyAmbusher(m.type))) return std::nullopt;
+            if(version>=48 && (!(in>>t.post) || t.post<0 || t.post>kMaxPost || (t.post && m.allied))) return std::nullopt;
         } else { m.tactics.home=m.position; m.tactics.lastKnown=m.position; }
         state.monsters.push_back(std::move(m));
     }

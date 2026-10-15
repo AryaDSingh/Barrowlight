@@ -430,6 +430,7 @@ private:
     void handleDungeonKey(sf::Keyboard::Key key);
     void handleDungeonMouse(const sf::Event& event);
     AIDecision enemyDecision(Monster& monster, Actor* opponent);
+    AIDecision freeEnemyDecision(Monster& monster, Actor* opponent); // enemyDecision before a posted guard's limits
     void alertEnemyGroup(Monster& source, Position target);
     // ToME-style awareness: an enemy hunting you (alerted, not concealed)
     // stays shown out of sight until it loses track of you.

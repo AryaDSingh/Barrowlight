@@ -81,6 +81,9 @@ int main() {
     goblin.hp = 12;
     goblin.maxHp = 20;
     goblin.isBoss = false;
+    goblin.tactics.home = Position{3, 1};
+    goblin.tactics.lastKnown = Position{3, 1};
+    goblin.tactics.post = 2; // holds a post (format 48)
     original.monsters.push_back(goblin);
 
     SaveGameState::MonsterSaveData boss;
@@ -177,6 +180,7 @@ int main() {
         check(g.type == MonsterType::Goblin && g.position.x == 3 && g.position.y == 1 &&
                   g.hp == 12 && g.maxHp == 20 && !g.isBoss && g.statusEffects.empty(),
               "goblin monster's every field matches exactly");
+        check(g.tactics.post == 2, "a posted guard keeps its post");
 
         const auto& b = loaded.monsters[1];
         check(b.type == MonsterType::GoblinWarlord && b.position.x == 2 && b.position.y == 2 &&
