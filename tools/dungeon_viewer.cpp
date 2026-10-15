@@ -14,6 +14,8 @@
 //   --ascii       print each floor to the console instead
 //   --svg DIR     also write each floor as a standalone SVG image in DIR
 //   --back URL    add a back link to the page (for publishing it on a site)
+//   --steps DIR   write the first floor's generation, step by step, as
+//                 DIR/step-1.svg ... step-9.svg and a page to play them
 //
 // The parameters for a floor number come from floorGenerationParams, the
 // same function the game calls, so a floor shown here for a seed is the
@@ -81,7 +83,26 @@ const char* kSvgStyle = R"(
 .posts .guard { fill: #6fb6ff; stroke: #0b2340; stroke-width: 1.2; }
 .posts .ledge { fill: #ffb35c; stroke: #3a2208; stroke-width: 1.2; }
 .posts .hidden { fill: none; stroke: #e4e4e4; stroke-width: 1.4; stroke-dasharray: 2 2; }
+.cells rect { fill: var(--cell); }
+.joins line { stroke-linecap: round; }
+.joins .tree { stroke: #ffd34d; stroke-width: 7; }
+.joins .extra { stroke: #c9e4ff; stroke-width: 5; stroke-dasharray: 2 10; }
+.carved rect { fill: #ff6b5a; fill-opacity: .85; }
 )";
+
+// How a floor is built, one frame per step (--steps).
+constexpr int kSteps = 9;
+const char* kStepCaptions[kSteps] = {
+    "A floor starts as a 3&times;3 grid of cells, each 21&times;13 tiles.",
+    "A cell or two may be solid rock, so the floor can be an L, a U or a ring, but never cut in two.",
+    "A pair of neighbouring cells may merge into one big room.",
+    "A random spanning tree joins every room, so the floor is always one connected space.",
+    "Most remaining joins open too: several routes, and foes can come from more than one side.",
+    "Each room is stamped in: a hand-made module, mirrored at random, or one generated to fit.",
+    "Doorways are cut where each join was placed, often off the middle of the edge, opening any wall behind.",
+    "Furniture goes in as whole arrangements, kept only if nothing is cut off.",
+    "Last, the encounters, set pieces, start and the way down.",
+};
 
 const char* kPageStyle = R"(
 a.back { color: #c9a6ff; font-size: 13px; }
@@ -93,7 +114,7 @@ struct Options {
     unsigned seed = 1;
     int count = -1;
     bool blood = false, ascii = false;
-    std::string out = "dungeons.html", svgDir, back;
+    std::string out = "dungeons.html", svgDir, back, stepsDir;
 };
 
 struct Floor {
@@ -106,7 +127,7 @@ struct Floor {
 [[noreturn]] void usage(const std::string& error) {
     std::cerr << "dungeon_viewer: " << error << "\n"
               << "usage: dungeon_viewer [--floor N | --floors A-B] [--seed S] [--count C] [--blood] [--out FILE] [--ascii]\n"
-                 "                      [--svg DIR] [--back URL]\n";
+                 "                      [--svg DIR] [--back URL] [--steps DIR]\n";
     std::exit(2);
 }
 
@@ -144,6 +165,7 @@ Options parseOptions(int argc, char** argv) {
         else if (arg == "--ascii") o.ascii = true;
         else if (arg == "--svg") o.svgDir = value();
         else if (arg == "--back") o.back = value();
+        else if (arg == "--steps") o.stepsDir = value();
         else usage("unknown option " + arg);
     }
     if (o.firstFloor < 1 || o.lastFloor > kMaxFloorId || o.firstFloor > o.lastFloor)
@@ -242,14 +264,66 @@ void printAscii(const Floor& f) {
 // on both rooms' borders.
 int openJoins(const GeneratedDungeon& d) { return static_cast<int>(d.doorways.size()) / 6; }
 
-void writeSvg(std::ostream& out, const Floor& f, bool standalone) {
+// Draws a floor; `step` (1..kSteps) draws it as it stood at that step of its
+// generation, kSteps the finished floor.
+void writeSvg(std::ostream& out, const Floor& f, bool standalone, int step = kSteps) {
     const GeneratedDungeon& d = f.dungeon;
     const FloorTheme theme = floorTheme(f.number);
     const int w = d.map.width(), h = d.map.height();
     out << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 " << w * kTile << ' ' << h * kTile
-        << "\" style=\"--door:" << hex(theme.door) << "\" role=\"img\" aria-label=\"Barrowlight floor " << f.number
-        << ", " << escape(theme.name) << ", seed " << f.seed << "\">\n";
+        << "\" style=\"--door:" << hex(theme.door) << ";--cell:" << hex(theme.floor) << "\" role=\"img\" aria-label=\"Barrowlight floor "
+        << f.number << ", " << escape(theme.name) << ", seed " << f.seed;
+    if (step < kSteps) out << ", generation step " << step;
+    out << "\">\n";
     if (standalone) out << "<style>" << kSvgStyle << "</style>\n";
+
+    // The early steps are the grid itself: cells, rock, big rooms, joins.
+    if (step <= 5) {
+        out << "<rect width=\"100%\" height=\"100%\" fill=\"" << hex(theme.wall) << "\"/>\n<g class=\"cells\">";
+        const int inset = 8;
+        std::vector<int> drawn;
+        for (int cell = 0; cell < kModuleGrid * kModuleGrid; ++cell) {
+            const int r = d.cellRooms[static_cast<std::size_t>(cell)];
+            if (step >= 2 && r < 0) continue;
+            int x0 = cell % kModuleGrid, y0 = cell / kModuleGrid, x1 = x0, y1 = y0;
+            if (step >= 3) {
+                if (std::find(drawn.begin(), drawn.end(), r) != drawn.end()) continue;
+                drawn.push_back(r);
+                for (int other = 0; other < kModuleGrid * kModuleGrid; ++other)
+                    if (d.cellRooms[static_cast<std::size_t>(other)] == r) {
+                        x1 = std::max(x1, other % kModuleGrid); y1 = std::max(y1, other / kModuleGrid);
+                    }
+            }
+            out << "<rect x=\"" << x0 * kModuleWidth * kTile + inset << "\" y=\"" << y0 * kModuleHeight * kTile + inset
+                << "\" width=\"" << (x1 - x0 + 1) * kModuleWidth * kTile - 2 * inset << "\" height=\""
+                << (y1 - y0 + 1) * kModuleHeight * kTile - 2 * inset << "\" rx=\"6\"/>";
+        }
+        out << "</g>\n<g class=\"joins\">";
+        const auto join = [&](std::pair<int, int> j, const char* cls) {
+            const auto centre = [](int cell, bool x) {
+                return x ? (cell % kModuleGrid) * kModuleWidth * kTile + kModuleWidth * kTile / 2
+                         : (cell / kModuleGrid) * kModuleHeight * kTile + kModuleHeight * kTile / 2;
+            };
+            out << "<line class=\"" << cls << "\" x1=\"" << centre(j.first, true) << "\" y1=\"" << centre(j.first, false)
+                << "\" x2=\"" << centre(j.second, true) << "\" y2=\"" << centre(j.second, false) << "\"/>";
+        };
+        if (step >= 5) for (const auto& j : d.trace.extraJoins) join(j, "extra");
+        if (step >= 4) for (const auto& j : d.trace.treeJoins) join(j, "tree");
+        out << "</g>\n</svg>\n";
+        return;
+    }
+
+    // From here on, tiles: as stamped, before any way in was opened (step 6),
+    // then as opened (step 7, highlighted).
+    const Map& map = step == 6 && d.trace.stamped.width() > 0 ? d.trace.stamped : d.map;
+    const auto openedLater = [&](int x, int y) {
+        if (step != 6) return false;
+        const auto at = [&](const Position& p) { return p.x == x && p.y == y; };
+        return std::any_of(d.doorways.begin(), d.doorways.end(), at) ||
+               std::any_of(d.trace.opened.begin(), d.trace.opened.end(), at) ||
+               std::any_of(d.trace.carved.begin(), d.trace.carved.end(), at);
+    };
+    const bool furnished = step >= 8;
     out << "<rect width=\"100%\" height=\"100%\" fill=\"" << hex(theme.floor) << "\"/>\n";
 
     // Walls and chasms, merged into horizontal runs to keep the file small.
@@ -266,9 +340,16 @@ void writeSvg(std::ostream& out, const Floor& f, bool standalone) {
             }
         out << "</g>\n";
     };
-    const auto chasm = [&](int x, int y) { return d.map.tileAt(x, y).type == TileType::Chasm; };
-    runs(hex(theme.wall).c_str(), [&](int x, int y) { return !d.map.isWalkable(x, y) && !isProp(d, x, y) && !chasm(x, y); });
+    const auto chasm = [&](int x, int y) { return map.tileAt(x, y).type == TileType::Chasm; };
+    runs(hex(theme.wall).c_str(), [&](int x, int y) { return (!map.isWalkable(x, y) && !isProp(d, x, y) && !chasm(x, y)) || openedLater(x, y); });
     runs("#050508", chasm);
+    if (step == 7) {
+        out << "<g class=\"carved\">";
+        for (const auto* tiles : {&d.doorways, &d.trace.opened, &d.trace.carved})
+            for (const Position& p : *tiles)
+                out << "<rect x=\"" << p.x * kTile << "\" y=\"" << p.y * kTile << "\" width=\"" << kTile << "\" height=\"" << kTile << "\"/>";
+        out << "</g>\n";
+    }
 
     // Lines between rooms (not across a big room), and each room's name once.
     const auto room = [&](int col, int row) { return d.cellRooms[static_cast<std::size_t>(row * kModuleGrid + col)]; };
@@ -297,6 +378,8 @@ void writeSvg(std::ostream& out, const Floor& f, bool standalone) {
     }
     out << "</g>\n";
 
+    if (!furnished) { out << "</svg>\n"; return; }
+
     // Decals, then props.
     out << "<g class=\"decals\">";
     for (const Decal& decal : d.decals)
@@ -308,6 +391,8 @@ void writeSvg(std::ostream& out, const Floor& f, bool standalone) {
             << propWidth(prop.kind) * kTile - 2 << "\" height=\"" << kTile - 2 << "\"><title>" << escape(propName(prop.kind))
             << "</title></rect>";
     out << "</g>\n";
+
+    if (step < kSteps) { out << "</svg>\n"; return; }
 
     // Encounter anchors, with the vignette that dresses each room.
     out << "<g class=\"anchors\">";
@@ -461,6 +546,32 @@ int main(int argc, char** argv) {
             writeSvg(svg, f, true);
         }
         std::cout << "Wrote " << floors.size() << " SVGs to " << o.svgDir << '\n';
+    }
+    if (!o.stepsDir.empty()) {
+        std::filesystem::create_directories(o.stepsDir);
+        const Floor& f = floors.front();
+        for (int step = 1; step <= kSteps; ++step) {
+            const std::string path = o.stepsDir + "/step-" + std::to_string(step) + ".svg";
+            std::ofstream svg(path);
+            if (!svg) usage("can't write " + path);
+            writeSvg(svg, f, true, step);
+        }
+        std::ofstream page(o.stepsDir + "/index.html");
+        page << "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
+             << "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>How a Floor Is Built</title>"
+             << "<style>body{margin:0;background:#121015;color:#e8e2d6;font:15px/1.5 system-ui,sans-serif}"
+             << "main{max-width:1000px;margin:auto;padding:16px}img{width:100%;height:auto;display:block;border-radius:6px}"
+             << "p{min-height:3em}button{font:inherit;padding:8px 14px;margin-right:6px;cursor:pointer}</style></head>\n<body><main>"
+             << "<h1>How a floor is built</h1><img id=\"frame\" src=\"step-1.svg\" alt=\"\"><p id=\"caption\"></p>"
+             << "<button id=\"prev\">&larr; Back</button><button id=\"next\">Next &rarr;</button><button id=\"play\">Play</button>"
+             << "</main><script>const captions=[";
+        for (int step = 0; step < kSteps; ++step) page << (step ? "," : "") << '"' << kStepCaptions[step] << '"';
+        page << "];let i=0,timer=null;const img=document.getElementById('frame'),cap=document.getElementById('caption');"
+             << "const show=n=>{i=(n+captions.length)%captions.length;img.src=`step-${i+1}.svg`;cap.innerHTML=`${i+1} / ${captions.length}: ${captions[i]}`;};"
+             << "document.getElementById('prev').onclick=()=>show(i-1);document.getElementById('next').onclick=()=>show(i+1);"
+             << "document.getElementById('play').onclick=e=>{if(timer){clearInterval(timer);timer=null;e.target.textContent='Play';}"
+             << "else{timer=setInterval(()=>show(i+1),1600);e.target.textContent='Pause';}};show(0);</script></body></html>\n";
+        std::cout << "Wrote " << kSteps << " generation steps to " << o.stepsDir << '\n';
     }
     writePage(o.out, floors, o);
     std::cout << "Wrote " << floors.size() << " floors to " << o.out << '\n';

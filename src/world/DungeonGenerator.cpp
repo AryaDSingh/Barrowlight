@@ -421,12 +421,16 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     for (const Room& room : rooms)
         if (!room.single()) parent[findRoot(parent, room.cells[0])] = findRoot(parent, room.cells[1]);
     std::array<std::array<bool, kCells>, kCells> open{};
+    GeneratedDungeon::Trace trace;
     for (const Edge& e : edges) {
         if (!active[e.a] || !active[e.b] || roomOf[e.a] == roomOf[e.b]) continue;
         const int ra = findRoot(parent, e.a), rb = findRoot(parent, e.b);
         const bool treeEdge = ra != rb;
         if (treeEdge) parent[ra] = rb;
-        if (treeEdge || roll(rng) < kExtraConnectionChance) open[e.a][e.b] = open[e.b][e.a] = true;
+        if (treeEdge || roll(rng) < kExtraConnectionChance) {
+            open[e.a][e.b] = open[e.b][e.a] = true;
+            (treeEdge ? trace.treeJoins : trace.extraJoins).push_back({e.a, e.b});
+        }
     }
 
     // --- Start, finish, vault ---------------------------------------------
@@ -655,6 +659,7 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
                     if (depth > 0 && isProtected[tileIndex(p.x, p.y)]) continue;
                     result.map.setTile(p.x, p.y, Tile{TileType::Floor, true, true});
                     if (depth == 0) result.doorways.push_back(p);
+                    else trace.opened.push_back(p);
                 }
     }
     if (vaultRoom >= 0)
@@ -669,7 +674,12 @@ GeneratedDungeon generateDungeon(const DungeonGenerationParams& params, unsigned
     result.playerStart = anchors[static_cast<std::size_t>(startRoom)].front();
     // A moved doorway may open onto a hand-made room's wall: carve the
     // shortest way in, so the floor is one connected space.
+    trace.stamped = result.map;
     connectAll(result.map, result.playerStart, isProtected, ignore);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x)
+            if (result.map.isWalkable(x, y) && !trace.stamped.isWalkable(x, y)) trace.carved.push_back({x, y});
+    result.trace = std::move(trace);
     // On a floor without a boss the final room is the farthest, so its
     // anchors come last and the last of them hosts the door down.
     for (const int room : order) {

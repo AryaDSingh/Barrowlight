@@ -114,9 +114,12 @@ same outline and its doorways always sat mid-edge, so the grid showed.
 Now up to two cells are solid rock (an L, a U, a ring, never a floor cut
 in two), and up to two pairs of cells merge into big rooms: a nave, a
 barracks, a long crypt, a rift gallery, or a generated hall or cavern.
-Each doorway sits before, at or past the middle of its edge; if one opens
-onto a hand-made room's wall, the shortest passage in is carved. Set
-pieces keep theirs in the middle. Some modules hold chasms, so a shove
+Each doorway sits before, at or past the middle of its edge, and the wall
+just inside it is opened. Behind that, a search that carves the fewest
+walls joins up anything left cut off, so a floor is always one connected
+space; with today's modules it has never had to (none of 1,600 floors
+measured), because every module keeps open floor just inside its border.
+Set pieces keep their doorways in the middle. Some modules hold chasms, so a shove
 near the edge drops a foe (or you) to the floor below.
 
 **Landmarks.** At least half of all floors are built around a landmark,
@@ -507,9 +510,10 @@ ctest -LE slow             everything but the long integration suite
   display, and publishes the floor gallery; Windows runs the console tests.
   Running on two compilers matters for a seeded game: the standard
   library's random distributions differ between them, so a test that only
-  holds for one platform's rolls is caught. It found one: a test fixture
-  that kept the opening floor's chest, vault and litter, valid on Windows
-  only because there the chest happened to land on floor.
+  holds for one platform's rolls is caught. The first Linux run found one:
+  a test fixture that kept the opening floor's chest, vault and litter on a
+  smaller map. Its save was invalid on Linux; on Windows the rolls most
+  likely put them somewhere the check let pass.
 
 ## 2.11 Tools
 
@@ -526,7 +530,9 @@ ctest -LE slow             everything but the long integration suite
   the exit, with a few numbers per floor. It takes a floor number and
   builds it with the game's own parameters (`floorGenerationParams`), so a
   generator change can be judged across many seeds, or across the whole
-  run (`--floors 1-46`), without playing to it.
+  run (`--floors 1-46`), without playing to it. `--steps` draws one floor
+  being built, step by step, from the generator's own trace: grid, rock,
+  big rooms, spanning tree, loops, rooms, doorways, furniture, encounters.
 - **`tools/sfx_build.py`** builds the sound families from source
   recordings.
 

@@ -78,6 +78,18 @@ struct GeneratedDungeon {
     // The posts in each encounter room (aligned with otherRoomCenters; only a
     // room's first anchor carries them). A room with posts is never dressed.
     std::vector<std::vector<Post>> roomPosts;
+
+    // How the floor came together, for tools that show the steps (the
+    // dungeon viewer): the joins of the spanning tree and the extra ones
+    // (pairs of grid cells); the map once the rooms were stamped and their
+    // doorways opened; the walls opened just inside doorways; and the tiles
+    // the connectivity safety net carved (with today's modules, none: every
+    // one has open floor just inside its border).
+    struct Trace {
+        std::vector<std::pair<int, int>> treeJoins, extraJoins;
+        Map stamped;
+        std::vector<Position> opened, carved;
+    } trace;
 };
 
 // Builds a floor from a 3x3 grid of module-sized cells (see
