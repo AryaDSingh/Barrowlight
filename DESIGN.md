@@ -475,7 +475,8 @@ compromise; see [known limitations](#known-limitations-and-future-work).
 ## 2.9 Randomness
 
 All combat randomness draws from one seeded stream, and every floor and the
-loot stream get their own seeds from it. A run is reproducible from its
+loot stream get their own seeds from it, the first floor of a new game
+included, so no two runs open on the same layout. A run is reproducible from its
 seed: the playtest bot takes `--seed`, and a bug found in a bot run can be
 replayed exactly.
 

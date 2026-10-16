@@ -6,6 +6,7 @@
 #include <fstream>
 #include <thread>
 #include <chrono>
+#include <random>
 #include <set>
 #include "entities/TalentProgression.hpp"
 #include "core/Keywords.hpp"
@@ -4515,6 +4516,22 @@ struct ApplicationRewardsTestAccess {
             app.sandboxMenu_=false;
             app.selectClass(PlayerClass::Mage);
             check(!app.sandboxRun_ && !app.player_.sandbox,"Sandbox: a normal run leaves it behind");
+        }
+
+        // Every new game starts on a new first floor; the same seed gives the same one.
+        {
+            const auto layout=[&] {
+                std::string tiles;
+                for (int y=0;y<app.map_.height();++y) for (int x=0;x<app.map_.width();++x) tiles+=app.map_.isWalkable(x,y)?'.':'#';
+                return tiles;
+            };
+            std::set<std::string> firstFloors;
+            for (int run=0;run<4;++run) { app.selectClass(PlayerClass::Warrior); firstFloors.insert(layout()); }
+            check(firstFloors.size()>=3,"Each new game starts on a freshly generated first floor");
+            seedRandomness(4242); app.selectClass(PlayerClass::Thief); const auto seeded=layout();
+            seedRandomness(4242); app.selectClass(PlayerClass::Thief);
+            check(layout()==seeded && app.currentFloor_==1,"A seeded run starts on the same first floor (the bot's --seed)");
+            seedRandomness(std::random_device{}());
         }
 
         // Real generated campaigns: valid saves across every floor and every class.

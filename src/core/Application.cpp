@@ -57,7 +57,6 @@ const float& kMapWidth = playLayout::mapWidth;
 const float& kMapHeight = playLayout::mapHeight;
 const float& kMapTop = playLayout::mapTop;
 constexpr int kSightRadius = 8;
-constexpr unsigned int kInitialSeed = 1337;
 
 // The multi-floor dungeon progression: floors 1 through kFinalFloor,
 // each a separate generated dungeon reached by walking through the
@@ -3559,7 +3558,9 @@ void Application::selectClass(PlayerClass cls) {
     currentFloor_ = 1;
     dungeonMenu_=false;
     mode_ = GameMode::Playing;
-    regenerateLevel(kInitialSeed);
+    // A new run, a new first floor: the seed comes from the run's random
+    // stream, so the bot's --seed still replays a run exactly.
+    regenerateLevel(freshSeed());
     treeSelection_=0;
     while (treeSelection_+1<kTalentTrees.size() && !startingTreeAllowed(cls,kTalentTrees[treeSelection_].tree)) ++treeSelection_;
     abilitySelection_=0; openTalentTrees();
